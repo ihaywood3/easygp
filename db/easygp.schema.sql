@@ -3,6 +3,7 @@
 --
 
 SET statement_timeout = 0;
+SET lock_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SET check_function_bodies = false;
@@ -1203,28 +1204,6 @@ $_$;
 ALTER FUNCTION public.load_file(dir_option_name text, fname text) OWNER TO easygp;
 
 --
--- Name: new_uuid(uuid, integer); Type: FUNCTION; Schema: public; Owner: easygp
---
-
-CREATE FUNCTION new_uuid(uuid, integer) RETURNS uuid
-    LANGUAGE plpgsql
-    AS $_$
-DECLARE
-  x integer;
-BEGIN
-   select "count" into x from multiple_packsize where fk_product = $1;
-   if x = 1 then
-       return $1;
-   else 
-       return  uuid_generate_v5(uuid_ns_url(),'http://easygp.net/new-uuids/' || $1 || '/' || $2);
-   end if;
-END
-$_$;
-
-
-ALTER FUNCTION public.new_uuid(uuid, integer) OWNER TO easygp;
-
---
 -- Name: new_uuid(uuid, double precision); Type: FUNCTION; Schema: public; Owner: easygp
 --
 
@@ -1245,6 +1224,28 @@ $_$;
 
 
 ALTER FUNCTION public.new_uuid(uuid, double precision) OWNER TO easygp;
+
+--
+-- Name: new_uuid(uuid, integer); Type: FUNCTION; Schema: public; Owner: easygp
+--
+
+CREATE FUNCTION new_uuid(uuid, integer) RETURNS uuid
+    LANGUAGE plpgsql
+    AS $_$
+DECLARE
+  x integer;
+BEGIN
+   select "count" into x from multiple_packsize where fk_product = $1;
+   if x = 1 then
+       return $1;
+   else 
+       return  uuid_generate_v5(uuid_ns_url(),'http://easygp.net/new-uuids/' || $1 || '/' || $2);
+   end if;
+END
+$_$;
+
+
+ALTER FUNCTION public.new_uuid(uuid, integer) OWNER TO easygp;
 
 --
 -- Name: save_file(text, text, bytea); Type: FUNCTION; Schema: public; Owner: easygp
@@ -1749,6 +1750,25 @@ ALTER TABLE admin.staff_pk_seq OWNER TO easygp;
 ALTER SEQUENCE staff_pk_seq OWNED BY staff.pk;
 
 
+--
+-- Name: tips_seen; Type: TABLE; Schema: admin; Owner: easygp; Tablespace: 
+--
+
+CREATE TABLE tips_seen (
+    fk_staff integer NOT NULL,
+    tip_name text NOT NULL
+);
+
+
+ALTER TABLE admin.tips_seen OWNER TO easygp;
+
+--
+-- Name: TABLE tips_seen; Type: COMMENT; Schema: admin; Owner: easygp
+--
+
+COMMENT ON TABLE tips_seen IS 'lists tip the staff member has viewed and does not want to see again';
+
+
 SET search_path = contacts, pg_catalog;
 
 --
@@ -1959,7 +1979,40 @@ SET search_path = admin, pg_catalog;
 --
 
 CREATE VIEW vwclinics AS
-    SELECT data_branches.pk AS pk_view, clinics.pk AS fk_clinic, clinics.fk_branch, data_branches.branch, data_branches.fk_address, data_branches.fk_organisation, data_organisations.organisation, data_addresses.street1, data_addresses.street2, data_addresses.fk_town, data_addresses.preferred_address, data_addresses.postal_address, data_addresses.head_office, data_addresses.geolocation, data_addresses.country_code, data_addresses.fk_lu_address_type, lu_address_types.type AS address_type, data_addresses.deleted, lu_towns.postcode, lu_towns.town, lu_towns.state, data_branches.memo AS memo_branches, data_organisations.deleted AS organisation_deleted, lu_categories.category, data_numbers.hpio, data_numbers.hic_location_id FROM (((((((clinics JOIN contacts.data_branches ON ((clinics.fk_branch = data_branches.pk))) JOIN contacts.data_organisations ON ((data_branches.fk_organisation = data_organisations.pk))) LEFT JOIN contacts.data_addresses ON ((data_branches.fk_address = data_addresses.pk))) LEFT JOIN contacts.lu_address_types ON ((data_addresses.fk_lu_address_type = lu_address_types.pk))) LEFT JOIN contacts.data_numbers ON (((data_numbers.fk_branch = data_branches.pk) AND (data_numbers.fk_person IS NULL)))) JOIN contacts.lu_towns ON ((data_addresses.fk_town = lu_towns.pk))) JOIN contacts.lu_categories ON ((data_branches.fk_category = lu_categories.pk)));
+ SELECT data_branches.pk AS pk_view,
+    clinics.pk AS fk_clinic,
+    clinics.fk_branch,
+    data_branches.branch,
+    data_branches.fk_address,
+    data_branches.fk_organisation,
+    data_organisations.organisation,
+    data_addresses.street1,
+    data_addresses.street2,
+    data_addresses.fk_town,
+    data_addresses.preferred_address,
+    data_addresses.postal_address,
+    data_addresses.head_office,
+    data_addresses.geolocation,
+    data_addresses.country_code,
+    data_addresses.fk_lu_address_type,
+    lu_address_types.type AS address_type,
+    data_addresses.deleted,
+    lu_towns.postcode,
+    lu_towns.town,
+    lu_towns.state,
+    data_branches.memo AS memo_branches,
+    data_organisations.deleted AS organisation_deleted,
+    lu_categories.category,
+    data_numbers.hpio,
+    data_numbers.hic_location_id
+   FROM (((((((clinics
+   JOIN contacts.data_branches ON ((clinics.fk_branch = data_branches.pk)))
+   JOIN contacts.data_organisations ON ((data_branches.fk_organisation = data_organisations.pk)))
+   LEFT JOIN contacts.data_addresses ON ((data_branches.fk_address = data_addresses.pk)))
+   LEFT JOIN contacts.lu_address_types ON ((data_addresses.fk_lu_address_type = lu_address_types.pk)))
+   LEFT JOIN contacts.data_numbers ON (((data_numbers.fk_branch = data_branches.pk) AND (data_numbers.fk_person IS NULL))))
+   JOIN contacts.lu_towns ON ((data_addresses.fk_town = lu_towns.pk)))
+   JOIN contacts.lu_categories ON ((data_branches.fk_category = lu_categories.pk)));
 
 
 ALTER TABLE admin.vwclinics OWNER TO easygp;
@@ -1969,7 +2022,20 @@ ALTER TABLE admin.vwclinics OWNER TO easygp;
 --
 
 CREATE VIEW vwclinicrooms AS
-    SELECT clinic_rooms.pk, clinic_rooms.room_name, clinic_rooms.script_printer, clinic_rooms.default_printer, clinic_rooms.fk_clinic, vwclinics.organisation, vwclinics.branch, vwclinics.street1, vwclinics.street2, vwclinics.town FROM clinic_rooms, vwclinics WHERE (clinic_rooms.fk_clinic = vwclinics.fk_clinic) ORDER BY clinic_rooms.fk_clinic, clinic_rooms.room_name;
+ SELECT clinic_rooms.pk,
+    clinic_rooms.room_name,
+    clinic_rooms.script_printer,
+    clinic_rooms.default_printer,
+    clinic_rooms.fk_clinic,
+    vwclinics.organisation,
+    vwclinics.branch,
+    vwclinics.street1,
+    vwclinics.street2,
+    vwclinics.town
+   FROM clinic_rooms,
+    vwclinics
+  WHERE (clinic_rooms.fk_clinic = vwclinics.fk_clinic)
+  ORDER BY clinic_rooms.fk_clinic, clinic_rooms.room_name;
 
 
 ALTER TABLE admin.vwclinicrooms OWNER TO easygp;
@@ -1979,7 +2045,18 @@ ALTER TABLE admin.vwclinicrooms OWNER TO easygp;
 --
 
 CREATE VIEW vwpreferences AS
-    SELECT COALESCE((g.pk + 10000), lpd.pk) AS pk_view, g.fk_clinic, g.fk_staff, COALESCE(g.name, lpd.name) AS name, COALESCE(g.value, lpd.value) AS value, (lpd.check_dir IS TRUE) AS check_dir, CASE WHEN (lpd.check_dir IS TRUE) THEN check_dir(COALESCE(g.value, lpd.value)) ELSE false END AS server_dir FROM (global_preferences g FULL JOIN lu_preferences_defaults lpd USING (name));
+ SELECT COALESCE((g.pk + 10000), lpd.pk) AS pk_view,
+    g.fk_clinic,
+    g.fk_staff,
+    COALESCE(g.name, lpd.name) AS name,
+    COALESCE(g.value, lpd.value) AS value,
+    (lpd.check_dir IS TRUE) AS check_dir,
+        CASE
+            WHEN (lpd.check_dir IS TRUE) THEN check_dir(COALESCE(g.value, lpd.value))
+            ELSE false
+        END AS server_dir
+   FROM (global_preferences g
+   FULL JOIN lu_preferences_defaults lpd USING (name));
 
 
 ALTER TABLE admin.vwpreferences OWNER TO easygp;
@@ -2098,7 +2175,30 @@ SET search_path = admin, pg_catalog;
 --
 
 CREATE VIEW vwstaff AS
-    SELECT roles.role, staff.fk_person, staff.logon_name, staff.fk_role, staff.pk, staff.pk AS fk_staff, persons.firstname, persons.surname, ((persons.firstname || ' '::text) || persons.surname) AS wholename, persons.salutation, persons.fk_title, lu_title.title, staff.qualifications, persons.surname_normalised, employees_numbers.provider_number, data_numbers_persons.prescriber_number, employees_numbers.australian_business_number, data_numbers_persons.hpii FROM (((((staff staff JOIN lu_staff_roles roles ON ((staff.fk_role = roles.pk))) JOIN contacts.data_persons persons ON ((staff.fk_person = persons.pk))) JOIN contacts.lu_title ON ((persons.fk_title = lu_title.pk))) LEFT JOIN contacts.data_numbers_persons ON ((staff.fk_person = data_numbers_persons.fk_person))) LEFT JOIN contacts.data_numbers employees_numbers ON ((staff.fk_person = employees_numbers.fk_person)));
+ SELECT roles.role,
+    staff.fk_person,
+    staff.logon_name,
+    staff.fk_role,
+    staff.pk,
+    staff.pk AS fk_staff,
+    persons.firstname,
+    persons.surname,
+    ((persons.firstname || ' '::text) || persons.surname) AS wholename,
+    persons.salutation,
+    persons.fk_title,
+    lu_title.title,
+    staff.qualifications,
+    persons.surname_normalised,
+    employees_numbers.provider_number,
+    data_numbers_persons.prescriber_number,
+    employees_numbers.australian_business_number,
+    data_numbers_persons.hpii
+   FROM (((((staff staff
+   JOIN lu_staff_roles roles ON ((staff.fk_role = roles.pk)))
+   JOIN contacts.data_persons persons ON ((staff.fk_person = persons.pk)))
+   JOIN contacts.lu_title ON ((persons.fk_title = lu_title.pk)))
+   LEFT JOIN contacts.data_numbers_persons ON ((staff.fk_person = data_numbers_persons.fk_person)))
+   LEFT JOIN contacts.data_numbers employees_numbers ON ((staff.fk_person = employees_numbers.fk_person)));
 
 
 ALTER TABLE admin.vwstaff OWNER TO easygp;
@@ -2303,7 +2403,105 @@ SET search_path = admin, pg_catalog;
 --
 
 CREATE VIEW vwstaffinclinics AS
-    SELECT DISTINCT ON (staff.pk, clinics.pk) ((staff.pk || '-'::text) || data_addresses.pk) AS pk_view, ((data_persons.firstname || ' '::text) || data_persons.surname) AS wholename, staff.fk_person, staff.fk_role, staff.fk_status, staff.logon_name, employee_numbers.provider_number, data_numbers_persons.prescriber_number, staff.fk_lu_staff_type, staff.logon_date_from, staff.logon_date_to, link_staff_clinics1.fk_staff, link_staff_clinics1.fk_clinic, clinics.fk_branch, data_branches.branch, data_branches.fk_organisation, data_branches.fk_address, data_branches.memo AS branch_memo, data_branches.fk_category AS branch_category, data_branches.deleted AS branch_deleted, data_employees.pk AS fk_employee, data_employees.fk_occupation, data_employees.memo AS employee_memo, data_employees.deleted AS employee_deleted, data_persons.firstname, data_persons.surname, data_persons.salutation, data_persons.birthdate, data_persons.fk_ethnicity, data_persons.fk_language, data_persons.memo AS person_memo, data_persons.fk_marital, data_persons.fk_title, data_persons.fk_sex, data_persons.country_code AS person_country_code, data_persons.fk_image, data_persons.retired, data_persons.deleted AS person_deleted, data_persons.deceased, data_persons.date_deceased, lu_title.title, lu_marital.marital, lu_sex.sex, lu_occupations.occupation, lu_ethnicity.ethnicity, lu_languages.language, images.image, images.md5sum, images.tag, images.fk_consult AS fk_consult_image, images.deleted AS image_deleted, lu_staff_roles.role, lu_staff_type.type AS staff_type, lu_employee_status.status, data_organisations.organisation, data_organisations.deleted AS organisation_deleted, data_addresses.street1, data_addresses.street2, data_addresses.fk_town, lu_address_types.type AS address_type, data_addresses.preferred_address, data_addresses.postal_address, data_addresses.head_office, data_addresses.geolocation, data_addresses.country_code, data_addresses.fk_lu_address_type, data_addresses.deleted AS address_deleted, lu_towns.postcode, lu_towns.town, lu_towns.state, link_staff_clinics1.pk AS fk_link_staff_clinic, staff.qualifications, data_persons.surname_normalised, data_numbers_persons.hpii, org_numbers.hpio, org_numbers.hic_location_id FROM ((((((((((((((((((((((staff JOIN link_staff_clinics link_staff_clinics1 ON ((staff.pk = link_staff_clinics1.fk_staff))) JOIN clinics ON ((link_staff_clinics1.fk_clinic = clinics.pk))) JOIN contacts.data_employees ON (((staff.fk_person = data_employees.fk_person) AND (clinics.fk_branch = data_employees.fk_branch)))) JOIN contacts.data_branches ON ((clinics.fk_branch = data_branches.pk))) JOIN contacts.data_persons ON ((data_employees.fk_person = data_persons.pk))) JOIN lu_staff_type ON ((staff.fk_lu_staff_type = lu_staff_type.pk))) LEFT JOIN contacts.lu_sex ON ((data_persons.fk_sex = lu_sex.pk))) LEFT JOIN contacts.data_numbers_persons ON ((data_numbers_persons.fk_person = staff.fk_person))) LEFT JOIN contacts.data_numbers employee_numbers ON (((employee_numbers.fk_branch = clinics.fk_branch) AND (employee_numbers.fk_person = staff.fk_person)))) LEFT JOIN contacts.data_numbers org_numbers ON (((org_numbers.fk_person IS NULL) AND (clinics.fk_branch = org_numbers.fk_branch)))) LEFT JOIN contacts.lu_marital ON ((data_persons.fk_marital = lu_marital.pk))) LEFT JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk))) LEFT JOIN common.lu_occupations ON ((data_employees.fk_occupation = lu_occupations.pk))) LEFT JOIN common.lu_ethnicity ON ((data_persons.fk_ethnicity = lu_ethnicity.pk))) LEFT JOIN common.lu_languages ON ((data_persons.fk_language = lu_languages.pk))) LEFT JOIN blobs.images ON ((data_persons.fk_image = images.pk))) JOIN lu_staff_roles ON ((staff.fk_role = lu_staff_roles.pk))) JOIN contacts.lu_employee_status ON ((staff.fk_status = lu_employee_status.pk))) JOIN contacts.data_organisations ON ((data_branches.fk_organisation = data_organisations.pk))) LEFT JOIN contacts.data_addresses ON ((data_branches.fk_address = data_addresses.pk))) LEFT JOIN contacts.lu_towns ON ((data_addresses.fk_town = lu_towns.pk))) LEFT JOIN contacts.lu_address_types ON ((data_addresses.fk_lu_address_type = lu_address_types.pk)));
+ SELECT DISTINCT ON (staff.pk, clinics.pk) ((staff.pk || '-'::text) || data_addresses.pk) AS pk_view,
+    ((data_persons.firstname || ' '::text) || data_persons.surname) AS wholename,
+    staff.fk_person,
+    staff.fk_role,
+    staff.fk_status,
+    staff.logon_name,
+    employee_numbers.provider_number,
+    data_numbers_persons.prescriber_number,
+    staff.fk_lu_staff_type,
+    staff.logon_date_from,
+    staff.logon_date_to,
+    link_staff_clinics1.fk_staff,
+    link_staff_clinics1.fk_clinic,
+    clinics.fk_branch,
+    data_branches.branch,
+    data_branches.fk_organisation,
+    data_branches.fk_address,
+    data_branches.memo AS branch_memo,
+    data_branches.fk_category AS branch_category,
+    data_branches.deleted AS branch_deleted,
+    data_employees.pk AS fk_employee,
+    data_employees.fk_occupation,
+    data_employees.memo AS employee_memo,
+    data_employees.deleted AS employee_deleted,
+    data_persons.firstname,
+    data_persons.surname,
+    data_persons.salutation,
+    data_persons.birthdate,
+    data_persons.fk_ethnicity,
+    data_persons.fk_language,
+    data_persons.memo AS person_memo,
+    data_persons.fk_marital,
+    data_persons.fk_title,
+    data_persons.fk_sex,
+    data_persons.country_code AS person_country_code,
+    data_persons.fk_image,
+    data_persons.retired,
+    data_persons.deleted AS person_deleted,
+    data_persons.deceased,
+    data_persons.date_deceased,
+    lu_title.title,
+    lu_marital.marital,
+    lu_sex.sex,
+    lu_occupations.occupation,
+    lu_ethnicity.ethnicity,
+    lu_languages.language,
+    images.image,
+    images.md5sum,
+    images.tag,
+    images.fk_consult AS fk_consult_image,
+    images.deleted AS image_deleted,
+    lu_staff_roles.role,
+    lu_staff_type.type AS staff_type,
+    lu_employee_status.status,
+    data_organisations.organisation,
+    data_organisations.deleted AS organisation_deleted,
+    data_addresses.street1,
+    data_addresses.street2,
+    data_addresses.fk_town,
+    lu_address_types.type AS address_type,
+    data_addresses.preferred_address,
+    data_addresses.postal_address,
+    data_addresses.head_office,
+    data_addresses.geolocation,
+    data_addresses.country_code,
+    data_addresses.fk_lu_address_type,
+    data_addresses.deleted AS address_deleted,
+    lu_towns.postcode,
+    lu_towns.town,
+    lu_towns.state,
+    link_staff_clinics1.pk AS fk_link_staff_clinic,
+    staff.qualifications,
+    data_persons.surname_normalised,
+    data_numbers_persons.hpii,
+    org_numbers.hpio,
+    org_numbers.hic_location_id
+   FROM ((((((((((((((((((((((staff
+   JOIN link_staff_clinics link_staff_clinics1 ON ((staff.pk = link_staff_clinics1.fk_staff)))
+   JOIN clinics ON ((link_staff_clinics1.fk_clinic = clinics.pk)))
+   JOIN contacts.data_employees ON (((staff.fk_person = data_employees.fk_person) AND (clinics.fk_branch = data_employees.fk_branch))))
+   JOIN contacts.data_branches ON ((clinics.fk_branch = data_branches.pk)))
+   JOIN contacts.data_persons ON ((data_employees.fk_person = data_persons.pk)))
+   JOIN lu_staff_type ON ((staff.fk_lu_staff_type = lu_staff_type.pk)))
+   LEFT JOIN contacts.lu_sex ON ((data_persons.fk_sex = lu_sex.pk)))
+   LEFT JOIN contacts.data_numbers_persons ON ((data_numbers_persons.fk_person = staff.fk_person)))
+   LEFT JOIN contacts.data_numbers employee_numbers ON (((employee_numbers.fk_branch = clinics.fk_branch) AND (employee_numbers.fk_person = staff.fk_person))))
+   LEFT JOIN contacts.data_numbers org_numbers ON (((org_numbers.fk_person IS NULL) AND (clinics.fk_branch = org_numbers.fk_branch))))
+   LEFT JOIN contacts.lu_marital ON ((data_persons.fk_marital = lu_marital.pk)))
+   LEFT JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk)))
+   LEFT JOIN common.lu_occupations ON ((data_employees.fk_occupation = lu_occupations.pk)))
+   LEFT JOIN common.lu_ethnicity ON ((data_persons.fk_ethnicity = lu_ethnicity.pk)))
+   LEFT JOIN common.lu_languages ON ((data_persons.fk_language = lu_languages.pk)))
+   LEFT JOIN blobs.images ON ((data_persons.fk_image = images.pk)))
+   JOIN lu_staff_roles ON ((staff.fk_role = lu_staff_roles.pk)))
+   JOIN contacts.lu_employee_status ON ((staff.fk_status = lu_employee_status.pk)))
+   JOIN contacts.data_organisations ON ((data_branches.fk_organisation = data_organisations.pk)))
+   LEFT JOIN contacts.data_addresses ON ((data_branches.fk_address = data_addresses.pk)))
+   LEFT JOIN contacts.lu_towns ON ((data_addresses.fk_town = lu_towns.pk)))
+   LEFT JOIN contacts.lu_address_types ON ((data_addresses.fk_lu_address_type = lu_address_types.pk)));
 
 
 ALTER TABLE admin.vwstaffinclinics OWNER TO easygp;
@@ -2313,7 +2511,18 @@ ALTER TABLE admin.vwstaffinclinics OWNER TO easygp;
 --
 
 CREATE VIEW vwstafftoolbarbuttons AS
-    SELECT lu_clinical_modules.pk AS pk_module, staff_clinical_toolbar.pk AS fk_staff_clinical_toolbar, staff_clinical_toolbar.display_order, lu_clinical_modules.name, lu_clinical_modules.icon_path, staff_clinical_toolbar.fk_staff, staff_clinical_toolbar.deleted FROM staff_clinical_toolbar, vwstaff, lu_clinical_modules WHERE ((staff_clinical_toolbar.fk_staff = vwstaff.fk_staff) AND (staff_clinical_toolbar.fk_module = lu_clinical_modules.pk)) ORDER BY staff_clinical_toolbar.fk_staff, staff_clinical_toolbar.display_order;
+ SELECT lu_clinical_modules.pk AS pk_module,
+    staff_clinical_toolbar.pk AS fk_staff_clinical_toolbar,
+    staff_clinical_toolbar.display_order,
+    lu_clinical_modules.name,
+    lu_clinical_modules.icon_path,
+    staff_clinical_toolbar.fk_staff,
+    staff_clinical_toolbar.deleted
+   FROM staff_clinical_toolbar,
+    vwstaff,
+    lu_clinical_modules
+  WHERE ((staff_clinical_toolbar.fk_staff = vwstaff.fk_staff) AND (staff_clinical_toolbar.fk_module = lu_clinical_modules.pk))
+  ORDER BY staff_clinical_toolbar.fk_staff, staff_clinical_toolbar.display_order;
 
 
 ALTER TABLE admin.vwstafftoolbarbuttons OWNER TO easygp;
@@ -2326,12 +2535,15 @@ SET search_path = billing, pg_catalog;
 
 CREATE TABLE claims (
     pk integer NOT NULL,
-    claim_id text NOT NULL,
+    claim_id text,
     claim_date timestamp without time zone,
-    finalised boolean DEFAULT false,
     fk_branch integer NOT NULL,
     result_code integer DEFAULT (-2),
-    result_text text
+    result_text text,
+    provider_number character varying(8),
+    payment_report_run_date timestamp without time zone,
+    processing_report_run_date timestamp without time zone,
+    payment_report text
 );
 
 
@@ -2513,7 +2725,11 @@ CREATE TABLE invoices (
     online boolean DEFAULT false NOT NULL,
     result_code integer DEFAULT (-1),
     result_text text,
-    fk_claim integer
+    fk_claim integer,
+    voucher_id character varying(2),
+    referrer_provider_number character varying(8),
+    referral_date date,
+    referral_duration integer
 );
 
 
@@ -2643,7 +2859,10 @@ CREATE TABLE items_billed (
     amount money NOT NULL,
     fk_invoice integer NOT NULL,
     fk_lu_billing_type integer NOT NULL,
-    amount_gst money
+    amount_gst money,
+    service_id character(4),
+    reason_code integer,
+    comment text
 );
 
 
@@ -2917,11 +3136,43 @@ ALTER SEQUENCE lu_reasons_not_billed_pk_seq OWNED BY lu_reasons_not_billed.pk;
 
 CREATE TABLE lu_reports (
     pk integer NOT NULL,
-    report_title text NOT NULL
+    report_title text NOT NULL,
+    sql text NOT NULL,
+    plot text,
+    fk_subreport integer,
+    subkey name
 );
 
 
 ALTER TABLE billing.lu_reports OWNER TO easygp;
+
+--
+-- Name: COLUMN lu_reports.sql; Type: COMMENT; Schema: billing; Owner: easygp
+--
+
+COMMENT ON COLUMN lu_reports.sql IS 'SQL code to run the report, with variable subsitutions prefixed by dollar. $staff $start_date and $end_date are default';
+
+
+--
+-- Name: COLUMN lu_reports.plot; Type: COMMENT; Schema: billing; Owner: easygp
+--
+
+COMMENT ON COLUMN lu_reports.plot IS 'if non-null GNUPlot program to feed results of query into';
+
+
+--
+-- Name: COLUMN lu_reports.fk_subreport; Type: COMMENT; Schema: billing; Owner: easygp
+--
+
+COMMENT ON COLUMN lu_reports.fk_subreport IS 'PK of sub-report if exists';
+
+
+--
+-- Name: COLUMN lu_reports.subkey; Type: COMMENT; Schema: billing; Owner: easygp
+--
+
+COMMENT ON COLUMN lu_reports.subkey IS 'field on this report to be available to subreport''s quiery as a substitution variable';
+
 
 --
 -- Name: lu_reports_pk_seq; Type: SEQUENCE; Schema: billing; Owner: easygp
@@ -3326,11 +3577,83 @@ CREATE TABLE links_persons_addresses (
 ALTER TABLE contacts.links_persons_addresses OWNER TO easygp;
 
 --
+-- Name: lu_contact_type; Type: TABLE; Schema: contacts; Owner: easygp; Tablespace: 
+--
+
+CREATE TABLE lu_contact_type (
+    pk integer NOT NULL,
+    type text NOT NULL
+);
+
+
+ALTER TABLE contacts.lu_contact_type OWNER TO easygp;
+
+--
+-- Name: vwbranchescomms; Type: VIEW; Schema: contacts; Owner: easygp
+--
+
+CREATE VIEW vwbranchescomms AS
+ SELECT comms.pk,
+    comms.value,
+    comms.note,
+    comms.preferred_method,
+    comms.confidential,
+    comms.deleted,
+    comms.fk_type,
+    type.type,
+    branches.pk AS fk_branch,
+    links.deleted AS comm_link_deleted
+   FROM (((data_branches branches
+   JOIN links_branches_comms links ON ((branches.pk = links.fk_branch)))
+   JOIN data_communications comms ON ((links.fk_comm = comms.pk)))
+   JOIN lu_contact_type type ON ((comms.fk_type = type.pk)))
+  WHERE (links.deleted = false)
+  ORDER BY branches.pk;
+
+
+ALTER TABLE contacts.vwbranchescomms OWNER TO easygp;
+
+--
 -- Name: vworganisations; Type: VIEW; Schema: contacts; Owner: easygp
 --
 
 CREATE VIEW vworganisations AS
-    SELECT DISTINCT (branches.pk * (organisations.pk)::bigint) AS pk_view, clinics.pk AS fk_clinic, organisations.organisation, organisations.deleted AS organisation_deleted, branches.pk AS fk_branch, branches.branch, branches.fk_organisation, branches.deleted AS branch_deleted, branches.fk_address, branches.memo, branches.fk_category, categories.category, addresses.street1, addresses.street2, addresses.fk_town, addresses.preferred_address, addresses.postal_address, addresses.head_office, addresses.country_code, addresses.fk_lu_address_type, addresses.deleted AS address_deleted, towns.postcode, towns.town, towns.state, data_numbers.australian_business_number, data_communications.value AS fax, data_numbers.hpio FROM (((((((((data_branches branches JOIN data_organisations organisations ON ((branches.fk_organisation = organisations.pk))) JOIN lu_categories categories ON ((branches.fk_category = categories.pk))) LEFT JOIN data_addresses addresses ON ((branches.fk_address = addresses.pk))) LEFT JOIN lu_address_types ON ((addresses.fk_lu_address_type = lu_address_types.pk))) LEFT JOIN lu_towns towns ON ((addresses.fk_town = towns.pk))) LEFT JOIN admin.clinics ON ((branches.pk = clinics.fk_branch))) LEFT JOIN data_numbers ON (((branches.pk = data_numbers.fk_branch) AND (data_numbers.fk_person IS NULL)))) LEFT JOIN links_branches_comms ON ((branches.pk = links_branches_comms.fk_branch))) LEFT JOIN data_communications ON (((links_branches_comms.fk_comm = data_communications.pk) AND (data_communications.fk_type = 2))));
+ SELECT DISTINCT ON (branches.pk) (branches.pk)::bigint AS pk_view,
+    clinics.pk AS fk_clinic,
+    organisations.organisation,
+    organisations.deleted AS organisation_deleted,
+    branches.pk AS fk_branch,
+    branches.branch,
+    branches.fk_organisation,
+    branches.deleted AS branch_deleted,
+    branches.fk_address,
+    branches.memo,
+    branches.fk_category,
+    categories.category,
+    addresses.street1,
+    addresses.street2,
+    addresses.fk_town,
+    addresses.preferred_address,
+    addresses.postal_address,
+    addresses.head_office,
+    addresses.country_code,
+    addresses.fk_lu_address_type,
+    addresses.deleted AS address_deleted,
+    towns.postcode,
+    towns.town,
+    towns.state,
+    data_numbers.australian_business_number,
+    vbc.value AS fax,
+    data_numbers.hpio
+   FROM ((((((((data_branches branches
+   JOIN data_organisations organisations ON ((branches.fk_organisation = organisations.pk)))
+   JOIN lu_categories categories ON ((branches.fk_category = categories.pk)))
+   LEFT JOIN data_addresses addresses ON ((branches.fk_address = addresses.pk)))
+   LEFT JOIN lu_address_types ON ((addresses.fk_lu_address_type = lu_address_types.pk)))
+   LEFT JOIN lu_towns towns ON ((addresses.fk_town = towns.pk)))
+   LEFT JOIN admin.clinics ON ((branches.pk = clinics.fk_branch)))
+   LEFT JOIN data_numbers ON (((branches.pk = data_numbers.fk_branch) AND (data_numbers.fk_person IS NULL))))
+   LEFT JOIN vwbranchescomms vbc ON (((branches.pk = vbc.fk_branch) AND (vbc.fk_type = 2))));
 
 
 ALTER TABLE contacts.vworganisations OWNER TO easygp;
@@ -3340,7 +3663,68 @@ ALTER TABLE contacts.vworganisations OWNER TO easygp;
 --
 
 CREATE VIEW vwpersonsincludingpatients AS
-    SELECT persons.pk AS fk_person, CASE WHEN (addresses.pk > 0) THEN COALESCE(((persons.pk || '-'::text) || addresses.pk)) ELSE (persons.pk || '-0'::text) END AS pk_view, addresses.pk AS fk_address, (((title.title || ' '::text) || (persons.firstname || ' '::text)) || (persons.surname || ' '::text)) AS wholename, persons.firstname, persons.surname, persons.salutation, persons.birthdate, date_part('year'::text, age((persons.birthdate)::timestamp with time zone)) AS age, marital.marital, sex.sex, title.title, countries.country, languages.language, countries1.country AS country_birth, ethnicity.ethnicity, addresses.street1, addresses.street2, towns.town, towns.state, towns.postcode, addresses.fk_town, addresses.preferred_address, addresses.postal_address, addresses.head_office, addresses.geolocation, addresses.country_code, addresses.fk_lu_address_type AS fk_address_type, addresses.deleted AS address_deleted, persons.fk_ethnicity, persons.fk_language, persons.language_problems, persons.memo, persons.fk_marital, persons.country_code AS country_birth_country_code, persons.fk_title, persons.deceased, persons.date_deceased, persons.fk_sex, images.pk AS fk_image, images.image, images.md5sum, images.tag, images.fk_consult AS fk_consult_image, persons.surname_normalised, data_patients.pk AS fk_patient FROM ((((((((((((data_persons persons LEFT JOIN clerical.data_patients ON ((persons.pk = data_patients.pk))) LEFT JOIN links_persons_addresses ON ((persons.pk = links_persons_addresses.fk_person))) LEFT JOIN lu_marital marital ON ((persons.fk_marital = marital.pk))) LEFT JOIN lu_sex sex ON ((persons.fk_sex = sex.pk))) LEFT JOIN common.lu_languages languages ON ((persons.fk_language = languages.pk))) LEFT JOIN lu_title title ON ((persons.fk_title = title.pk))) LEFT JOIN common.lu_ethnicity ethnicity ON ((persons.fk_ethnicity = ethnicity.pk))) LEFT JOIN blobs.images ON ((persons.fk_image = images.pk))) LEFT JOIN common.lu_countries countries ON ((persons.country_code = (countries.country_code)::text))) LEFT JOIN data_addresses addresses ON ((links_persons_addresses.fk_address = addresses.pk))) LEFT JOIN lu_towns towns ON ((addresses.fk_town = towns.pk))) LEFT JOIN common.lu_countries countries1 ON ((addresses.country_code = countries1.country_code)));
+ SELECT persons.pk AS fk_person,
+        CASE
+            WHEN (addresses.pk > 0) THEN COALESCE(((persons.pk || '-'::text) || addresses.pk))
+            ELSE (persons.pk || '-0'::text)
+        END AS pk_view,
+    addresses.pk AS fk_address,
+    (((title.title || ' '::text) || (persons.firstname || ' '::text)) || (persons.surname || ' '::text)) AS wholename,
+    persons.firstname,
+    persons.surname,
+    persons.salutation,
+    persons.birthdate,
+    date_part('year'::text, age((persons.birthdate)::timestamp with time zone)) AS age,
+    marital.marital,
+    sex.sex,
+    title.title,
+    countries.country,
+    languages.language,
+    countries1.country AS country_birth,
+    ethnicity.ethnicity,
+    addresses.street1,
+    addresses.street2,
+    towns.town,
+    towns.state,
+    towns.postcode,
+    addresses.fk_town,
+    addresses.preferred_address,
+    addresses.postal_address,
+    addresses.head_office,
+    addresses.geolocation,
+    addresses.country_code,
+    addresses.fk_lu_address_type AS fk_address_type,
+    addresses.deleted AS address_deleted,
+    persons.fk_ethnicity,
+    persons.fk_language,
+    persons.language_problems,
+    persons.memo,
+    persons.fk_marital,
+    persons.country_code AS country_birth_country_code,
+    persons.fk_title,
+    persons.deceased,
+    persons.date_deceased,
+    persons.fk_sex,
+    images.pk AS fk_image,
+    images.image,
+    images.md5sum,
+    images.tag,
+    images.fk_consult AS fk_consult_image,
+    persons.surname_normalised,
+    data_patients.pk AS fk_patient
+   FROM ((((((((((((data_persons persons
+   LEFT JOIN clerical.data_patients ON ((persons.pk = data_patients.pk)))
+   LEFT JOIN links_persons_addresses ON ((persons.pk = links_persons_addresses.fk_person)))
+   LEFT JOIN lu_marital marital ON ((persons.fk_marital = marital.pk)))
+   LEFT JOIN lu_sex sex ON ((persons.fk_sex = sex.pk)))
+   LEFT JOIN common.lu_languages languages ON ((persons.fk_language = languages.pk)))
+   LEFT JOIN lu_title title ON ((persons.fk_title = title.pk)))
+   LEFT JOIN common.lu_ethnicity ethnicity ON ((persons.fk_ethnicity = ethnicity.pk)))
+   LEFT JOIN blobs.images ON ((persons.fk_image = images.pk)))
+   LEFT JOIN common.lu_countries countries ON ((persons.country_code = (countries.country_code)::text)))
+   LEFT JOIN data_addresses addresses ON ((links_persons_addresses.fk_address = addresses.pk)))
+   LEFT JOIN lu_towns towns ON ((addresses.fk_town = towns.pk)))
+   LEFT JOIN common.lu_countries countries1 ON ((addresses.country_code = countries1.country_code)));
 
 
 ALTER TABLE contacts.vwpersonsincludingpatients OWNER TO easygp;
@@ -3359,7 +3743,97 @@ SET search_path = billing, pg_catalog;
 --
 
 CREATE VIEW vwdaylist AS
-    SELECT ((bookings.pk || '-'::text) || items_billed.pk) AS pk_view, bookings.pk AS fk_appointment, bookings.fk_patient, bookings.fk_lu_reason_not_billed, data_patients.fk_lu_centrelink_card_type, invoices.pk AS fk_invoice, invoices.paid, invoices.fk_payer_person, invoices.fk_payer_branch, invoices.latex, invoices.total_bill, invoices.total_gst, invoices.total_paid, invoices.fk_staff_provided_service, invoices.fk_lu_bulk_billing_type, lu_bulk_billing_type.type AS bulk_billing_type, bookings.begin AS appointment_date, COALESCE(COALESCE(fee_schedule.ama_item, fee_schedule.mbs_item), fee_schedule.user_item) AS item, fee_schedule.descriptor_brief, items_billed.amount, items_billed.amount_gst, items_billed.pk AS fk_items_billed, payments_received.fk_lu_payment_method, payments_received.amount AS payment_amount, lu_billing_type.type AS billing_type, lu_payment_method.method AS payment_method, NULL::text AS reason_not_billed, (((lu_title.title || ' '::text) || (data_persons.firstname || ' '::text)) || (data_persons.surname || ' '::text)) AS wholename, data_persons.firstname, data_persons.surname, lu_title.title, data_persons.fk_sex, COALESCE(vworganisations.organisation, vwpersonsincludingpatients.wholename) AS account_to_name, clinics.fk_branch FROM (((((((((((((clerical.bookings JOIN invoices ON ((invoices.fk_appointment = bookings.pk))) JOIN admin.clinics ON ((bookings.fk_clinic = clinics.pk))) JOIN clerical.data_patients ON ((bookings.fk_patient = data_patients.pk))) LEFT JOIN lu_bulk_billing_type ON ((invoices.fk_lu_bulk_billing_type = lu_bulk_billing_type.pk))) JOIN items_billed ON ((invoices.pk = items_billed.fk_invoice))) JOIN fee_schedule ON ((items_billed.fk_fee_schedule = fee_schedule.pk))) JOIN lu_billing_type ON ((items_billed.fk_lu_billing_type = lu_billing_type.pk))) LEFT JOIN contacts.vworganisations ON ((invoices.fk_payer_branch = vworganisations.fk_branch))) LEFT JOIN contacts.vwpersonsincludingpatients ON ((invoices.fk_payer_person = vwpersonsincludingpatients.fk_person))) JOIN contacts.data_persons ON ((data_patients.fk_person = data_persons.pk))) JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk))) LEFT JOIN payments_received ON ((invoices.pk = payments_received.fk_invoice))) LEFT JOIN lu_payment_method ON ((payments_received.fk_lu_payment_method = lu_payment_method.pk))) WHERE (bookings.fk_lu_reason_not_billed IS NULL) UNION SELECT ((bookings.pk || '-'::text) || '0'::text) AS pk_view, bookings.pk AS fk_appointment, bookings.fk_patient, bookings.fk_lu_reason_not_billed, NULL::integer AS fk_lu_centrelink_card_type, NULL::integer AS fk_invoice, NULL::boolean AS paid, NULL::integer AS fk_payer_person, NULL::integer AS fk_payer_branch, NULL::text AS latex, NULL::money AS total_bill, NULL::money AS total_gst, NULL::money AS total_paid, bookings.fk_staff AS fk_staff_provided_service, NULL::integer AS fk_lu_bulk_billing_type, NULL::text AS bulk_billing_type, bookings.begin AS appointment_date, NULL::text AS item, NULL::text AS descriptor_brief, NULL::money AS amount, NULL::money AS amount_gst, NULL::integer AS fk_items_billed, NULL::integer AS fk_lu_payment_method, NULL::money AS payment_amount, NULL::text AS billing_type, NULL::text AS payment_method, lu_reasons_not_billed.reason AS reason_not_billed, (((lu_title.title || ' '::text) || (data_persons.firstname || ' '::text)) || (data_persons.surname || ' '::text)) AS wholename, data_persons.firstname, data_persons.surname, lu_title.title, data_persons.fk_sex, NULL::text AS account_to_name, clinics.fk_branch FROM (((((clerical.bookings JOIN clerical.data_patients ON ((bookings.fk_patient = data_patients.pk))) JOIN admin.clinics ON ((bookings.fk_clinic = clinics.pk))) LEFT JOIN lu_reasons_not_billed ON ((bookings.fk_lu_reason_not_billed = lu_reasons_not_billed.pk))) JOIN contacts.data_persons ON ((data_patients.fk_person = data_persons.pk))) JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk))) WHERE (bookings.fk_lu_reason_not_billed IS NOT NULL);
+         SELECT ((bookings.pk || '-'::text) || items_billed.pk) AS pk_view,
+            bookings.pk AS fk_appointment,
+            bookings.fk_patient,
+            bookings.fk_lu_reason_not_billed,
+            data_patients.fk_lu_centrelink_card_type,
+            invoices.pk AS fk_invoice,
+            invoices.paid,
+            invoices.fk_payer_person,
+            invoices.fk_payer_branch,
+            invoices.latex,
+            invoices.total_bill,
+            invoices.total_gst,
+            invoices.total_paid,
+            invoices.fk_staff_provided_service,
+            invoices.fk_lu_bulk_billing_type,
+            lu_bulk_billing_type.type AS bulk_billing_type,
+            bookings.begin AS appointment_date,
+            COALESCE(COALESCE(fee_schedule.ama_item, fee_schedule.mbs_item), fee_schedule.user_item) AS item,
+            fee_schedule.descriptor_brief,
+            items_billed.amount,
+            items_billed.amount_gst,
+            items_billed.pk AS fk_items_billed,
+            payments_received.fk_lu_payment_method,
+            payments_received.amount AS payment_amount,
+            lu_billing_type.type AS billing_type,
+            lu_payment_method.method AS payment_method,
+            NULL::text AS reason_not_billed,
+            (((lu_title.title || ' '::text) || (data_persons.firstname || ' '::text)) || (data_persons.surname || ' '::text)) AS wholename,
+            data_persons.firstname,
+            data_persons.surname,
+            lu_title.title,
+            data_persons.fk_sex,
+            COALESCE(vworganisations.organisation, vwpersonsincludingpatients.wholename) AS account_to_name,
+            clinics.fk_branch
+           FROM (((((((((((((clerical.bookings
+      JOIN invoices ON ((invoices.fk_appointment = bookings.pk)))
+   JOIN admin.clinics ON ((bookings.fk_clinic = clinics.pk)))
+   JOIN clerical.data_patients ON ((bookings.fk_patient = data_patients.pk)))
+   LEFT JOIN lu_bulk_billing_type ON ((invoices.fk_lu_bulk_billing_type = lu_bulk_billing_type.pk)))
+   JOIN items_billed ON ((invoices.pk = items_billed.fk_invoice)))
+   JOIN fee_schedule ON ((items_billed.fk_fee_schedule = fee_schedule.pk)))
+   JOIN lu_billing_type ON ((items_billed.fk_lu_billing_type = lu_billing_type.pk)))
+   LEFT JOIN contacts.vworganisations ON ((invoices.fk_payer_branch = vworganisations.fk_branch)))
+   LEFT JOIN contacts.vwpersonsincludingpatients ON ((invoices.fk_payer_person = vwpersonsincludingpatients.fk_person)))
+   JOIN contacts.data_persons ON ((data_patients.fk_person = data_persons.pk)))
+   JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk)))
+   LEFT JOIN payments_received ON ((invoices.pk = payments_received.fk_invoice)))
+   LEFT JOIN lu_payment_method ON ((payments_received.fk_lu_payment_method = lu_payment_method.pk)))
+  WHERE (bookings.fk_lu_reason_not_billed IS NULL)
+UNION
+         SELECT ((bookings.pk || '-'::text) || '0'::text) AS pk_view,
+            bookings.pk AS fk_appointment,
+            bookings.fk_patient,
+            bookings.fk_lu_reason_not_billed,
+            NULL::integer AS fk_lu_centrelink_card_type,
+            NULL::integer AS fk_invoice,
+            NULL::boolean AS paid,
+            NULL::integer AS fk_payer_person,
+            NULL::integer AS fk_payer_branch,
+            NULL::text AS latex,
+            NULL::money AS total_bill,
+            NULL::money AS total_gst,
+            NULL::money AS total_paid,
+            bookings.fk_staff AS fk_staff_provided_service,
+            NULL::integer AS fk_lu_bulk_billing_type,
+            NULL::text AS bulk_billing_type,
+            bookings.begin AS appointment_date,
+            NULL::text AS item,
+            NULL::text AS descriptor_brief,
+            NULL::money AS amount,
+            NULL::money AS amount_gst,
+            NULL::integer AS fk_items_billed,
+            NULL::integer AS fk_lu_payment_method,
+            NULL::money AS payment_amount,
+            NULL::text AS billing_type,
+            NULL::text AS payment_method,
+            lu_reasons_not_billed.reason AS reason_not_billed,
+            (((lu_title.title || ' '::text) || (data_persons.firstname || ' '::text)) || (data_persons.surname || ' '::text)) AS wholename,
+            data_persons.firstname,
+            data_persons.surname,
+            lu_title.title,
+            data_persons.fk_sex,
+            NULL::text AS account_to_name,
+            clinics.fk_branch
+           FROM (((((clerical.bookings
+      JOIN clerical.data_patients ON ((bookings.fk_patient = data_patients.pk)))
+   JOIN admin.clinics ON ((bookings.fk_clinic = clinics.pk)))
+   LEFT JOIN lu_reasons_not_billed ON ((bookings.fk_lu_reason_not_billed = lu_reasons_not_billed.pk)))
+   JOIN contacts.data_persons ON ((data_patients.fk_person = data_persons.pk)))
+   JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk)))
+  WHERE (bookings.fk_lu_reason_not_billed IS NOT NULL);
 
 
 ALTER TABLE billing.vwdaylist OWNER TO easygp;
@@ -3369,7 +3843,27 @@ ALTER TABLE billing.vwdaylist OWNER TO easygp;
 --
 
 CREATE VIEW vwfees AS
-    SELECT prices.pk AS pk_view, fee_schedule.mbs_item, fee_schedule.user_item, fee_schedule.ama_item, fee_schedule.descriptor, fee_schedule.descriptor_brief, fee_schedule.gst_rate, fee_schedule.percentage_fee_rule, fee_schedule.ceased_date, fee_schedule."group", fee_schedule.derived_fee, fee_schedule.number_of_patients, prices.fk_fee_schedule, prices.pk AS fk_price, prices.price, prices.fk_lu_billing_type, prices.notes, lu_billing_type.type AS fee_type FROM ((fee_schedule JOIN prices ON ((fee_schedule.pk = prices.fk_fee_schedule))) JOIN lu_billing_type ON ((prices.fk_lu_billing_type = lu_billing_type.pk)));
+ SELECT prices.pk AS pk_view,
+    fee_schedule.mbs_item,
+    fee_schedule.user_item,
+    fee_schedule.ama_item,
+    fee_schedule.descriptor,
+    fee_schedule.descriptor_brief,
+    fee_schedule.gst_rate,
+    fee_schedule.percentage_fee_rule,
+    fee_schedule.ceased_date,
+    fee_schedule."group",
+    fee_schedule.derived_fee,
+    fee_schedule.number_of_patients,
+    prices.fk_fee_schedule,
+    prices.pk AS fk_price,
+    prices.price,
+    prices.fk_lu_billing_type,
+    prices.notes,
+    lu_billing_type.type AS fee_type
+   FROM ((fee_schedule
+   JOIN prices ON ((fee_schedule.pk = prices.fk_fee_schedule)))
+   JOIN lu_billing_type ON ((prices.fk_lu_billing_type = lu_billing_type.pk)));
 
 
 ALTER TABLE billing.vwfees OWNER TO easygp;
@@ -3476,7 +3970,117 @@ SET search_path = contacts, pg_catalog;
 --
 
 CREATE VIEW vwpatients AS
-    SELECT CASE WHEN (addresses.pk IS NULL) THEN (patients.pk || '-0'::text) ELSE ((patients.pk || '-'::text) || addresses.pk) END AS pk_view, patients.pk AS fk_patient, link_person_address.fk_address, patients.fk_person, (((title.title || ' '::text) || (persons.firstname || ' '::text)) || (persons.surname || ' '::text)) AS wholename, patients.fk_doctor, patients.fk_next_of_kin, patients.fk_payer_person, patients.fk_payer_branch, patients.fk_family, patients.medicare_number, patients.medicare_ref_number, patients.medicare_expiry_date, patients.veteran_number, patients.veteran_specific_condition, patients.concession_card_number, patients.concession_card_expiry_date, patients.memo AS patient_memo, patients.fk_legacy, patients.fk_lu_aboriginality, patients.fk_lu_veteran_card_type, patients.fk_lu_active_status, patients.fk_lu_centrelink_card_type, patients.fk_lu_private_health_fund, patients.private_insurance, lu_active_status.status AS active_status, lu_veteran_card_type.type AS veteran_card_type, lu_centrelink_card_type.type AS concession_card_type, lu_private_health_funds.fund, persons.firstname, persons.surname, persons.salutation, persons.birthdate, public.age_display(age((persons.birthdate)::timestamp with time zone)) AS age_display, date_part('year'::text, age((persons.birthdate)::timestamp with time zone)) AS age_numeric, persons.fk_ethnicity, persons.fk_language, persons.memo AS person_memo, persons.fk_marital, persons.fk_title, persons.fk_sex, persons.country_code AS country_birth_country_code, persons.fk_image, persons.retired, persons.fk_occupation, persons.deleted AS person_deleted, persons.deceased, persons.date_deceased, persons.language_problems, persons.surname_normalised, lu_aboriginality.aboriginality, country_birth.country AS country_birth, lu_ethnicity.ethnicity, lu_languages.language, lu_occupations.occupation, lu_marital.marital, title.title, lu_sex.sex, lu_sex.sex_text, images.image, images.md5sum, images.tag, images.fk_consult AS fk_consult_image, link_person_address.pk AS fk_link_persons_address, addresses.street1, addresses.fk_town, addresses.preferred_address, addresses.postal_address, addresses.head_office, addresses.geolocation, addresses.country_code, addresses.fk_lu_address_type, addresses.deleted AS address_deleted, addresses.street2, address_country.country, link_person_address.deleted AS link_address_deleted, lu_address_types.type AS address_type, lu_towns.postcode, lu_towns.town, lu_towns.state, patients.fk_lu_default_billing_level, lu_default_billing_level.level AS billing_level, patients.nursing_home_resident, patients.ihi, patients.pcehr_consent, patients.ihi_updated FROM ((((((((((((((((((((clerical.data_patients patients JOIN clerical.lu_active_status lu_active_status ON ((patients.fk_lu_active_status = lu_active_status.pk))) LEFT JOIN clerical.lu_centrelink_card_type ON ((patients.fk_lu_centrelink_card_type = lu_centrelink_card_type.pk))) LEFT JOIN common.lu_aboriginality ON ((patients.fk_lu_aboriginality = lu_aboriginality.pk))) LEFT JOIN clerical.lu_veteran_card_type ON ((patients.fk_lu_veteran_card_type = lu_veteran_card_type.pk))) LEFT JOIN clerical.lu_private_health_funds ON ((patients.fk_lu_private_health_fund = lu_private_health_funds.pk))) LEFT JOIN billing.lu_default_billing_level ON ((patients.fk_lu_default_billing_level = lu_default_billing_level.pk))) JOIN data_persons persons ON ((patients.fk_person = persons.pk))) LEFT JOIN common.lu_ethnicity ON ((persons.fk_ethnicity = lu_ethnicity.pk))) LEFT JOIN common.lu_languages ON ((persons.fk_language = lu_languages.pk))) LEFT JOIN common.lu_occupations ON ((persons.fk_occupation = lu_occupations.pk))) LEFT JOIN lu_marital ON ((persons.fk_marital = lu_marital.pk))) LEFT JOIN lu_title title ON ((persons.fk_title = title.pk))) LEFT JOIN lu_sex ON ((persons.fk_sex = lu_sex.pk))) LEFT JOIN blobs.images images ON ((persons.fk_image = images.pk))) LEFT JOIN links_persons_addresses link_person_address ON ((persons.pk = link_person_address.fk_person))) LEFT JOIN data_addresses addresses ON ((link_person_address.fk_address = addresses.pk))) LEFT JOIN lu_address_types ON ((addresses.fk_lu_address_type = lu_address_types.pk))) LEFT JOIN lu_towns ON ((addresses.fk_town = lu_towns.pk))) LEFT JOIN common.lu_countries country_birth ON ((persons.country_code = (country_birth.country_code)::text))) LEFT JOIN common.lu_countries address_country ON ((addresses.country_code = address_country.country_code)));
+ SELECT
+        CASE
+            WHEN (addresses.pk IS NULL) THEN (patients.pk || '-0'::text)
+            ELSE ((patients.pk || '-'::text) || addresses.pk)
+        END AS pk_view,
+    patients.pk AS fk_patient,
+    link_person_address.fk_address,
+    patients.fk_person,
+    (((title.title || ' '::text) || (persons.firstname || ' '::text)) || (persons.surname || ' '::text)) AS wholename,
+    patients.fk_doctor,
+    patients.fk_next_of_kin,
+    patients.fk_payer_person,
+    patients.fk_payer_branch,
+    patients.fk_family,
+    patients.medicare_number,
+    patients.medicare_ref_number,
+    patients.medicare_expiry_date,
+    patients.veteran_number,
+    patients.veteran_specific_condition,
+    patients.concession_card_number,
+    patients.concession_card_expiry_date,
+    patients.memo AS patient_memo,
+    patients.fk_legacy,
+    patients.fk_lu_aboriginality,
+    patients.fk_lu_veteran_card_type,
+    patients.fk_lu_active_status,
+    patients.fk_lu_centrelink_card_type,
+    patients.fk_lu_private_health_fund,
+    patients.private_insurance,
+    lu_active_status.status AS active_status,
+    lu_veteran_card_type.type AS veteran_card_type,
+    lu_centrelink_card_type.type AS concession_card_type,
+    lu_private_health_funds.fund,
+    persons.firstname,
+    persons.surname,
+    persons.salutation,
+    persons.birthdate,
+    public.age_display(age((persons.birthdate)::timestamp with time zone)) AS age_display,
+    date_part('year'::text, age((persons.birthdate)::timestamp with time zone)) AS age_numeric,
+    persons.fk_ethnicity,
+    persons.fk_language,
+    persons.memo AS person_memo,
+    persons.fk_marital,
+    persons.fk_title,
+    persons.fk_sex,
+    persons.country_code AS country_birth_country_code,
+    persons.fk_image,
+    persons.retired,
+    persons.fk_occupation,
+    persons.deleted AS person_deleted,
+    persons.deceased,
+    persons.date_deceased,
+    persons.language_problems,
+    persons.surname_normalised,
+    lu_aboriginality.aboriginality,
+    country_birth.country AS country_birth,
+    lu_ethnicity.ethnicity,
+    lu_languages.language,
+    lu_occupations.occupation,
+    lu_marital.marital,
+    title.title,
+    lu_sex.sex,
+    lu_sex.sex_text,
+    images.image,
+    images.md5sum,
+    images.tag,
+    images.fk_consult AS fk_consult_image,
+    link_person_address.pk AS fk_link_persons_address,
+    addresses.street1,
+    addresses.fk_town,
+    addresses.preferred_address,
+    addresses.postal_address,
+    addresses.head_office,
+    addresses.geolocation,
+    addresses.country_code,
+    addresses.fk_lu_address_type,
+    addresses.deleted AS address_deleted,
+    addresses.street2,
+    address_country.country,
+    link_person_address.deleted AS link_address_deleted,
+    lu_address_types.type AS address_type,
+    lu_towns.postcode,
+    lu_towns.town,
+    lu_towns.state,
+    patients.fk_lu_default_billing_level,
+    lu_default_billing_level.level AS billing_level,
+    patients.nursing_home_resident,
+    patients.ihi,
+    patients.pcehr_consent,
+    patients.ihi_updated
+   FROM ((((((((((((((((((((clerical.data_patients patients
+   JOIN clerical.lu_active_status lu_active_status ON ((patients.fk_lu_active_status = lu_active_status.pk)))
+   LEFT JOIN clerical.lu_centrelink_card_type ON ((patients.fk_lu_centrelink_card_type = lu_centrelink_card_type.pk)))
+   LEFT JOIN common.lu_aboriginality ON ((patients.fk_lu_aboriginality = lu_aboriginality.pk)))
+   LEFT JOIN clerical.lu_veteran_card_type ON ((patients.fk_lu_veteran_card_type = lu_veteran_card_type.pk)))
+   LEFT JOIN clerical.lu_private_health_funds ON ((patients.fk_lu_private_health_fund = lu_private_health_funds.pk)))
+   LEFT JOIN billing.lu_default_billing_level ON ((patients.fk_lu_default_billing_level = lu_default_billing_level.pk)))
+   JOIN data_persons persons ON ((patients.fk_person = persons.pk)))
+   LEFT JOIN common.lu_ethnicity ON ((persons.fk_ethnicity = lu_ethnicity.pk)))
+   LEFT JOIN common.lu_languages ON ((persons.fk_language = lu_languages.pk)))
+   LEFT JOIN common.lu_occupations ON ((persons.fk_occupation = lu_occupations.pk)))
+   LEFT JOIN lu_marital ON ((persons.fk_marital = lu_marital.pk)))
+   LEFT JOIN lu_title title ON ((persons.fk_title = title.pk)))
+   LEFT JOIN lu_sex ON ((persons.fk_sex = lu_sex.pk)))
+   LEFT JOIN blobs.images images ON ((persons.fk_image = images.pk)))
+   LEFT JOIN links_persons_addresses link_person_address ON ((persons.pk = link_person_address.fk_person)))
+   LEFT JOIN data_addresses addresses ON ((link_person_address.fk_address = addresses.pk)))
+   LEFT JOIN lu_address_types ON ((addresses.fk_lu_address_type = lu_address_types.pk)))
+   LEFT JOIN lu_towns ON ((addresses.fk_town = lu_towns.pk)))
+   LEFT JOIN common.lu_countries country_birth ON ((persons.country_code = (country_birth.country_code)::text)))
+   LEFT JOIN common.lu_countries address_country ON ((addresses.country_code = address_country.country_code)));
 
 
 ALTER TABLE contacts.vwpatients OWNER TO easygp;
@@ -3488,7 +4092,67 @@ SET search_path = billing, pg_catalog;
 --
 
 CREATE VIEW vwinvoices AS
-    SELECT invoices.pk AS pk_invoice, invoices.pk AS fk_invoice, invoices.notes, invoices.fk_staff_invoicing, invoices.fk_patient, invoices.date_printed, invoices.fk_staff_provided_service, invoices.date_invoiced, invoices.paid, invoices.fk_payer_person, invoices.fk_payer_branch, COALESCE(vworganisations.organisation, vwpersonsincludingpatients.wholename) AS account_to_name, vworganisations.branch AS account_to_branch, COALESCE(COALESCE((vworganisations.street1 || ' '::text), (vworganisations.street2 || ' '::text)), COALESCE((vwpersonsincludingpatients.street1 || ' '::text), (vwpersonsincludingpatients.street2 || ' '::text))) AS account_to_street, COALESCE(((vworganisations.town || ' '::text) || (vworganisations.postcode)::text), ((vwpersonsincludingpatients.town || ' '::text) || (vwpersonsincludingpatients.postcode)::text)) AS account_to_town_postcode, invoices.latex, invoices.fk_branch, invoices.visit_date, invoices.fk_appointment, bookings.begin AS appointment_time, bookings.duration, invoices.reference, invoices.fk_lu_bulk_billing_type, invoices.total_bill, invoices.total_paid, invoices.total_gst, (invoices.total_bill - invoices.total_paid) AS due, staff_invoicing.wholename AS staff_invoicing_wholename, staff_provider.wholename AS staff_provided_service_wholename, staff_provider.provider_number AS staff_provided_service_provider_number, staff_provider.australian_business_number, vwpatients.firstname AS patient_firstname, vwpatients.surname AS patient_surname, vwpatients.title AS patient_title, vwpatients.fk_sex AS patient_fk_sex, vwpatients.sex AS patient_sex, vwpatients.wholename AS patient_wholename, vwpatients.fk_lu_centrelink_card_type, vwpatients.fk_lu_default_billing_level, vworganisations1.branch, claims.claim_id, claims.result_code AS claim_result_code, claims.result_text AS claim_result_text, claims.claim_date, claims.finalised FROM ((((((((invoices JOIN admin.vwstaff staff_invoicing ON ((invoices.fk_staff_invoicing = staff_invoicing.fk_staff))) JOIN admin.vwstaff staff_provider ON ((invoices.fk_staff_provided_service = staff_provider.fk_staff))) JOIN contacts.vworganisations vworganisations1 ON ((invoices.fk_branch = vworganisations1.fk_branch))) LEFT JOIN clerical.bookings ON ((invoices.fk_appointment = bookings.pk))) LEFT JOIN contacts.vworganisations ON ((invoices.fk_payer_branch = vworganisations.fk_branch))) LEFT JOIN contacts.vwpersonsincludingpatients ON ((invoices.fk_payer_person = vwpersonsincludingpatients.fk_person))) LEFT JOIN contacts.vwpatients ON ((invoices.fk_patient = vwpatients.fk_patient))) LEFT JOIN claims ON ((invoices.fk_claim = claims.pk)));
+ SELECT invoices.pk AS pk_invoice,
+    invoices.pk AS fk_invoice,
+    invoices.notes,
+    invoices.fk_staff_invoicing,
+    invoices.fk_patient,
+    invoices.date_printed,
+    invoices.fk_staff_provided_service,
+    invoices.date_invoiced,
+    invoices.paid,
+    invoices.fk_payer_person,
+    invoices.fk_payer_branch,
+    COALESCE(vworganisations.organisation, vwpersonsincludingpatients.wholename) AS account_to_name,
+    vworganisations.branch AS account_to_branch,
+    COALESCE(COALESCE((vworganisations.street1 || ' '::text), (vworganisations.street2 || ' '::text)), COALESCE((vwpersonsincludingpatients.street1 || ' '::text), (vwpersonsincludingpatients.street2 || ' '::text))) AS account_to_street,
+    COALESCE(((vworganisations.town || ' '::text) || (vworganisations.postcode)::text), ((vwpersonsincludingpatients.town || ' '::text) || (vwpersonsincludingpatients.postcode)::text)) AS account_to_town_postcode,
+    invoices.latex,
+    invoices.fk_branch,
+    invoices.visit_date,
+    invoices.fk_appointment,
+    bookings.begin AS appointment_time,
+    bookings.duration,
+    invoices.reference,
+    invoices.fk_lu_bulk_billing_type,
+    invoices.total_bill,
+    invoices.total_paid,
+    invoices.total_gst,
+    (invoices.total_bill - invoices.total_paid) AS due,
+    staff_invoicing.wholename AS staff_invoicing_wholename,
+    staff_provider.wholename AS staff_provided_service_wholename,
+    staff_provider.provider_number AS staff_provided_service_provider_number,
+    staff_provider.australian_business_number,
+    vwpatients.firstname AS patient_firstname,
+    vwpatients.surname AS patient_surname,
+    vwpatients.title AS patient_title,
+    vwpatients.fk_sex AS patient_fk_sex,
+    vwpatients.sex AS patient_sex,
+    vwpatients.wholename AS patient_wholename,
+    vwpatients.fk_lu_centrelink_card_type,
+    vwpatients.fk_lu_default_billing_level,
+    vworganisations1.branch,
+    claims.claim_id,
+    claims.result_code AS claim_result_code,
+    claims.result_text AS claim_result_text,
+    claims.claim_date,
+    invoices.online,
+    invoices.fk_claim,
+    invoices.voucher_id,
+    invoices.referrer_provider_number,
+    invoices.referral_date,
+    invoices.referral_duration,
+    invoices.result_code,
+    invoices.result_text
+   FROM ((((((((invoices
+   JOIN admin.vwstaff staff_invoicing ON ((invoices.fk_staff_invoicing = staff_invoicing.fk_staff)))
+   JOIN admin.vwstaff staff_provider ON ((invoices.fk_staff_provided_service = staff_provider.fk_staff)))
+   JOIN contacts.vworganisations vworganisations1 ON ((invoices.fk_branch = vworganisations1.fk_branch)))
+   LEFT JOIN clerical.bookings ON ((invoices.fk_appointment = bookings.pk)))
+   LEFT JOIN contacts.vworganisations ON ((invoices.fk_payer_branch = vworganisations.fk_branch)))
+   LEFT JOIN contacts.vwpersonsincludingpatients ON ((invoices.fk_payer_person = vwpersonsincludingpatients.fk_person)))
+   LEFT JOIN contacts.vwpatients ON ((invoices.fk_patient = vwpatients.fk_patient)))
+   LEFT JOIN claims ON ((invoices.fk_claim = claims.pk)));
 
 
 ALTER TABLE billing.vwinvoices OWNER TO easygp;
@@ -3498,7 +4162,27 @@ ALTER TABLE billing.vwinvoices OWNER TO easygp;
 --
 
 CREATE VIEW vwitemsbilled AS
-    SELECT items_billed.pk AS pk_items_billed, items_billed.fk_fee_schedule, items_billed.amount, items_billed.amount_gst, items_billed.fk_invoice, items_billed.fk_lu_billing_type, lu_billing_type.type AS billing_type, fee_schedule.mbs_item, fee_schedule.user_item, fee_schedule.ama_item, fee_schedule.descriptor, fee_schedule.descriptor_brief, fee_schedule.gst_rate, fee_schedule.percentage_fee_rule FROM items_billed, lu_billing_type, fee_schedule WHERE ((lu_billing_type.pk = items_billed.fk_lu_billing_type) AND (items_billed.fk_fee_schedule = fee_schedule.pk));
+ SELECT items_billed.pk AS pk_items_billed,
+    items_billed.fk_fee_schedule,
+    items_billed.amount,
+    items_billed.amount_gst,
+    items_billed.fk_invoice,
+    items_billed.fk_lu_billing_type,
+    lu_billing_type.type AS billing_type,
+    fee_schedule.mbs_item,
+    fee_schedule.user_item,
+    fee_schedule.ama_item,
+    fee_schedule.descriptor,
+    fee_schedule.descriptor_brief,
+    fee_schedule.gst_rate,
+    fee_schedule.percentage_fee_rule,
+    items_billed.service_id,
+    items_billed.reason_code,
+    items_billed.comment
+   FROM items_billed,
+    lu_billing_type,
+    fee_schedule
+  WHERE ((lu_billing_type.pk = items_billed.fk_lu_billing_type) AND (items_billed.fk_fee_schedule = fee_schedule.pk));
 
 
 ALTER TABLE billing.vwitemsbilled OWNER TO easygp;
@@ -3508,7 +4192,68 @@ ALTER TABLE billing.vwitemsbilled OWNER TO easygp;
 --
 
 CREATE VIEW vwitemsandinvoices AS
-    SELECT vwitemsbilled.pk_items_billed, vwitemsbilled.fk_fee_schedule, vwitemsbilled.amount, vwitemsbilled.amount_gst, vwitemsbilled.fk_lu_billing_type, vwitemsbilled.billing_type, vwitemsbilled.mbs_item, vwitemsbilled.user_item, vwitemsbilled.ama_item, vwitemsbilled.descriptor, vwitemsbilled.descriptor_brief, vwitemsbilled.gst_rate, vwitemsbilled.percentage_fee_rule, vwinvoices.fk_invoice, vwinvoices.notes, vwinvoices.fk_staff_invoicing, vwinvoices.fk_patient, vwinvoices.date_printed, vwinvoices.fk_staff_provided_service, vwinvoices.date_invoiced, vwinvoices.paid, vwinvoices.fk_payer_person, vwinvoices.fk_payer_branch, vwinvoices.account_to_name, vwinvoices.account_to_branch, vwinvoices.account_to_street, vwinvoices.account_to_town_postcode, vwinvoices.latex, vwinvoices.fk_branch, vwinvoices.visit_date, vwinvoices.fk_appointment, vwinvoices.appointment_time, vwinvoices.duration, vwinvoices.reference, vwinvoices.fk_lu_bulk_billing_type, vwinvoices.total_bill, vwinvoices.total_paid, vwinvoices.total_gst, vwinvoices.due, vwinvoices.staff_invoicing_wholename, vwinvoices.staff_provided_service_wholename, vwinvoices.staff_provided_service_provider_number, vwinvoices.australian_business_number, vwinvoices.patient_firstname, vwinvoices.patient_surname, vwinvoices.patient_title, vwinvoices.patient_fk_sex, vwinvoices.patient_sex, vwinvoices.patient_wholename, vwinvoices.fk_lu_centrelink_card_type, vwinvoices.fk_lu_default_billing_level, vwinvoices.branch FROM vwitemsbilled, vwinvoices WHERE (vwinvoices.fk_invoice = vwitemsbilled.fk_invoice);
+ SELECT vwitemsbilled.pk_items_billed,
+    vwitemsbilled.fk_fee_schedule,
+    vwitemsbilled.amount,
+    vwitemsbilled.amount_gst,
+    vwitemsbilled.fk_lu_billing_type,
+    vwitemsbilled.billing_type,
+    vwitemsbilled.mbs_item,
+    vwitemsbilled.user_item,
+    vwitemsbilled.ama_item,
+    vwitemsbilled.descriptor,
+    vwitemsbilled.descriptor_brief,
+    vwitemsbilled.gst_rate,
+    vwitemsbilled.percentage_fee_rule,
+    vwinvoices.fk_invoice,
+    vwinvoices.notes,
+    vwinvoices.fk_staff_invoicing,
+    vwinvoices.fk_patient,
+    vwinvoices.date_printed,
+    vwinvoices.fk_staff_provided_service,
+    vwinvoices.date_invoiced,
+    vwinvoices.paid,
+    vwinvoices.fk_payer_person,
+    vwinvoices.fk_payer_branch,
+    vwinvoices.account_to_name,
+    vwinvoices.account_to_branch,
+    vwinvoices.account_to_street,
+    vwinvoices.account_to_town_postcode,
+    vwinvoices.latex,
+    vwinvoices.fk_branch,
+    vwinvoices.visit_date,
+    vwinvoices.fk_appointment,
+    vwinvoices.appointment_time,
+    vwinvoices.duration,
+    vwinvoices.reference,
+    vwinvoices.fk_lu_bulk_billing_type,
+    vwinvoices.total_bill,
+    vwinvoices.total_paid,
+    vwinvoices.total_gst,
+    vwinvoices.due,
+    vwinvoices.staff_invoicing_wholename,
+    vwinvoices.staff_provided_service_wholename,
+    vwinvoices.staff_provided_service_provider_number,
+    vwinvoices.australian_business_number,
+    vwinvoices.patient_firstname,
+    vwinvoices.patient_surname,
+    vwinvoices.patient_title,
+    vwinvoices.patient_fk_sex,
+    vwinvoices.patient_sex,
+    vwinvoices.patient_wholename,
+    vwinvoices.fk_lu_centrelink_card_type,
+    vwinvoices.fk_lu_default_billing_level,
+    vwinvoices.branch,
+    vwinvoices.result_code,
+    vwinvoices.result_text,
+    vwitemsbilled.reason_code,
+    vwitemsbilled.comment AS item_comment,
+    vwitemsbilled.service_id,
+    vwinvoices.voucher_id,
+    vwinvoices.fk_claim
+   FROM vwitemsbilled,
+    vwinvoices
+  WHERE (vwinvoices.fk_invoice = vwitemsbilled.fk_invoice);
 
 
 ALTER TABLE billing.vwitemsandinvoices OWNER TO easygp;
@@ -3518,7 +4263,35 @@ ALTER TABLE billing.vwitemsandinvoices OWNER TO easygp;
 --
 
 CREATE VIEW vwpaymentsreceived AS
-    SELECT payments_received.pk AS pk_view, payments_received.pk AS fk_payment_received, payments_received.date_paid, COALESCE(vworganisations.organisation, vwpersonsincludingpatients.wholename) AS account_to_name, (((lu_title.title || ' '::text) || (data_persons.firstname || ' '::text)) || (data_persons.surname || ' '::text)) AS patient_wholename, payments_received.fk_invoice, payments_received.referent, payments_received.amount, payments_received.fk_lu_payment_method, payments_received.fk_staff_receipted, lu_payment_method.method AS payment_method, invoices.fk_patient, invoices.fk_payer_person, invoices.fk_payer_branch, invoices.fk_staff_provided_service, invoices.fk_branch AS fk_clinic_branch, invoices.visit_date, invoices.latex, data_persons.firstname, data_persons.surname, lu_title.title FROM (((((((payments_received JOIN lu_payment_method ON ((payments_received.fk_lu_payment_method = lu_payment_method.pk))) JOIN invoices ON ((payments_received.fk_invoice = invoices.pk))) LEFT JOIN clerical.data_patients ON ((invoices.fk_patient = data_patients.pk))) LEFT JOIN contacts.data_persons ON ((data_patients.fk_person = data_persons.pk))) LEFT JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk))) LEFT JOIN contacts.vworganisations ON ((invoices.fk_payer_branch = vworganisations.fk_branch))) LEFT JOIN contacts.vwpersonsincludingpatients ON ((invoices.fk_payer_person = vwpersonsincludingpatients.fk_person)));
+ SELECT payments_received.pk AS pk_view,
+    payments_received.pk AS fk_payment_received,
+    payments_received.date_paid,
+    COALESCE(vworganisations.organisation, vwpersonsincludingpatients.wholename) AS account_to_name,
+    (((lu_title.title || ' '::text) || (data_persons.firstname || ' '::text)) || (data_persons.surname || ' '::text)) AS patient_wholename,
+    payments_received.fk_invoice,
+    payments_received.referent,
+    payments_received.amount,
+    payments_received.fk_lu_payment_method,
+    payments_received.fk_staff_receipted,
+    lu_payment_method.method AS payment_method,
+    invoices.fk_patient,
+    invoices.fk_payer_person,
+    invoices.fk_payer_branch,
+    invoices.fk_staff_provided_service,
+    invoices.fk_branch AS fk_clinic_branch,
+    invoices.visit_date,
+    invoices.latex,
+    data_persons.firstname,
+    data_persons.surname,
+    lu_title.title
+   FROM (((((((payments_received
+   JOIN lu_payment_method ON ((payments_received.fk_lu_payment_method = lu_payment_method.pk)))
+   JOIN invoices ON ((payments_received.fk_invoice = invoices.pk)))
+   LEFT JOIN clerical.data_patients ON ((invoices.fk_patient = data_patients.pk)))
+   LEFT JOIN contacts.data_persons ON ((data_patients.fk_person = data_persons.pk)))
+   LEFT JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk)))
+   LEFT JOIN contacts.vworganisations ON ((invoices.fk_payer_branch = vworganisations.fk_branch)))
+   LEFT JOIN contacts.vwpersonsincludingpatients ON ((invoices.fk_payer_person = vwpersonsincludingpatients.fk_person)));
 
 
 ALTER TABLE billing.vwpaymentsreceived OWNER TO easygp;
@@ -3604,7 +4377,17 @@ SET search_path = blobs, pg_catalog;
 --
 
 CREATE VIEW vwpatientimages AS
-    SELECT images.pk, images.image, images.deleted, images.fk_consult, images.md5sum, images.tag, consult.consult_date, consult.fk_patient FROM (images images LEFT JOIN clin_consult.consult ON ((images.fk_consult = consult.pk))) ORDER BY consult.fk_patient;
+ SELECT images.pk,
+    images.image,
+    images.deleted,
+    images.fk_consult,
+    images.md5sum,
+    images.tag,
+    consult.consult_date,
+    consult.fk_patient
+   FROM (images images
+   LEFT JOIN clin_consult.consult ON ((images.fk_consult = consult.pk)))
+  ORDER BY consult.fk_patient;
 
 
 ALTER TABLE blobs.vwpatientimages OWNER TO easygp;
@@ -4144,7 +4927,44 @@ COMMENT ON COLUMN progressnotes.deleted IS 'if True then the record is marked as
 --
 
 CREATE VIEW vwprogressnotes AS
-    SELECT "CONSULT".fk_patient, progressnotes.pk AS pk_progressnote, "CONSULT".consult_date, "CONSULT_TYPE".type AS consult_type, "SECTION".section, progressnotes.problem, progressnotes.notes, "CONSULT".summary, progressnotes.fk_consult, progressnotes.fk_section, progressnotes.fk_code, progressnotes.fk_problem, progressnotes.fk_audit_action, progressnotes.deleted, "CONSULT".fk_staff, "CONSULT".fk_type, data_persons.firstname, data_persons.surname, lu_title.title, lu_audit_actions.action AS audit_action, progressnotes.linked_table, progressnotes.fk_audit_reason, lu_audit_reasons.reason AS audit_reason, progressnotes.fk_row, lu_audit_actions.insist_reason, lu_staff_roles.role FROM (((((((((consult "CONSULT" LEFT JOIN lu_consult_type "CONSULT_TYPE" ON (("CONSULT".fk_type = "CONSULT_TYPE".pk))) JOIN admin.staff ON (("CONSULT".fk_staff = staff.pk))) JOIN contacts.data_persons ON ((staff.fk_person = data_persons.pk))) JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk))) JOIN progressnotes ON (("CONSULT".pk = progressnotes.fk_consult))) JOIN lu_progressnotes_sections "SECTION" ON ((progressnotes.fk_section = "SECTION".pk))) JOIN lu_audit_actions ON ((progressnotes.fk_audit_action = lu_audit_actions.pk))) JOIN admin.lu_staff_roles ON ((staff.fk_role = lu_staff_roles.pk))) LEFT JOIN lu_audit_reasons ON ((progressnotes.fk_audit_reason = lu_audit_reasons.pk))) WHERE ("CONSULT_TYPE".pk <> 8) ORDER BY "CONSULT".fk_patient, "CONSULT".consult_date, "CONSULT".fk_staff, "SECTION".pk, progressnotes.fk_problem;
+ SELECT "CONSULT".fk_patient,
+    progressnotes.pk AS pk_progressnote,
+    "CONSULT".consult_date,
+    "CONSULT_TYPE".type AS consult_type,
+    "SECTION".section,
+    progressnotes.problem,
+    progressnotes.notes,
+    "CONSULT".summary,
+    progressnotes.fk_consult,
+    progressnotes.fk_section,
+    progressnotes.fk_code,
+    progressnotes.fk_problem,
+    progressnotes.fk_audit_action,
+    progressnotes.deleted,
+    "CONSULT".fk_staff,
+    "CONSULT".fk_type,
+    data_persons.firstname,
+    data_persons.surname,
+    lu_title.title,
+    lu_audit_actions.action AS audit_action,
+    progressnotes.linked_table,
+    progressnotes.fk_audit_reason,
+    lu_audit_reasons.reason AS audit_reason,
+    progressnotes.fk_row,
+    lu_audit_actions.insist_reason,
+    lu_staff_roles.role
+   FROM (((((((((consult "CONSULT"
+   LEFT JOIN lu_consult_type "CONSULT_TYPE" ON (("CONSULT".fk_type = "CONSULT_TYPE".pk)))
+   JOIN admin.staff ON (("CONSULT".fk_staff = staff.pk)))
+   JOIN contacts.data_persons ON ((staff.fk_person = data_persons.pk)))
+   JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk)))
+   JOIN progressnotes ON (("CONSULT".pk = progressnotes.fk_consult)))
+   JOIN lu_progressnotes_sections "SECTION" ON ((progressnotes.fk_section = "SECTION".pk)))
+   JOIN lu_audit_actions ON ((progressnotes.fk_audit_action = lu_audit_actions.pk)))
+   JOIN admin.lu_staff_roles ON ((staff.fk_role = lu_staff_roles.pk)))
+   LEFT JOIN lu_audit_reasons ON ((progressnotes.fk_audit_reason = lu_audit_reasons.pk)))
+  WHERE ("CONSULT_TYPE".pk <> 8)
+  ORDER BY "CONSULT".fk_patient, "CONSULT".consult_date, "CONSULT".fk_staff, "SECTION".pk, progressnotes.fk_problem;
 
 
 ALTER TABLE clin_consult.vwprogressnotes OWNER TO easygp;
@@ -4163,7 +4983,70 @@ SET search_path = chronic_disease_management, pg_catalog;
 --
 
 CREATE VIEW vwdiabetescycleofcare AS
-    SELECT ((diabetes_annual_cycle_of_care.pk || '-'::text) || (COALESCE(diabetes_annual_cycle_of_care_notes.pk, 0))::text) AS pk_view, diabetes_annual_cycle_of_care.pk AS fk_diabetes_annual_cycle_of_care, consult.consult_date, consult.fk_patient, consult.fk_staff AS fk_staff_started, diabetes_annual_cycle_of_care.date_completed, diabetes_annual_cycle_of_care.fk_consult, diabetes_annual_cycle_of_care.hba1c_date, diabetes_annual_cycle_of_care.hba1c_date_due, diabetes_annual_cycle_of_care.hba1c_details, diabetes_annual_cycle_of_care.eyes_date, diabetes_annual_cycle_of_care.eyes_date_due, diabetes_annual_cycle_of_care.eyes_details, diabetes_annual_cycle_of_care.bp_date, diabetes_annual_cycle_of_care.bp_date_due, diabetes_annual_cycle_of_care.bp_details, diabetes_annual_cycle_of_care.bmi_date, diabetes_annual_cycle_of_care.bmi_date_due, diabetes_annual_cycle_of_care.bmi_details, diabetes_annual_cycle_of_care.feet_date, diabetes_annual_cycle_of_care.feet_date_due, diabetes_annual_cycle_of_care.feet_details, diabetes_annual_cycle_of_care.lipids_date, diabetes_annual_cycle_of_care.lipids_date_due, diabetes_annual_cycle_of_care.lipids_details, diabetes_annual_cycle_of_care.microalbumin_date, diabetes_annual_cycle_of_care.microalbumin_date_due, diabetes_annual_cycle_of_care.microalbumin_details, diabetes_annual_cycle_of_care.renalfunction_date, diabetes_annual_cycle_of_care.renalfunction_date_due, diabetes_annual_cycle_of_care.renalfunction_details, diabetes_annual_cycle_of_care.education_date, diabetes_annual_cycle_of_care.education_date_due, diabetes_annual_cycle_of_care.education_details, diabetes_annual_cycle_of_care.diet_date, diabetes_annual_cycle_of_care.diet_date_due, diabetes_annual_cycle_of_care.diet_details, diabetes_annual_cycle_of_care.exercise_date, diabetes_annual_cycle_of_care.exercise_date_due, diabetes_annual_cycle_of_care.exercise_details, diabetes_annual_cycle_of_care.smoking_date, diabetes_annual_cycle_of_care.smoking_date_due, diabetes_annual_cycle_of_care.smoking_details, diabetes_annual_cycle_of_care.medication_review_date, diabetes_annual_cycle_of_care.medication_review_date_due, diabetes_annual_cycle_of_care.medication_review_details, diabetes_annual_cycle_of_care.deleted, diabetes_annual_cycle_of_care.fk_progressnote_components, diabetes_annual_cycle_of_care.latex, diabetes_annual_cycle_of_care_notes.fk_progressnote AS fk_progressnote_comments, vwprogressnotes.consult_date AS date_progress_note_comment, vwstaff.title AS staff_made_comment_title, vwstaff.wholename AS staff_made_comment_wholename, vwstaff1.title AS staff_started_title, vwstaff1.wholename AS staff_started_wholename, progressnotes.notes AS component_notes, vwprogressnotes.notes AS comments_notes FROM ((((((diabetes_annual_cycle_of_care JOIN clin_consult.consult ON ((diabetes_annual_cycle_of_care.fk_consult = consult.pk))) LEFT JOIN diabetes_annual_cycle_of_care_notes ON ((diabetes_annual_cycle_of_care.pk = diabetes_annual_cycle_of_care_notes.fk_diabetes_annual_cycle_of_care))) LEFT JOIN clin_consult.vwprogressnotes ON ((diabetes_annual_cycle_of_care_notes.fk_progressnote = vwprogressnotes.pk_progressnote))) LEFT JOIN admin.vwstaff ON ((vwprogressnotes.fk_staff = vwstaff.fk_staff))) JOIN clin_consult.progressnotes ON ((diabetes_annual_cycle_of_care.fk_progressnote_components = progressnotes.pk))) JOIN admin.vwstaff vwstaff1 ON ((consult.fk_staff = vwstaff1.pk)));
+ SELECT ((diabetes_annual_cycle_of_care.pk || '-'::text) || (COALESCE(diabetes_annual_cycle_of_care_notes.pk, 0))::text) AS pk_view,
+    diabetes_annual_cycle_of_care.pk AS fk_diabetes_annual_cycle_of_care,
+    consult.consult_date,
+    consult.fk_patient,
+    consult.fk_staff AS fk_staff_started,
+    diabetes_annual_cycle_of_care.date_completed,
+    diabetes_annual_cycle_of_care.fk_consult,
+    diabetes_annual_cycle_of_care.hba1c_date,
+    diabetes_annual_cycle_of_care.hba1c_date_due,
+    diabetes_annual_cycle_of_care.hba1c_details,
+    diabetes_annual_cycle_of_care.eyes_date,
+    diabetes_annual_cycle_of_care.eyes_date_due,
+    diabetes_annual_cycle_of_care.eyes_details,
+    diabetes_annual_cycle_of_care.bp_date,
+    diabetes_annual_cycle_of_care.bp_date_due,
+    diabetes_annual_cycle_of_care.bp_details,
+    diabetes_annual_cycle_of_care.bmi_date,
+    diabetes_annual_cycle_of_care.bmi_date_due,
+    diabetes_annual_cycle_of_care.bmi_details,
+    diabetes_annual_cycle_of_care.feet_date,
+    diabetes_annual_cycle_of_care.feet_date_due,
+    diabetes_annual_cycle_of_care.feet_details,
+    diabetes_annual_cycle_of_care.lipids_date,
+    diabetes_annual_cycle_of_care.lipids_date_due,
+    diabetes_annual_cycle_of_care.lipids_details,
+    diabetes_annual_cycle_of_care.microalbumin_date,
+    diabetes_annual_cycle_of_care.microalbumin_date_due,
+    diabetes_annual_cycle_of_care.microalbumin_details,
+    diabetes_annual_cycle_of_care.renalfunction_date,
+    diabetes_annual_cycle_of_care.renalfunction_date_due,
+    diabetes_annual_cycle_of_care.renalfunction_details,
+    diabetes_annual_cycle_of_care.education_date,
+    diabetes_annual_cycle_of_care.education_date_due,
+    diabetes_annual_cycle_of_care.education_details,
+    diabetes_annual_cycle_of_care.diet_date,
+    diabetes_annual_cycle_of_care.diet_date_due,
+    diabetes_annual_cycle_of_care.diet_details,
+    diabetes_annual_cycle_of_care.exercise_date,
+    diabetes_annual_cycle_of_care.exercise_date_due,
+    diabetes_annual_cycle_of_care.exercise_details,
+    diabetes_annual_cycle_of_care.smoking_date,
+    diabetes_annual_cycle_of_care.smoking_date_due,
+    diabetes_annual_cycle_of_care.smoking_details,
+    diabetes_annual_cycle_of_care.medication_review_date,
+    diabetes_annual_cycle_of_care.medication_review_date_due,
+    diabetes_annual_cycle_of_care.medication_review_details,
+    diabetes_annual_cycle_of_care.deleted,
+    diabetes_annual_cycle_of_care.fk_progressnote_components,
+    diabetes_annual_cycle_of_care.latex,
+    diabetes_annual_cycle_of_care_notes.fk_progressnote AS fk_progressnote_comments,
+    vwprogressnotes.consult_date AS date_progress_note_comment,
+    vwstaff.title AS staff_made_comment_title,
+    vwstaff.wholename AS staff_made_comment_wholename,
+    vwstaff1.title AS staff_started_title,
+    vwstaff1.wholename AS staff_started_wholename,
+    progressnotes.notes AS component_notes,
+    vwprogressnotes.notes AS comments_notes
+   FROM ((((((diabetes_annual_cycle_of_care
+   JOIN clin_consult.consult ON ((diabetes_annual_cycle_of_care.fk_consult = consult.pk)))
+   LEFT JOIN diabetes_annual_cycle_of_care_notes ON ((diabetes_annual_cycle_of_care.pk = diabetes_annual_cycle_of_care_notes.fk_diabetes_annual_cycle_of_care)))
+   LEFT JOIN clin_consult.vwprogressnotes ON ((diabetes_annual_cycle_of_care_notes.fk_progressnote = vwprogressnotes.pk_progressnote)))
+   LEFT JOIN admin.vwstaff ON ((vwprogressnotes.fk_staff = vwstaff.fk_staff)))
+   JOIN clin_consult.progressnotes ON ((diabetes_annual_cycle_of_care.fk_progressnote_components = progressnotes.pk)))
+   JOIN admin.vwstaff vwstaff1 ON ((consult.fk_staff = vwstaff1.pk)));
 
 
 ALTER TABLE chronic_disease_management.vwdiabetescycleofcare OWNER TO easygp;
@@ -5026,7 +5909,54 @@ ALTER SEQUENCE tasks_pk_seq OWNED BY tasks.pk;
 --
 
 CREATE VIEW vwappointments AS
-    SELECT bookings.pk, bookings.fk_patient, bookings.fk_staff, bookings.begin, bookings.duration, bookings.notes, bookings.fk_staff_booked, bookings.fk_clinic, bookings.fk_lu_appointment_icon, bookings.fk_lu_appointment_status, bookings.deleted, bookings.invoiced, bookings.did_not_attend, bookings.fk_lu_reason_not_billed, data_patients.fk_payer_person, data_patients.fk_payer_branch, data_patients.fk_doctor, data_patients.fk_lu_default_billing_level, data_patients.medicare_number, data_patients.medicare_ref_number, data_patients.medicare_expiry_date, lu_veteran_card_type.type AS veteran_card_type, data_patients.veteran_number, data_patients.veteran_specific_condition, data_patients.concession_card_number, data_patients.concession_card_expiry_date, data_patients.nursing_home_resident, lu_centrelink_card_type.type AS concession_card_type, lu_private_health_funds.fund, lu_default_billing_level.level AS billing_level, data_persons.firstname, data_persons.surname, data_persons.birthdate, lu_sex.sex, lu_title.title, (((lu_title.title || ' '::text) || (data_persons.firstname || ' '::text)) || (data_persons.surname || ' '::text)) AS wholename, public.age_display(age((data_persons.birthdate)::timestamp with time zone)) AS age_display, date_part('year'::text, age((data_persons.birthdate)::timestamp with time zone)) AS age_numeric FROM ((((((((bookings LEFT JOIN data_patients ON ((bookings.fk_patient = data_patients.pk))) LEFT JOIN lu_centrelink_card_type ON ((data_patients.fk_lu_centrelink_card_type = lu_centrelink_card_type.pk))) LEFT JOIN lu_private_health_funds ON ((data_patients.fk_lu_private_health_fund = lu_private_health_funds.pk))) LEFT JOIN lu_veteran_card_type ON ((data_patients.fk_lu_veteran_card_type = lu_veteran_card_type.pk))) LEFT JOIN contacts.data_persons ON ((data_patients.fk_person = data_persons.pk))) LEFT JOIN contacts.lu_sex ON ((data_persons.fk_sex = lu_sex.pk))) LEFT JOIN billing.lu_default_billing_level ON ((data_patients.fk_lu_default_billing_level = lu_default_billing_level.pk))) LEFT JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk))) ORDER BY bookings.begin;
+ SELECT bookings.pk,
+    bookings.fk_patient,
+    bookings.fk_staff,
+    bookings.begin,
+    bookings.duration,
+    bookings.notes,
+    bookings.fk_staff_booked,
+    bookings.fk_clinic,
+    bookings.fk_lu_appointment_icon,
+    bookings.fk_lu_appointment_status,
+    bookings.deleted,
+    bookings.invoiced,
+    bookings.did_not_attend,
+    bookings.fk_lu_reason_not_billed,
+    data_patients.fk_payer_person,
+    data_patients.fk_payer_branch,
+    data_patients.fk_doctor,
+    data_patients.fk_lu_default_billing_level,
+    data_patients.medicare_number,
+    data_patients.medicare_ref_number,
+    data_patients.medicare_expiry_date,
+    lu_veteran_card_type.type AS veteran_card_type,
+    data_patients.veteran_number,
+    data_patients.veteran_specific_condition,
+    data_patients.concession_card_number,
+    data_patients.concession_card_expiry_date,
+    data_patients.nursing_home_resident,
+    lu_centrelink_card_type.type AS concession_card_type,
+    lu_private_health_funds.fund,
+    lu_default_billing_level.level AS billing_level,
+    data_persons.firstname,
+    data_persons.surname,
+    data_persons.birthdate,
+    lu_sex.sex,
+    lu_title.title,
+    (((lu_title.title || ' '::text) || (data_persons.firstname || ' '::text)) || (data_persons.surname || ' '::text)) AS wholename,
+    public.age_display(age((data_persons.birthdate)::timestamp with time zone)) AS age_display,
+    date_part('year'::text, age((data_persons.birthdate)::timestamp with time zone)) AS age_numeric
+   FROM ((((((((bookings
+   LEFT JOIN data_patients ON ((bookings.fk_patient = data_patients.pk)))
+   LEFT JOIN lu_centrelink_card_type ON ((data_patients.fk_lu_centrelink_card_type = lu_centrelink_card_type.pk)))
+   LEFT JOIN lu_private_health_funds ON ((data_patients.fk_lu_private_health_fund = lu_private_health_funds.pk)))
+   LEFT JOIN lu_veteran_card_type ON ((data_patients.fk_lu_veteran_card_type = lu_veteran_card_type.pk)))
+   LEFT JOIN contacts.data_persons ON ((data_patients.fk_person = data_persons.pk)))
+   LEFT JOIN contacts.lu_sex ON ((data_persons.fk_sex = lu_sex.pk)))
+   LEFT JOIN billing.lu_default_billing_level ON ((data_patients.fk_lu_default_billing_level = lu_default_billing_level.pk)))
+   LEFT JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk)))
+  ORDER BY bookings.begin;
 
 
 ALTER TABLE clerical.vwappointments OWNER TO easygp;
@@ -5036,7 +5966,41 @@ ALTER TABLE clerical.vwappointments OWNER TO easygp;
 --
 
 CREATE VIEW vwinventory AS
-    SELECT inventory.pk, lu_inventory_items.item, lu_inventory_categories.category, inventory_locations.location, inventory.date_purchased, inventory.purchase_price, inventory.comment, vwclinics.branch, vwclinics.organisation, vwclinics.street1, vwclinics.street2, vwclinics.town, vwclinics.postcode, vwclinics.state, images.image AS inventory_item_image, images.deleted AS inventory_item_deleted, images.md5sum AS inventory_item_md5sum, images.tag AS inventory_item_tag, data_branches.branch AS branch_purchased_from, data_organisations.organisation AS organisation_purchased_from, inventory.fk_lu_inventory_item, inventory.fk_image, inventory.fk_inventory_location, inventory.fk_branch_purchased_from, inventory.fk_employee_purchased_from, inventory.fk_person_purchased_from, lu_inventory_items.fk_lu_inventory_category FROM (((((((inventory JOIN lu_inventory_items ON ((inventory.fk_lu_inventory_item = lu_inventory_items.pk))) JOIN lu_inventory_categories ON ((lu_inventory_items.fk_lu_inventory_category = lu_inventory_categories.pk))) LEFT JOIN blobs.images ON ((inventory.fk_image = images.pk))) JOIN inventory_locations ON ((inventory.fk_inventory_location = inventory_locations.pk))) JOIN admin.vwclinics ON ((inventory_locations.fk_clinic = vwclinics.fk_clinic))) LEFT JOIN contacts.data_branches ON ((inventory.fk_branch_purchased_from = data_branches.pk))) LEFT JOIN contacts.data_organisations ON ((data_branches.fk_organisation = data_organisations.pk)));
+ SELECT inventory.pk,
+    lu_inventory_items.item,
+    lu_inventory_categories.category,
+    inventory_locations.location,
+    inventory.date_purchased,
+    inventory.purchase_price,
+    inventory.comment,
+    vwclinics.branch,
+    vwclinics.organisation,
+    vwclinics.street1,
+    vwclinics.street2,
+    vwclinics.town,
+    vwclinics.postcode,
+    vwclinics.state,
+    images.image AS inventory_item_image,
+    images.deleted AS inventory_item_deleted,
+    images.md5sum AS inventory_item_md5sum,
+    images.tag AS inventory_item_tag,
+    data_branches.branch AS branch_purchased_from,
+    data_organisations.organisation AS organisation_purchased_from,
+    inventory.fk_lu_inventory_item,
+    inventory.fk_image,
+    inventory.fk_inventory_location,
+    inventory.fk_branch_purchased_from,
+    inventory.fk_employee_purchased_from,
+    inventory.fk_person_purchased_from,
+    lu_inventory_items.fk_lu_inventory_category
+   FROM (((((((inventory
+   JOIN lu_inventory_items ON ((inventory.fk_lu_inventory_item = lu_inventory_items.pk)))
+   JOIN lu_inventory_categories ON ((lu_inventory_items.fk_lu_inventory_category = lu_inventory_categories.pk)))
+   LEFT JOIN blobs.images ON ((inventory.fk_image = images.pk)))
+   JOIN inventory_locations ON ((inventory.fk_inventory_location = inventory_locations.pk)))
+   JOIN admin.vwclinics ON ((inventory_locations.fk_clinic = vwclinics.fk_clinic)))
+   LEFT JOIN contacts.data_branches ON ((inventory.fk_branch_purchased_from = data_branches.pk)))
+   LEFT JOIN contacts.data_organisations ON ((data_branches.fk_organisation = data_organisations.pk)));
 
 
 ALTER TABLE clerical.vwinventory OWNER TO easygp;
@@ -5069,7 +6033,58 @@ SET search_path = clerical, pg_catalog;
 --
 
 CREATE VIEW vwtaskscomponents AS
-    SELECT task_components.pk AS pk_view, tasks.related_to, tasks.fk_row, tasks.fk_staff_finalised_task, tasks.date_finalised, tasks.deleted AS task_deleted, tasks.fk_staff_filed_task, tasks.fk_staff_must_finalise, tasks.fk_role_can_finalise, vwstaffinclinics.wholename AS staff_filed_task_wholename, vwstaffinclinics.title AS staff_filed_task_title, vwstaffinclinics2.title AS staff_finalised_task_title, vwstaffinclinics2.wholename AS staff_finalised_task_wholename, vwstaffinclinics3.title AS staff_must_finalise_task_title, vwstaffinclinics3.wholename AS staff_must_finalise_task_wholename, task_components.fk_role, task_components.pk AS fk_component, task_components.fk_task, task_components.fk_consult, task_components.fk_staff_allocated, task_components.fk_staff_completed, task_components.allocated_staff, task_components.fk_urgency, task_components.details, task_components.must_verify_completed, task_components.date_completed AS date_component_completed, task_components.deleted AS component_deleted, vwstaffinclinics1.wholename AS staff_allocated_wholename, vwstaffinclinics1.title AS staff_allocated_title, consult.consult_date AS date_component_logged, vwpatients.town AS patient_town, vwpatients.state AS patient_state, vwpatients.postcode AS patient_postcode, vwpatients.street1 AS patient_street1, vwpatients.street2 AS patient_street2, vwpatients.fk_person, vwpatients.fk_patient, vwpatients.wholename AS patient_wholename, vwpatients.title AS patient_title, vwpatients.birthdate AS patient_birthdate, lu_urgency.urgency FROM ((((((((task_components JOIN tasks ON ((task_components.fk_task = tasks.pk))) JOIN admin.vwstaffinclinics ON ((tasks.fk_staff_filed_task = vwstaffinclinics.fk_staff))) LEFT JOIN admin.vwstaffinclinics vwstaffinclinics1 ON ((task_components.fk_staff_allocated = vwstaffinclinics1.fk_staff))) LEFT JOIN admin.vwstaffinclinics vwstaffinclinics2 ON ((tasks.fk_staff_finalised_task = vwstaffinclinics2.fk_staff))) LEFT JOIN admin.vwstaffinclinics vwstaffinclinics3 ON ((tasks.fk_staff_must_finalise = vwstaffinclinics3.fk_staff))) JOIN clin_consult.consult ON ((task_components.fk_consult = consult.pk))) JOIN contacts.vwpatients ON ((consult.fk_patient = vwpatients.fk_patient))) JOIN common.lu_urgency ON ((task_components.fk_urgency = lu_urgency.pk))) WHERE (task_components.fk_consult > 0) ORDER BY vwpatients.fk_patient, task_components.pk;
+ SELECT task_components.pk AS pk_view,
+    tasks.related_to,
+    tasks.fk_row,
+    tasks.fk_staff_finalised_task,
+    tasks.date_finalised,
+    tasks.deleted AS task_deleted,
+    tasks.fk_staff_filed_task,
+    tasks.fk_staff_must_finalise,
+    tasks.fk_role_can_finalise,
+    vwstaffinclinics.wholename AS staff_filed_task_wholename,
+    vwstaffinclinics.title AS staff_filed_task_title,
+    vwstaffinclinics2.title AS staff_finalised_task_title,
+    vwstaffinclinics2.wholename AS staff_finalised_task_wholename,
+    vwstaffinclinics3.title AS staff_must_finalise_task_title,
+    vwstaffinclinics3.wholename AS staff_must_finalise_task_wholename,
+    task_components.fk_role,
+    task_components.pk AS fk_component,
+    task_components.fk_task,
+    task_components.fk_consult,
+    task_components.fk_staff_allocated,
+    task_components.fk_staff_completed,
+    task_components.allocated_staff,
+    task_components.fk_urgency,
+    task_components.details,
+    task_components.must_verify_completed,
+    task_components.date_completed AS date_component_completed,
+    task_components.deleted AS component_deleted,
+    vwstaffinclinics1.wholename AS staff_allocated_wholename,
+    vwstaffinclinics1.title AS staff_allocated_title,
+    consult.consult_date AS date_component_logged,
+    vwpatients.town AS patient_town,
+    vwpatients.state AS patient_state,
+    vwpatients.postcode AS patient_postcode,
+    vwpatients.street1 AS patient_street1,
+    vwpatients.street2 AS patient_street2,
+    vwpatients.fk_person,
+    vwpatients.fk_patient,
+    vwpatients.wholename AS patient_wholename,
+    vwpatients.title AS patient_title,
+    vwpatients.birthdate AS patient_birthdate,
+    lu_urgency.urgency
+   FROM ((((((((task_components
+   JOIN tasks ON ((task_components.fk_task = tasks.pk)))
+   JOIN admin.vwstaffinclinics ON ((tasks.fk_staff_filed_task = vwstaffinclinics.fk_staff)))
+   LEFT JOIN admin.vwstaffinclinics vwstaffinclinics1 ON ((task_components.fk_staff_allocated = vwstaffinclinics1.fk_staff)))
+   LEFT JOIN admin.vwstaffinclinics vwstaffinclinics2 ON ((tasks.fk_staff_finalised_task = vwstaffinclinics2.fk_staff)))
+   LEFT JOIN admin.vwstaffinclinics vwstaffinclinics3 ON ((tasks.fk_staff_must_finalise = vwstaffinclinics3.fk_staff)))
+   JOIN clin_consult.consult ON ((task_components.fk_consult = consult.pk)))
+   JOIN contacts.vwpatients ON ((consult.fk_patient = vwpatients.fk_patient)))
+   JOIN common.lu_urgency ON ((task_components.fk_urgency = lu_urgency.pk)))
+  WHERE (task_components.fk_consult > 0)
+  ORDER BY vwpatients.fk_patient, task_components.pk;
 
 
 ALTER TABLE clerical.vwtaskscomponents OWNER TO easygp;
@@ -5079,7 +6094,71 @@ ALTER TABLE clerical.vwtaskscomponents OWNER TO easygp;
 --
 
 CREATE VIEW vwtaskscomponentsandnotes AS
-    SELECT CASE WHEN (task_component_notes.pk IS NULL) THEN (task_components.pk || '-0'::text) ELSE ((task_components.pk || '-'::text) || task_component_notes.pk) END AS pk_view, tasks.related_to AS task, task_components.details, task_component_notes.note, tasks.fk_row, tasks.fk_staff_finalised_task, tasks.fk_staff_must_finalise, tasks.fk_role_can_finalise, tasks.date_finalised, tasks.deleted AS task_deleted, tasks.fk_staff_filed_task, vwstaffinclinics.wholename AS staff_filed_task_wholename, vwstaffinclinics.title AS staff_filed_task_title, vwstaffinclinics2.title AS staff_finalised_task_title, vwstaffinclinics2.wholename AS staff_finalised_task_wholename, vwstaffinclinics3.title AS staff_must_finalise_task_title, vwstaffinclinics3.wholename AS staff_must_finalise_task_wholename, task_components.fk_role, lu_staff_roles.role AS role_allocated, task_components.pk AS fk_component, task_components.fk_task, task_components.fk_consult, task_components.fk_staff_allocated, task_components.fk_staff_completed, task_components.allocated_staff, task_components.fk_urgency, task_components.date_completed AS date_component_completed, task_components.deleted AS component_deleted, vwstaffinclinics1.wholename AS staff_allocated_wholename, vwstaffinclinics1.title AS staff_allocated_title, consult.consult_date AS date_component_logged, vwpatients.town AS patient_town, vwpatients.state AS patient_state, vwpatients.postcode AS patient_postcode, vwpatients.street1 AS patient_street1, vwpatients.street2 AS patient_street2, vwpatients.fk_person, vwpatients.fk_patient, vwpatients.wholename AS patient_wholename, vwpatients.title AS patient_title, vwpatients.birthdate AS patient_birthdate, lu_urgency.urgency, task_component_notes.pk AS fk_task_component_note, task_component_notes.date AS date_note, task_component_notes.fk_staff_made_note, vwstaffinclinics4.wholename AS staff_made_note_wholename, vwstaffinclinics4.title AS staff_made_note_title FROM (((((((((((task_components JOIN tasks ON ((task_components.fk_task = tasks.pk))) JOIN admin.vwstaffinclinics ON ((tasks.fk_staff_filed_task = vwstaffinclinics.fk_staff))) LEFT JOIN admin.vwstaffinclinics vwstaffinclinics1 ON ((task_components.fk_staff_allocated = vwstaffinclinics1.fk_staff))) LEFT JOIN admin.vwstaffinclinics vwstaffinclinics2 ON ((tasks.fk_staff_finalised_task = vwstaffinclinics2.fk_staff))) LEFT JOIN admin.vwstaffinclinics vwstaffinclinics3 ON ((tasks.fk_staff_must_finalise = vwstaffinclinics3.fk_staff))) JOIN clin_consult.consult ON ((task_components.fk_consult = consult.pk))) JOIN contacts.vwpatients ON ((consult.fk_patient = vwpatients.fk_patient))) JOIN common.lu_urgency ON ((task_components.fk_urgency = lu_urgency.pk))) LEFT JOIN task_component_notes ON ((task_components.pk = task_component_notes.fk_task_component))) LEFT JOIN admin.vwstaffinclinics vwstaffinclinics4 ON ((task_component_notes.fk_staff_made_note = vwstaffinclinics4.fk_staff))) LEFT JOIN admin.lu_staff_roles ON ((task_components.fk_role = lu_staff_roles.pk))) WHERE (task_components.fk_consult > 0) ORDER BY vwpatients.fk_patient, task_components.pk;
+ SELECT
+        CASE
+            WHEN (task_component_notes.pk IS NULL) THEN (task_components.pk || '-0'::text)
+            ELSE ((task_components.pk || '-'::text) || task_component_notes.pk)
+        END AS pk_view,
+    tasks.related_to AS task,
+    task_components.details,
+    task_component_notes.note,
+    tasks.fk_row,
+    tasks.fk_staff_finalised_task,
+    tasks.fk_staff_must_finalise,
+    tasks.fk_role_can_finalise,
+    tasks.date_finalised,
+    tasks.deleted AS task_deleted,
+    tasks.fk_staff_filed_task,
+    vwstaffinclinics.wholename AS staff_filed_task_wholename,
+    vwstaffinclinics.title AS staff_filed_task_title,
+    vwstaffinclinics2.title AS staff_finalised_task_title,
+    vwstaffinclinics2.wholename AS staff_finalised_task_wholename,
+    vwstaffinclinics3.title AS staff_must_finalise_task_title,
+    vwstaffinclinics3.wholename AS staff_must_finalise_task_wholename,
+    task_components.fk_role,
+    lu_staff_roles.role AS role_allocated,
+    task_components.pk AS fk_component,
+    task_components.fk_task,
+    task_components.fk_consult,
+    task_components.fk_staff_allocated,
+    task_components.fk_staff_completed,
+    task_components.allocated_staff,
+    task_components.fk_urgency,
+    task_components.date_completed AS date_component_completed,
+    task_components.deleted AS component_deleted,
+    vwstaffinclinics1.wholename AS staff_allocated_wholename,
+    vwstaffinclinics1.title AS staff_allocated_title,
+    consult.consult_date AS date_component_logged,
+    vwpatients.town AS patient_town,
+    vwpatients.state AS patient_state,
+    vwpatients.postcode AS patient_postcode,
+    vwpatients.street1 AS patient_street1,
+    vwpatients.street2 AS patient_street2,
+    vwpatients.fk_person,
+    vwpatients.fk_patient,
+    vwpatients.wholename AS patient_wholename,
+    vwpatients.title AS patient_title,
+    vwpatients.birthdate AS patient_birthdate,
+    lu_urgency.urgency,
+    task_component_notes.pk AS fk_task_component_note,
+    task_component_notes.date AS date_note,
+    task_component_notes.fk_staff_made_note,
+    vwstaffinclinics4.wholename AS staff_made_note_wholename,
+    vwstaffinclinics4.title AS staff_made_note_title
+   FROM (((((((((((task_components
+   JOIN tasks ON ((task_components.fk_task = tasks.pk)))
+   JOIN admin.vwstaffinclinics ON ((tasks.fk_staff_filed_task = vwstaffinclinics.fk_staff)))
+   LEFT JOIN admin.vwstaffinclinics vwstaffinclinics1 ON ((task_components.fk_staff_allocated = vwstaffinclinics1.fk_staff)))
+   LEFT JOIN admin.vwstaffinclinics vwstaffinclinics2 ON ((tasks.fk_staff_finalised_task = vwstaffinclinics2.fk_staff)))
+   LEFT JOIN admin.vwstaffinclinics vwstaffinclinics3 ON ((tasks.fk_staff_must_finalise = vwstaffinclinics3.fk_staff)))
+   JOIN clin_consult.consult ON ((task_components.fk_consult = consult.pk)))
+   JOIN contacts.vwpatients ON ((consult.fk_patient = vwpatients.fk_patient)))
+   JOIN common.lu_urgency ON ((task_components.fk_urgency = lu_urgency.pk)))
+   LEFT JOIN task_component_notes ON ((task_components.pk = task_component_notes.fk_task_component)))
+   LEFT JOIN admin.vwstaffinclinics vwstaffinclinics4 ON ((task_component_notes.fk_staff_made_note = vwstaffinclinics4.fk_staff)))
+   LEFT JOIN admin.lu_staff_roles ON ((task_components.fk_role = lu_staff_roles.pk)))
+  WHERE (task_components.fk_consult > 0)
+  ORDER BY vwpatients.fk_patient, task_components.pk;
 
 
 ALTER TABLE clerical.vwtaskscomponentsandnotes OWNER TO easygp;
@@ -5099,7 +6178,18 @@ COMMENT ON VIEW vwtaskscomponentsandnotes IS 'the tasks and each component in it
 --
 
 CREATE VIEW vwtaskscomponentsnotes AS
-    SELECT task_component_notes.pk AS pk_note, task_component_notes.fk_task_component, task_component_notes.note, task_component_notes.date, task_component_notes.fk_staff_made_note, task_components.date_completed, vwstaffinclinics.wholename AS staff_made_note_wholename, vwstaffinclinics.title AS staff_made_note_title, task_components.fk_task FROM ((task_component_notes JOIN admin.vwstaffinclinics ON ((task_component_notes.fk_staff_made_note = vwstaffinclinics.fk_staff))) JOIN task_components ON ((task_component_notes.fk_task_component = task_components.pk)));
+ SELECT task_component_notes.pk AS pk_note,
+    task_component_notes.fk_task_component,
+    task_component_notes.note,
+    task_component_notes.date,
+    task_component_notes.fk_staff_made_note,
+    task_components.date_completed,
+    vwstaffinclinics.wholename AS staff_made_note_wholename,
+    vwstaffinclinics.title AS staff_made_note_title,
+    task_components.fk_task
+   FROM ((task_component_notes
+   JOIN admin.vwstaffinclinics ON ((task_component_notes.fk_staff_made_note = vwstaffinclinics.fk_staff)))
+   JOIN task_components ON ((task_component_notes.fk_task_component = task_components.pk)));
 
 
 ALTER TABLE clerical.vwtaskscomponentsnotes OWNER TO easygp;
@@ -5556,7 +6646,44 @@ SET search_path = clin_allergies, pg_catalog;
 --
 
 CREATE VIEW vwallergies AS
-    SELECT allergies.pk, allergies.fk_consult, allergies.fk_brand, allergies.fk_product, allergies.allergen, allergies.specificity, allergies.details, allergies.fk_lu_reaction_type, allergies.fk_progressnote, lu_reaction_type.type AS reaction_type, allergies.fk_coding_system, allergies.fk_code, allergies.confirmed, allergies.deleted, allergies.date_reaction, consult.fk_patient, consult.consult_date, consult.fk_staff AS fk_staff_logged_allergy, atc.atccode AS product_atccode, atc.atcname AS product_atcname, generic_terms.term, lu_systems.system AS coding_system, product.generic, atc1.atccode AS class_code, atc1.atcname AS class_name, brand.brand, progressnotes.notes, allergies.nil_allergies_sensitivities FROM (((((((((allergies LEFT JOIN lu_reaction_type ON ((allergies.fk_lu_reaction_type = lu_reaction_type.pk))) JOIN clin_consult.consult ON ((allergies.fk_consult = consult.pk))) JOIN clin_consult.progressnotes ON ((allergies.fk_progressnote = progressnotes.pk))) LEFT JOIN drugs.brand ON ((allergies.fk_brand = brand.pk))) LEFT JOIN drugs.product ON ((allergies.fk_product = product.pk))) LEFT JOIN drugs.atc ON (((product.atccode)::text = atc.atccode))) LEFT JOIN coding.generic_terms ON ((allergies.fk_code = generic_terms.code))) LEFT JOIN coding.lu_systems ON ((allergies.fk_coding_system = lu_systems.pk))) LEFT JOIN drugs.atc atc1 ON (("substring"((product.atccode)::text, 1, 4) = atc1.atccode)));
+ SELECT allergies.pk,
+    allergies.fk_consult,
+    allergies.fk_brand,
+    allergies.fk_product,
+    allergies.allergen,
+    allergies.specificity,
+    allergies.details,
+    allergies.fk_lu_reaction_type,
+    allergies.fk_progressnote,
+    lu_reaction_type.type AS reaction_type,
+    allergies.fk_coding_system,
+    allergies.fk_code,
+    allergies.confirmed,
+    allergies.deleted,
+    allergies.date_reaction,
+    consult.fk_patient,
+    consult.consult_date,
+    consult.fk_staff AS fk_staff_logged_allergy,
+    atc.atccode AS product_atccode,
+    atc.atcname AS product_atcname,
+    generic_terms.term,
+    lu_systems.system AS coding_system,
+    product.generic,
+    atc1.atccode AS class_code,
+    atc1.atcname AS class_name,
+    brand.brand,
+    progressnotes.notes,
+    allergies.nil_allergies_sensitivities
+   FROM (((((((((allergies
+   LEFT JOIN lu_reaction_type ON ((allergies.fk_lu_reaction_type = lu_reaction_type.pk)))
+   JOIN clin_consult.consult ON ((allergies.fk_consult = consult.pk)))
+   JOIN clin_consult.progressnotes ON ((allergies.fk_progressnote = progressnotes.pk)))
+   LEFT JOIN drugs.brand ON ((allergies.fk_brand = brand.pk)))
+   LEFT JOIN drugs.product ON ((allergies.fk_product = product.pk)))
+   LEFT JOIN drugs.atc ON (((product.atccode)::text = atc.atccode)))
+   LEFT JOIN coding.generic_terms ON ((allergies.fk_code = generic_terms.code)))
+   LEFT JOIN coding.lu_systems ON ((allergies.fk_coding_system = lu_systems.pk)))
+   LEFT JOIN drugs.atc atc1 ON (("substring"((product.atccode)::text, 1, 4) = atc1.atccode)));
 
 
 ALTER TABLE clin_allergies.vwallergies OWNER TO easygp;
@@ -6508,7 +7635,46 @@ ALTER SEQUENCE medical_certificate_pk_seq OWNED BY medical_certificates.pk;
 --
 
 CREATE VIEW vwmedicalcertificates AS
-    SELECT medical_certificates.pk AS pk_medicalcertificate, consult.fk_patient, consult.consult_date, medical_certificates.fk_consult, medical_certificates.certificate_date, medical_certificates.reason, medical_certificates.fk_coding_system, medical_certificates.fk_code, medical_certificates.fk_lu_illness_temporality, medical_certificates.fk_lu_fitness, lu_fitness.fitness, medical_certificates.from_date, medical_certificates.deleted, medical_certificates.to_date, medical_certificates.notes, medical_certificates.print_notes, medical_certificates.fk_progressnote, medical_certificates.latex, consult.fk_staff, vwstaffinclinics.wholename AS staff_wholename, vwstaffinclinics.title AS staff_title, vwstaffinclinics.branch AS staff_branch, vwstaffinclinics.organisation AS staff_organisation, vwstaffinclinics.street1 AS staff_street1, vwstaffinclinics.street2 AS staff_street2, vwstaffinclinics.town AS staff_town, vwstaffinclinics.postcode AS staff_postcode, vwstaffinclinics.provider_number AS staff_provider_number, lu_illness_temporality.temporality, lu_systems.system, generic_terms.term, generic_terms.code FROM ((((((medical_certificates medical_certificates JOIN clin_consult.consult ON ((medical_certificates.fk_consult = consult.pk))) JOIN admin.vwstaffinclinics ON ((consult.fk_staff = vwstaffinclinics.fk_staff))) JOIN lu_illness_temporality ON ((medical_certificates.fk_lu_illness_temporality = lu_illness_temporality.pk))) JOIN lu_fitness ON ((medical_certificates.fk_lu_fitness = lu_fitness.pk))) LEFT JOIN coding.lu_systems ON ((medical_certificates.fk_coding_system = lu_systems.pk))) LEFT JOIN coding.generic_terms ON ((medical_certificates.fk_code = generic_terms.code))) ORDER BY consult.fk_patient, consult.consult_date;
+ SELECT medical_certificates.pk AS pk_medicalcertificate,
+    consult.fk_patient,
+    consult.consult_date,
+    medical_certificates.fk_consult,
+    medical_certificates.certificate_date,
+    medical_certificates.reason,
+    medical_certificates.fk_coding_system,
+    medical_certificates.fk_code,
+    medical_certificates.fk_lu_illness_temporality,
+    medical_certificates.fk_lu_fitness,
+    lu_fitness.fitness,
+    medical_certificates.from_date,
+    medical_certificates.deleted,
+    medical_certificates.to_date,
+    medical_certificates.notes,
+    medical_certificates.print_notes,
+    medical_certificates.fk_progressnote,
+    medical_certificates.latex,
+    consult.fk_staff,
+    vwstaffinclinics.wholename AS staff_wholename,
+    vwstaffinclinics.title AS staff_title,
+    vwstaffinclinics.branch AS staff_branch,
+    vwstaffinclinics.organisation AS staff_organisation,
+    vwstaffinclinics.street1 AS staff_street1,
+    vwstaffinclinics.street2 AS staff_street2,
+    vwstaffinclinics.town AS staff_town,
+    vwstaffinclinics.postcode AS staff_postcode,
+    vwstaffinclinics.provider_number AS staff_provider_number,
+    lu_illness_temporality.temporality,
+    lu_systems.system,
+    generic_terms.term,
+    generic_terms.code
+   FROM ((((((medical_certificates medical_certificates
+   JOIN clin_consult.consult ON ((medical_certificates.fk_consult = consult.pk)))
+   JOIN admin.vwstaffinclinics ON ((consult.fk_staff = vwstaffinclinics.fk_staff)))
+   JOIN lu_illness_temporality ON ((medical_certificates.fk_lu_illness_temporality = lu_illness_temporality.pk)))
+   JOIN lu_fitness ON ((medical_certificates.fk_lu_fitness = lu_fitness.pk)))
+   LEFT JOIN coding.lu_systems ON ((medical_certificates.fk_coding_system = lu_systems.pk)))
+   LEFT JOIN coding.generic_terms ON ((medical_certificates.fk_code = generic_terms.code)))
+  ORDER BY consult.fk_patient, consult.consult_date;
 
 
 ALTER TABLE clin_certificates.vwmedicalcertificates OWNER TO easygp;
@@ -7427,7 +8593,20 @@ SET search_path = clin_consult, pg_catalog;
 --
 
 CREATE VIEW vwdictations AS
-    SELECT d.pk AS pk_dictation, d.fk_referral, d.transcript, d.fk_progress_note, d.fk_user, d.processed, d.filename, vwp.wholename, c.fk_patient FROM dictations d, clin_referrals.referrals r, contacts.vwpatients vwp, consult c WHERE (((d.fk_referral = r.pk) AND (r.fk_consult = c.pk)) AND (c.fk_patient = vwp.fk_patient));
+ SELECT d.pk AS pk_dictation,
+    d.fk_referral,
+    d.transcript,
+    d.fk_progress_note,
+    d.fk_user,
+    d.processed,
+    d.filename,
+    vwp.wholename,
+    c.fk_patient
+   FROM dictations d,
+    clin_referrals.referrals r,
+    contacts.vwpatients vwp,
+    consult c
+  WHERE (((d.fk_referral = r.pk) AND (r.fk_consult = c.pk)) AND (c.fk_patient = vwp.fk_patient));
 
 
 ALTER TABLE clin_consult.vwdictations OWNER TO postgres;
@@ -7437,7 +8616,34 @@ ALTER TABLE clin_consult.vwdictations OWNER TO postgres;
 --
 
 CREATE VIEW vwpatientconsults AS
-    SELECT DISTINCT vwprogressnotes.consult_date AS pk_view, vwprogressnotes.fk_patient, vwprogressnotes.consult_date, vwprogressnotes.consult_type, vwprogressnotes.fk_staff, vwprogressnotes.title AS staff_title, vwprogressnotes.surname AS staff_surname, vwprogressnotes.firstname AS staff_firstname, vwprogressnotes.linked_table, vwprogressnotes.fk_type, vwpatients.wholename, vwpatients.firstname, vwpatients.surname, vwpatients.street1, vwpatients.street2, vwpatients.town, vwpatients.state, vwpatients.postcode, vwpatients.deceased, vwpatients.sex, vwpatients.title, vwpatients.birthdate, vwpatients.age_numeric, vwpatients.age_display FROM vwprogressnotes, contacts.vwpatients WHERE (vwprogressnotes.fk_patient = vwpatients.fk_patient) ORDER BY vwprogressnotes.consult_date;
+ SELECT DISTINCT vwprogressnotes.consult_date AS pk_view,
+    vwprogressnotes.fk_patient,
+    vwprogressnotes.consult_date,
+    vwprogressnotes.consult_type,
+    vwprogressnotes.fk_staff,
+    vwprogressnotes.title AS staff_title,
+    vwprogressnotes.surname AS staff_surname,
+    vwprogressnotes.firstname AS staff_firstname,
+    vwprogressnotes.linked_table,
+    vwprogressnotes.fk_type,
+    vwpatients.wholename,
+    vwpatients.firstname,
+    vwpatients.surname,
+    vwpatients.street1,
+    vwpatients.street2,
+    vwpatients.town,
+    vwpatients.state,
+    vwpatients.postcode,
+    vwpatients.deceased,
+    vwpatients.sex,
+    vwpatients.title,
+    vwpatients.birthdate,
+    vwpatients.age_numeric,
+    vwpatients.age_display
+   FROM vwprogressnotes,
+    contacts.vwpatients
+  WHERE (vwprogressnotes.fk_patient = vwpatients.fk_patient)
+  ORDER BY vwprogressnotes.consult_date;
 
 
 ALTER TABLE clin_consult.vwpatientconsults OWNER TO easygp;
@@ -7447,7 +8653,20 @@ ALTER TABLE clin_consult.vwpatientconsults OWNER TO easygp;
 --
 
 CREATE VIEW vwprogressnotescodes AS
-    SELECT consult.fk_patient, consult.consult_date, consult.fk_staff, progressnotes_codes.pk, progressnotes_codes.fk_progressnote, progressnotes_codes.fk_code, progressnotes_codes.deleted, generic_terms.fk_coding_system, generic_terms.term FROM consult, progressnotes_codes, progressnotes, coding.generic_terms WHERE (((progressnotes_codes.fk_code = generic_terms.code) AND (progressnotes.fk_consult = consult.pk)) AND (progressnotes.pk = progressnotes_codes.fk_progressnote));
+ SELECT consult.fk_patient,
+    consult.consult_date,
+    consult.fk_staff,
+    progressnotes_codes.pk,
+    progressnotes_codes.fk_progressnote,
+    progressnotes_codes.fk_code,
+    progressnotes_codes.deleted,
+    generic_terms.fk_coding_system,
+    generic_terms.term
+   FROM consult,
+    progressnotes_codes,
+    progressnotes,
+    coding.generic_terms
+  WHERE (((progressnotes_codes.fk_code = generic_terms.code) AND (progressnotes.fk_consult = consult.pk)) AND (progressnotes.pk = progressnotes_codes.fk_progressnote));
 
 
 ALTER TABLE clin_consult.vwprogressnotescodes OWNER TO easygp;
@@ -7457,7 +8676,16 @@ ALTER TABLE clin_consult.vwprogressnotescodes OWNER TO easygp;
 --
 
 CREATE VIEW vwshortcuts AS
-    SELECT lu_shortcut_category.category, shortcuts_user.pk, shortcuts_user.fk_staff, shortcuts_user.shared, shortcuts_user.shortcut, shortcuts_user.expanded, shortcuts_user.fk_lu_shortcut_category FROM lu_shortcut_category, shortcuts_user WHERE (shortcuts_user.fk_lu_shortcut_category = lu_shortcut_category.pk);
+ SELECT lu_shortcut_category.category,
+    shortcuts_user.pk,
+    shortcuts_user.fk_staff,
+    shortcuts_user.shared,
+    shortcuts_user.shortcut,
+    shortcuts_user.expanded,
+    shortcuts_user.fk_lu_shortcut_category
+   FROM lu_shortcut_category,
+    shortcuts_user
+  WHERE (shortcuts_user.fk_lu_shortcut_category = lu_shortcut_category.pk);
 
 
 ALTER TABLE clin_consult.vwshortcuts OWNER TO easygp;
@@ -7948,7 +9176,6 @@ CREATE TABLE occupational_history (
     from_age integer,
     to_age integer,
     current boolean DEFAULT false,
-    retired boolean DEFAULT false,
     notes_occupation text,
     deleted boolean DEFAULT false,
     fk_progressnote integer,
@@ -7988,13 +9215,6 @@ COMMENT ON COLUMN occupational_history.from_age IS 'age person started working i
 --
 
 COMMENT ON COLUMN occupational_history.current IS 'if true this is the patients current occupation';
-
-
---
--- Name: COLUMN occupational_history.retired; Type: COMMENT; Schema: clin_history; Owner: easygp
---
-
-COMMENT ON COLUMN occupational_history.retired IS 'if true then the patient is retired with this as last occupation';
 
 
 --
@@ -8915,20 +10135,6 @@ CREATE TABLE lu_units (
 
 ALTER TABLE common.lu_units OWNER TO easygp;
 
-SET search_path = contacts, pg_catalog;
-
---
--- Name: lu_contact_type; Type: TABLE; Schema: contacts; Owner: easygp; Tablespace: 
---
-
-CREATE TABLE lu_contact_type (
-    pk integer NOT NULL,
-    type text NOT NULL
-);
-
-
-ALTER TABLE contacts.lu_contact_type OWNER TO easygp;
-
 SET search_path = clin_recalls, pg_catalog;
 
 --
@@ -8936,7 +10142,62 @@ SET search_path = clin_recalls, pg_catalog;
 --
 
 CREATE VIEW vwrecalls AS
-    SELECT consult.fk_patient, consult.consult_date, lu_reasons.reason, recalls.due, lu_urgency.urgency, lu_contact_type.type AS contact_by, lu_appointment_length.length, lu_title.title, ((data_persons.firstname || ' '::text) || data_persons.surname) AS wholename, recalls.fk_consult, recalls.pk AS pk_recall, recalls.fk_reason, recalls.fk_contact_method, recalls.fk_urgency, recalls.fk_appointment_length, recalls.fk_staff, recalls.active, recalls."interval", lu_units.abbrev_text, recalls.fk_interval_unit, recalls.additional_text, recalls.deleted, recalls.fk_pasthistory, recalls.fk_progressnote, recalls.fk_template, recalls.fk_sent, recalls.num_reminders, data_persons.firstname, data_persons.surname, data_persons.fk_title, data_persons.deceased, lu_contact_type.pk AS fk_contact_by, lu_recall_intervals."interval" AS default_interval, lu_recall_intervals.fk_interval_unit AS fk_default_interval_unit, lu_templates.name AS template_name, lu_templates.template, lu_templates.fk_lu_appointment_length AS template_fk_lu_appointment_length, lu_appointment_length1.length AS template_appointment_length, sent.latex, data_patients.fk_lu_active_status FROM ((((((((((((((recalls JOIN lu_recall_intervals ON ((recalls.fk_reason = lu_recall_intervals.fk_reason))) JOIN clin_consult.consult ON ((recalls.fk_consult = consult.pk))) JOIN lu_reasons ON ((recalls.fk_reason = lu_reasons.pk))) JOIN contacts.lu_contact_type ON ((recalls.fk_contact_method = lu_contact_type.pk))) JOIN admin.staff ON ((consult.fk_staff = staff.pk))) LEFT JOIN lu_templates ON ((recalls.fk_template = lu_templates.pk))) LEFT JOIN contacts.data_persons ON ((staff.fk_person = data_persons.pk))) LEFT JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk))) JOIN common.lu_urgency ON ((recalls.fk_urgency = lu_urgency.pk))) LEFT JOIN common.lu_appointment_length ON ((recalls.fk_appointment_length = lu_appointment_length.pk))) LEFT JOIN common.lu_appointment_length lu_appointment_length1 ON ((lu_templates.fk_lu_appointment_length = lu_appointment_length1.pk))) LEFT JOIN common.lu_units ON ((recalls.fk_interval_unit = lu_units.pk))) LEFT JOIN sent ON ((recalls.fk_sent = sent.pk))) JOIN clerical.data_patients ON ((consult.fk_patient = data_patients.pk))) ORDER BY consult.fk_patient, recalls.due;
+ SELECT consult.fk_patient,
+    consult.consult_date,
+    lu_reasons.reason,
+    recalls.due,
+    lu_urgency.urgency,
+    lu_contact_type.type AS contact_by,
+    lu_appointment_length.length,
+    lu_title.title,
+    ((data_persons.firstname || ' '::text) || data_persons.surname) AS wholename,
+    recalls.fk_consult,
+    recalls.pk AS pk_recall,
+    recalls.fk_reason,
+    recalls.fk_contact_method,
+    recalls.fk_urgency,
+    recalls.fk_appointment_length,
+    recalls.fk_staff,
+    recalls.active,
+    recalls."interval",
+    lu_units.abbrev_text,
+    recalls.fk_interval_unit,
+    recalls.additional_text,
+    recalls.deleted,
+    recalls.fk_pasthistory,
+    recalls.fk_progressnote,
+    recalls.fk_template,
+    recalls.fk_sent,
+    recalls.num_reminders,
+    data_persons.firstname,
+    data_persons.surname,
+    data_persons.fk_title,
+    data_persons.deceased,
+    lu_contact_type.pk AS fk_contact_by,
+    lu_recall_intervals."interval" AS default_interval,
+    lu_recall_intervals.fk_interval_unit AS fk_default_interval_unit,
+    lu_templates.name AS template_name,
+    lu_templates.template,
+    lu_templates.fk_lu_appointment_length AS template_fk_lu_appointment_length,
+    lu_appointment_length1.length AS template_appointment_length,
+    sent.latex,
+    data_patients.fk_lu_active_status
+   FROM ((((((((((((((recalls
+   JOIN lu_recall_intervals ON ((recalls.fk_reason = lu_recall_intervals.fk_reason)))
+   JOIN clin_consult.consult ON ((recalls.fk_consult = consult.pk)))
+   JOIN lu_reasons ON ((recalls.fk_reason = lu_reasons.pk)))
+   JOIN contacts.lu_contact_type ON ((recalls.fk_contact_method = lu_contact_type.pk)))
+   JOIN admin.staff ON ((consult.fk_staff = staff.pk)))
+   LEFT JOIN lu_templates ON ((recalls.fk_template = lu_templates.pk)))
+   LEFT JOIN contacts.data_persons ON ((staff.fk_person = data_persons.pk)))
+   LEFT JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk)))
+   JOIN common.lu_urgency ON ((recalls.fk_urgency = lu_urgency.pk)))
+   LEFT JOIN common.lu_appointment_length ON ((recalls.fk_appointment_length = lu_appointment_length.pk)))
+   LEFT JOIN common.lu_appointment_length lu_appointment_length1 ON ((lu_templates.fk_lu_appointment_length = lu_appointment_length1.pk)))
+   LEFT JOIN common.lu_units ON ((recalls.fk_interval_unit = lu_units.pk)))
+   LEFT JOIN sent ON ((recalls.fk_sent = sent.pk)))
+   JOIN clerical.data_patients ON ((consult.fk_patient = data_patients.pk)))
+  ORDER BY consult.fk_patient, recalls.due;
 
 
 ALTER TABLE clin_recalls.vwrecalls OWNER TO easygp;
@@ -8948,7 +10209,23 @@ SET search_path = clin_history, pg_catalog;
 --
 
 CREATE VIEW vwcareplancomponents AS
-    SELECT care_plan_components.fk_pasthistory, care_plan_components.component, care_plan_components.pk AS pk_careplan_components, care_plan_components.due, care_plan_components.fk_recall, vwrecalls.fk_staff, vwrecalls."interval", vwrecalls.reason, vwrecalls.fk_reason, vwrecalls.fk_interval_unit, vwrecalls.default_interval, vwrecalls.fk_default_interval_unit, vwrecalls.fk_contact_by, vwrecalls.abbrev_text FROM (care_plan_components LEFT JOIN clin_recalls.vwrecalls ON ((care_plan_components.fk_recall = vwrecalls.pk_recall))) ORDER BY care_plan_components.fk_pasthistory, care_plan_components.due;
+ SELECT care_plan_components.fk_pasthistory,
+    care_plan_components.component,
+    care_plan_components.pk AS pk_careplan_components,
+    care_plan_components.due,
+    care_plan_components.fk_recall,
+    vwrecalls.fk_staff,
+    vwrecalls."interval",
+    vwrecalls.reason,
+    vwrecalls.fk_reason,
+    vwrecalls.fk_interval_unit,
+    vwrecalls.default_interval,
+    vwrecalls.fk_default_interval_unit,
+    vwrecalls.fk_contact_by,
+    vwrecalls.abbrev_text
+   FROM (care_plan_components
+   LEFT JOIN clin_recalls.vwrecalls ON ((care_plan_components.fk_recall = vwrecalls.pk_recall)))
+  ORDER BY care_plan_components.fk_pasthistory, care_plan_components.due;
 
 
 ALTER TABLE clin_history.vwcareplancomponents OWNER TO easygp;
@@ -8958,7 +10235,14 @@ ALTER TABLE clin_history.vwcareplancomponents OWNER TO easygp;
 --
 
 CREATE VIEW vwcareplancomponentsdue AS
-    SELECT care_plan_components_due.fk_pasthistory, lu_careplan_components.component, care_plan_components_due.fk_component, care_plan_components_due.pk AS pk_careplan_components_due, care_plan_components_due.due FROM (care_plan_components_due JOIN lu_careplan_components ON ((care_plan_components_due.fk_component = lu_careplan_components.pk))) ORDER BY care_plan_components_due.fk_pasthistory, care_plan_components_due.due;
+ SELECT care_plan_components_due.fk_pasthistory,
+    lu_careplan_components.component,
+    care_plan_components_due.fk_component,
+    care_plan_components_due.pk AS pk_careplan_components_due,
+    care_plan_components_due.due
+   FROM (care_plan_components_due
+   JOIN lu_careplan_components ON ((care_plan_components_due.fk_component = lu_careplan_components.pk)))
+  ORDER BY care_plan_components_due.fk_pasthistory, care_plan_components_due.due;
 
 
 ALTER TABLE clin_history.vwcareplancomponentsdue OWNER TO easygp;
@@ -8984,7 +10268,46 @@ SET search_path = clin_history, pg_catalog;
 --
 
 CREATE VIEW vwfamilyhistory AS
-    SELECT family_conditions.pk AS pk_view, family_links.fk_member, family_members.fk_consult AS fk_consult_familymember, family_members.fk_relationship, family_members.fk_person, family_members.name, family_members.birthdate, family_members.age_of_death, family_members.fk_occupation, family_members.fk_country_birth, family_members.deleted AS member_deleted, family_links.fk_patient, family_links.pk AS fk_link, family_conditions.pk AS fk_condition, family_conditions.condition, family_conditions.diagnosis_certain, family_conditions.fk_consult AS fk_consult_condition, family_conditions.fk_code, family_conditions.age_of_onset, family_conditions.cause_of_death, family_conditions.notes, family_conditions.deleted AS condition_deleted, family_conditions.contributed_to_death, family_conditions.fk_progressnote, lu_countries.country, lu_occupations.occupation, lu_family_relationships.relationship, family_links.deleted AS link_deleted, generic_terms.code, generic_terms.term FROM (((((((family_links LEFT JOIN clerical.data_patients ON ((family_links.fk_patient = data_patients.pk))) JOIN family_members ON ((family_links.fk_member = family_members.pk))) JOIN family_conditions ON ((family_links.fk_member = family_conditions.fk_member))) LEFT JOIN common.lu_countries ON ((family_members.fk_country_birth = lu_countries.country_code))) LEFT JOIN common.lu_occupations ON ((family_members.fk_occupation = lu_occupations.pk))) JOIN common.lu_family_relationships ON ((family_members.fk_relationship = lu_family_relationships.pk))) LEFT JOIN coding.generic_terms ON ((family_conditions.fk_code = generic_terms.code))) WHERE ((family_members.deleted = false) AND (family_conditions.deleted = false)) ORDER BY family_links.fk_patient, family_links.fk_member;
+ SELECT family_conditions.pk AS pk_view,
+    family_links.fk_member,
+    family_members.fk_consult AS fk_consult_familymember,
+    family_members.fk_relationship,
+    family_members.fk_person,
+    family_members.name,
+    family_members.birthdate,
+    family_members.age_of_death,
+    family_members.fk_occupation,
+    family_members.fk_country_birth,
+    family_members.deleted AS member_deleted,
+    family_links.fk_patient,
+    family_links.pk AS fk_link,
+    family_conditions.pk AS fk_condition,
+    family_conditions.condition,
+    family_conditions.diagnosis_certain,
+    family_conditions.fk_consult AS fk_consult_condition,
+    family_conditions.fk_code,
+    family_conditions.age_of_onset,
+    family_conditions.cause_of_death,
+    family_conditions.notes,
+    family_conditions.deleted AS condition_deleted,
+    family_conditions.contributed_to_death,
+    family_conditions.fk_progressnote,
+    lu_countries.country,
+    lu_occupations.occupation,
+    lu_family_relationships.relationship,
+    family_links.deleted AS link_deleted,
+    generic_terms.code,
+    generic_terms.term
+   FROM (((((((family_links
+   LEFT JOIN clerical.data_patients ON ((family_links.fk_patient = data_patients.pk)))
+   JOIN family_members ON ((family_links.fk_member = family_members.pk)))
+   JOIN family_conditions ON ((family_links.fk_member = family_conditions.fk_member)))
+   LEFT JOIN common.lu_countries ON ((family_members.fk_country_birth = lu_countries.country_code)))
+   LEFT JOIN common.lu_occupations ON ((family_members.fk_occupation = lu_occupations.pk)))
+   JOIN common.lu_family_relationships ON ((family_members.fk_relationship = lu_family_relationships.pk)))
+   LEFT JOIN coding.generic_terms ON ((family_conditions.fk_code = generic_terms.code)))
+  WHERE ((family_members.deleted = false) AND (family_conditions.deleted = false))
+  ORDER BY family_links.fk_patient, family_links.fk_member;
 
 
 ALTER TABLE clin_history.vwfamilyhistory OWNER TO easygp;
@@ -9010,7 +10333,47 @@ SET search_path = clin_history, pg_catalog;
 --
 
 CREATE VIEW vwhealthissues AS
-    SELECT consult.fk_patient, past_history.pk AS pk_pasthistory, past_history.age_onset, past_history.age_onset_units, past_history.description, past_history.fk_laterality, past_history.year_onset, past_history.active, past_history.operation, past_history.cause_of_death, past_history.confidential, past_history.major, past_history.deleted, past_history.year_onset_uncertain, past_history.management_summary, past_history.condition_summary, past_history.aim_of_plan, past_history.risk_factor, past_history.fk_coding_system, past_history.fk_code, past_history.fk_progressnote, lu_systems.system, generic_terms.term, (((generic_terms.term || ' ('::text) || generic_terms.code) || ')'::text) AS combined_term_code, generic_terms.active AS code_active, consult.pk AS fk_consult, consult.fk_staff, consult.consult_date AS date_noted, data_persons.firstname AS staff_firstname, data_persons.surname AS staff_surname, lu_title.title AS staff_title FROM (((((((past_history JOIN clin_consult.consult ON ((past_history.fk_consult = consult.pk))) LEFT JOIN common.lu_laterality ON ((past_history.fk_laterality = lu_laterality.pk))) LEFT JOIN coding.lu_systems ON ((past_history.fk_coding_system = lu_systems.pk))) LEFT JOIN coding.generic_terms ON ((past_history.fk_code = generic_terms.code))) JOIN admin.staff ON ((consult.fk_staff = staff.pk))) JOIN contacts.data_persons ON ((staff.fk_person = data_persons.pk))) LEFT JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk))) WHERE (past_history.deleted = false) ORDER BY consult.fk_patient;
+ SELECT consult.fk_patient,
+    past_history.pk AS pk_pasthistory,
+    past_history.age_onset,
+    past_history.age_onset_units,
+    past_history.description,
+    past_history.fk_laterality,
+    past_history.year_onset,
+    past_history.active,
+    past_history.operation,
+    past_history.cause_of_death,
+    past_history.confidential,
+    past_history.major,
+    past_history.deleted,
+    past_history.year_onset_uncertain,
+    past_history.management_summary,
+    past_history.condition_summary,
+    past_history.aim_of_plan,
+    past_history.risk_factor,
+    past_history.fk_coding_system,
+    past_history.fk_code,
+    past_history.fk_progressnote,
+    lu_systems.system,
+    generic_terms.term,
+    (((generic_terms.term || ' ('::text) || generic_terms.code) || ')'::text) AS combined_term_code,
+    generic_terms.active AS code_active,
+    consult.pk AS fk_consult,
+    consult.fk_staff,
+    consult.consult_date AS date_noted,
+    data_persons.firstname AS staff_firstname,
+    data_persons.surname AS staff_surname,
+    lu_title.title AS staff_title
+   FROM (((((((past_history
+   JOIN clin_consult.consult ON ((past_history.fk_consult = consult.pk)))
+   LEFT JOIN common.lu_laterality ON ((past_history.fk_laterality = lu_laterality.pk)))
+   LEFT JOIN coding.lu_systems ON ((past_history.fk_coding_system = lu_systems.pk)))
+   LEFT JOIN coding.generic_terms ON ((past_history.fk_code = generic_terms.code)))
+   JOIN admin.staff ON ((consult.fk_staff = staff.pk)))
+   JOIN contacts.data_persons ON ((staff.fk_person = data_persons.pk)))
+   LEFT JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk)))
+  WHERE (past_history.deleted = false)
+  ORDER BY consult.fk_patient;
 
 
 ALTER TABLE clin_history.vwhealthissues OWNER TO easygp;
@@ -9020,7 +10383,39 @@ ALTER TABLE clin_history.vwhealthissues OWNER TO easygp;
 --
 
 CREATE VIEW vwoccupationalhistory AS
-    SELECT CASE WHEN (occupations_exposures.pk IS NULL) THEN (occupational_history.pk || '-0'::text) ELSE ((occupational_history.pk || '-'::text) || occupations_exposures.pk) END AS pk_view, occupational_history.pk AS fk_occupational_history, occupational_history.fk_consult, occupational_history.fk_occupation, occupational_history.from_age, occupational_history.to_age, occupational_history.current, occupational_history.retired, occupational_history.notes_occupation, occupational_history.deleted AS occupational_history_deleted, occupational_history.fk_progressnote, occupational_history.main_occupation, consult.consult_date, consult.fk_patient, lu_occupations.occupation, occupations_exposures.pk AS fk_occupations_exposures, occupations_exposures.fk_exposure, occupations_exposures.exposure_duration, occupations_exposures.exposure_duration_units, occupations_exposures.notes_exposure, lu_exposures.exposure, lu_exposures.fk_decision_support, occupations_exposures.deleted AS exposure_deleted, lu_units.abbrev_text FROM (((((occupational_history JOIN clin_consult.consult ON ((occupational_history.fk_consult = consult.pk))) JOIN common.lu_occupations ON ((occupational_history.fk_occupation = lu_occupations.pk))) LEFT JOIN occupations_exposures ON ((occupational_history.pk = occupations_exposures.fk_occupational_history))) LEFT JOIN lu_exposures ON ((occupations_exposures.fk_exposure = lu_exposures.pk))) LEFT JOIN common.lu_units ON ((occupations_exposures.exposure_duration_units = lu_units.pk)));
+ SELECT
+        CASE
+            WHEN (occupations_exposures.pk IS NULL) THEN (occupational_history.pk || '-0'::text)
+            ELSE ((occupational_history.pk || '-'::text) || occupations_exposures.pk)
+        END AS pk_view,
+    occupational_history.pk AS fk_occupational_history,
+    occupational_history.fk_consult,
+    occupational_history.fk_occupation,
+    occupational_history.from_age,
+    occupational_history.to_age,
+    occupational_history.current,
+    occupational_history.notes_occupation,
+    occupational_history.deleted AS occupational_history_deleted,
+    occupational_history.fk_progressnote,
+    occupational_history.main_occupation,
+    consult.consult_date,
+    consult.fk_patient,
+    lu_occupations.occupation,
+    occupations_exposures.pk AS fk_occupations_exposures,
+    occupations_exposures.fk_exposure,
+    occupations_exposures.exposure_duration,
+    occupations_exposures.exposure_duration_units,
+    occupations_exposures.notes_exposure,
+    lu_exposures.exposure,
+    lu_exposures.fk_decision_support,
+    occupations_exposures.deleted AS exposure_deleted,
+    lu_units.abbrev_text
+   FROM (((((occupational_history
+   JOIN clin_consult.consult ON ((occupational_history.fk_consult = consult.pk)))
+   JOIN common.lu_occupations ON ((occupational_history.fk_occupation = lu_occupations.pk)))
+   LEFT JOIN occupations_exposures ON ((occupational_history.pk = occupations_exposures.fk_occupational_history)))
+   LEFT JOIN lu_exposures ON ((occupations_exposures.fk_exposure = lu_exposures.pk)))
+   LEFT JOIN common.lu_units ON ((occupations_exposures.exposure_duration_units = lu_units.pk)));
 
 
 ALTER TABLE clin_history.vwoccupationalhistory OWNER TO easygp;
@@ -9091,7 +10486,36 @@ SET search_path = clin_history, pg_catalog;
 --
 
 CREATE VIEW vwrecreationaldrugsused AS
-    SELECT recreational_drugs.pk, data_patients.pk AS fk_patient, lu_recreational_drugs.drug, lu_recreational_drugs.alternative_names, lu_route_administration.route, recreational_drugs.fk_consult, recreational_drugs.fk_lu_recreational_drug, recreational_drugs.age_started, recreational_drugs.age_last_used, recreational_drugs.substance_amount, recreational_drugs.fk_lu_substance_amount_units, recreational_drugs.fk_lu_substance_frequency, recreational_drugs.fk_lu_route_administration, recreational_drugs.notes, recreational_drugs.deleted, recreational_drugs.never_used_drug, recreational_drugs.cumulative_amount, recreational_drugs.confidential, recreational_drugs.fk_progressnote, lu_recreational_drugs.quantification, lu_recreational_drugs.illicit, lu_recreational_drugs.default_fk_lu_route_administration, progressnotes.notes AS progress_notes FROM ((((((recreational_drugs JOIN clin_consult.consult ON ((consult.pk = recreational_drugs.fk_consult))) JOIN clerical.data_patients ON ((data_patients.pk = consult.fk_patient))) JOIN common.lu_recreational_drugs ON ((lu_recreational_drugs.pk = recreational_drugs.fk_lu_recreational_drug))) LEFT JOIN clin_consult.progressnotes ON ((progressnotes.pk = recreational_drugs.fk_progressnote))) LEFT JOIN common.lu_route_administration ON ((lu_route_administration.pk = recreational_drugs.fk_lu_route_administration))) LEFT JOIN common.lu_units ON ((lu_units.pk = recreational_drugs.fk_lu_substance_amount_units)));
+ SELECT recreational_drugs.pk,
+    data_patients.pk AS fk_patient,
+    lu_recreational_drugs.drug,
+    lu_recreational_drugs.alternative_names,
+    lu_route_administration.route,
+    recreational_drugs.fk_consult,
+    recreational_drugs.fk_lu_recreational_drug,
+    recreational_drugs.age_started,
+    recreational_drugs.age_last_used,
+    recreational_drugs.substance_amount,
+    recreational_drugs.fk_lu_substance_amount_units,
+    recreational_drugs.fk_lu_substance_frequency,
+    recreational_drugs.fk_lu_route_administration,
+    recreational_drugs.notes,
+    recreational_drugs.deleted,
+    recreational_drugs.never_used_drug,
+    recreational_drugs.cumulative_amount,
+    recreational_drugs.confidential,
+    recreational_drugs.fk_progressnote,
+    lu_recreational_drugs.quantification,
+    lu_recreational_drugs.illicit,
+    lu_recreational_drugs.default_fk_lu_route_administration,
+    progressnotes.notes AS progress_notes
+   FROM ((((((recreational_drugs
+   JOIN clin_consult.consult ON ((consult.pk = recreational_drugs.fk_consult)))
+   JOIN clerical.data_patients ON ((data_patients.pk = consult.fk_patient)))
+   JOIN common.lu_recreational_drugs ON ((lu_recreational_drugs.pk = recreational_drugs.fk_lu_recreational_drug)))
+   LEFT JOIN clin_consult.progressnotes ON ((progressnotes.pk = recreational_drugs.fk_progressnote)))
+   LEFT JOIN common.lu_route_administration ON ((lu_route_administration.pk = recreational_drugs.fk_lu_route_administration)))
+   LEFT JOIN common.lu_units ON ((lu_units.pk = recreational_drugs.fk_lu_substance_amount_units)));
 
 
 ALTER TABLE clin_history.vwrecreationaldrugsused OWNER TO easygp;
@@ -9101,7 +10525,45 @@ ALTER TABLE clin_history.vwrecreationaldrugsused OWNER TO easygp;
 --
 
 CREATE VIEW vwsocialhistory AS
-    SELECT sh.pk AS pk_socialhistory, sh.fk_consult, consult.fk_patient, sh.history, sh.deleted, sh.fk_responsible_person, sh.responsible_person, sh.responsible_person_street1, sh.responsible_person_street2, sh.responsible_person_town, sh.responsible_person_state, sh.responsible_person_postcode, sh.responsible_person_contacts, sh.country_code, sh.do_not_print_confidential_notes, sh.fk_staff_may_view_confidential, sh.restrict_view_to_roles, sh.history_confidential, sh.fk_progressnote, sh.fk_progressnote_confidential, lu_countries.country, sh.responsible_person_notes, vwpersonsincludingpatients.title AS person_responsible_title, vwpersonsincludingpatients.firstname AS person_responsible_firstname, vwpersonsincludingpatients.surname AS person_responsible_surname, vwpersonsincludingpatients.wholename AS person_responsible_wholename, vwpersonsincludingpatients.street1 AS person_responsible_street1, vwpersonsincludingpatients.street2 AS person_responsible_street2, vwpersonsincludingpatients.town AS person_responsible_town, vwpersonsincludingpatients.postcode AS person_responsible_postcode, vwpersonsincludingpatients.state AS person_responsible_state, vwpersonsincludingpatients.fk_town AS patient_fk_town, vwstaff.wholename AS staff_may_view_confidential_wholename FROM ((((social_history sh JOIN clin_consult.consult consult ON ((consult.pk = sh.fk_consult))) LEFT JOIN contacts.vwpersonsincludingpatients ON ((vwpersonsincludingpatients.fk_person = sh.fk_responsible_person))) LEFT JOIN common.lu_countries ON (((lu_countries.country_code)::text = sh.country_code))) LEFT JOIN admin.vwstaff ON ((vwstaff.fk_staff = sh.fk_staff_may_view_confidential))) WHERE (sh.deleted = false);
+ SELECT sh.pk AS pk_socialhistory,
+    sh.fk_consult,
+    consult.fk_patient,
+    sh.history,
+    sh.deleted,
+    sh.fk_responsible_person,
+    sh.responsible_person,
+    sh.responsible_person_street1,
+    sh.responsible_person_street2,
+    sh.responsible_person_town,
+    sh.responsible_person_state,
+    sh.responsible_person_postcode,
+    sh.responsible_person_contacts,
+    sh.country_code,
+    sh.do_not_print_confidential_notes,
+    sh.fk_staff_may_view_confidential,
+    sh.restrict_view_to_roles,
+    sh.history_confidential,
+    sh.fk_progressnote,
+    sh.fk_progressnote_confidential,
+    lu_countries.country,
+    sh.responsible_person_notes,
+    vwpersonsincludingpatients.title AS person_responsible_title,
+    vwpersonsincludingpatients.firstname AS person_responsible_firstname,
+    vwpersonsincludingpatients.surname AS person_responsible_surname,
+    vwpersonsincludingpatients.wholename AS person_responsible_wholename,
+    vwpersonsincludingpatients.street1 AS person_responsible_street1,
+    vwpersonsincludingpatients.street2 AS person_responsible_street2,
+    vwpersonsincludingpatients.town AS person_responsible_town,
+    vwpersonsincludingpatients.postcode AS person_responsible_postcode,
+    vwpersonsincludingpatients.state AS person_responsible_state,
+    vwpersonsincludingpatients.fk_town AS patient_fk_town,
+    vwstaff.wholename AS staff_may_view_confidential_wholename
+   FROM ((((social_history sh
+   JOIN clin_consult.consult consult ON ((consult.pk = sh.fk_consult)))
+   LEFT JOIN contacts.vwpersonsincludingpatients ON ((vwpersonsincludingpatients.fk_person = sh.fk_responsible_person)))
+   LEFT JOIN common.lu_countries ON (((lu_countries.country_code)::text = sh.country_code)))
+   LEFT JOIN admin.vwstaff ON ((vwstaff.fk_staff = sh.fk_staff_may_view_confidential)))
+  WHERE (sh.deleted = false);
 
 
 ALTER TABLE clin_history.vwsocialhistory OWNER TO easygp;
@@ -9127,7 +10589,18 @@ COMMENT ON VIEW vwsocialhistory IS 'Seems odd.. ok. if fk_responsible_person is 
 --
 
 CREATE VIEW vwresponsiblepersons AS
-    SELECT vwpatients.surname, vwpatients.firstname, vwsocialhistory.responsible_person, vwsocialhistory.fk_responsible_person, vwsocialhistory.person_responsible_wholename, vwsocialhistory.history, vwpatients.active_status, vwpatients.age_numeric, vwpatients.deceased FROM vwsocialhistory, contacts.vwpatients WHERE (((((vwsocialhistory.fk_patient = vwpatients.fk_patient) AND (vwpatients.age_numeric < (90)::double precision)) AND (vwpatients.active_status = 'active'::text)) AND (vwpatients.deceased = false)) AND (vwpatients.person_deleted = false));
+ SELECT vwpatients.surname,
+    vwpatients.firstname,
+    vwsocialhistory.responsible_person,
+    vwsocialhistory.fk_responsible_person,
+    vwsocialhistory.person_responsible_wholename,
+    vwsocialhistory.history,
+    vwpatients.active_status,
+    vwpatients.age_numeric,
+    vwpatients.deceased
+   FROM vwsocialhistory,
+    contacts.vwpatients
+  WHERE (((((vwsocialhistory.fk_patient = vwpatients.fk_patient) AND (vwpatients.age_numeric < (90)::double precision)) AND (vwpatients.active_status = 'active'::text)) AND (vwpatients.deceased = false)) AND (vwpatients.person_deleted = false));
 
 
 ALTER TABLE clin_history.vwresponsiblepersons OWNER TO easygp;
@@ -9139,7 +10612,154 @@ SET search_path = contacts, pg_catalog;
 --
 
 CREATE VIEW vworganisationsemployees AS
-    SELECT (((organisations.pk || '-'::text) || branches.pk) || '-0'::text) AS pk_view, clinics.pk AS fk_clinic, organisations.organisation, organisations.deleted AS organisation_deleted, branches.pk AS fk_branch, CASE WHEN (lower(branches.branch) = 'head office'::text) THEN ''::text ELSE branches.branch END AS branch, branches.fk_organisation, branches.deleted AS branch_deleted, branches.fk_address, branches.memo AS branch_memo, NULL::text AS employee_memo, branches.fk_category, categories.category, addresses.street1, addresses.street2, addresses.fk_town, addresses.preferred_address, addresses.postal_address, addresses.head_office, addresses.country_code, addresses.fk_lu_address_type, addresses.deleted AS address_deleted, towns.postcode, towns.town, towns.state, 0 AS fk_employee, ((organisations.organisation || ' '::text) || branches.branch) AS wholename, 0 AS fk_occupation, 0 AS fk_status, NULL::text AS employee_status, false AS employee_deleted, NULL::text AS occupation, 0 AS fk_person, NULL::text AS firstname, 'aaaa'::text AS surname, NULL::text AS salutation, NULL::date AS birthdate, false AS deceased, NULL::date AS date_deceased, false AS retired, 0 AS fk_ethnicity, 0 AS fk_language, 0 AS fk_marital, 0 AS fk_title, 0 AS fk_sex, NULL::text AS sex, NULL::text AS title, NULL::text AS surname_normalised, NULL::text AS provider_number, 0 AS employees_fk_data_numbers, NULL::text AS prescriber_number, NULL::text AS hpii, 0 AS fk_data_numbers_persons, organisations_numbers.australian_business_number, organisations_numbers.hpio, organisations_numbers.pk AS organisations_fk_data_numbers FROM (((((((data_branches branches JOIN data_organisations organisations ON ((branches.fk_organisation = organisations.pk))) JOIN lu_categories categories ON ((branches.fk_category = categories.pk))) LEFT JOIN data_addresses addresses ON ((branches.fk_address = addresses.pk))) LEFT JOIN lu_address_types ON ((addresses.fk_lu_address_type = lu_address_types.pk))) LEFT JOIN lu_towns towns ON ((addresses.fk_town = towns.pk))) LEFT JOIN admin.clinics ON ((branches.pk = clinics.fk_branch))) LEFT JOIN data_numbers organisations_numbers ON (((branches.pk = organisations_numbers.fk_branch) AND (organisations_numbers.fk_person IS NULL)))) UNION SELECT ((((organisations.pk || '-'::text) || branches.pk) || '-'::text) || employees.pk) AS pk_view, clinics.pk AS fk_clinic, organisations.organisation, organisations.deleted AS organisation_deleted, branches.pk AS fk_branch, CASE WHEN (lower(branches.branch) = 'head office'::text) THEN ''::text ELSE branches.branch END AS branch, branches.fk_organisation, branches.deleted AS branch_deleted, branches.fk_address, branches.memo AS branch_memo, employees.memo AS employee_memo, branches.fk_category, categories.category, addresses.street1, addresses.street2, addresses.fk_town, addresses.preferred_address, addresses.postal_address, addresses.head_office, addresses.country_code, addresses.fk_lu_address_type, addresses.deleted AS address_deleted, towns.postcode, towns.town, towns.state, employees.pk AS fk_employee, CASE WHEN (employees.pk > 0) THEN (((title.title || ' '::text) || (persons.firstname || ' '::text)) || persons.surname) ELSE 'Nothing'::text END AS wholename, employees.fk_occupation, employees.fk_status, employee_status.status AS employee_status, employees.deleted AS employee_deleted, occupations.occupation, persons.pk AS fk_person, persons.firstname, persons.surname, persons.salutation, persons.birthdate, persons.deceased, persons.date_deceased, persons.retired, persons.fk_ethnicity, persons.fk_language, persons.fk_marital, persons.fk_title, persons.fk_sex, sex.sex, title.title, persons.surname_normalised, employee_numbers.provider_number, employee_numbers.pk AS employees_fk_data_numbers, data_numbers_persons.prescriber_number, data_numbers_persons.hpii, data_numbers_persons.pk AS fk_data_numbers_persons, organisations_numbers.australian_business_number, organisations_numbers.hpio, organisations_numbers.pk AS organisations_fk_data_numbers FROM (((((((((((((((data_employees employees JOIN data_branches branches ON ((employees.fk_branch = branches.pk))) JOIN lu_categories categories ON ((branches.fk_category = categories.pk))) LEFT JOIN lu_employee_status employee_status ON ((employees.fk_status = employee_status.pk))) JOIN data_organisations organisations ON ((branches.fk_organisation = organisations.pk))) LEFT JOIN data_addresses addresses ON ((branches.fk_address = addresses.pk))) LEFT JOIN lu_address_types ON ((addresses.fk_lu_address_type = lu_address_types.pk))) LEFT JOIN lu_towns towns ON ((addresses.fk_town = towns.pk))) LEFT JOIN common.lu_occupations occupations ON ((employees.fk_occupation = occupations.pk))) LEFT JOIN data_persons persons ON ((employees.fk_person = persons.pk))) LEFT JOIN lu_title title ON ((persons.fk_title = title.pk))) LEFT JOIN lu_sex sex ON ((persons.fk_sex = sex.pk))) LEFT JOIN admin.clinics ON ((branches.pk = clinics.fk_branch))) LEFT JOIN data_numbers employee_numbers ON (((employees.fk_person = employee_numbers.fk_person) AND (branches.pk = employee_numbers.fk_branch)))) LEFT JOIN data_numbers_persons ON ((employees.fk_person = data_numbers_persons.fk_person))) LEFT JOIN data_numbers organisations_numbers ON (((branches.pk = organisations_numbers.fk_branch) AND (organisations_numbers.fk_person IS NULL)))) WHERE (employees.fk_person IS NOT NULL) ORDER BY 7, 5;
+         SELECT (((organisations.pk || '-'::text) || branches.pk) || '-0'::text) AS pk_view,
+            clinics.pk AS fk_clinic,
+            organisations.organisation,
+            organisations.deleted AS organisation_deleted,
+            branches.pk AS fk_branch,
+                CASE
+                    WHEN (lower(branches.branch) = 'head office'::text) THEN ''::text
+                    ELSE branches.branch
+                END AS branch,
+            branches.fk_organisation,
+            branches.deleted AS branch_deleted,
+            branches.fk_address,
+            branches.memo AS branch_memo,
+            NULL::text AS employee_memo,
+            branches.fk_category,
+            categories.category,
+            addresses.street1,
+            addresses.street2,
+            addresses.fk_town,
+            addresses.preferred_address,
+            addresses.postal_address,
+            addresses.head_office,
+            addresses.country_code,
+            addresses.fk_lu_address_type,
+            addresses.deleted AS address_deleted,
+            towns.postcode,
+            towns.town,
+            towns.state,
+            0 AS fk_employee,
+            ((organisations.organisation || ' '::text) || branches.branch) AS wholename,
+            0 AS fk_occupation,
+            0 AS fk_status,
+            NULL::text AS employee_status,
+            false AS employee_deleted,
+            NULL::text AS occupation,
+            0 AS fk_person,
+            NULL::text AS firstname,
+            'aaaa'::text AS surname,
+            NULL::text AS salutation,
+            NULL::date AS birthdate,
+            false AS deceased,
+            NULL::date AS date_deceased,
+            false AS retired,
+            0 AS fk_ethnicity,
+            0 AS fk_language,
+            0 AS fk_marital,
+            0 AS fk_title,
+            0 AS fk_sex,
+            NULL::text AS sex,
+            NULL::text AS title,
+            NULL::text AS surname_normalised,
+            NULL::text AS provider_number,
+            0 AS employees_fk_data_numbers,
+            NULL::text AS prescriber_number,
+            NULL::text AS hpii,
+            0 AS fk_data_numbers_persons,
+            organisations_numbers.australian_business_number,
+            organisations_numbers.hpio,
+            organisations_numbers.pk AS organisations_fk_data_numbers
+           FROM (((((((data_branches branches
+      JOIN data_organisations organisations ON ((branches.fk_organisation = organisations.pk)))
+   JOIN lu_categories categories ON ((branches.fk_category = categories.pk)))
+   LEFT JOIN data_addresses addresses ON ((branches.fk_address = addresses.pk)))
+   LEFT JOIN lu_address_types ON ((addresses.fk_lu_address_type = lu_address_types.pk)))
+   LEFT JOIN lu_towns towns ON ((addresses.fk_town = towns.pk)))
+   LEFT JOIN admin.clinics ON ((branches.pk = clinics.fk_branch)))
+   LEFT JOIN data_numbers organisations_numbers ON (((branches.pk = organisations_numbers.fk_branch) AND (organisations_numbers.fk_person IS NULL))))
+UNION
+         SELECT ((((organisations.pk || '-'::text) || branches.pk) || '-'::text) || employees.pk) AS pk_view,
+            clinics.pk AS fk_clinic,
+            organisations.organisation,
+            organisations.deleted AS organisation_deleted,
+            branches.pk AS fk_branch,
+                CASE
+                    WHEN (lower(branches.branch) = 'head office'::text) THEN ''::text
+                    ELSE branches.branch
+                END AS branch,
+            branches.fk_organisation,
+            branches.deleted AS branch_deleted,
+            branches.fk_address,
+            branches.memo AS branch_memo,
+            employees.memo AS employee_memo,
+            branches.fk_category,
+            categories.category,
+            addresses.street1,
+            addresses.street2,
+            addresses.fk_town,
+            addresses.preferred_address,
+            addresses.postal_address,
+            addresses.head_office,
+            addresses.country_code,
+            addresses.fk_lu_address_type,
+            addresses.deleted AS address_deleted,
+            towns.postcode,
+            towns.town,
+            towns.state,
+            employees.pk AS fk_employee,
+                CASE
+                    WHEN (employees.pk > 0) THEN (((title.title || ' '::text) || (persons.firstname || ' '::text)) || persons.surname)
+                    ELSE 'Nothing'::text
+                END AS wholename,
+            employees.fk_occupation,
+            employees.fk_status,
+            employee_status.status AS employee_status,
+            employees.deleted AS employee_deleted,
+            occupations.occupation,
+            persons.pk AS fk_person,
+            persons.firstname,
+            persons.surname,
+            persons.salutation,
+            persons.birthdate,
+            persons.deceased,
+            persons.date_deceased,
+            persons.retired,
+            persons.fk_ethnicity,
+            persons.fk_language,
+            persons.fk_marital,
+            persons.fk_title,
+            persons.fk_sex,
+            sex.sex,
+            title.title,
+            persons.surname_normalised,
+            employee_numbers.provider_number,
+            employee_numbers.pk AS employees_fk_data_numbers,
+            data_numbers_persons.prescriber_number,
+            data_numbers_persons.hpii,
+            data_numbers_persons.pk AS fk_data_numbers_persons,
+            organisations_numbers.australian_business_number,
+            organisations_numbers.hpio,
+            organisations_numbers.pk AS organisations_fk_data_numbers
+           FROM (((((((((((((((data_employees employees
+      JOIN data_branches branches ON ((employees.fk_branch = branches.pk)))
+   JOIN lu_categories categories ON ((branches.fk_category = categories.pk)))
+   LEFT JOIN lu_employee_status employee_status ON ((employees.fk_status = employee_status.pk)))
+   JOIN data_organisations organisations ON ((branches.fk_organisation = organisations.pk)))
+   LEFT JOIN data_addresses addresses ON ((branches.fk_address = addresses.pk)))
+   LEFT JOIN lu_address_types ON ((addresses.fk_lu_address_type = lu_address_types.pk)))
+   LEFT JOIN lu_towns towns ON ((addresses.fk_town = towns.pk)))
+   LEFT JOIN common.lu_occupations occupations ON ((employees.fk_occupation = occupations.pk)))
+   LEFT JOIN data_persons persons ON ((employees.fk_person = persons.pk)))
+   LEFT JOIN lu_title title ON ((persons.fk_title = title.pk)))
+   LEFT JOIN lu_sex sex ON ((persons.fk_sex = sex.pk)))
+   LEFT JOIN admin.clinics ON ((branches.pk = clinics.fk_branch)))
+   LEFT JOIN data_numbers employee_numbers ON (((employees.fk_person = employee_numbers.fk_person) AND (branches.pk = employee_numbers.fk_branch))))
+   LEFT JOIN data_numbers_persons ON ((employees.fk_person = data_numbers_persons.fk_person)))
+   LEFT JOIN data_numbers organisations_numbers ON (((branches.pk = organisations_numbers.fk_branch) AND (organisations_numbers.fk_person IS NULL))))
+  WHERE (employees.fk_person IS NOT NULL)
+  ORDER BY 7, 5;
 
 
 ALTER TABLE contacts.vworganisationsemployees OWNER TO easygp;
@@ -9163,7 +10783,39 @@ SET search_path = clin_history, pg_catalog;
 --
 
 CREATE VIEW vwteamcaremembers AS
-    SELECT team_care_members.pk, team_care_members.fk_pasthistory, vworganisationsemployees.fk_organisation, vworganisationsemployees.fk_branch, vworganisationsemployees.fk_person, vworganisationsemployees.fk_employee, CASE WHEN (vworganisationsemployees.fk_employee = 0) THEN vworganisationsemployees.branch ELSE (((vworganisationsemployees.title || ' '::text) || (vworganisationsemployees.firstname || ' '::text)) || vworganisationsemployees.surname) END AS wholename, (((vworganisationsemployees.organisation || ' '::text) || (vworganisationsemployees.branch || ' '::text)) || CASE WHEN (vworganisationsemployees.fk_address IS NULL) THEN ''::text ELSE ((((vworganisationsemployees.street1 || ' '::text) || vworganisationsemployees.town) || ' '::text) || (vworganisationsemployees.postcode)::text) END) AS summary, team_care_members.responsibility FROM (team_care_members LEFT JOIN contacts.vworganisationsemployees ON (((team_care_members.fk_branch = vworganisationsemployees.fk_branch) AND (team_care_members.fk_employee = vworganisationsemployees.fk_employee)))) WHERE ((team_care_members.deleted = false) AND (team_care_members.fk_branch > 0)) UNION SELECT team_care_members.pk, team_care_members.fk_pasthistory, NULL::integer AS fk_organisation, NULL::integer AS fk_branch, vwpersonsincludingpatients.fk_person, NULL::integer AS fk_employee, vwpersonsincludingpatients.wholename, ((((vwpersonsincludingpatients.street1 || ' '::text) || vwpersonsincludingpatients.town) || ' '::text) || (vwpersonsincludingpatients.postcode)::text) AS summary, team_care_members.responsibility FROM ((team_care_members JOIN contacts.vwpersonsincludingpatients ON ((team_care_members.fk_person = vwpersonsincludingpatients.fk_person))) LEFT JOIN contacts.vworganisationsemployees ON ((team_care_members.fk_person = vworganisationsemployees.fk_person))) WHERE ((team_care_members.deleted = false) AND (team_care_members.fk_employee = 0));
+         SELECT team_care_members.pk,
+            team_care_members.fk_pasthistory,
+            vworganisationsemployees.fk_organisation,
+            vworganisationsemployees.fk_branch,
+            vworganisationsemployees.fk_person,
+            vworganisationsemployees.fk_employee,
+                CASE
+                    WHEN (vworganisationsemployees.fk_employee = 0) THEN vworganisationsemployees.branch
+                    ELSE (((vworganisationsemployees.title || ' '::text) || (vworganisationsemployees.firstname || ' '::text)) || vworganisationsemployees.surname)
+                END AS wholename,
+            (((vworganisationsemployees.organisation || ' '::text) || (vworganisationsemployees.branch || ' '::text)) ||
+                CASE
+                    WHEN (vworganisationsemployees.fk_address IS NULL) THEN ''::text
+                    ELSE ((((vworganisationsemployees.street1 || ' '::text) || vworganisationsemployees.town) || ' '::text) || (vworganisationsemployees.postcode)::text)
+                END) AS summary,
+            team_care_members.responsibility
+           FROM (team_care_members
+      LEFT JOIN contacts.vworganisationsemployees ON (((team_care_members.fk_branch = vworganisationsemployees.fk_branch) AND (team_care_members.fk_employee = vworganisationsemployees.fk_employee))))
+     WHERE ((team_care_members.deleted = false) AND (team_care_members.fk_branch > 0))
+UNION
+         SELECT team_care_members.pk,
+            team_care_members.fk_pasthistory,
+            NULL::integer AS fk_organisation,
+            NULL::integer AS fk_branch,
+            vwpersonsincludingpatients.fk_person,
+            NULL::integer AS fk_employee,
+            vwpersonsincludingpatients.wholename,
+            ((((vwpersonsincludingpatients.street1 || ' '::text) || vwpersonsincludingpatients.town) || ' '::text) || (vwpersonsincludingpatients.postcode)::text) AS summary,
+            team_care_members.responsibility
+           FROM ((team_care_members
+      JOIN contacts.vwpersonsincludingpatients ON ((team_care_members.fk_person = vwpersonsincludingpatients.fk_person)))
+   LEFT JOIN contacts.vworganisationsemployees ON ((team_care_members.fk_person = vworganisationsemployees.fk_person)))
+  WHERE ((team_care_members.deleted = false) AND (team_care_members.fk_employee = 0));
 
 
 ALTER TABLE clin_history.vwteamcaremembers OWNER TO easygp;
@@ -9655,7 +11307,31 @@ ALTER SEQUENCE patients_defaults_pk_seq OWNED BY patients_defaults.pk;
 --
 
 CREATE VIEW vwmeasurements AS
-    SELECT consult.fk_patient, consult.consult_date, measurements.fk_consult, measurements.time_noted, lu_type.name_abbreviated AS type, lu_type.name_full, measurements.pk AS pk_measurement, measurements.measurement, consult.fk_staff, measurements.comment, measurements.fk_type, lu_staff_roles.role, data_persons.firstname, data_persons.surname, lu_title.title, measurements.deleted FROM ((((((measurements JOIN lu_type ON ((measurements.fk_type = lu_type.pk))) JOIN clin_consult.consult ON ((measurements.fk_consult = consult.pk))) JOIN admin.staff ON ((consult.fk_staff = staff.pk))) LEFT JOIN admin.lu_staff_roles ON ((staff.fk_role = lu_staff_roles.pk))) LEFT JOIN contacts.data_persons ON ((staff.fk_person = data_persons.pk))) LEFT JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk))) WHERE (measurements.deleted = false) ORDER BY consult.fk_patient, lu_type.name_abbreviated, consult.consult_date, measurements.time_noted;
+ SELECT consult.fk_patient,
+    consult.consult_date,
+    measurements.fk_consult,
+    measurements.time_noted,
+    lu_type.name_abbreviated AS type,
+    lu_type.name_full,
+    measurements.pk AS pk_measurement,
+    measurements.measurement,
+    consult.fk_staff,
+    measurements.comment,
+    measurements.fk_type,
+    lu_staff_roles.role,
+    data_persons.firstname,
+    data_persons.surname,
+    lu_title.title,
+    measurements.deleted
+   FROM ((((((measurements
+   JOIN lu_type ON ((measurements.fk_type = lu_type.pk)))
+   JOIN clin_consult.consult ON ((measurements.fk_consult = consult.pk)))
+   JOIN admin.staff ON ((consult.fk_staff = staff.pk)))
+   LEFT JOIN admin.lu_staff_roles ON ((staff.fk_role = lu_staff_roles.pk)))
+   LEFT JOIN contacts.data_persons ON ((staff.fk_person = data_persons.pk)))
+   LEFT JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk)))
+  WHERE (measurements.deleted = false)
+  ORDER BY consult.fk_patient, lu_type.name_abbreviated, consult.consult_date, measurements.time_noted;
 
 
 ALTER TABLE clin_measurements.vwmeasurements OWNER TO easygp;
@@ -9665,7 +11341,12 @@ ALTER TABLE clin_measurements.vwmeasurements OWNER TO easygp;
 --
 
 CREATE VIEW vwbpmostrecent AS
-    SELECT DISTINCT ON (vwmeasurements.fk_patient) vwmeasurements.fk_patient AS pk_view, vwmeasurements.consult_date, vwmeasurements.measurement FROM vwmeasurements WHERE ((vwmeasurements.deleted = false) AND (vwmeasurements.fk_type = 1)) ORDER BY vwmeasurements.fk_patient, vwmeasurements.consult_date DESC;
+ SELECT DISTINCT ON (vwmeasurements.fk_patient) vwmeasurements.fk_patient AS pk_view,
+    vwmeasurements.consult_date,
+    vwmeasurements.measurement
+   FROM vwmeasurements
+  WHERE ((vwmeasurements.deleted = false) AND (vwmeasurements.fk_type = 1))
+  ORDER BY vwmeasurements.fk_patient, vwmeasurements.consult_date DESC;
 
 
 ALTER TABLE clin_measurements.vwbpmostrecent OWNER TO easygp;
@@ -9682,7 +11363,12 @@ COMMENT ON VIEW vwbpmostrecent IS ' the latest BP measurement for all patients, 
 --
 
 CREATE VIEW vwheightmostrecent AS
-    SELECT DISTINCT ON (vwmeasurements.fk_patient) vwmeasurements.fk_patient AS pk_view, vwmeasurements.consult_date, vwmeasurements.measurement FROM vwmeasurements WHERE ((vwmeasurements.deleted = false) AND (vwmeasurements.fk_type = 4)) ORDER BY vwmeasurements.fk_patient, vwmeasurements.consult_date DESC;
+ SELECT DISTINCT ON (vwmeasurements.fk_patient) vwmeasurements.fk_patient AS pk_view,
+    vwmeasurements.consult_date,
+    vwmeasurements.measurement
+   FROM vwmeasurements
+  WHERE ((vwmeasurements.deleted = false) AND (vwmeasurements.fk_type = 4))
+  ORDER BY vwmeasurements.fk_patient, vwmeasurements.consult_date DESC;
 
 
 ALTER TABLE clin_measurements.vwheightmostrecent OWNER TO easygp;
@@ -9764,7 +11450,19 @@ SET search_path = clin_measurements, pg_catalog;
 --
 
 CREATE VIEW vwinrmanagement AS
-    SELECT observations.pk, observations.value, observations.abnormal, observations.observation_date AS date_inr, inr_dose_management.dose_advised, inr_dose_management.date_recheck, inr_dose_management.last_dose, consult.fk_patient FROM inr_dose_management, documents.observations, clin_consult.consult WHERE (((inr_dose_management.fk_observation = observations.pk) AND (inr_dose_management.fk_consult = consult.pk)) AND (observations.loinc = '6301-6'::text)) ORDER BY consult.fk_patient;
+ SELECT observations.pk,
+    observations.value,
+    observations.abnormal,
+    observations.observation_date AS date_inr,
+    inr_dose_management.dose_advised,
+    inr_dose_management.date_recheck,
+    inr_dose_management.last_dose,
+    consult.fk_patient
+   FROM inr_dose_management,
+    documents.observations,
+    clin_consult.consult
+  WHERE (((inr_dose_management.fk_observation = observations.pk) AND (inr_dose_management.fk_consult = consult.pk)) AND (observations.loinc = '6301-6'::text))
+  ORDER BY consult.fk_patient;
 
 
 ALTER TABLE clin_measurements.vwinrmanagement OWNER TO easygp;
@@ -9781,7 +11479,26 @@ COMMENT ON VIEW vwinrmanagement IS 'a view containing all the patients INR''s an
 --
 
 CREATE VIEW vwinrplans AS
-    SELECT consult.fk_patient, consult.fk_staff, inr_plan.pk, inr_plan.fk_lu_reason_anticoagulant_use, lu_reason_anticoagulant_use.reason, lu_reason_anticoagulant_use.fk_code, inr_plan.fk_progressnote, inr_plan.inr_target_range, inr_plan.comment, inr_plan.use_lab_hl7, inr_plan.date_plan_created, inr_plan.fk_consult, consult.consult_date, consult1.consult_date AS progress_note_date FROM clin_consult.consult, inr_plan, clin_consult.consult consult1, clin_consult.progressnotes, lu_reason_anticoagulant_use WHERE ((((inr_plan.fk_consult = consult.pk) AND (inr_plan.fk_progressnote = progressnotes.pk)) AND (inr_plan.fk_lu_reason_anticoagulant_use = lu_reason_anticoagulant_use.pk)) AND (progressnotes.fk_consult = consult1.pk));
+ SELECT consult.fk_patient,
+    consult.fk_staff,
+    inr_plan.pk,
+    inr_plan.fk_lu_reason_anticoagulant_use,
+    lu_reason_anticoagulant_use.reason,
+    lu_reason_anticoagulant_use.fk_code,
+    inr_plan.fk_progressnote,
+    inr_plan.inr_target_range,
+    inr_plan.comment,
+    inr_plan.use_lab_hl7,
+    inr_plan.date_plan_created,
+    inr_plan.fk_consult,
+    consult.consult_date,
+    consult1.consult_date AS progress_note_date
+   FROM clin_consult.consult,
+    inr_plan,
+    clin_consult.consult consult1,
+    clin_consult.progressnotes,
+    lu_reason_anticoagulant_use
+  WHERE ((((inr_plan.fk_consult = consult.pk) AND (inr_plan.fk_progressnote = progressnotes.pk)) AND (inr_plan.fk_lu_reason_anticoagulant_use = lu_reason_anticoagulant_use.pk)) AND (progressnotes.fk_consult = consult1.pk));
 
 
 ALTER TABLE clin_measurements.vwinrplans OWNER TO easygp;
@@ -9933,7 +11650,18 @@ SET search_path = clin_measurements, pg_catalog;
 --
 
 CREATE VIEW vwlabinrs AS
-    SELECT documents.pk, documents.source_file, documents.fk_patient, observations.loinc, observations.value, observations.abnormal, observations.observation_date, observations.pk AS fk_observation FROM documents.documents, documents.observations WHERE (((documents.pk = observations.fk_document) AND (observations.loinc = '6301-6'::text)) AND (documents.source_file IS NOT NULL)) ORDER BY documents.fk_patient;
+ SELECT documents.pk,
+    documents.source_file,
+    documents.fk_patient,
+    observations.loinc,
+    observations.value,
+    observations.abnormal,
+    observations.observation_date,
+    observations.pk AS fk_observation
+   FROM documents.documents,
+    documents.observations
+  WHERE (((documents.pk = observations.fk_document) AND (observations.loinc = '6301-6'::text)) AND (documents.source_file IS NOT NULL))
+  ORDER BY documents.fk_patient;
 
 
 ALTER TABLE clin_measurements.vwlabinrs OWNER TO easygp;
@@ -9943,7 +11671,23 @@ ALTER TABLE clin_measurements.vwlabinrs OWNER TO easygp;
 --
 
 CREATE VIEW vwmeasurementtypes AS
-    SELECT lu_units.full_text, lu_units.abbrev_text, lu_type.pk, lu_type.name_abbreviated, lu_type.code, lu_type.name_full, lu_type.input_key_restriction, lu_type.input_mask, lu_type.fk_unit, lu_type.unit_qualifier, lu_type.upper_limit, lu_type.lower_limit, lu_type.fk_decision_support, lu_type.fk_plotting_method FROM (lu_type JOIN common.lu_units ON ((lu_type.fk_unit = lu_units.pk))) ORDER BY lu_type.name_full;
+ SELECT lu_units.full_text,
+    lu_units.abbrev_text,
+    lu_type.pk,
+    lu_type.name_abbreviated,
+    lu_type.code,
+    lu_type.name_full,
+    lu_type.input_key_restriction,
+    lu_type.input_mask,
+    lu_type.fk_unit,
+    lu_type.unit_qualifier,
+    lu_type.upper_limit,
+    lu_type.lower_limit,
+    lu_type.fk_decision_support,
+    lu_type.fk_plotting_method
+   FROM (lu_type
+   JOIN common.lu_units ON ((lu_type.fk_unit = lu_units.pk)))
+  ORDER BY lu_type.name_full;
 
 
 ALTER TABLE clin_measurements.vwmeasurementtypes OWNER TO easygp;
@@ -9953,7 +11697,26 @@ ALTER TABLE clin_measurements.vwmeasurementtypes OWNER TO easygp;
 --
 
 CREATE VIEW vwpatientsdefaults AS
-    SELECT patients_defaults.fk_patient, patients_defaults.pk AS pk_patients_defaults, patients_defaults.fk_lu_type, lu_type.name_abbreviated, lu_type.code, lu_type.input_key_restriction, lu_type.name_full, lu_type.input_mask, lu_type.fk_unit, lu_type.unit_qualifier, lu_type.upper_limit, lu_type.lower_limit, lu_type.fk_decision_support, lu_type.fk_plotting_method, lu_units.full_text, lu_units.abbrev_text FROM ((patients_defaults JOIN lu_type ON ((patients_defaults.fk_lu_type = lu_type.pk))) LEFT JOIN common.lu_units ON ((lu_type.fk_unit = lu_units.pk))) ORDER BY patients_defaults.fk_patient;
+ SELECT patients_defaults.fk_patient,
+    patients_defaults.pk AS pk_patients_defaults,
+    patients_defaults.fk_lu_type,
+    lu_type.name_abbreviated,
+    lu_type.code,
+    lu_type.input_key_restriction,
+    lu_type.name_full,
+    lu_type.input_mask,
+    lu_type.fk_unit,
+    lu_type.unit_qualifier,
+    lu_type.upper_limit,
+    lu_type.lower_limit,
+    lu_type.fk_decision_support,
+    lu_type.fk_plotting_method,
+    lu_units.full_text,
+    lu_units.abbrev_text
+   FROM ((patients_defaults
+   JOIN lu_type ON ((patients_defaults.fk_lu_type = lu_type.pk)))
+   LEFT JOIN common.lu_units ON ((lu_type.fk_unit = lu_units.pk)))
+  ORDER BY patients_defaults.fk_patient;
 
 
 ALTER TABLE clin_measurements.vwpatientsdefaults OWNER TO easygp;
@@ -9963,7 +11726,12 @@ ALTER TABLE clin_measurements.vwpatientsdefaults OWNER TO easygp;
 --
 
 CREATE VIEW vwweightmostrecent AS
-    SELECT DISTINCT ON (vwmeasurements.fk_patient) vwmeasurements.fk_patient AS pk_view, vwmeasurements.consult_date, vwmeasurements.measurement FROM vwmeasurements WHERE ((vwmeasurements.deleted = false) AND (vwmeasurements.fk_type = 2)) ORDER BY vwmeasurements.fk_patient, vwmeasurements.consult_date DESC;
+ SELECT DISTINCT ON (vwmeasurements.fk_patient) vwmeasurements.fk_patient AS pk_view,
+    vwmeasurements.consult_date,
+    vwmeasurements.measurement
+   FROM vwmeasurements
+  WHERE ((vwmeasurements.deleted = false) AND (vwmeasurements.fk_type = 2))
+  ORDER BY vwmeasurements.fk_patient, vwmeasurements.consult_date DESC;
 
 
 ALTER TABLE clin_measurements.vwweightmostrecent OWNER TO easygp;
@@ -10404,7 +12172,15 @@ ALTER SEQUENCE team_care_members_pk_seq OWNED BY team_care_members.pk;
 --
 
 CREATE VIEW vwk10results AS
-    SELECT k10_results.pk, k10_results.fk_plan, k10_results.fk_lu_k10_component, k10_results.score, lu_k10_components.component FROM k10_results, lu_k10_components WHERE (k10_results.fk_lu_k10_component = lu_k10_components.pk) ORDER BY k10_results.fk_plan;
+ SELECT k10_results.pk,
+    k10_results.fk_plan,
+    k10_results.fk_lu_k10_component,
+    k10_results.score,
+    lu_k10_components.component
+   FROM k10_results,
+    lu_k10_components
+  WHERE (k10_results.fk_lu_k10_component = lu_k10_components.pk)
+  ORDER BY k10_results.fk_plan;
 
 
 ALTER TABLE clin_mentalhealth.vwk10results OWNER TO easygp;
@@ -10414,7 +12190,45 @@ ALTER TABLE clin_mentalhealth.vwk10results OWNER TO easygp;
 --
 
 CREATE VIEW vwmentalhealthplans AS
-    SELECT mentalhealth_plan.pk AS pk_mentalhealth_plan, consult.fk_patient, consult.fk_staff, consult.consult_date AS plan_date, mentalhealth_plan.fk_consult, mentalhealth_plan.fk_pasthistory, mentalhealth_plan.diagnosis, mentalhealth_plan.fk_coding_system, mentalhealth_plan.fk_progressnote, lu_systems.system, (SELECT DISTINCT generic_terms.term FROM coding.generic_terms WHERE (mentalhealth_plan.fk_code = generic_terms.code)) AS coded_term, mentalhealth_plan.fk_code, mentalhealth_plan.presenting_problems, mentalhealth_plan.bio_psycho_social, mentalhealth_plan.mental_state_examination, mentalhealth_plan.fk_lu_risk_to_others, lu_risk_to_others.risk, mentalhealth_plan.fk_stress_assessment, mentalhealth_plan.relapse_plan, mentalhealth_plan.risk_harm_comments, mentalhealth_plan.goals, mentalhealth_plan.treatment_referrrals, mentalhealth_plan.review_date, mentalhealth_plan.html, mentalhealth_plan.fk_lu_plan_type, lu_plan_type.type, mentalhealth_plan.deleted, vwstaff.wholename, vwstaff.title FROM ((((((mentalhealth_plan JOIN clin_consult.consult ON ((mentalhealth_plan.fk_consult = consult.pk))) JOIN lu_plan_type ON ((mentalhealth_plan.fk_lu_plan_type = lu_plan_type.pk))) LEFT JOIN clin_history.past_history ON ((mentalhealth_plan.fk_pasthistory = past_history.pk))) JOIN coding.lu_systems ON ((mentalhealth_plan.fk_coding_system = lu_systems.pk))) LEFT JOIN lu_risk_to_others ON ((mentalhealth_plan.fk_lu_risk_to_others = lu_risk_to_others.pk))) JOIN admin.vwstaff ON ((consult.fk_staff = vwstaff.fk_staff))) WHERE (NOT mentalhealth_plan.deleted);
+ SELECT mentalhealth_plan.pk AS pk_mentalhealth_plan,
+    consult.fk_patient,
+    consult.fk_staff,
+    consult.consult_date AS plan_date,
+    mentalhealth_plan.fk_consult,
+    mentalhealth_plan.fk_pasthistory,
+    mentalhealth_plan.diagnosis,
+    mentalhealth_plan.fk_coding_system,
+    mentalhealth_plan.fk_progressnote,
+    lu_systems.system,
+    ( SELECT DISTINCT generic_terms.term
+           FROM coding.generic_terms
+          WHERE (mentalhealth_plan.fk_code = generic_terms.code)) AS coded_term,
+    mentalhealth_plan.fk_code,
+    mentalhealth_plan.presenting_problems,
+    mentalhealth_plan.bio_psycho_social,
+    mentalhealth_plan.mental_state_examination,
+    mentalhealth_plan.fk_lu_risk_to_others,
+    lu_risk_to_others.risk,
+    mentalhealth_plan.fk_stress_assessment,
+    mentalhealth_plan.relapse_plan,
+    mentalhealth_plan.risk_harm_comments,
+    mentalhealth_plan.goals,
+    mentalhealth_plan.treatment_referrrals,
+    mentalhealth_plan.review_date,
+    mentalhealth_plan.html,
+    mentalhealth_plan.fk_lu_plan_type,
+    lu_plan_type.type,
+    mentalhealth_plan.deleted,
+    vwstaff.wholename,
+    vwstaff.title
+   FROM ((((((mentalhealth_plan
+   JOIN clin_consult.consult ON ((mentalhealth_plan.fk_consult = consult.pk)))
+   JOIN lu_plan_type ON ((mentalhealth_plan.fk_lu_plan_type = lu_plan_type.pk)))
+   LEFT JOIN clin_history.past_history ON ((mentalhealth_plan.fk_pasthistory = past_history.pk)))
+   JOIN coding.lu_systems ON ((mentalhealth_plan.fk_coding_system = lu_systems.pk)))
+   LEFT JOIN lu_risk_to_others ON ((mentalhealth_plan.fk_lu_risk_to_others = lu_risk_to_others.pk)))
+   JOIN admin.vwstaff ON ((consult.fk_staff = vwstaff.fk_staff)))
+  WHERE (NOT mentalhealth_plan.deleted);
 
 
 ALTER TABLE clin_mentalhealth.vwmentalhealthplans OWNER TO easygp;
@@ -10424,7 +12238,39 @@ ALTER TABLE clin_mentalhealth.vwmentalhealthplans OWNER TO easygp;
 --
 
 CREATE VIEW vwteamcaremembers AS
-    SELECT team_care_members.pk, team_care_members.fk_plan, team_care_members.fk_employee, vworganisationsemployees.fk_organisation, vworganisationsemployees.fk_branch, vworganisationsemployees.fk_person, CASE WHEN (vworganisationsemployees.fk_employee = 0) THEN vworganisationsemployees.branch ELSE (((vworganisationsemployees.title || ' '::text) || (vworganisationsemployees.firstname || ' '::text)) || vworganisationsemployees.surname) END AS wholename, (((vworganisationsemployees.organisation || ' '::text) || (vworganisationsemployees.branch || ' '::text)) || CASE WHEN (vworganisationsemployees.fk_address IS NULL) THEN ''::text ELSE ((((vworganisationsemployees.street1 || ' '::text) || vworganisationsemployees.town) || ' '::text) || (vworganisationsemployees.postcode)::text) END) AS summary, team_care_members.responsibility FROM (team_care_members LEFT JOIN contacts.vworganisationsemployees ON (((team_care_members.fk_branch = vworganisationsemployees.fk_branch) AND (team_care_members.fk_employee = vworganisationsemployees.fk_employee)))) WHERE ((team_care_members.deleted = false) AND (team_care_members.fk_branch > 0)) UNION SELECT team_care_members.pk, team_care_members.fk_plan, team_care_members.fk_employee, NULL::integer AS fk_organisation, NULL::integer AS fk_branch, vwpersonsincludingpatients.fk_person, vwpersonsincludingpatients.wholename, ((((vwpersonsincludingpatients.street1 || ' '::text) || vwpersonsincludingpatients.town) || ' '::text) || (vwpersonsincludingpatients.postcode)::text) AS summary, team_care_members.responsibility FROM ((team_care_members JOIN contacts.vwpersonsincludingpatients ON ((team_care_members.fk_person = vwpersonsincludingpatients.fk_person))) LEFT JOIN contacts.vworganisationsemployees ON ((team_care_members.fk_person = vworganisationsemployees.fk_person))) WHERE ((team_care_members.deleted = false) AND (team_care_members.fk_employee IS NULL));
+         SELECT team_care_members.pk,
+            team_care_members.fk_plan,
+            team_care_members.fk_employee,
+            vworganisationsemployees.fk_organisation,
+            vworganisationsemployees.fk_branch,
+            vworganisationsemployees.fk_person,
+                CASE
+                    WHEN (vworganisationsemployees.fk_employee = 0) THEN vworganisationsemployees.branch
+                    ELSE (((vworganisationsemployees.title || ' '::text) || (vworganisationsemployees.firstname || ' '::text)) || vworganisationsemployees.surname)
+                END AS wholename,
+            (((vworganisationsemployees.organisation || ' '::text) || (vworganisationsemployees.branch || ' '::text)) ||
+                CASE
+                    WHEN (vworganisationsemployees.fk_address IS NULL) THEN ''::text
+                    ELSE ((((vworganisationsemployees.street1 || ' '::text) || vworganisationsemployees.town) || ' '::text) || (vworganisationsemployees.postcode)::text)
+                END) AS summary,
+            team_care_members.responsibility
+           FROM (team_care_members
+      LEFT JOIN contacts.vworganisationsemployees ON (((team_care_members.fk_branch = vworganisationsemployees.fk_branch) AND (team_care_members.fk_employee = vworganisationsemployees.fk_employee))))
+     WHERE ((team_care_members.deleted = false) AND (team_care_members.fk_branch > 0))
+UNION
+         SELECT team_care_members.pk,
+            team_care_members.fk_plan,
+            team_care_members.fk_employee,
+            NULL::integer AS fk_organisation,
+            NULL::integer AS fk_branch,
+            vwpersonsincludingpatients.fk_person,
+            vwpersonsincludingpatients.wholename,
+            ((((vwpersonsincludingpatients.street1 || ' '::text) || vwpersonsincludingpatients.town) || ' '::text) || (vwpersonsincludingpatients.postcode)::text) AS summary,
+            team_care_members.responsibility
+           FROM ((team_care_members
+      JOIN contacts.vwpersonsincludingpatients ON ((team_care_members.fk_person = vwpersonsincludingpatients.fk_person)))
+   LEFT JOIN contacts.vworganisationsemployees ON ((team_care_members.fk_person = vworganisationsemployees.fk_person)))
+  WHERE ((team_care_members.deleted = false) AND (team_care_members.fk_employee IS NULL));
 
 
 ALTER TABLE clin_mentalhealth.vwteamcaremembers OWNER TO easygp;
@@ -10730,6 +12576,39 @@ ALTER SEQUENCE lu_ante_natal_diagnosis_pk_seq OWNED BY lu_ante_natal_diagnosis.p
 
 
 --
+-- Name: lu_contraception_methods; Type: TABLE; Schema: clin_pregnancy; Owner: easygp; Tablespace: 
+--
+
+CREATE TABLE lu_contraception_methods (
+    pk integer NOT NULL,
+    method text NOT NULL
+);
+
+
+ALTER TABLE clin_pregnancy.lu_contraception_methods OWNER TO easygp;
+
+--
+-- Name: lu_contraception_methods_pk_seq; Type: SEQUENCE; Schema: clin_pregnancy; Owner: easygp
+--
+
+CREATE SEQUENCE lu_contraception_methods_pk_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE clin_pregnancy.lu_contraception_methods_pk_seq OWNER TO easygp;
+
+--
+-- Name: lu_contraception_methods_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_pregnancy; Owner: easygp
+--
+
+ALTER SEQUENCE lu_contraception_methods_pk_seq OWNED BY lu_contraception_methods.pk;
+
+
+--
 -- Name: lu_delivery_types; Type: TABLE; Schema: clin_pregnancy; Owner: easygp; Tablespace: 
 --
 
@@ -10929,7 +12808,13 @@ CREATE TABLE pregnancies (
     prenatal_diagnosis_amniocentesis boolean DEFAULT false,
     prenatal_diagnosis_cvs boolean DEFAULT false,
     deleted boolean DEFAULT false,
-    booking_antibody_screen boolean DEFAULT false
+    booking_antibody_screen boolean DEFAULT false,
+    fk_lu_placenta_position integer,
+    risk_factors_past_history text,
+    risk_factors_obstetric text,
+    reason_caesarian_section text,
+    fk_lu_contraception_method integer,
+    contraception_method_notes text
 );
 
 
@@ -11143,6 +13028,35 @@ COMMENT ON COLUMN pregnancies.booking_antibody_screen IS 'True if positive , Fal
 
 
 --
+-- Name: COLUMN pregnancies.fk_lu_placenta_position; Type: COMMENT; Schema: clin_pregnancy; Owner: easygp
+--
+
+COMMENT ON COLUMN pregnancies.fk_lu_placenta_position IS '
+if not null key to clin_pregnancy.lu_placenta_position';
+
+
+--
+-- Name: COLUMN pregnancies.risk_factors_past_history; Type: COMMENT; Schema: clin_pregnancy; Owner: easygp
+--
+
+COMMENT ON COLUMN pregnancies.risk_factors_past_history IS 'any past medical history which could be a risk factor for the pregnancy';
+
+
+--
+-- Name: COLUMN pregnancies.risk_factors_obstetric; Type: COMMENT; Schema: clin_pregnancy; Owner: easygp
+--
+
+COMMENT ON COLUMN pregnancies.risk_factors_obstetric IS 'any obstetric risk factors noted from a previous pregnancy or gynaecological history';
+
+
+--
+-- Name: COLUMN pregnancies.reason_caesarian_section; Type: COMMENT; Schema: clin_pregnancy; Owner: easygp
+--
+
+COMMENT ON COLUMN pregnancies.reason_caesarian_section IS 'if a caesar was done - the indication';
+
+
+--
 -- Name: pregnancies_pk_seq; Type: SEQUENCE; Schema: clin_pregnancy; Owner: easygp
 --
 
@@ -11233,7 +13147,33 @@ ALTER SEQUENCE scans_pk_seq OWNED BY scans.pk;
 --
 
 CREATE VIEW vwantenatal_visits AS
-    SELECT ante_natal_visits.pk AS pk_antenatal_visit, lu_presentations.presentation, ante_natal_visits.fk_consult, consult.fk_patient, ante_natal_visits.fk_pregnancy, ante_natal_visits.visit_date, ante_natal_visits.duration_weeks, ante_natal_visits.fundal_height, ante_natal_visits.fk_lu_presentation, ante_natal_visits.foetal_heart_heard, ante_natal_visits.urinalysis, ante_natal_visits.bloodpressure, ante_natal_visits.weight, ante_natal_visits.foetal_movements_felt, ante_natal_visits.notes, ante_natal_visits.foetal_heart_rate, ante_natal_visits.fk_progressnote, ante_natal_visits.deleted, progressnotes.notes AS progress_notes, pregnancies.edc, pregnancies.edc_revised FROM ante_natal_visits, lu_presentations, clin_consult.consult, pregnancies, clin_consult.progressnotes WHERE ((((ante_natal_visits.fk_lu_presentation = lu_presentations.pk) AND (ante_natal_visits.fk_consult = consult.pk)) AND (ante_natal_visits.fk_pregnancy = pregnancies.pk)) AND (ante_natal_visits.fk_progressnote = progressnotes.pk));
+ SELECT ante_natal_visits.pk AS pk_antenatal_visit,
+    lu_presentations.presentation,
+    ante_natal_visits.fk_consult,
+    consult.fk_patient,
+    ante_natal_visits.fk_pregnancy,
+    ante_natal_visits.visit_date,
+    ante_natal_visits.duration_weeks,
+    ante_natal_visits.fundal_height,
+    ante_natal_visits.fk_lu_presentation,
+    ante_natal_visits.foetal_heart_heard,
+    ante_natal_visits.urinalysis,
+    ante_natal_visits.bloodpressure,
+    ante_natal_visits.weight,
+    ante_natal_visits.foetal_movements_felt,
+    ante_natal_visits.notes,
+    ante_natal_visits.foetal_heart_rate,
+    ante_natal_visits.fk_progressnote,
+    ante_natal_visits.deleted,
+    progressnotes.notes AS progress_notes,
+    pregnancies.edc,
+    pregnancies.edc_revised
+   FROM ante_natal_visits,
+    lu_presentations,
+    clin_consult.consult,
+    pregnancies,
+    clin_consult.progressnotes
+  WHERE ((((ante_natal_visits.fk_lu_presentation = lu_presentations.pk) AND (ante_natal_visits.fk_consult = consult.pk)) AND (ante_natal_visits.fk_pregnancy = pregnancies.pk)) AND (ante_natal_visits.fk_progressnote = progressnotes.pk));
 
 
 ALTER TABLE clin_pregnancy.vwantenatal_visits OWNER TO easygp;
@@ -11271,7 +13211,96 @@ SET search_path = clin_pregnancy, pg_catalog;
 --
 
 CREATE VIEW vwpregnancies AS
-    SELECT consult.fk_patient, pregnancies.pk AS fk_pregnancy, pregnancies.pk, pregnancies.fk_consult, pregnancies.lmp, pregnancies.edc, pregnancies.edc_revised, pregnancies.edc_revised_reason, pregnancies.date_gtt, pregnancies.gtt_result, pregnancies.notes, pregnancies.gestation, pregnancies.nuchal_fold_scan_date, pregnancies.morphology_scan_date, pregnancies.last_presentation, pregnancies.risk_factor_smoking, pregnancies.risk_factor_smoking_details, pregnancies.risk_factor_alcohol, pregnancies.risk_factor_alcohol_details, pregnancies.risk_factor_drugs, pregnancies.risk_factor_drugs_details, pregnancies.risk_factor_social, pregnancies.risk_factor_social_details, pregnancies.risk_factor_mental_health, pregnancies.risk_factor_mental_health_details, pregnancies.age_at_delivery, pregnancies.date_delivery, pregnancies.gestation_at_delivery, pregnancies.fk_lu_onset_labour, pregnancies.labour_hours, pregnancies.fk_lu_delivery_type, pregnancies.complications, pregnancies.fk_lu_sex, pregnancies.birthweight, pregnancies.baby_name, pregnancies.puerperium, pregnancies.morphology_scan_abnormal, pregnancies.nuchal_fold_abnormal, pregnancies.fk_progressnote, pregnancies.breast_fed, pregnancies.breast_fed_duration, pregnancies.contraception, pregnancies.anti_d_28w_date, pregnancies.anti_d_28w_given, pregnancies.anti_d_34w_date, pregnancies.anti_d_34w_given, pregnancies.morphology_scan_foetal_size, pregnancies.morphology_scan_weeks, pregnancies.fk_lu_blood_group, pregnancies.fk_lu_rhesus_group, pregnancies.booking_haemoglobin, pregnancies.syphilus, pregnancies.rubella, pregnancies.rubella_titre, pregnancies.hepatitis_b, pregnancies.hepatitis_c, pregnancies.booking_msu, pregnancies.group_b_strep_swabs, pregnancies.booking_antibody_screen, pregnancies.repeat_antibody_screen_34_37wk, pregnancies.hiv, pregnancies.varicella, pregnancies.rh_antibody_screen_28w, pregnancies.prenatal_diagnosis_amniocentesis, pregnancies.prenatal_diagnosis_cvs, pregnancies.deleted, lu_delivery_types.type AS delivery_type, lu_onset_labour.type AS onset_labour_type, lu_sex.sex_text AS baby_sex, lu_blood_group.abo_group, lu_rhesus_group.rhesus_group, vwprogressnotes.notes AS progress_notes, vwprogressnotes.consult_date AS progress_notes_date FROM (((((((pregnancies JOIN clin_consult.consult ON ((pregnancies.fk_consult = consult.pk))) JOIN clin_consult.vwprogressnotes ON ((pregnancies.fk_progressnote = vwprogressnotes.pk_progressnote))) LEFT JOIN lu_onset_labour ON ((pregnancies.fk_lu_onset_labour = lu_onset_labour.pk))) LEFT JOIN lu_delivery_types ON ((pregnancies.fk_lu_delivery_type = lu_delivery_types.pk))) LEFT JOIN common.lu_blood_group ON ((pregnancies.fk_lu_blood_group = lu_blood_group.pk))) LEFT JOIN common.lu_rhesus_group ON ((pregnancies.fk_lu_rhesus_group = lu_rhesus_group.pk))) LEFT JOIN contacts.lu_sex ON ((pregnancies.fk_lu_sex = lu_sex.pk)));
+ SELECT consult.fk_patient,
+    pregnancies.pk AS fk_pregnancy,
+    pregnancies.pk,
+    pregnancies.fk_consult,
+    pregnancies.lmp,
+    pregnancies.edc,
+    pregnancies.edc_revised,
+    pregnancies.edc_revised_reason,
+    pregnancies.date_gtt,
+    pregnancies.gtt_result,
+    pregnancies.notes,
+    pregnancies.gestation,
+    pregnancies.nuchal_fold_scan_date,
+    pregnancies.morphology_scan_date,
+    pregnancies.last_presentation,
+    pregnancies.risk_factor_smoking,
+    pregnancies.risk_factor_smoking_details,
+    pregnancies.risk_factor_alcohol,
+    pregnancies.risk_factor_alcohol_details,
+    pregnancies.risk_factor_drugs,
+    pregnancies.risk_factor_drugs_details,
+    pregnancies.risk_factor_social,
+    pregnancies.risk_factor_social_details,
+    pregnancies.risk_factor_mental_health,
+    pregnancies.risk_factor_mental_health_details,
+    pregnancies.risk_factors_past_history,
+    pregnancies.risk_factors_obstetric,
+    pregnancies.reason_caesarian_section,
+    pregnancies.age_at_delivery,
+    pregnancies.date_delivery,
+    pregnancies.gestation_at_delivery,
+    pregnancies.fk_lu_onset_labour,
+    pregnancies.labour_hours,
+    pregnancies.fk_lu_delivery_type,
+    pregnancies.complications,
+    pregnancies.fk_lu_sex,
+    pregnancies.birthweight,
+    pregnancies.baby_name,
+    pregnancies.puerperium,
+    pregnancies.morphology_scan_abnormal,
+    pregnancies.nuchal_fold_abnormal,
+    pregnancies.fk_progressnote,
+    pregnancies.breast_fed,
+    pregnancies.breast_fed_duration,
+    pregnancies.contraception,
+    pregnancies.anti_d_28w_date,
+    pregnancies.anti_d_28w_given,
+    pregnancies.anti_d_34w_date,
+    pregnancies.anti_d_34w_given,
+    pregnancies.morphology_scan_foetal_size,
+    pregnancies.morphology_scan_weeks,
+    pregnancies.fk_lu_blood_group,
+    pregnancies.fk_lu_rhesus_group,
+    pregnancies.booking_haemoglobin,
+    pregnancies.syphilus,
+    pregnancies.rubella,
+    pregnancies.rubella_titre,
+    pregnancies.hepatitis_b,
+    pregnancies.hepatitis_c,
+    pregnancies.booking_msu,
+    pregnancies.group_b_strep_swabs,
+    pregnancies.booking_antibody_screen,
+    pregnancies.repeat_antibody_screen_34_37wk,
+    pregnancies.hiv,
+    pregnancies.varicella,
+    pregnancies.rh_antibody_screen_28w,
+    pregnancies.prenatal_diagnosis_amniocentesis,
+    pregnancies.prenatal_diagnosis_cvs,
+    pregnancies.deleted,
+    pregnancies.fk_lu_contraception_method,
+    pregnancies.contraception_method_notes,
+    lu_delivery_types.type AS delivery_type,
+    pregnancies.fk_lu_placenta_position,
+    lu_placenta_position."position",
+    lu_onset_labour.type AS onset_labour_type,
+    lu_sex.sex_text AS baby_sex,
+    lu_blood_group.abo_group,
+    lu_rhesus_group.rhesus_group,
+    vwprogressnotes.notes AS progress_notes,
+    vwprogressnotes.consult_date AS progress_notes_date
+   FROM (((((((((pregnancies
+   JOIN clin_consult.consult ON ((pregnancies.fk_consult = consult.pk)))
+   JOIN clin_consult.vwprogressnotes ON ((pregnancies.fk_progressnote = vwprogressnotes.pk_progressnote)))
+   LEFT JOIN lu_onset_labour ON ((pregnancies.fk_lu_onset_labour = lu_onset_labour.pk)))
+   LEFT JOIN lu_delivery_types ON ((pregnancies.fk_lu_delivery_type = lu_delivery_types.pk)))
+   LEFT JOIN common.lu_blood_group ON ((pregnancies.fk_lu_blood_group = lu_blood_group.pk)))
+   LEFT JOIN common.lu_rhesus_group ON ((pregnancies.fk_lu_rhesus_group = lu_rhesus_group.pk)))
+   LEFT JOIN contacts.lu_sex ON ((pregnancies.fk_lu_sex = lu_sex.pk)))
+   LEFT JOIN lu_placenta_position ON ((pregnancies.fk_lu_placenta_position = lu_placenta_position.pk)))
+   LEFT JOIN lu_contraception_methods ON ((pregnancies.fk_lu_contraception_method = lu_contraception_methods.pk)));
 
 
 ALTER TABLE clin_pregnancy.vwpregnancies OWNER TO easygp;
@@ -11865,7 +13894,16 @@ ALTER TABLE clin_prescribing.script_number OWNER TO easygp;
 --
 
 CREATE VIEW vwinstructionhabits AS
-    SELECT instruction_habits.pk AS pk_instruction_habit, instruction_habits.fk_instruction, instruction_habits.fk_brand, instruction_habits.fk_generic_product, instruction_habits.fk_staff, instruction_habits.weighting, instructions.instruction FROM instruction_habits, instructions WHERE (instruction_habits.fk_instruction = instructions.pk);
+ SELECT instruction_habits.pk AS pk_instruction_habit,
+    instruction_habits.fk_instruction,
+    instruction_habits.fk_brand,
+    instruction_habits.fk_generic_product,
+    instruction_habits.fk_staff,
+    instruction_habits.weighting,
+    instructions.instruction
+   FROM instruction_habits,
+    instructions
+  WHERE (instruction_habits.fk_instruction = instructions.pk);
 
 
 ALTER TABLE clin_prescribing.vwinstructionhabits OWNER TO easygp;
@@ -11875,7 +13913,17 @@ ALTER TABLE clin_prescribing.vwinstructionhabits OWNER TO easygp;
 --
 
 CREATE VIEW vwprescribedforhabits AS
-    SELECT prescribed_for.prescribed_for, prescribed_for.fk_code, prescribed_for_habits.pk AS pk_prescibed_for_habit, prescribed_for_habits.fk_prescribed_for, prescribed_for_habits.fk_brand, prescribed_for_habits.fk_generic_product, prescribed_for_habits.fk_staff, prescribed_for_habits.weighting FROM prescribed_for, prescribed_for_habits WHERE (prescribed_for_habits.fk_prescribed_for = prescribed_for.pk);
+ SELECT prescribed_for.prescribed_for,
+    prescribed_for.fk_code,
+    prescribed_for_habits.pk AS pk_prescibed_for_habit,
+    prescribed_for_habits.fk_prescribed_for,
+    prescribed_for_habits.fk_brand,
+    prescribed_for_habits.fk_generic_product,
+    prescribed_for_habits.fk_staff,
+    prescribed_for_habits.weighting
+   FROM prescribed_for,
+    prescribed_for_habits
+  WHERE (prescribed_for_habits.fk_prescribed_for = prescribed_for.pk);
 
 
 ALTER TABLE clin_prescribing.vwprescribedforhabits OWNER TO easygp;
@@ -11964,7 +14012,84 @@ SET search_path = clin_prescribing, pg_catalog;
 --
 
 CREATE VIEW vwprescribeditems AS
-    SELECT prescribed.pk AS pk_view, medications.pk AS fk_medication, medications.start_date, medications.last_date, medications.active, medications.deleted AS medication_deleted, medications.fk_generic_product, consult.pk AS fk_consult, consult.consult_date AS date_script_written, consult.fk_patient, product.generic, brand.brand, product.strength, brand.product_information_filename, form.form, brand.pk AS fk_brand, prescribed.pk AS fk_prescribed, prescribed.repeats, prescribed.date_on_script, prescribed.quantity, prescribed_for.prescribed_for, prescribed.deleted AS prescribed_deleted, prescribed.authority_reason, prescribed.print_reason, instructions.instruction, vwstaff.wholename AS staff_prescribed_wholename, vwstaff.title AS staff_prescribed_title, product.atccode, product.salt, product.fk_form, product.fk_schedule, product.salt_strength, prescribed.fk_instruction, prescribed.fk_prescribed_for, prescribed.pbscode, prescribed.fk_lu_pbs_script_type, prescribed.restriction_code, prescribed.fk_code, prescribed.reg24, lu_pbs_script_type.type AS pbs_script_type, restriction.streamlined, restriction.restriction, restriction.restriction_type, schedules.schedule, drugs.format_strength(product.strength) AS display_strength, drugs.format_amount(product.amount, product.amount_unit, product.units_per_pack) AS display_packsize, product.units_per_pack, prescribed.medisecure_uuid, prescribed.medisecure_barcode, prescribed.escript_uploaded, prescribed.script_number, product.sct AS product_sct, brand.sct AS brand_sct, product.amount, product.amount_unit, prescribed.brand_substitution, brand.fk_company, product.original_pbs_name, prescribed.authority_script_number, prescribed.authority_approval_number, prescribed.authority_post_to_patient, prescribed.concession_details, prescribed.fk_progress_note, prescribed.printed, prescribed.latex, prescribed.ctg FROM (((((((((((clin_consult.consult JOIN admin.vwstaff ON ((consult.fk_staff = vwstaff.fk_staff))) JOIN prescribed ON ((consult.pk = prescribed.fk_consult))) JOIN medications medications ON ((prescribed.fk_medication = medications.pk))) JOIN prescribed_for ON ((prescribed.fk_prescribed_for = prescribed_for.pk))) JOIN instructions ON ((prescribed.fk_instruction = instructions.pk))) JOIN lu_pbs_script_type ON ((prescribed.fk_lu_pbs_script_type = lu_pbs_script_type.pk))) LEFT JOIN drugs.restriction ON (((prescribed.pbscode = (restriction.pbscode)::text) AND (prescribed.restriction_code = (restriction.code)::text)))) LEFT JOIN drugs.brand ON ((prescribed.fk_brand = brand.pk))) JOIN drugs.product ON ((medications.fk_generic_product = product.pk))) LEFT JOIN drugs.schedules ON ((product.fk_schedule = schedules.pk))) JOIN drugs.form ON ((product.fk_form = form.pk)));
+ SELECT prescribed.pk AS pk_view,
+    medications.pk AS fk_medication,
+    medications.start_date,
+    medications.last_date,
+    medications.active,
+    medications.deleted AS medication_deleted,
+    medications.fk_generic_product,
+    consult.pk AS fk_consult,
+    consult.consult_date AS date_script_written,
+    consult.fk_patient,
+    product.generic,
+    brand.brand,
+    product.strength,
+    brand.product_information_filename,
+    form.form,
+    brand.pk AS fk_brand,
+    prescribed.pk AS fk_prescribed,
+    prescribed.repeats,
+    prescribed.date_on_script,
+    prescribed.quantity,
+    prescribed_for.prescribed_for,
+    prescribed.deleted AS prescribed_deleted,
+    prescribed.authority_reason,
+    prescribed.print_reason,
+    instructions.instruction,
+    vwstaff.wholename AS staff_prescribed_wholename,
+    vwstaff.title AS staff_prescribed_title,
+    product.atccode,
+    product.salt,
+    product.fk_form,
+    product.fk_schedule,
+    product.salt_strength,
+    prescribed.fk_instruction,
+    prescribed.fk_prescribed_for,
+    prescribed.pbscode,
+    prescribed.fk_lu_pbs_script_type,
+    prescribed.restriction_code,
+    prescribed.fk_code,
+    prescribed.reg24,
+    lu_pbs_script_type.type AS pbs_script_type,
+    restriction.streamlined,
+    restriction.restriction,
+    restriction.restriction_type,
+    schedules.schedule,
+    drugs.format_strength(product.strength) AS display_strength,
+    drugs.format_amount(product.amount, product.amount_unit, product.units_per_pack) AS display_packsize,
+    product.units_per_pack,
+    prescribed.medisecure_uuid,
+    prescribed.medisecure_barcode,
+    prescribed.escript_uploaded,
+    prescribed.script_number,
+    product.sct AS product_sct,
+    brand.sct AS brand_sct,
+    product.amount,
+    product.amount_unit,
+    prescribed.brand_substitution,
+    brand.fk_company,
+    product.original_pbs_name,
+    prescribed.authority_script_number,
+    prescribed.authority_approval_number,
+    prescribed.authority_post_to_patient,
+    prescribed.concession_details,
+    prescribed.fk_progress_note,
+    prescribed.printed,
+    prescribed.latex,
+    prescribed.ctg
+   FROM (((((((((((clin_consult.consult
+   JOIN admin.vwstaff ON ((consult.fk_staff = vwstaff.fk_staff)))
+   JOIN prescribed ON ((consult.pk = prescribed.fk_consult)))
+   JOIN medications medications ON ((prescribed.fk_medication = medications.pk)))
+   JOIN prescribed_for ON ((prescribed.fk_prescribed_for = prescribed_for.pk)))
+   JOIN instructions ON ((prescribed.fk_instruction = instructions.pk)))
+   JOIN lu_pbs_script_type ON ((prescribed.fk_lu_pbs_script_type = lu_pbs_script_type.pk)))
+   LEFT JOIN drugs.restriction ON (((prescribed.pbscode = (restriction.pbscode)::text) AND (prescribed.restriction_code = (restriction.code)::text))))
+   LEFT JOIN drugs.brand ON ((prescribed.fk_brand = brand.pk)))
+   JOIN drugs.product ON ((medications.fk_generic_product = product.pk)))
+   LEFT JOIN drugs.schedules ON ((product.fk_schedule = schedules.pk)))
+   JOIN drugs.form ON ((product.fk_form = form.pk)));
 
 
 ALTER TABLE clin_prescribing.vwprescribeditems OWNER TO easygp;
@@ -12664,7 +14789,19 @@ ALTER SEQUENCE surgical_packs_pk_seq OWNED BY surgical_packs.pk;
 --
 
 CREATE VIEW vwimages AS
-    SELECT images.image, images.md5sum, images.tag, images.deleted AS image_deleted, images.fk_consult AS fk_consult_image, link_images_procedures.fk_image, link_images_procedures.fk_procedure, link_images_procedures.deleted, link_images_procedures.pk AS pk_link_images_procedures FROM (link_images_procedures JOIN blobs.images ON ((link_images_procedures.fk_image = images.pk))) WHERE (link_images_procedures.deleted = false) ORDER BY link_images_procedures.fk_procedure;
+ SELECT images.image,
+    images.md5sum,
+    images.tag,
+    images.deleted AS image_deleted,
+    images.fk_consult AS fk_consult_image,
+    link_images_procedures.fk_image,
+    link_images_procedures.fk_procedure,
+    link_images_procedures.deleted,
+    link_images_procedures.pk AS pk_link_images_procedures
+   FROM (link_images_procedures
+   JOIN blobs.images ON ((link_images_procedures.fk_image = images.pk)))
+  WHERE (link_images_procedures.deleted = false)
+  ORDER BY link_images_procedures.fk_procedure;
 
 
 ALTER TABLE clin_procedures.vwimages OWNER TO easygp;
@@ -12815,7 +14952,77 @@ SET search_path = clin_procedures, pg_catalog;
 --
 
 CREATE VIEW vwskinprocedures AS
-    SELECT skin_procedures.pk AS pk_view, skin_procedures.pk AS fk_skin_procedure, skin_procedures.fk_consult, skin_procedures.date, skin_procedures.explained_procedure, skin_procedures.obtained_consent, skin_procedures.detailed_complications, skin_procedures.fk_lu_site, skin_procedures.lesion_notes, skin_procedures.dermoscopy_notes, skin_procedures.fk_lu_lateralisation, skin_procedures.fk_lu_anterior_posterior, skin_procedures.localisation, skin_procedures.surgical_pack_identifier, skin_procedures.fk_lu_skin_preparation, skin_procedures.fk_lu_anaesthetic_agent, skin_procedures.fk_lu_procedure_type, skin_procedures.fk_lu_repair_type, skin_procedures.fk_subcutaneous_suture, skin_procedures.fk_skin_suture, skin_procedures.average_diameter_cm, skin_procedures.fk_provisional_diagnosis, generic_terms.term AS provisional_diagnosis, skin_procedures.fk_document, skin_procedures.fk_actual_diagnosis, generic_terms1.term AS actual_diagnosis, skin_procedures.fk_pasthistory, skin_procedures.referred, skin_procedures.review_months, skin_procedures.fk_branch, skin_procedures.fk_form, skin_procedures.complications, skin_procedures.fk_progressnote_auto, progressnotes.notes AS progressnote_auto, skin_procedures.fk_progressnote_user, progressnotes1.notes AS progressnote_user, consult.consult_date, consult.fk_staff, consult.fk_patient, lu_anatomical_site.site, lu_anterior_posterior.anterior_posterior, lu_laterality.laterality, lu_skin_preparation.preparation, lu_anaesthetic_agent.agent, lu_anaesthetic_agent.fk_lu_route_administration, lu_procedure_type.type AS procedure_type, lu_repair_type.type AS repair_type, lu_suture_type.brand AS skin_suture, lu_suture_type1.brand AS subcutaneous_suture, data_organisations.organisation, vwstaff.wholename, vwstaff.title FROM ((((((((((((((((((skin_procedures JOIN clin_consult.consult ON ((skin_procedures.fk_consult = consult.pk))) JOIN common.lu_anatomical_site ON ((skin_procedures.fk_lu_site = lu_anatomical_site.pk))) LEFT JOIN common.lu_anterior_posterior ON ((skin_procedures.fk_lu_anterior_posterior = lu_anterior_posterior.pk))) LEFT JOIN common.lu_laterality ON ((skin_procedures.fk_lu_lateralisation = lu_laterality.pk))) LEFT JOIN lu_skin_preparation ON ((skin_procedures.fk_lu_skin_preparation = lu_skin_preparation.pk))) LEFT JOIN coding.generic_terms ON ((skin_procedures.fk_provisional_diagnosis = generic_terms.code))) JOIN lu_anaesthetic_agent ON ((skin_procedures.fk_lu_anaesthetic_agent = lu_anaesthetic_agent.pk))) JOIN lu_procedure_type ON ((skin_procedures.fk_lu_procedure_type = lu_procedure_type.pk))) JOIN lu_repair_type ON ((skin_procedures.fk_lu_repair_type = lu_repair_type.pk))) JOIN lu_suture_type ON ((skin_procedures.fk_skin_suture = lu_suture_type.pk))) JOIN lu_suture_type lu_suture_type1 ON ((skin_procedures.fk_subcutaneous_suture = lu_suture_type1.pk))) LEFT JOIN coding.generic_terms generic_terms1 ON ((skin_procedures.fk_actual_diagnosis = generic_terms1.code))) LEFT JOIN contacts.data_branches ON ((skin_procedures.fk_branch = data_branches.pk))) LEFT JOIN clin_requests.forms ON ((skin_procedures.fk_form = forms.pk))) LEFT JOIN clin_consult.progressnotes progressnotes1 ON ((skin_procedures.fk_progressnote_user = progressnotes1.pk))) JOIN clin_consult.progressnotes ON ((skin_procedures.fk_progressnote_auto = progressnotes.pk))) JOIN contacts.data_organisations ON ((data_branches.fk_organisation = data_organisations.pk))) JOIN admin.vwstaff ON ((consult.fk_staff = vwstaff.fk_staff)));
+ SELECT skin_procedures.pk AS pk_view,
+    skin_procedures.pk AS fk_skin_procedure,
+    skin_procedures.fk_consult,
+    skin_procedures.date,
+    skin_procedures.explained_procedure,
+    skin_procedures.obtained_consent,
+    skin_procedures.detailed_complications,
+    skin_procedures.fk_lu_site,
+    skin_procedures.lesion_notes,
+    skin_procedures.dermoscopy_notes,
+    skin_procedures.fk_lu_lateralisation,
+    skin_procedures.fk_lu_anterior_posterior,
+    skin_procedures.localisation,
+    skin_procedures.surgical_pack_identifier,
+    skin_procedures.fk_lu_skin_preparation,
+    skin_procedures.fk_lu_anaesthetic_agent,
+    skin_procedures.fk_lu_procedure_type,
+    skin_procedures.fk_lu_repair_type,
+    skin_procedures.fk_subcutaneous_suture,
+    skin_procedures.fk_skin_suture,
+    skin_procedures.average_diameter_cm,
+    skin_procedures.fk_provisional_diagnosis,
+    generic_terms.term AS provisional_diagnosis,
+    skin_procedures.fk_document,
+    skin_procedures.fk_actual_diagnosis,
+    generic_terms1.term AS actual_diagnosis,
+    skin_procedures.fk_pasthistory,
+    skin_procedures.referred,
+    skin_procedures.review_months,
+    skin_procedures.fk_branch,
+    skin_procedures.fk_form,
+    skin_procedures.complications,
+    skin_procedures.fk_progressnote_auto,
+    progressnotes.notes AS progressnote_auto,
+    skin_procedures.fk_progressnote_user,
+    progressnotes1.notes AS progressnote_user,
+    consult.consult_date,
+    consult.fk_staff,
+    consult.fk_patient,
+    lu_anatomical_site.site,
+    lu_anterior_posterior.anterior_posterior,
+    lu_laterality.laterality,
+    lu_skin_preparation.preparation,
+    lu_anaesthetic_agent.agent,
+    lu_anaesthetic_agent.fk_lu_route_administration,
+    lu_procedure_type.type AS procedure_type,
+    lu_repair_type.type AS repair_type,
+    lu_suture_type.brand AS skin_suture,
+    lu_suture_type1.brand AS subcutaneous_suture,
+    data_organisations.organisation,
+    vwstaff.wholename,
+    vwstaff.title
+   FROM ((((((((((((((((((skin_procedures
+   JOIN clin_consult.consult ON ((skin_procedures.fk_consult = consult.pk)))
+   JOIN common.lu_anatomical_site ON ((skin_procedures.fk_lu_site = lu_anatomical_site.pk)))
+   LEFT JOIN common.lu_anterior_posterior ON ((skin_procedures.fk_lu_anterior_posterior = lu_anterior_posterior.pk)))
+   LEFT JOIN common.lu_laterality ON ((skin_procedures.fk_lu_lateralisation = lu_laterality.pk)))
+   LEFT JOIN lu_skin_preparation ON ((skin_procedures.fk_lu_skin_preparation = lu_skin_preparation.pk)))
+   LEFT JOIN coding.generic_terms ON ((skin_procedures.fk_provisional_diagnosis = generic_terms.code)))
+   JOIN lu_anaesthetic_agent ON ((skin_procedures.fk_lu_anaesthetic_agent = lu_anaesthetic_agent.pk)))
+   JOIN lu_procedure_type ON ((skin_procedures.fk_lu_procedure_type = lu_procedure_type.pk)))
+   JOIN lu_repair_type ON ((skin_procedures.fk_lu_repair_type = lu_repair_type.pk)))
+   JOIN lu_suture_type ON ((skin_procedures.fk_skin_suture = lu_suture_type.pk)))
+   JOIN lu_suture_type lu_suture_type1 ON ((skin_procedures.fk_subcutaneous_suture = lu_suture_type1.pk)))
+   LEFT JOIN coding.generic_terms generic_terms1 ON ((skin_procedures.fk_actual_diagnosis = generic_terms1.code)))
+   LEFT JOIN contacts.data_branches ON ((skin_procedures.fk_branch = data_branches.pk)))
+   LEFT JOIN clin_requests.forms ON ((skin_procedures.fk_form = forms.pk)))
+   LEFT JOIN clin_consult.progressnotes progressnotes1 ON ((skin_procedures.fk_progressnote_user = progressnotes1.pk)))
+   JOIN clin_consult.progressnotes ON ((skin_procedures.fk_progressnote_auto = progressnotes.pk)))
+   JOIN contacts.data_organisations ON ((data_branches.fk_organisation = data_organisations.pk)))
+   JOIN admin.vwstaff ON ((consult.fk_staff = vwstaff.fk_staff)));
 
 
 ALTER TABLE clin_procedures.vwskinprocedures OWNER TO easygp;
@@ -12825,7 +15032,29 @@ ALTER TABLE clin_procedures.vwskinprocedures OWNER TO easygp;
 --
 
 CREATE VIEW vwstaffskinproceduredefaults AS
-    SELECT lu_anaesthetic_agent.agent, lu_skin_preparation.preparation, staff_skin_procedure_defaults.pk AS pk_default, staff_skin_procedure_defaults.fk_staff, staff_skin_procedure_defaults.fk_lu_skin_preparation, staff_skin_procedure_defaults.fk_lu_anaesthetic_agent, staff_skin_procedure_defaults.fk_lu_procedure_type, staff_skin_procedure_defaults.fk_lu_repair_type, staff_skin_procedure_defaults.fk_subcutaneous_suture, staff_skin_procedure_defaults.fk_skin_suture, staff_skin_procedure_defaults.fk_user_provider_defaults, lu_suture_type.brand AS skin_suture, lu_suture_type1.brand AS subcutaneous_suture, lu_procedure_type.type AS procedure_type, lu_repair_type.type AS repair_type FROM ((((((staff_skin_procedure_defaults JOIN lu_anaesthetic_agent ON ((staff_skin_procedure_defaults.fk_lu_anaesthetic_agent = lu_anaesthetic_agent.pk))) JOIN lu_skin_preparation ON ((staff_skin_procedure_defaults.fk_lu_skin_preparation = lu_skin_preparation.pk))) JOIN lu_suture_type ON ((staff_skin_procedure_defaults.fk_skin_suture = lu_suture_type.pk))) JOIN lu_suture_type lu_suture_type1 ON ((staff_skin_procedure_defaults.fk_subcutaneous_suture = lu_suture_type1.pk))) JOIN lu_procedure_type ON ((staff_skin_procedure_defaults.fk_lu_procedure_type = lu_procedure_type.pk))) JOIN lu_repair_type ON ((staff_skin_procedure_defaults.fk_lu_repair_type = lu_repair_type.pk))) ORDER BY staff_skin_procedure_defaults.fk_staff;
+ SELECT lu_anaesthetic_agent.agent,
+    lu_skin_preparation.preparation,
+    staff_skin_procedure_defaults.pk AS pk_default,
+    staff_skin_procedure_defaults.fk_staff,
+    staff_skin_procedure_defaults.fk_lu_skin_preparation,
+    staff_skin_procedure_defaults.fk_lu_anaesthetic_agent,
+    staff_skin_procedure_defaults.fk_lu_procedure_type,
+    staff_skin_procedure_defaults.fk_lu_repair_type,
+    staff_skin_procedure_defaults.fk_subcutaneous_suture,
+    staff_skin_procedure_defaults.fk_skin_suture,
+    staff_skin_procedure_defaults.fk_user_provider_defaults,
+    lu_suture_type.brand AS skin_suture,
+    lu_suture_type1.brand AS subcutaneous_suture,
+    lu_procedure_type.type AS procedure_type,
+    lu_repair_type.type AS repair_type
+   FROM ((((((staff_skin_procedure_defaults
+   JOIN lu_anaesthetic_agent ON ((staff_skin_procedure_defaults.fk_lu_anaesthetic_agent = lu_anaesthetic_agent.pk)))
+   JOIN lu_skin_preparation ON ((staff_skin_procedure_defaults.fk_lu_skin_preparation = lu_skin_preparation.pk)))
+   JOIN lu_suture_type ON ((staff_skin_procedure_defaults.fk_skin_suture = lu_suture_type.pk)))
+   JOIN lu_suture_type lu_suture_type1 ON ((staff_skin_procedure_defaults.fk_subcutaneous_suture = lu_suture_type1.pk)))
+   JOIN lu_procedure_type ON ((staff_skin_procedure_defaults.fk_lu_procedure_type = lu_procedure_type.pk)))
+   JOIN lu_repair_type ON ((staff_skin_procedure_defaults.fk_lu_repair_type = lu_repair_type.pk)))
+  ORDER BY staff_skin_procedure_defaults.fk_staff;
 
 
 ALTER TABLE clin_procedures.vwstaffskinproceduredefaults OWNER TO easygp;
@@ -12835,7 +15064,13 @@ ALTER TABLE clin_procedures.vwstaffskinproceduredefaults OWNER TO easygp;
 --
 
 CREATE VIEW vwsutures AS
-    SELECT lu_suture_type.pk, lu_suture_type.brand, lu_suture_type.fk_lu_site, lu_suture_site.site FROM (lu_suture_type JOIN lu_suture_site ON ((lu_suture_type.fk_lu_site = lu_suture_site.pk))) ORDER BY lu_suture_site.site, lu_suture_type.brand;
+ SELECT lu_suture_type.pk,
+    lu_suture_type.brand,
+    lu_suture_type.fk_lu_site,
+    lu_suture_site.site
+   FROM (lu_suture_type
+   JOIN lu_suture_site ON ((lu_suture_type.fk_lu_site = lu_suture_site.pk)))
+  ORDER BY lu_suture_site.site, lu_suture_type.brand;
 
 
 ALTER TABLE clin_procedures.vwsutures OWNER TO easygp;
@@ -13047,7 +15282,18 @@ ALTER SEQUENCE sent_pk_seq OWNED BY sent.pk;
 --
 
 CREATE VIEW vwreasons AS
-    SELECT lu_reasons.pk AS pk_reason, lu_reasons.reason, lu_recall_intervals.fk_staff, lu_recall_intervals.pk AS fk_lu_recall_intervals, lu_recall_intervals."interval", lu_units.abbrev_text, lu_units.full_text, lu_recall_intervals.fk_interval_unit FROM ((lu_recall_intervals JOIN common.lu_units ON ((lu_recall_intervals.fk_interval_unit = lu_units.pk))) JOIN lu_reasons ON ((lu_recall_intervals.fk_reason = lu_reasons.pk))) ORDER BY lu_reasons.reason;
+ SELECT lu_reasons.pk AS pk_reason,
+    lu_reasons.reason,
+    lu_recall_intervals.fk_staff,
+    lu_recall_intervals.pk AS fk_lu_recall_intervals,
+    lu_recall_intervals."interval",
+    lu_units.abbrev_text,
+    lu_units.full_text,
+    lu_recall_intervals.fk_interval_unit
+   FROM ((lu_recall_intervals
+   JOIN common.lu_units ON ((lu_recall_intervals.fk_interval_unit = lu_units.pk)))
+   JOIN lu_reasons ON ((lu_recall_intervals.fk_reason = lu_reasons.pk)))
+  ORDER BY lu_reasons.reason;
 
 
 ALTER TABLE clin_recalls.vwreasons OWNER TO easygp;
@@ -13057,7 +15303,72 @@ ALTER TABLE clin_recalls.vwreasons OWNER TO easygp;
 --
 
 CREATE VIEW vwrecallsdue AS
-    SELECT recalls.pk AS pk_recall, recalls.fk_consult, recalls.due, (recalls.due - date(now())) AS days_due, recalls.fk_reason, recalls.fk_contact_method, recalls.fk_urgency, recalls.fk_appointment_length, recalls.fk_staff, recalls.active, recalls.additional_text, recalls.deleted, recalls."interval", recalls.fk_interval_unit, recalls.fk_progressnote, recalls.fk_pasthistory, recalls.fk_sent, recalls.num_reminders, sent.latex, sent.date AS date_reminder_sent, lu_units.abbrev_text, vwpatients.fk_person, vwpatients.wholename, vwpatients.firstname, vwpatients.surname, vwpatients.salutation, vwpatients.birthdate, vwpatients.age_numeric, vwpatients.sex, vwpatients.deceased, vwpatients.title, vwpatients.street1, vwpatients.street2, vwpatients.town, vwpatients.state, vwpatients.postcode, vwpatients.language_problems, vwpatients.language, consult.fk_patient, vwstaff.firstname AS staff_to_see_firstname, vwstaff.surname AS staff_to_see_surname, vwstaff.wholename AS staff_to_see_wholename, vwstaff.title AS staff_to_see_title, lu_reasons.reason, lu_urgency.urgency, lu_contact_type.type AS contact_method, lu_appointment_length.length AS appointment_length, consult.consult_date, recalls.fk_template, lu_appointment_length1.length, lu_templates.name, lu_templates.template FROM (((((((((((recalls JOIN clin_consult.consult ON ((recalls.fk_consult = consult.pk))) JOIN contacts.vwpatients ON ((consult.fk_patient = vwpatients.fk_patient))) JOIN admin.vwstaff ON ((recalls.fk_staff = vwstaff.fk_staff))) JOIN lu_reasons ON ((recalls.fk_reason = lu_reasons.pk))) JOIN common.lu_urgency ON ((recalls.fk_urgency = lu_urgency.pk))) JOIN contacts.lu_contact_type ON ((recalls.fk_contact_method = lu_contact_type.pk))) JOIN common.lu_appointment_length ON ((recalls.fk_appointment_length = lu_appointment_length.pk))) LEFT JOIN common.lu_units ON ((recalls.fk_interval_unit = lu_units.pk))) LEFT JOIN lu_templates ON ((recalls.fk_template = lu_templates.pk))) LEFT JOIN common.lu_appointment_length lu_appointment_length1 ON ((lu_templates.fk_lu_appointment_length = lu_appointment_length1.pk))) LEFT JOIN sent ON ((recalls.fk_sent = sent.pk))) WHERE (recalls.deleted = false) ORDER BY (recalls.due - date(now())), consult.fk_patient;
+ SELECT recalls.pk AS pk_recall,
+    recalls.fk_consult,
+    recalls.due,
+    (recalls.due - date(now())) AS days_due,
+    recalls.fk_reason,
+    recalls.fk_contact_method,
+    recalls.fk_urgency,
+    recalls.fk_appointment_length,
+    recalls.fk_staff,
+    recalls.active,
+    recalls.additional_text,
+    recalls.deleted,
+    recalls."interval",
+    recalls.fk_interval_unit,
+    recalls.fk_progressnote,
+    recalls.fk_pasthistory,
+    recalls.fk_sent,
+    recalls.num_reminders,
+    sent.latex,
+    sent.date AS date_reminder_sent,
+    lu_units.abbrev_text,
+    vwpatients.fk_person,
+    vwpatients.wholename,
+    vwpatients.firstname,
+    vwpatients.surname,
+    vwpatients.salutation,
+    vwpatients.birthdate,
+    vwpatients.age_numeric,
+    vwpatients.sex,
+    vwpatients.deceased,
+    vwpatients.title,
+    vwpatients.street1,
+    vwpatients.street2,
+    vwpatients.town,
+    vwpatients.state,
+    vwpatients.postcode,
+    vwpatients.language_problems,
+    vwpatients.language,
+    consult.fk_patient,
+    vwstaff.firstname AS staff_to_see_firstname,
+    vwstaff.surname AS staff_to_see_surname,
+    vwstaff.wholename AS staff_to_see_wholename,
+    vwstaff.title AS staff_to_see_title,
+    lu_reasons.reason,
+    lu_urgency.urgency,
+    lu_contact_type.type AS contact_method,
+    lu_appointment_length.length AS appointment_length,
+    consult.consult_date,
+    recalls.fk_template,
+    lu_appointment_length1.length,
+    lu_templates.name,
+    lu_templates.template
+   FROM (((((((((((recalls
+   JOIN clin_consult.consult ON ((recalls.fk_consult = consult.pk)))
+   JOIN contacts.vwpatients ON ((consult.fk_patient = vwpatients.fk_patient)))
+   JOIN admin.vwstaff ON ((recalls.fk_staff = vwstaff.fk_staff)))
+   JOIN lu_reasons ON ((recalls.fk_reason = lu_reasons.pk)))
+   JOIN common.lu_urgency ON ((recalls.fk_urgency = lu_urgency.pk)))
+   JOIN contacts.lu_contact_type ON ((recalls.fk_contact_method = lu_contact_type.pk)))
+   JOIN common.lu_appointment_length ON ((recalls.fk_appointment_length = lu_appointment_length.pk)))
+   LEFT JOIN common.lu_units ON ((recalls.fk_interval_unit = lu_units.pk)))
+   LEFT JOIN lu_templates ON ((recalls.fk_template = lu_templates.pk)))
+   LEFT JOIN common.lu_appointment_length lu_appointment_length1 ON ((lu_templates.fk_lu_appointment_length = lu_appointment_length1.pk)))
+   LEFT JOIN sent ON ((recalls.fk_sent = sent.pk)))
+  WHERE (recalls.deleted = false)
+  ORDER BY (recalls.due - date(now())), consult.fk_patient;
 
 
 ALTER TABLE clin_recalls.vwrecallsdue OWNER TO easygp;
@@ -13067,7 +15378,15 @@ ALTER TABLE clin_recalls.vwrecallsdue OWNER TO easygp;
 --
 
 CREATE VIEW vwtemplates AS
-    SELECT lu_templates.pk, lu_templates.name, lu_templates.deleted, lu_templates.template, lu_templates.fk_lu_appointment_length, lu_appointment_length.length FROM lu_templates, common.lu_appointment_length WHERE ((lu_templates.fk_lu_appointment_length = lu_appointment_length.pk) AND (lu_templates.template <> ''::text));
+ SELECT lu_templates.pk,
+    lu_templates.name,
+    lu_templates.deleted,
+    lu_templates.template,
+    lu_templates.fk_lu_appointment_length,
+    lu_appointment_length.length
+   FROM lu_templates,
+    common.lu_appointment_length
+  WHERE ((lu_templates.fk_lu_appointment_length = lu_appointment_length.pk) AND (lu_templates.template <> ''::text));
 
 
 ALTER TABLE clin_recalls.vwtemplates OWNER TO easygp;
@@ -13292,7 +15611,19 @@ ALTER SEQUENCE referrals_pk_seq OWNED BY referrals.pk;
 --
 
 CREATE VIEW vwinclusions AS
-    SELECT DISTINCT inclusions.pk AS pk_inclusion, inclusions.fk_referral, inclusions.fk_document, inclusions.deleted, consult.consult_date, consult.fk_patient, documents.date_created, documents.tag_user FROM (((clin_consult.consult JOIN referrals ON ((referrals.fk_consult = consult.pk))) JOIN inclusions ON ((referrals.pk = inclusions.fk_referral))) JOIN documents.documents ON ((inclusions.fk_document = documents.pk))) ORDER BY consult.fk_patient;
+ SELECT DISTINCT inclusions.pk AS pk_inclusion,
+    inclusions.fk_referral,
+    inclusions.fk_document,
+    inclusions.deleted,
+    consult.consult_date,
+    consult.fk_patient,
+    documents.date_created,
+    documents.tag_user
+   FROM (((clin_consult.consult
+   JOIN referrals ON ((referrals.fk_consult = consult.pk)))
+   JOIN inclusions ON ((referrals.pk = inclusions.fk_referral)))
+   JOIN documents.documents ON ((inclusions.fk_document = documents.pk)))
+  ORDER BY consult.fk_patient;
 
 
 ALTER TABLE clin_referrals.vwinclusions OWNER TO easygp;
@@ -13302,7 +15633,166 @@ ALTER TABLE clin_referrals.vwinclusions OWNER TO easygp;
 --
 
 CREATE VIEW vwreferrals AS
-    (SELECT DISTINCT referrals.pk AS pk_referral, referrals.date_referral, referrals.fk_consult, referrals.fk_person, referrals.fk_type, lu_type.type, referrals.tag, referrals.deleted, referrals.body_html, referrals.letter_html, referrals.letter_hl7, referrals.fk_pasthistory, referrals.fk_progressnote, referrals.include_careplan, referrals.include_healthsummary, referrals.fk_branch, referrals.fk_employee, referrals.fk_address, referrals.copyto, referrals.fk_lu_urgency, referrals.finalised, lu_urgency.urgency, vworganisationsemployees.street1, vworganisationsemployees.street2, vworganisationsemployees.town, vworganisationsemployees.state, vworganisationsemployees.postcode, vworganisationsemployees.organisation, vworganisationsemployees.branch, vworganisationsemployees.wholename, vworganisationsemployees.occupation, vworganisationsemployees.firstname, vworganisationsemployees.surname, vworganisationsemployees.salutation, vworganisationsemployees.sex, vworganisationsemployees.title, consult.consult_date, consult.fk_patient, consult.fk_staff, vwstaff.firstname AS staff_firstname, vwstaff.wholename AS staff_wholename, vwstaff.salutation AS staff_salutation, vwstaff.title AS staff_title, past_history.description, vworganisationsemployees.provider_number AS contact_provider_number FROM ((((((referrals JOIN contacts.vworganisationsemployees ON (((referrals.fk_employee = vworganisationsemployees.fk_employee) AND (referrals.fk_branch = vworganisationsemployees.fk_branch)))) JOIN clin_consult.consult ON ((referrals.fk_consult = consult.pk))) JOIN admin.vwstaff ON ((consult.fk_staff = vwstaff.fk_staff))) JOIN lu_type ON ((referrals.fk_type = lu_type.pk))) LEFT JOIN clin_history.past_history ON ((referrals.fk_pasthistory = past_history.pk))) JOIN lu_urgency ON ((referrals.fk_lu_urgency = lu_urgency.pk))) UNION SELECT DISTINCT referrals.pk AS pk_referral, referrals.date_referral, referrals.fk_consult, referrals.fk_person, referrals.fk_type, lu_type.type, referrals.tag, referrals.deleted, referrals.body_html, referrals.letter_html, referrals.letter_hl7, referrals.fk_pasthistory, referrals.fk_progressnote, referrals.include_careplan, referrals.include_healthsummary, referrals.fk_branch, referrals.fk_employee, referrals.fk_address, referrals.copyto, referrals.fk_lu_urgency, referrals.finalised, lu_urgency.urgency, vwpersonsincludingpatients.street1, vwpersonsincludingpatients.street2, vwpersonsincludingpatients.town, vwpersonsincludingpatients.state, vwpersonsincludingpatients.postcode, NULL::text AS organisation, NULL::text AS branch, vwpersonsincludingpatients.wholename, NULL::text AS occupation, vwpersonsincludingpatients.firstname, vwpersonsincludingpatients.surname, vwpersonsincludingpatients.salutation, vwpersonsincludingpatients.sex, vwpersonsincludingpatients.title, consult.consult_date, consult.fk_patient, consult.fk_staff, vwstaff.firstname AS staff_firstname, vwstaff.wholename AS staff_wholename, vwstaff.salutation AS staff_salutation, vwstaff.title AS staff_title, past_history.description, NULL::text AS contact_provider_number FROM ((((((referrals LEFT JOIN contacts.vwpersonsincludingpatients ON (((referrals.fk_person = vwpersonsincludingpatients.fk_person) AND (referrals.fk_address = vwpersonsincludingpatients.fk_address)))) JOIN clin_consult.consult ON ((referrals.fk_consult = consult.pk))) JOIN admin.vwstaff ON ((consult.fk_staff = vwstaff.fk_staff))) JOIN lu_type ON ((referrals.fk_type = lu_type.pk))) LEFT JOIN clin_history.past_history ON ((referrals.fk_pasthistory = past_history.pk))) JOIN lu_urgency ON ((referrals.fk_lu_urgency = lu_urgency.pk))) WHERE ((referrals.fk_branch IS NULL) AND (referrals.fk_employee IS NULL))) UNION SELECT DISTINCT referrals.pk AS pk_referral, referrals.date_referral, referrals.fk_consult, referrals.fk_person, referrals.fk_type, lu_type.type, referrals.tag, referrals.deleted, referrals.body_html, referrals.letter_html, referrals.letter_hl7, referrals.fk_pasthistory, referrals.fk_progressnote, referrals.include_careplan, referrals.include_healthsummary, referrals.fk_branch, referrals.fk_employee, referrals.fk_address, referrals.copyto, referrals.fk_lu_urgency, referrals.finalised, lu_urgency.urgency, vworganisationsemployees.street1, vworganisationsemployees.street2, vworganisationsemployees.town, vworganisationsemployees.state, vworganisationsemployees.postcode, vworganisationsemployees.organisation, vworganisationsemployees.branch, NULL::text AS wholename, NULL::text AS occupation, NULL::text AS firstname, NULL::text AS surname, NULL::text AS salutation, NULL::text AS sex, NULL::text AS title, consult.consult_date, consult.fk_patient, consult.fk_staff, vwstaff.firstname AS staff_firstname, vwstaff.wholename AS staff_wholename, vwstaff.salutation AS staff_salutation, vwstaff.title AS staff_title, past_history.description, NULL::text AS contact_provider_number FROM ((((((referrals JOIN contacts.vworganisationsemployees ON ((referrals.fk_branch = vworganisationsemployees.fk_branch))) JOIN clin_consult.consult ON ((referrals.fk_consult = consult.pk))) JOIN admin.vwstaff ON ((consult.fk_staff = vwstaff.fk_staff))) JOIN lu_type ON ((referrals.fk_type = lu_type.pk))) JOIN lu_urgency ON ((referrals.fk_lu_urgency = lu_urgency.pk))) LEFT JOIN clin_history.past_history ON ((referrals.fk_pasthistory = past_history.pk))) WHERE (referrals.fk_person IS NULL);
+        (         SELECT DISTINCT referrals.pk AS pk_referral,
+                    referrals.date_referral,
+                    referrals.fk_consult,
+                    referrals.fk_person,
+                    referrals.fk_type,
+                    lu_type.type,
+                    referrals.tag,
+                    referrals.deleted,
+                    referrals.body_html,
+                    referrals.letter_html,
+                    referrals.letter_hl7,
+                    referrals.fk_pasthistory,
+                    referrals.fk_progressnote,
+                    referrals.include_careplan,
+                    referrals.include_healthsummary,
+                    referrals.fk_branch,
+                    referrals.fk_employee,
+                    referrals.fk_address,
+                    referrals.copyto,
+                    referrals.fk_lu_urgency,
+                    referrals.finalised,
+                    lu_urgency.urgency,
+                    vworganisationsemployees.street1,
+                    vworganisationsemployees.street2,
+                    vworganisationsemployees.town,
+                    vworganisationsemployees.state,
+                    vworganisationsemployees.postcode,
+                    vworganisationsemployees.organisation,
+                    vworganisationsemployees.branch,
+                    vworganisationsemployees.wholename,
+                    vworganisationsemployees.occupation,
+                    vworganisationsemployees.firstname,
+                    vworganisationsemployees.surname,
+                    vworganisationsemployees.salutation,
+                    vworganisationsemployees.sex,
+                    vworganisationsemployees.title,
+                    consult.consult_date,
+                    consult.fk_patient,
+                    consult.fk_staff,
+                    vwstaff.firstname AS staff_firstname,
+                    vwstaff.wholename AS staff_wholename,
+                    vwstaff.salutation AS staff_salutation,
+                    vwstaff.title AS staff_title,
+                    past_history.description,
+                    vworganisationsemployees.provider_number AS contact_provider_number
+                   FROM ((((((referrals
+              JOIN contacts.vworganisationsemployees ON (((referrals.fk_employee = vworganisationsemployees.fk_employee) AND (referrals.fk_branch = vworganisationsemployees.fk_branch))))
+         JOIN clin_consult.consult ON ((referrals.fk_consult = consult.pk)))
+    JOIN admin.vwstaff ON ((consult.fk_staff = vwstaff.fk_staff)))
+   JOIN lu_type ON ((referrals.fk_type = lu_type.pk)))
+   LEFT JOIN clin_history.past_history ON ((referrals.fk_pasthistory = past_history.pk)))
+   JOIN lu_urgency ON ((referrals.fk_lu_urgency = lu_urgency.pk)))
+        UNION
+                 SELECT DISTINCT referrals.pk AS pk_referral,
+                    referrals.date_referral,
+                    referrals.fk_consult,
+                    referrals.fk_person,
+                    referrals.fk_type,
+                    lu_type.type,
+                    referrals.tag,
+                    referrals.deleted,
+                    referrals.body_html,
+                    referrals.letter_html,
+                    referrals.letter_hl7,
+                    referrals.fk_pasthistory,
+                    referrals.fk_progressnote,
+                    referrals.include_careplan,
+                    referrals.include_healthsummary,
+                    referrals.fk_branch,
+                    referrals.fk_employee,
+                    referrals.fk_address,
+                    referrals.copyto,
+                    referrals.fk_lu_urgency,
+                    referrals.finalised,
+                    lu_urgency.urgency,
+                    vwpersonsincludingpatients.street1,
+                    vwpersonsincludingpatients.street2,
+                    vwpersonsincludingpatients.town,
+                    vwpersonsincludingpatients.state,
+                    vwpersonsincludingpatients.postcode,
+                    NULL::text AS organisation,
+                    NULL::text AS branch,
+                    vwpersonsincludingpatients.wholename,
+                    NULL::text AS occupation,
+                    vwpersonsincludingpatients.firstname,
+                    vwpersonsincludingpatients.surname,
+                    vwpersonsincludingpatients.salutation,
+                    vwpersonsincludingpatients.sex,
+                    vwpersonsincludingpatients.title,
+                    consult.consult_date,
+                    consult.fk_patient,
+                    consult.fk_staff,
+                    vwstaff.firstname AS staff_firstname,
+                    vwstaff.wholename AS staff_wholename,
+                    vwstaff.salutation AS staff_salutation,
+                    vwstaff.title AS staff_title,
+                    past_history.description,
+                    NULL::text AS contact_provider_number
+                   FROM ((((((referrals
+              LEFT JOIN contacts.vwpersonsincludingpatients ON (((referrals.fk_person = vwpersonsincludingpatients.fk_person) AND (referrals.fk_address = vwpersonsincludingpatients.fk_address))))
+         JOIN clin_consult.consult ON ((referrals.fk_consult = consult.pk)))
+    JOIN admin.vwstaff ON ((consult.fk_staff = vwstaff.fk_staff)))
+   JOIN lu_type ON ((referrals.fk_type = lu_type.pk)))
+   LEFT JOIN clin_history.past_history ON ((referrals.fk_pasthistory = past_history.pk)))
+   JOIN lu_urgency ON ((referrals.fk_lu_urgency = lu_urgency.pk)))
+  WHERE ((referrals.fk_branch IS NULL) AND (referrals.fk_employee IS NULL)))
+UNION
+         SELECT DISTINCT referrals.pk AS pk_referral,
+            referrals.date_referral,
+            referrals.fk_consult,
+            referrals.fk_person,
+            referrals.fk_type,
+            lu_type.type,
+            referrals.tag,
+            referrals.deleted,
+            referrals.body_html,
+            referrals.letter_html,
+            referrals.letter_hl7,
+            referrals.fk_pasthistory,
+            referrals.fk_progressnote,
+            referrals.include_careplan,
+            referrals.include_healthsummary,
+            referrals.fk_branch,
+            referrals.fk_employee,
+            referrals.fk_address,
+            referrals.copyto,
+            referrals.fk_lu_urgency,
+            referrals.finalised,
+            lu_urgency.urgency,
+            vworganisationsemployees.street1,
+            vworganisationsemployees.street2,
+            vworganisationsemployees.town,
+            vworganisationsemployees.state,
+            vworganisationsemployees.postcode,
+            vworganisationsemployees.organisation,
+            vworganisationsemployees.branch,
+            NULL::text AS wholename,
+            NULL::text AS occupation,
+            NULL::text AS firstname,
+            NULL::text AS surname,
+            NULL::text AS salutation,
+            NULL::text AS sex,
+            NULL::text AS title,
+            consult.consult_date,
+            consult.fk_patient,
+            consult.fk_staff,
+            vwstaff.firstname AS staff_firstname,
+            vwstaff.wholename AS staff_wholename,
+            vwstaff.salutation AS staff_salutation,
+            vwstaff.title AS staff_title,
+            past_history.description,
+            NULL::text AS contact_provider_number
+           FROM ((((((referrals
+      JOIN contacts.vworganisationsemployees ON ((referrals.fk_branch = vworganisationsemployees.fk_branch)))
+   JOIN clin_consult.consult ON ((referrals.fk_consult = consult.pk)))
+   JOIN admin.vwstaff ON ((consult.fk_staff = vwstaff.fk_staff)))
+   JOIN lu_type ON ((referrals.fk_type = lu_type.pk)))
+   JOIN lu_urgency ON ((referrals.fk_lu_urgency = lu_urgency.pk)))
+   LEFT JOIN clin_history.past_history ON ((referrals.fk_pasthistory = past_history.pk)))
+  WHERE (referrals.fk_person IS NULL);
 
 
 ALTER TABLE clin_referrals.vwreferrals OWNER TO easygp;
@@ -14081,7 +16571,74 @@ ALTER TABLE contacts.images OWNER TO easygp;
 --
 
 CREATE VIEW vwpersons AS
-    SELECT data_persons.pk AS fk_person, CASE WHEN ("Addresses".pk > 0) THEN COALESCE(((data_persons.pk || '-'::text) || "Addresses".pk)) ELSE (data_persons.pk || '-0'::text) END AS pk_view, (((lu_title.title || ' '::text) || (data_persons.firstname || ' '::text)) || (data_persons.surname || ' '::text)) AS wholename, data_persons.firstname, data_persons.surname, data_persons.salutation, data_persons.birthdate, data_persons.fk_ethnicity, data_persons.fk_language, data_persons.language_problems, data_persons.memo, data_persons.fk_marital, data_persons.fk_title, data_persons.fk_sex, data_persons.fk_image, data_persons.fk_occupation, data_persons.retired, data_persons.deceased, data_persons.date_deceased, data_persons.deleted, lu_sex.sex, lu_sex.sex_text, lu_title.title, lu_marital.marital, lu_occupations.occupation, lu_languages.language, lu_countries.country, links_persons_addresses.pk AS fk_link_address, links_persons_addresses.fk_address, lu_towns.postcode, lu_towns.town, lu_towns.state, data_persons.country_code, "Addresses".street1, "Addresses".street2, "Addresses".fk_town, "Addresses".fk_lu_address_type, lu_address_types.type AS address_type, "Addresses".preferred_address, "Addresses".postal_address, "Addresses".head_office, "Addresses".geolocation, "Addresses".deleted AS address_deleted, images.image, data_persons.surname_normalised, data_numbers.provider_number, data_numbers_persons.hpii, data_numbers.hpio, data_numbers.pk AS pk_data_numbers, data_numbers_persons.pk AS pk_data_numbers_persons FROM (((((((((((((data_persons LEFT JOIN lu_sex ON ((data_persons.fk_sex = lu_sex.pk))) LEFT JOIN lu_title ON ((data_persons.fk_title = lu_title.pk))) LEFT JOIN lu_marital ON ((data_persons.fk_marital = lu_marital.pk))) LEFT JOIN common.lu_occupations ON ((data_persons.fk_occupation = lu_occupations.pk))) LEFT JOIN common.lu_languages ON ((data_persons.fk_language = lu_languages.pk))) LEFT JOIN images ON ((data_persons.fk_image = images.pk))) LEFT JOIN links_persons_addresses ON ((data_persons.pk = links_persons_addresses.fk_person))) LEFT JOIN common.lu_countries ON ((data_persons.country_code = (lu_countries.country_code)::text))) LEFT JOIN data_addresses "Addresses" ON ((links_persons_addresses.fk_address = "Addresses".pk))) LEFT JOIN lu_address_types ON (("Addresses".fk_lu_address_type = lu_address_types.pk))) LEFT JOIN lu_towns ON (("Addresses".fk_town = lu_towns.pk))) LEFT JOIN data_numbers ON (((data_persons.pk = data_numbers.fk_person) AND (data_numbers.fk_branch IS NULL)))) LEFT JOIN data_numbers_persons ON ((data_persons.pk = data_numbers_persons.fk_person))) ORDER BY data_persons.pk, links_persons_addresses.fk_address;
+ SELECT data_persons.pk AS fk_person,
+        CASE
+            WHEN ("Addresses".pk > 0) THEN COALESCE(((data_persons.pk || '-'::text) || "Addresses".pk))
+            ELSE (data_persons.pk || '-0'::text)
+        END AS pk_view,
+    (((lu_title.title || ' '::text) || (data_persons.firstname || ' '::text)) || (data_persons.surname || ' '::text)) AS wholename,
+    data_persons.firstname,
+    data_persons.surname,
+    data_persons.salutation,
+    data_persons.birthdate,
+    data_persons.fk_ethnicity,
+    data_persons.fk_language,
+    data_persons.language_problems,
+    data_persons.memo,
+    data_persons.fk_marital,
+    data_persons.fk_title,
+    data_persons.fk_sex,
+    data_persons.fk_image,
+    data_persons.fk_occupation,
+    data_persons.retired,
+    data_persons.deceased,
+    data_persons.date_deceased,
+    data_persons.deleted,
+    lu_sex.sex,
+    lu_sex.sex_text,
+    lu_title.title,
+    lu_marital.marital,
+    lu_occupations.occupation,
+    lu_languages.language,
+    lu_countries.country,
+    links_persons_addresses.pk AS fk_link_address,
+    links_persons_addresses.fk_address,
+    lu_towns.postcode,
+    lu_towns.town,
+    lu_towns.state,
+    data_persons.country_code,
+    "Addresses".street1,
+    "Addresses".street2,
+    "Addresses".fk_town,
+    "Addresses".fk_lu_address_type,
+    lu_address_types.type AS address_type,
+    "Addresses".preferred_address,
+    "Addresses".postal_address,
+    "Addresses".head_office,
+    "Addresses".geolocation,
+    "Addresses".deleted AS address_deleted,
+    images.image,
+    data_persons.surname_normalised,
+    data_numbers.provider_number,
+    data_numbers_persons.hpii,
+    data_numbers.hpio,
+    data_numbers.pk AS pk_data_numbers,
+    data_numbers_persons.pk AS pk_data_numbers_persons
+   FROM (((((((((((((data_persons
+   LEFT JOIN lu_sex ON ((data_persons.fk_sex = lu_sex.pk)))
+   LEFT JOIN lu_title ON ((data_persons.fk_title = lu_title.pk)))
+   LEFT JOIN lu_marital ON ((data_persons.fk_marital = lu_marital.pk)))
+   LEFT JOIN common.lu_occupations ON ((data_persons.fk_occupation = lu_occupations.pk)))
+   LEFT JOIN common.lu_languages ON ((data_persons.fk_language = lu_languages.pk)))
+   LEFT JOIN images ON ((data_persons.fk_image = images.pk)))
+   LEFT JOIN links_persons_addresses ON ((data_persons.pk = links_persons_addresses.fk_person)))
+   LEFT JOIN common.lu_countries ON ((data_persons.country_code = (lu_countries.country_code)::text)))
+   LEFT JOIN data_addresses "Addresses" ON ((links_persons_addresses.fk_address = "Addresses".pk)))
+   LEFT JOIN lu_address_types ON (("Addresses".fk_lu_address_type = lu_address_types.pk)))
+   LEFT JOIN lu_towns ON (("Addresses".fk_town = lu_towns.pk)))
+   LEFT JOIN data_numbers ON (((data_persons.pk = data_numbers.fk_person) AND (data_numbers.fk_branch IS NULL))))
+   LEFT JOIN data_numbers_persons ON ((data_persons.pk = data_numbers_persons.fk_person)))
+  ORDER BY data_persons.pk, links_persons_addresses.fk_address;
 
 
 ALTER TABLE contacts.vwpersons OWNER TO easygp;
@@ -14093,7 +16650,95 @@ SET search_path = clin_requests, pg_catalog;
 --
 
 CREATE VIEW vwrequestproviders AS
-    SELECT request_providers.pk AS pk_request_provider, lu_request_type.type, request_providers.fk_headoffice_branch, request_providers.fk_default_branch, request_providers.fk_employee, request_providers.fk_person, request_providers.fk_lu_request_type, request_providers.deleted AS request_provider_deleted, request_providers.staff_default, data_organisations.organisation, lu_categories.category, data_branches.branch AS headoffice_branch, data_branches.fk_organisation, data_branches.deleted AS headoffice_branch_deleted, data_addresses.street1 AS headoffice_street1, data_addresses.street2 AS headoffice_street2, data_addresses.deleted AS headoffice_address_deleted, lu_towns.postcode AS headoffice_postcode, lu_towns.town AS headoffice_town, lu_towns.state AS headoffice_state, NULL::text AS wholename, NULL::text AS firstname, NULL::text AS surname, NULL::text AS salutation, 0 AS fk_title, NULL::text AS title, 0 AS fk_sex, NULL::text AS sex, 0 AS fk_occupation, NULL::text AS occupation, data_branches1.branch AS default_branch, data_addresses1.street1 AS default_branch_street1, data_addresses1.street2 AS default_branch_street2, lu_towns1.postcode AS default_branch_postcode, lu_towns1.town AS default_branch_town, lu_towns1.state AS default_branch_state FROM (((((((((request_providers JOIN contacts.data_branches ON ((request_providers.fk_headoffice_branch = data_branches.pk))) JOIN contacts.data_organisations ON ((data_branches.fk_organisation = data_organisations.pk))) JOIN contacts.lu_categories ON ((data_branches.fk_category = lu_categories.pk))) JOIN lu_request_type ON ((request_providers.fk_lu_request_type = lu_request_type.pk))) LEFT JOIN contacts.data_addresses ON ((data_branches.fk_address = data_addresses.pk))) LEFT JOIN contacts.lu_towns ON ((data_addresses.fk_town = lu_towns.pk))) JOIN contacts.data_branches data_branches1 ON ((request_providers.fk_default_branch = data_branches1.pk))) LEFT JOIN contacts.data_addresses data_addresses1 ON ((data_branches1.fk_address = data_addresses1.pk))) LEFT JOIN contacts.lu_towns lu_towns1 ON ((data_addresses1.fk_town = lu_towns1.pk))) WHERE ((request_providers.fk_employee = 0) AND (request_providers.fk_person = 0)) UNION SELECT request_providers.pk AS pk_request_provider, lu_request_type.type, request_providers.fk_headoffice_branch, request_providers.fk_default_branch, request_providers.fk_employee, request_providers.fk_person, request_providers.fk_lu_request_type, request_providers.deleted AS request_provider_deleted, request_providers.staff_default, NULL::text AS organisation, NULL::character varying AS category, 'HEAD OFFICE'::text AS headoffice_branch, 0 AS fk_organisation, NULL::boolean AS headoffice_branch_deleted, vwpersons.street1 AS headoffice_street1, vwpersons.street2 AS headoffice_street2, NULL::boolean AS headoffice_address_deleted, vwpersons.postcode AS headoffice_postcode, vwpersons.town AS headoffice_town, vwpersons.state AS headoffice_state, vwpersons.wholename, vwpersons.firstname, vwpersons.surname, vwpersons.salutation, vwpersons.fk_title, vwpersons.title, vwpersons.fk_sex, vwpersons.sex, vwpersons.fk_occupation, vwpersons.occupation, NULL::text AS default_branch, vwpersons.street1 AS default_branch_street1, vwpersons.street2 AS default_branch_street2, vwpersons.postcode AS default_branch_postcode, vwpersons.town AS default_branch_town, vwpersons.state AS default_branch_state FROM ((request_providers JOIN lu_request_type ON ((request_providers.fk_lu_request_type = lu_request_type.pk))) JOIN contacts.vwpersons ON ((request_providers.fk_person = vwpersons.fk_person))) WHERE (request_providers.fk_person <> 0) ORDER BY 7;
+         SELECT request_providers.pk AS pk_request_provider,
+            lu_request_type.type,
+            request_providers.fk_headoffice_branch,
+            request_providers.fk_default_branch,
+            request_providers.fk_employee,
+            request_providers.fk_person,
+            request_providers.fk_lu_request_type,
+            request_providers.deleted AS request_provider_deleted,
+            request_providers.staff_default,
+            data_organisations.organisation,
+            lu_categories.category,
+            data_branches.branch AS headoffice_branch,
+            data_branches.fk_organisation,
+            data_branches.deleted AS headoffice_branch_deleted,
+            data_addresses.street1 AS headoffice_street1,
+            data_addresses.street2 AS headoffice_street2,
+            data_addresses.deleted AS headoffice_address_deleted,
+            lu_towns.postcode AS headoffice_postcode,
+            lu_towns.town AS headoffice_town,
+            lu_towns.state AS headoffice_state,
+            NULL::text AS wholename,
+            NULL::text AS firstname,
+            NULL::text AS surname,
+            NULL::text AS salutation,
+            0 AS fk_title,
+            NULL::text AS title,
+            0 AS fk_sex,
+            NULL::text AS sex,
+            0 AS fk_occupation,
+            NULL::text AS occupation,
+            data_branches1.branch AS default_branch,
+            data_addresses1.street1 AS default_branch_street1,
+            data_addresses1.street2 AS default_branch_street2,
+            lu_towns1.postcode AS default_branch_postcode,
+            lu_towns1.town AS default_branch_town,
+            lu_towns1.state AS default_branch_state
+           FROM (((((((((request_providers
+      JOIN contacts.data_branches ON ((request_providers.fk_headoffice_branch = data_branches.pk)))
+   JOIN contacts.data_organisations ON ((data_branches.fk_organisation = data_organisations.pk)))
+   JOIN contacts.lu_categories ON ((data_branches.fk_category = lu_categories.pk)))
+   JOIN lu_request_type ON ((request_providers.fk_lu_request_type = lu_request_type.pk)))
+   LEFT JOIN contacts.data_addresses ON ((data_branches.fk_address = data_addresses.pk)))
+   LEFT JOIN contacts.lu_towns ON ((data_addresses.fk_town = lu_towns.pk)))
+   JOIN contacts.data_branches data_branches1 ON ((request_providers.fk_default_branch = data_branches1.pk)))
+   LEFT JOIN contacts.data_addresses data_addresses1 ON ((data_branches1.fk_address = data_addresses1.pk)))
+   LEFT JOIN contacts.lu_towns lu_towns1 ON ((data_addresses1.fk_town = lu_towns1.pk)))
+  WHERE ((request_providers.fk_employee = 0) AND (request_providers.fk_person = 0))
+UNION
+         SELECT request_providers.pk AS pk_request_provider,
+            lu_request_type.type,
+            request_providers.fk_headoffice_branch,
+            request_providers.fk_default_branch,
+            request_providers.fk_employee,
+            request_providers.fk_person,
+            request_providers.fk_lu_request_type,
+            request_providers.deleted AS request_provider_deleted,
+            request_providers.staff_default,
+            NULL::text AS organisation,
+            NULL::character varying AS category,
+            'HEAD OFFICE'::text AS headoffice_branch,
+            0 AS fk_organisation,
+            NULL::boolean AS headoffice_branch_deleted,
+            vwpersons.street1 AS headoffice_street1,
+            vwpersons.street2 AS headoffice_street2,
+            NULL::boolean AS headoffice_address_deleted,
+            vwpersons.postcode AS headoffice_postcode,
+            vwpersons.town AS headoffice_town,
+            vwpersons.state AS headoffice_state,
+            vwpersons.wholename,
+            vwpersons.firstname,
+            vwpersons.surname,
+            vwpersons.salutation,
+            vwpersons.fk_title,
+            vwpersons.title,
+            vwpersons.fk_sex,
+            vwpersons.sex,
+            vwpersons.fk_occupation,
+            vwpersons.occupation,
+            NULL::text AS default_branch,
+            vwpersons.street1 AS default_branch_street1,
+            vwpersons.street2 AS default_branch_street2,
+            vwpersons.postcode AS default_branch_postcode,
+            vwpersons.town AS default_branch_town,
+            vwpersons.state AS default_branch_state
+           FROM ((request_providers
+      JOIN lu_request_type ON ((request_providers.fk_lu_request_type = lu_request_type.pk)))
+   JOIN contacts.vwpersons ON ((request_providers.fk_person = vwpersons.fk_person)))
+  WHERE (request_providers.fk_person <> 0)
+  ORDER BY 7;
 
 
 ALTER TABLE clin_requests.vwrequestproviders OWNER TO easygp;
@@ -14112,7 +16757,82 @@ COMMENT ON VIEW vwrequestproviders IS ' View of providers who we may send reques
 --
 
 CREATE VIEW vwrequestforms AS
-    SELECT COALESCE(((forms.pk || '-'::text) || forms_requests.pk)) AS pk_view, forms_requests.pk AS fk_forms_requests, forms.fk_consult, forms.date, lu_requests.item, forms.requests_summary, forms.notes_summary, forms.fk_request_provider, forms.fk_lu_request_type, forms.medications_summary, forms.copyto, forms.deleted, forms.copyto_patient, forms.urgent, forms.bulk_bill, forms.fasting, forms.phone, forms.fax, forms.include_medications, forms.pk_image, forms.fk_progressnote, forms.fk_pasthistory, forms.latex, vwstaff.firstname AS staff_firstname, vwstaff.surname AS staff_surname, vwstaff.wholename AS staff_wholename, vwstaff.title AS staff_title, lu_request_type.type, vwrequestproviders.fk_headoffice_branch, vwrequestproviders.fk_default_branch, vwrequestproviders.fk_employee, vwrequestproviders.fk_person, vwrequestproviders.request_provider_deleted, vwrequestproviders.organisation, vwrequestproviders.category, vwrequestproviders.headoffice_branch, vwrequestproviders.fk_organisation, vwrequestproviders.headoffice_branch_deleted, vwrequestproviders.headoffice_street1, vwrequestproviders.headoffice_street2, vwrequestproviders.headoffice_address_deleted, vwrequestproviders.headoffice_postcode, vwrequestproviders.headoffice_town, vwrequestproviders.headoffice_state, vwrequestproviders.wholename, vwrequestproviders.firstname, vwrequestproviders.surname, vwrequestproviders.salutation, vwrequestproviders.fk_title, vwrequestproviders.title, vwrequestproviders.fk_sex, vwrequestproviders.sex, vwrequestproviders.fk_occupation, vwrequestproviders.occupation, vwrequestproviders.default_branch, vwrequestproviders.default_branch_street1, vwrequestproviders.default_branch_street2, vwrequestproviders.default_branch_postcode, vwrequestproviders.default_branch_town, vwrequestproviders.default_branch_state, forms_requests.fk_form, forms_requests.fk_lu_request, forms_requests.deleted AS forms_request_deleted, forms_requests.request_result_html, consult.consult_date, consult.fk_patient, consult.fk_staff, past_history.description AS past_history_description FROM (((((((forms JOIN clin_consult.consult ON ((forms.fk_consult = consult.pk))) JOIN admin.vwstaff ON ((consult.fk_staff = vwstaff.fk_staff))) JOIN lu_request_type ON ((forms.fk_lu_request_type = lu_request_type.pk))) JOIN forms_requests ON ((forms.pk = forms_requests.fk_form))) JOIN lu_requests ON ((forms_requests.fk_lu_request = lu_requests.pk))) JOIN vwrequestproviders ON ((forms.fk_request_provider = vwrequestproviders.pk_request_provider))) LEFT JOIN clin_history.past_history ON ((forms.fk_pasthistory = past_history.pk)));
+ SELECT COALESCE(((forms.pk || '-'::text) || forms_requests.pk)) AS pk_view,
+    forms_requests.pk AS fk_forms_requests,
+    forms.fk_consult,
+    forms.date,
+    lu_requests.item,
+    forms.requests_summary,
+    forms.notes_summary,
+    forms.fk_request_provider,
+    forms.fk_lu_request_type,
+    forms.medications_summary,
+    forms.copyto,
+    forms.deleted,
+    forms.copyto_patient,
+    forms.urgent,
+    forms.bulk_bill,
+    forms.fasting,
+    forms.phone,
+    forms.fax,
+    forms.include_medications,
+    forms.pk_image,
+    forms.fk_progressnote,
+    forms.fk_pasthistory,
+    forms.latex,
+    vwstaff.firstname AS staff_firstname,
+    vwstaff.surname AS staff_surname,
+    vwstaff.wholename AS staff_wholename,
+    vwstaff.title AS staff_title,
+    lu_request_type.type,
+    vwrequestproviders.fk_headoffice_branch,
+    vwrequestproviders.fk_default_branch,
+    vwrequestproviders.fk_employee,
+    vwrequestproviders.fk_person,
+    vwrequestproviders.request_provider_deleted,
+    vwrequestproviders.organisation,
+    vwrequestproviders.category,
+    vwrequestproviders.headoffice_branch,
+    vwrequestproviders.fk_organisation,
+    vwrequestproviders.headoffice_branch_deleted,
+    vwrequestproviders.headoffice_street1,
+    vwrequestproviders.headoffice_street2,
+    vwrequestproviders.headoffice_address_deleted,
+    vwrequestproviders.headoffice_postcode,
+    vwrequestproviders.headoffice_town,
+    vwrequestproviders.headoffice_state,
+    vwrequestproviders.wholename,
+    vwrequestproviders.firstname,
+    vwrequestproviders.surname,
+    vwrequestproviders.salutation,
+    vwrequestproviders.fk_title,
+    vwrequestproviders.title,
+    vwrequestproviders.fk_sex,
+    vwrequestproviders.sex,
+    vwrequestproviders.fk_occupation,
+    vwrequestproviders.occupation,
+    vwrequestproviders.default_branch,
+    vwrequestproviders.default_branch_street1,
+    vwrequestproviders.default_branch_street2,
+    vwrequestproviders.default_branch_postcode,
+    vwrequestproviders.default_branch_town,
+    vwrequestproviders.default_branch_state,
+    forms_requests.fk_form,
+    forms_requests.fk_lu_request,
+    forms_requests.deleted AS forms_request_deleted,
+    forms_requests.request_result_html,
+    consult.consult_date,
+    consult.fk_patient,
+    consult.fk_staff,
+    past_history.description AS past_history_description
+   FROM (((((((forms
+   JOIN clin_consult.consult ON ((forms.fk_consult = consult.pk)))
+   JOIN admin.vwstaff ON ((consult.fk_staff = vwstaff.fk_staff)))
+   JOIN lu_request_type ON ((forms.fk_lu_request_type = lu_request_type.pk)))
+   JOIN forms_requests ON ((forms.pk = forms_requests.fk_form)))
+   JOIN lu_requests ON ((forms_requests.fk_lu_request = lu_requests.pk)))
+   JOIN vwrequestproviders ON ((forms.fk_request_provider = vwrequestproviders.pk_request_provider)))
+   LEFT JOIN clin_history.past_history ON ((forms.fk_pasthistory = past_history.pk)));
 
 
 ALTER TABLE clin_requests.vwrequestforms OWNER TO easygp;
@@ -14122,7 +16842,75 @@ ALTER TABLE clin_requests.vwrequestforms OWNER TO easygp;
 --
 
 CREATE VIEW vwrequestnames AS
-    ((SELECT (lu_request_items.pk || '-1'::text) AS pk_view, lu_request_items.pk AS fk_lu_request, lu_request_type.type, lu_request_items.fk_lu_request_type, lu_request_items.deleted, CASE WHEN (lu_request_items.fk_laterality = 3) THEN (lu_request_items.item || ' (LEFT)'::text) ELSE NULL::text END AS item, 1 AS fk_laterality, lu_request_items.fk_decision_support, lu_request_items.fk_instruction, lu_instructions.instruction FROM ((lu_requests lu_request_items JOIN lu_request_type ON ((lu_request_items.fk_lu_request_type = lu_request_type.pk))) LEFT JOIN lu_instructions ON ((lu_request_items.fk_instruction = lu_instructions.pk))) WHERE ((lower(lu_request_items.item) ~~ '%'::text) AND (lu_request_items.fk_laterality = 3)) UNION SELECT (lu_request_items.pk || '-2'::text) AS pk_view, lu_request_items.pk AS fk_lu_request, lu_request_type.type, lu_request_items.fk_lu_request_type, lu_request_items.deleted, CASE WHEN (lu_request_items.fk_laterality = 3) THEN (lu_request_items.item || ' (RIGHT)'::text) ELSE NULL::text END AS item, 2 AS fk_laterality, lu_request_items.fk_decision_support, lu_request_items.fk_instruction, lu_instructions.instruction FROM ((lu_requests lu_request_items JOIN lu_request_type ON ((lu_request_items.fk_lu_request_type = lu_request_type.pk))) LEFT JOIN lu_instructions ON ((lu_request_items.fk_instruction = lu_instructions.pk))) WHERE ((lower(lu_request_items.item) ~~ '%'::text) AND (lu_request_items.fk_laterality = 3))) UNION SELECT (lu_request_items.pk || '-3'::text) AS pk_view, lu_request_items.pk AS fk_lu_request, lu_request_type.type, lu_request_items.fk_lu_request_type, lu_request_items.deleted, CASE WHEN (lu_request_items.fk_laterality = 3) THEN (lu_request_items.item || ' (BOTH)'::text) ELSE NULL::text END AS item, 3 AS fk_laterality, lu_request_items.fk_decision_support, lu_request_items.fk_instruction, lu_instructions.instruction FROM ((lu_requests lu_request_items JOIN lu_request_type ON ((lu_request_items.fk_lu_request_type = lu_request_type.pk))) LEFT JOIN lu_instructions ON ((lu_request_items.fk_instruction = lu_instructions.pk))) WHERE ((lower(lu_request_items.item) ~~ '%'::text) AND (lu_request_items.fk_laterality = 3))) UNION SELECT (lu_request_items.pk || '-0'::text) AS pk_view, lu_request_items.pk AS fk_lu_request, lu_request_type.type, lu_request_items.fk_lu_request_type, lu_request_items.deleted, lu_request_items.item, lu_request_items.fk_laterality, lu_request_items.fk_decision_support, lu_request_items.fk_instruction, lu_instructions.instruction FROM ((lu_requests lu_request_items JOIN lu_request_type ON ((lu_request_items.fk_lu_request_type = lu_request_type.pk))) LEFT JOIN lu_instructions ON ((lu_request_items.fk_instruction = lu_instructions.pk))) WHERE ((lower(lu_request_items.item) ~~ '%'::text) AND (lu_request_items.fk_laterality = 0)) ORDER BY 2, 7;
+        (        (         SELECT (lu_request_items.pk || '-1'::text) AS pk_view,
+                            lu_request_items.pk AS fk_lu_request,
+                            lu_request_type.type,
+                            lu_request_items.fk_lu_request_type,
+                            lu_request_items.deleted,
+                                CASE
+                                    WHEN (lu_request_items.fk_laterality = 3) THEN (lu_request_items.item || ' (LEFT)'::text)
+                                    ELSE NULL::text
+                                END AS item,
+                            1 AS fk_laterality,
+                            lu_request_items.fk_decision_support,
+                            lu_request_items.fk_instruction,
+                            lu_instructions.instruction
+                           FROM ((lu_requests lu_request_items
+                      JOIN lu_request_type ON ((lu_request_items.fk_lu_request_type = lu_request_type.pk)))
+                 LEFT JOIN lu_instructions ON ((lu_request_items.fk_instruction = lu_instructions.pk)))
+                WHERE ((lower(lu_request_items.item) ~~ '%'::text) AND (lu_request_items.fk_laterality = 3))
+                UNION
+                         SELECT (lu_request_items.pk || '-2'::text) AS pk_view,
+                            lu_request_items.pk AS fk_lu_request,
+                            lu_request_type.type,
+                            lu_request_items.fk_lu_request_type,
+                            lu_request_items.deleted,
+                                CASE
+                                    WHEN (lu_request_items.fk_laterality = 3) THEN (lu_request_items.item || ' (RIGHT)'::text)
+                                    ELSE NULL::text
+                                END AS item,
+                            2 AS fk_laterality,
+                            lu_request_items.fk_decision_support,
+                            lu_request_items.fk_instruction,
+                            lu_instructions.instruction
+                           FROM ((lu_requests lu_request_items
+                      JOIN lu_request_type ON ((lu_request_items.fk_lu_request_type = lu_request_type.pk)))
+                 LEFT JOIN lu_instructions ON ((lu_request_items.fk_instruction = lu_instructions.pk)))
+                WHERE ((lower(lu_request_items.item) ~~ '%'::text) AND (lu_request_items.fk_laterality = 3)))
+        UNION
+                 SELECT (lu_request_items.pk || '-3'::text) AS pk_view,
+                    lu_request_items.pk AS fk_lu_request,
+                    lu_request_type.type,
+                    lu_request_items.fk_lu_request_type,
+                    lu_request_items.deleted,
+                        CASE
+                            WHEN (lu_request_items.fk_laterality = 3) THEN (lu_request_items.item || ' (BOTH)'::text)
+                            ELSE NULL::text
+                        END AS item,
+                    3 AS fk_laterality,
+                    lu_request_items.fk_decision_support,
+                    lu_request_items.fk_instruction,
+                    lu_instructions.instruction
+                   FROM ((lu_requests lu_request_items
+              JOIN lu_request_type ON ((lu_request_items.fk_lu_request_type = lu_request_type.pk)))
+         LEFT JOIN lu_instructions ON ((lu_request_items.fk_instruction = lu_instructions.pk)))
+        WHERE ((lower(lu_request_items.item) ~~ '%'::text) AND (lu_request_items.fk_laterality = 3)))
+UNION
+         SELECT (lu_request_items.pk || '-0'::text) AS pk_view,
+            lu_request_items.pk AS fk_lu_request,
+            lu_request_type.type,
+            lu_request_items.fk_lu_request_type,
+            lu_request_items.deleted,
+            lu_request_items.item,
+            lu_request_items.fk_laterality,
+            lu_request_items.fk_decision_support,
+            lu_request_items.fk_instruction,
+            lu_instructions.instruction
+           FROM ((lu_requests lu_request_items
+      JOIN lu_request_type ON ((lu_request_items.fk_lu_request_type = lu_request_type.pk)))
+   LEFT JOIN lu_instructions ON ((lu_request_items.fk_instruction = lu_instructions.pk)))
+  WHERE ((lower(lu_request_items.item) ~~ '%'::text) AND (lu_request_items.fk_laterality = 0))
+  ORDER BY 2, 7;
 
 
 ALTER TABLE clin_requests.vwrequestnames OWNER TO easygp;
@@ -14311,7 +17099,224 @@ ALTER TABLE documents.unmatched_staff OWNER TO easygp;
 --
 
 CREATE VIEW vwsendingentities AS
-    ((SELECT sending_entities.pk AS pk_sending_entities, sending_entities.fk_lu_request_type, lu_request_type.type AS request_type, sending_entities.msh_sending_entity, sending_entities.msh_transmitting_entity, sending_entities.fk_lu_message_display_style, sending_entities.fk_branch, sending_entities.fk_employee, sending_entities.fk_person, sending_entities.fk_lu_message_standard, lu_message_standard.type AS message_type, lu_message_standard.version AS message_version, lu_message_display_style.style, sending_entities.exclude_ft_report, sending_entities.exclude_pit, sending_entities.abnormals_foreground_color, sending_entities.abnormals_background_color, sending_entities.deleted, NULL::text AS branch, NULL::text AS organisation, false AS organisation_deleted, NULL::integer AS fk_organisation, false AS branch_deleted, NULL::integer AS fk_address_organisation, NULL::integer AS fk_category_organisation, NULL::character varying AS organisation_category, NULL::text AS organisation_street1, NULL::text AS organisation_street2, NULL::integer AS fk_town_organisation, NULL::boolean AS organisation_postal_address, NULL::boolean AS organisation_head_office, NULL::character varying AS organisation_postcode, NULL::text AS organisation_town, NULL::character varying AS organisation_state, vwpersons.firstname, vwpersons.surname, vwpersons.title, vwpersons.occupation AS person_occupation, vwpersons.sex, vwpersons.fk_address AS fk_address_person, vwpersons.postcode AS person_postcode, vwpersons.street1 AS person_street1, vwpersons.street2 AS person_street2, vwpersons.fk_town AS fk_town_person, vwpersons.town AS person_town, vwpersons.state AS person_state, data_numbers.provider_number FROM (((((sending_entities JOIN contacts.vwpersons ON ((sending_entities.fk_person = vwpersons.fk_person))) LEFT JOIN contacts.data_numbers ON (((sending_entities.fk_person = data_numbers.fk_person) AND (data_numbers.fk_branch IS NULL)))) LEFT JOIN clin_requests.lu_request_type ON ((sending_entities.fk_lu_request_type = lu_request_type.pk))) JOIN lu_message_display_style ON ((sending_entities.fk_lu_message_display_style = lu_message_display_style.pk))) JOIN lu_message_standard ON ((sending_entities.fk_lu_message_standard = lu_message_standard.pk))) WHERE (((vwpersons.deleted = false) AND (sending_entities.fk_branch = 0)) AND (sending_entities.fk_employee = 0)) UNION SELECT sending_entities.pk AS pk_sending_entities, sending_entities.fk_lu_request_type, lu_request_type.type AS request_type, sending_entities.msh_sending_entity, sending_entities.msh_transmitting_entity, sending_entities.fk_lu_message_display_style, sending_entities.fk_branch, sending_entities.fk_employee, sending_entities.fk_person, sending_entities.fk_lu_message_standard, lu_message_standard.type AS message_type, lu_message_standard.version AS message_version, lu_message_display_style.style, sending_entities.exclude_ft_report, sending_entities.exclude_pit, sending_entities.abnormals_foreground_color, sending_entities.abnormals_background_color, sending_entities.deleted, vworganisations.branch, vworganisations.organisation, vworganisations.organisation_deleted, vworganisations.fk_organisation, vworganisations.branch_deleted, vworganisations.fk_address AS fk_address_organisation, vworganisations.fk_category AS fk_category_organisation, vworganisations.category AS organisation_category, vworganisations.street1 AS organisation_street1, vworganisations.street2 AS organisation_street2, vworganisations.fk_town AS fk_town_organisation, vworganisations.postal_address AS organisation_postal_address, vworganisations.head_office AS organisation_head_office, vworganisations.postcode AS organisation_postcode, vworganisations.town AS organisation_town, vworganisations.state AS organisation_state, NULL::text AS firstname, NULL::text AS surname, NULL::text AS title, NULL::text AS person_occupation, NULL::text AS sex, NULL::integer AS fk_address_person, NULL::character varying AS person_postcode, NULL::text AS person_street1, NULL::text AS person_street2, NULL::integer AS fk_town_person, NULL::text AS person_town, NULL::character varying AS person_state, NULL::text AS provider_number FROM ((((sending_entities JOIN contacts.vworganisations ON ((sending_entities.fk_branch = vworganisations.fk_branch))) LEFT JOIN clin_requests.lu_request_type ON ((sending_entities.fk_lu_request_type = lu_request_type.pk))) JOIN lu_message_display_style ON ((sending_entities.fk_lu_message_display_style = lu_message_display_style.pk))) JOIN lu_message_standard ON ((sending_entities.fk_lu_message_standard = lu_message_standard.pk))) WHERE (((vworganisations.branch_deleted = false) AND (sending_entities.fk_employee = 0)) AND (sending_entities.fk_person = 0))) UNION SELECT sending_entities.pk AS pk_sending_entities, sending_entities.fk_lu_request_type, lu_request_type.type AS request_type, sending_entities.msh_sending_entity, sending_entities.msh_transmitting_entity, sending_entities.fk_lu_message_display_style, sending_entities.fk_branch, sending_entities.fk_employee, sending_entities.fk_person, sending_entities.fk_lu_message_standard, lu_message_standard.type AS message_type, lu_message_standard.version AS message_version, lu_message_display_style.style, sending_entities.exclude_ft_report, sending_entities.exclude_pit, sending_entities.abnormals_foreground_color, sending_entities.abnormals_background_color, sending_entities.deleted, vworganisations.branch, vworganisations.organisation, vworganisations.organisation_deleted, vworganisations.fk_organisation, vworganisations.branch_deleted, vworganisations.fk_address AS fk_address_organisation, vworganisations.fk_category AS fk_category_organisation, vworganisations.category AS organisation_category, vworganisations.street1 AS organisation_street1, vworganisations.street2 AS organisation_street2, vworganisations.fk_town AS fk_town_organisation, vworganisations.postal_address AS organisation_postal_address, vworganisations.head_office AS organisation_head_office, vworganisations.postcode AS organisation_postcode, vworganisations.town AS organisation_town, vworganisations.state AS organisation_state, vwpersons.firstname, vwpersons.surname, vwpersons.title, vwpersons.occupation AS person_occupation, vwpersons.sex, vwpersons.fk_address AS fk_address_person, vwpersons.postcode AS person_postcode, vwpersons.street1 AS person_street1, vwpersons.street2 AS person_street2, vwpersons.fk_town AS fk_town_person, vwpersons.town AS person_town, vwpersons.state AS person_state, data_numbers.provider_number FROM (((((((sending_entities JOIN contacts.vworganisations ON ((sending_entities.fk_branch = vworganisations.fk_branch))) LEFT JOIN clin_requests.lu_request_type ON ((sending_entities.fk_lu_request_type = lu_request_type.pk))) JOIN lu_message_display_style ON ((sending_entities.fk_lu_message_display_style = lu_message_display_style.pk))) JOIN lu_message_standard ON ((sending_entities.fk_lu_message_standard = lu_message_standard.pk))) JOIN contacts.data_employees ON ((sending_entities.fk_employee = data_employees.pk))) JOIN contacts.vwpersons ON ((data_employees.fk_person = vwpersons.fk_person))) LEFT JOIN contacts.data_numbers ON (((sending_entities.fk_branch = data_numbers.fk_branch) AND (vwpersons.fk_person = data_numbers.fk_person)))) WHERE ((vwpersons.deleted = false) AND (data_employees.deleted = false))) UNION SELECT sending_entities.pk AS pk_sending_entities, sending_entities.fk_lu_request_type, lu_request_type.type AS request_type, sending_entities.msh_sending_entity, sending_entities.msh_transmitting_entity, sending_entities.fk_lu_message_display_style, sending_entities.fk_branch, sending_entities.fk_employee, sending_entities.fk_person, sending_entities.fk_lu_message_standard, lu_message_standard.type AS message_type, lu_message_standard.version AS message_version, lu_message_display_style.style, sending_entities.exclude_ft_report, sending_entities.exclude_pit, sending_entities.abnormals_foreground_color, sending_entities.abnormals_background_color, sending_entities.deleted, NULL::text AS branch, NULL::text AS organisation, NULL::boolean AS organisation_deleted, NULL::integer AS fk_organisation, NULL::boolean AS branch_deleted, NULL::integer AS fk_address_organisation, NULL::integer AS fk_category_organisation, NULL::character varying AS organisation_category, NULL::text AS organisation_street1, NULL::text AS organisation_street2, NULL::integer AS fk_town_organisation, false AS organisation_postal_address, false AS organisation_head_office, NULL::character varying AS organisation_postcode, NULL::text AS organisation_town, NULL::character varying AS organisation_state, NULL::text AS firstname, NULL::text AS surname, NULL::text AS title, NULL::text AS person_occupation, NULL::text AS sex, NULL::integer AS fk_address_person, NULL::character varying AS person_postcode, NULL::text AS person_street1, NULL::text AS person_street2, NULL::integer AS fk_town_person, NULL::text AS person_town, NULL::character varying AS person_state, NULL::text AS provider_number FROM (((sending_entities LEFT JOIN clin_requests.lu_request_type ON ((sending_entities.fk_lu_request_type = lu_request_type.pk))) JOIN lu_message_display_style ON ((sending_entities.fk_lu_message_display_style = lu_message_display_style.pk))) JOIN lu_message_standard ON ((sending_entities.fk_lu_message_standard = lu_message_standard.pk))) WHERE ((((sending_entities.fk_branch IS NULL) AND (sending_entities.fk_employee IS NULL)) AND (sending_entities.fk_person IS NULL)) AND (sending_entities.fk_branch IS NULL));
+        (        (         SELECT sending_entities.pk AS pk_sending_entities,
+                            sending_entities.fk_lu_request_type,
+                            lu_request_type.type AS request_type,
+                            sending_entities.msh_sending_entity,
+                            sending_entities.msh_transmitting_entity,
+                            sending_entities.fk_lu_message_display_style,
+                            sending_entities.fk_branch,
+                            sending_entities.fk_employee,
+                            sending_entities.fk_person,
+                            sending_entities.fk_lu_message_standard,
+                            lu_message_standard.type AS message_type,
+                            lu_message_standard.version AS message_version,
+                            lu_message_display_style.style,
+                            sending_entities.exclude_ft_report,
+                            sending_entities.exclude_pit,
+                            sending_entities.abnormals_foreground_color,
+                            sending_entities.abnormals_background_color,
+                            sending_entities.deleted,
+                            NULL::text AS branch,
+                            NULL::text AS organisation,
+                            false AS organisation_deleted,
+                            NULL::integer AS fk_organisation,
+                            false AS branch_deleted,
+                            NULL::integer AS fk_address_organisation,
+                            NULL::integer AS fk_category_organisation,
+                            NULL::character varying AS organisation_category,
+                            NULL::text AS organisation_street1,
+                            NULL::text AS organisation_street2,
+                            NULL::integer AS fk_town_organisation,
+                            NULL::boolean AS organisation_postal_address,
+                            NULL::boolean AS organisation_head_office,
+                            NULL::character varying AS organisation_postcode,
+                            NULL::text AS organisation_town,
+                            NULL::character varying AS organisation_state,
+                            vwpersons.firstname,
+                            vwpersons.surname,
+                            vwpersons.title,
+                            vwpersons.occupation AS person_occupation,
+                            vwpersons.sex,
+                            vwpersons.fk_address AS fk_address_person,
+                            vwpersons.postcode AS person_postcode,
+                            vwpersons.street1 AS person_street1,
+                            vwpersons.street2 AS person_street2,
+                            vwpersons.fk_town AS fk_town_person,
+                            vwpersons.town AS person_town,
+                            vwpersons.state AS person_state,
+                            data_numbers.provider_number
+                           FROM (((((sending_entities
+                      JOIN contacts.vwpersons ON ((sending_entities.fk_person = vwpersons.fk_person)))
+                 LEFT JOIN contacts.data_numbers ON (((sending_entities.fk_person = data_numbers.fk_person) AND (data_numbers.fk_branch IS NULL))))
+            LEFT JOIN clin_requests.lu_request_type ON ((sending_entities.fk_lu_request_type = lu_request_type.pk)))
+       JOIN lu_message_display_style ON ((sending_entities.fk_lu_message_display_style = lu_message_display_style.pk)))
+   JOIN lu_message_standard ON ((sending_entities.fk_lu_message_standard = lu_message_standard.pk)))
+  WHERE (((vwpersons.deleted = false) AND (sending_entities.fk_branch = 0)) AND (sending_entities.fk_employee = 0))
+                UNION
+                         SELECT sending_entities.pk AS pk_sending_entities,
+                            sending_entities.fk_lu_request_type,
+                            lu_request_type.type AS request_type,
+                            sending_entities.msh_sending_entity,
+                            sending_entities.msh_transmitting_entity,
+                            sending_entities.fk_lu_message_display_style,
+                            sending_entities.fk_branch,
+                            sending_entities.fk_employee,
+                            sending_entities.fk_person,
+                            sending_entities.fk_lu_message_standard,
+                            lu_message_standard.type AS message_type,
+                            lu_message_standard.version AS message_version,
+                            lu_message_display_style.style,
+                            sending_entities.exclude_ft_report,
+                            sending_entities.exclude_pit,
+                            sending_entities.abnormals_foreground_color,
+                            sending_entities.abnormals_background_color,
+                            sending_entities.deleted,
+                            vworganisations.branch,
+                            vworganisations.organisation,
+                            vworganisations.organisation_deleted,
+                            vworganisations.fk_organisation,
+                            vworganisations.branch_deleted,
+                            vworganisations.fk_address AS fk_address_organisation,
+                            vworganisations.fk_category AS fk_category_organisation,
+                            vworganisations.category AS organisation_category,
+                            vworganisations.street1 AS organisation_street1,
+                            vworganisations.street2 AS organisation_street2,
+                            vworganisations.fk_town AS fk_town_organisation,
+                            vworganisations.postal_address AS organisation_postal_address,
+                            vworganisations.head_office AS organisation_head_office,
+                            vworganisations.postcode AS organisation_postcode,
+                            vworganisations.town AS organisation_town,
+                            vworganisations.state AS organisation_state,
+                            NULL::text AS firstname,
+                            NULL::text AS surname,
+                            NULL::text AS title,
+                            NULL::text AS person_occupation,
+                            NULL::text AS sex,
+                            NULL::integer AS fk_address_person,
+                            NULL::character varying AS person_postcode,
+                            NULL::text AS person_street1,
+                            NULL::text AS person_street2,
+                            NULL::integer AS fk_town_person,
+                            NULL::text AS person_town,
+                            NULL::character varying AS person_state,
+                            NULL::text AS provider_number
+                           FROM ((((sending_entities
+                      JOIN contacts.vworganisations ON ((sending_entities.fk_branch = vworganisations.fk_branch)))
+                 LEFT JOIN clin_requests.lu_request_type ON ((sending_entities.fk_lu_request_type = lu_request_type.pk)))
+            JOIN lu_message_display_style ON ((sending_entities.fk_lu_message_display_style = lu_message_display_style.pk)))
+       JOIN lu_message_standard ON ((sending_entities.fk_lu_message_standard = lu_message_standard.pk)))
+      WHERE (((vworganisations.branch_deleted = false) AND (sending_entities.fk_employee = 0)) AND (sending_entities.fk_person = 0)))
+        UNION
+                 SELECT sending_entities.pk AS pk_sending_entities,
+                    sending_entities.fk_lu_request_type,
+                    lu_request_type.type AS request_type,
+                    sending_entities.msh_sending_entity,
+                    sending_entities.msh_transmitting_entity,
+                    sending_entities.fk_lu_message_display_style,
+                    sending_entities.fk_branch,
+                    sending_entities.fk_employee,
+                    sending_entities.fk_person,
+                    sending_entities.fk_lu_message_standard,
+                    lu_message_standard.type AS message_type,
+                    lu_message_standard.version AS message_version,
+                    lu_message_display_style.style,
+                    sending_entities.exclude_ft_report,
+                    sending_entities.exclude_pit,
+                    sending_entities.abnormals_foreground_color,
+                    sending_entities.abnormals_background_color,
+                    sending_entities.deleted,
+                    vworganisations.branch,
+                    vworganisations.organisation,
+                    vworganisations.organisation_deleted,
+                    vworganisations.fk_organisation,
+                    vworganisations.branch_deleted,
+                    vworganisations.fk_address AS fk_address_organisation,
+                    vworganisations.fk_category AS fk_category_organisation,
+                    vworganisations.category AS organisation_category,
+                    vworganisations.street1 AS organisation_street1,
+                    vworganisations.street2 AS organisation_street2,
+                    vworganisations.fk_town AS fk_town_organisation,
+                    vworganisations.postal_address AS organisation_postal_address,
+                    vworganisations.head_office AS organisation_head_office,
+                    vworganisations.postcode AS organisation_postcode,
+                    vworganisations.town AS organisation_town,
+                    vworganisations.state AS organisation_state,
+                    vwpersons.firstname,
+                    vwpersons.surname,
+                    vwpersons.title,
+                    vwpersons.occupation AS person_occupation,
+                    vwpersons.sex,
+                    vwpersons.fk_address AS fk_address_person,
+                    vwpersons.postcode AS person_postcode,
+                    vwpersons.street1 AS person_street1,
+                    vwpersons.street2 AS person_street2,
+                    vwpersons.fk_town AS fk_town_person,
+                    vwpersons.town AS person_town,
+                    vwpersons.state AS person_state,
+                    data_numbers.provider_number
+                   FROM (((((((sending_entities
+              JOIN contacts.vworganisations ON ((sending_entities.fk_branch = vworganisations.fk_branch)))
+         LEFT JOIN clin_requests.lu_request_type ON ((sending_entities.fk_lu_request_type = lu_request_type.pk)))
+    JOIN lu_message_display_style ON ((sending_entities.fk_lu_message_display_style = lu_message_display_style.pk)))
+   JOIN lu_message_standard ON ((sending_entities.fk_lu_message_standard = lu_message_standard.pk)))
+   JOIN contacts.data_employees ON ((sending_entities.fk_employee = data_employees.pk)))
+   JOIN contacts.vwpersons ON ((data_employees.fk_person = vwpersons.fk_person)))
+   LEFT JOIN contacts.data_numbers ON (((sending_entities.fk_branch = data_numbers.fk_branch) AND (vwpersons.fk_person = data_numbers.fk_person))))
+  WHERE ((vwpersons.deleted = false) AND (data_employees.deleted = false)))
+UNION
+         SELECT sending_entities.pk AS pk_sending_entities,
+            sending_entities.fk_lu_request_type,
+            lu_request_type.type AS request_type,
+            sending_entities.msh_sending_entity,
+            sending_entities.msh_transmitting_entity,
+            sending_entities.fk_lu_message_display_style,
+            sending_entities.fk_branch,
+            sending_entities.fk_employee,
+            sending_entities.fk_person,
+            sending_entities.fk_lu_message_standard,
+            lu_message_standard.type AS message_type,
+            lu_message_standard.version AS message_version,
+            lu_message_display_style.style,
+            sending_entities.exclude_ft_report,
+            sending_entities.exclude_pit,
+            sending_entities.abnormals_foreground_color,
+            sending_entities.abnormals_background_color,
+            sending_entities.deleted,
+            NULL::text AS branch,
+            NULL::text AS organisation,
+            NULL::boolean AS organisation_deleted,
+            NULL::integer AS fk_organisation,
+            NULL::boolean AS branch_deleted,
+            NULL::integer AS fk_address_organisation,
+            NULL::integer AS fk_category_organisation,
+            NULL::character varying AS organisation_category,
+            NULL::text AS organisation_street1,
+            NULL::text AS organisation_street2,
+            NULL::integer AS fk_town_organisation,
+            false AS organisation_postal_address,
+            false AS organisation_head_office,
+            NULL::character varying AS organisation_postcode,
+            NULL::text AS organisation_town,
+            NULL::character varying AS organisation_state,
+            NULL::text AS firstname,
+            NULL::text AS surname,
+            NULL::text AS title,
+            NULL::text AS person_occupation,
+            NULL::text AS sex,
+            NULL::integer AS fk_address_person,
+            NULL::character varying AS person_postcode,
+            NULL::text AS person_street1,
+            NULL::text AS person_street2,
+            NULL::integer AS fk_town_person,
+            NULL::text AS person_town,
+            NULL::character varying AS person_state,
+            NULL::text AS provider_number
+           FROM (((sending_entities
+      LEFT JOIN clin_requests.lu_request_type ON ((sending_entities.fk_lu_request_type = lu_request_type.pk)))
+   JOIN lu_message_display_style ON ((sending_entities.fk_lu_message_display_style = lu_message_display_style.pk)))
+   JOIN lu_message_standard ON ((sending_entities.fk_lu_message_standard = lu_message_standard.pk)))
+  WHERE ((((sending_entities.fk_branch IS NULL) AND (sending_entities.fk_employee IS NULL)) AND (sending_entities.fk_person IS NULL)) AND (sending_entities.fk_branch IS NULL));
 
 
 ALTER TABLE documents.vwsendingentities OWNER TO easygp;
@@ -14321,7 +17326,94 @@ ALTER TABLE documents.vwsendingentities OWNER TO easygp;
 --
 
 CREATE VIEW vwdocuments AS
-    SELECT documents.pk AS pk_document, documents.source_file, documents.fk_sending_entity, documents.imported_time, documents.date_requested, documents.date_created, documents.fk_patient, documents.fk_staff_filed_document, documents.originator, documents.originator_reference, documents.copy_to, documents.provider_of_service_reference, documents.internal_reference, documents.copies_to, documents.fk_staff_destination, documents.comment_on_document, documents.patient_access, documents.concluded, documents.deleted, documents.fk_lu_urgency, documents.tag, documents.tag_user, documents.md5sum, documents.html, documents.fk_unmatched_staff, documents.fk_referral, documents.fk_request, documents.incoming_referral, documents.fk_unmatched_patient, documents.fk_lu_display_as, documents.fk_lu_request_type, lu_request_type.type AS request_type, vwsendingentities.fk_lu_request_type AS sending_entity_fk_lu_request_type, vwsendingentities.request_type AS sending_entity_request_type, vwsendingentities.style, vwsendingentities.message_type, vwsendingentities.message_version, vwsendingentities.msh_sending_entity, vwsendingentities.msh_transmitting_entity, vwsendingentities.fk_lu_message_display_style, vwsendingentities.fk_branch AS fk_sender_branch, vwsendingentities.fk_employee AS fk_employee_branch, vwsendingentities.fk_person AS fk_sender_person, vwsendingentities.fk_lu_message_standard, vwsendingentities.exclude_ft_report, vwsendingentities.abnormals_foreground_color, vwsendingentities.abnormals_background_color, vwsendingentities.exclude_pit, vwsendingentities.person_occupation, vwsendingentities.organisation, vwsendingentities.organisation_category, vwpatients.fk_person AS patient_fk_person, vwpatients.firstname AS patient_firstname, vwpatients.surname AS patient_surname, vwpatients.birthdate AS patient_birthdate, vwpatients.sex AS patient_sex, vwpatients.age_numeric AS patient_age, vwpatients.title AS patient_title, vwpatients.street1 AS patient_street1, vwpatients.street2 AS patient_street2, vwpatients.town AS patient_town, vwpatients.state AS patient_state, vwpatients.postcode AS patient_postcode, vwstaff.wholename AS staff_destination_wholename, vwstaff.title AS staff_destination_title, unmatched_patients.surname AS unmatched_patient_surname, unmatched_patients.firstname AS unmatched_patient_firstname, unmatched_patients.birthdate AS unmatched_patient_birthdate, unmatched_patients.sex AS unmatched_patient_sex, unmatched_patients.title AS unmatched_patient_title, unmatched_patients.street AS unmatched_patient_street, unmatched_patients.town AS unmatched_patient_town, unmatched_patients.postcode AS unmatched_patient_postcode, unmatched_patients.state AS unmatched_patient_state, unmatched_staff.surname AS unmatched_staff_surname, unmatched_staff.firstname AS unmatched_staff_firstname, unmatched_staff.title AS unmatched_staff_title, unmatched_staff.provider_number AS unmatched_staff_provider_number, vwpatients.fk_person, vwsendingentities.provider_number FROM ((((((documents JOIN vwsendingentities ON ((documents.fk_sending_entity = vwsendingentities.pk_sending_entities))) LEFT JOIN clin_requests.lu_request_type ON ((documents.fk_lu_request_type = lu_request_type.pk))) LEFT JOIN contacts.vwpatients ON ((documents.fk_patient = vwpatients.fk_patient))) LEFT JOIN admin.vwstaff ON ((documents.fk_staff_destination = vwstaff.fk_staff))) LEFT JOIN unmatched_patients ON ((documents.fk_unmatched_patient = unmatched_patients.pk))) LEFT JOIN unmatched_staff ON ((documents.fk_unmatched_staff = unmatched_staff.pk))) ORDER BY documents.fk_patient, documents.date_created;
+ SELECT documents.pk AS pk_document,
+    documents.source_file,
+    documents.fk_sending_entity,
+    documents.imported_time,
+    documents.date_requested,
+    documents.date_created,
+    documents.fk_patient,
+    documents.fk_staff_filed_document,
+    documents.originator,
+    documents.originator_reference,
+    documents.copy_to,
+    documents.provider_of_service_reference,
+    documents.internal_reference,
+    documents.copies_to,
+    documents.fk_staff_destination,
+    documents.comment_on_document,
+    documents.patient_access,
+    documents.concluded,
+    documents.deleted,
+    documents.fk_lu_urgency,
+    documents.tag,
+    documents.tag_user,
+    documents.md5sum,
+    documents.html,
+    documents.fk_unmatched_staff,
+    documents.fk_referral,
+    documents.fk_request,
+    documents.incoming_referral,
+    documents.fk_unmatched_patient,
+    documents.fk_lu_display_as,
+    documents.fk_lu_request_type,
+    lu_request_type.type AS request_type,
+    vwsendingentities.fk_lu_request_type AS sending_entity_fk_lu_request_type,
+    vwsendingentities.request_type AS sending_entity_request_type,
+    vwsendingentities.style,
+    vwsendingentities.message_type,
+    vwsendingentities.message_version,
+    vwsendingentities.msh_sending_entity,
+    vwsendingentities.msh_transmitting_entity,
+    vwsendingentities.fk_lu_message_display_style,
+    vwsendingentities.fk_branch AS fk_sender_branch,
+    vwsendingentities.fk_employee AS fk_employee_branch,
+    vwsendingentities.fk_person AS fk_sender_person,
+    vwsendingentities.fk_lu_message_standard,
+    vwsendingentities.exclude_ft_report,
+    vwsendingentities.abnormals_foreground_color,
+    vwsendingentities.abnormals_background_color,
+    vwsendingentities.exclude_pit,
+    vwsendingentities.person_occupation,
+    vwsendingentities.organisation,
+    vwsendingentities.organisation_category,
+    vwpatients.fk_person AS patient_fk_person,
+    vwpatients.firstname AS patient_firstname,
+    vwpatients.surname AS patient_surname,
+    vwpatients.birthdate AS patient_birthdate,
+    vwpatients.sex AS patient_sex,
+    vwpatients.age_numeric AS patient_age,
+    vwpatients.title AS patient_title,
+    vwpatients.street1 AS patient_street1,
+    vwpatients.street2 AS patient_street2,
+    vwpatients.town AS patient_town,
+    vwpatients.state AS patient_state,
+    vwpatients.postcode AS patient_postcode,
+    vwstaff.wholename AS staff_destination_wholename,
+    vwstaff.title AS staff_destination_title,
+    unmatched_patients.surname AS unmatched_patient_surname,
+    unmatched_patients.firstname AS unmatched_patient_firstname,
+    unmatched_patients.birthdate AS unmatched_patient_birthdate,
+    unmatched_patients.sex AS unmatched_patient_sex,
+    unmatched_patients.title AS unmatched_patient_title,
+    unmatched_patients.street AS unmatched_patient_street,
+    unmatched_patients.town AS unmatched_patient_town,
+    unmatched_patients.postcode AS unmatched_patient_postcode,
+    unmatched_patients.state AS unmatched_patient_state,
+    unmatched_staff.surname AS unmatched_staff_surname,
+    unmatched_staff.firstname AS unmatched_staff_firstname,
+    unmatched_staff.title AS unmatched_staff_title,
+    unmatched_staff.provider_number AS unmatched_staff_provider_number,
+    vwpatients.fk_person,
+    vwsendingentities.provider_number
+   FROM ((((((documents
+   JOIN vwsendingentities ON ((documents.fk_sending_entity = vwsendingentities.pk_sending_entities)))
+   LEFT JOIN clin_requests.lu_request_type ON ((documents.fk_lu_request_type = lu_request_type.pk)))
+   LEFT JOIN contacts.vwpatients ON ((documents.fk_patient = vwpatients.fk_patient)))
+   LEFT JOIN admin.vwstaff ON ((documents.fk_staff_destination = vwstaff.fk_staff)))
+   LEFT JOIN unmatched_patients ON ((documents.fk_unmatched_patient = unmatched_patients.pk)))
+   LEFT JOIN unmatched_staff ON ((documents.fk_unmatched_staff = unmatched_staff.pk)))
+  ORDER BY documents.fk_patient, documents.date_created;
 
 
 ALTER TABLE documents.vwdocuments OWNER TO easygp;
@@ -14333,7 +17425,67 @@ SET search_path = clin_requests, pg_catalog;
 --
 
 CREATE VIEW vwrequestsordered AS
-    SELECT ((forms.pk || '-'::text) || forms_requests.pk) AS pk_view, forms.fk_lu_request_type, lu_request_type.type, forms.fk_consult, consult.consult_date, consult.fk_patient, data_persons.firstname, data_persons.surname, data_persons.birthdate, data_persons.fk_sex, forms_requests.fk_form, forms.requests_summary, forms_requests.pk AS fk_forms_requests, lu_requests.item, forms.date, forms_requests.request_result_html, forms.fk_progressnote, forms_requests.fk_lu_request, forms_requests.deleted AS request_deleted, lu_requests.fk_laterality, lu_requests.fk_decision_support, lu_requests.fk_instruction, forms.fk_request_provider AS fk_branch, forms.notes_summary, forms.medications_summary, forms.copyto, forms.deleted, forms.copyto_patient, forms.urgent, forms.bulk_bill, forms.fasting, forms.phone, forms.fax, forms.include_medications, forms.pk_image AS fk_image, forms.fk_pasthistory, past_history.description, lu_title.title AS staff_title, staff.pk AS fk_staff, data_persons1.firstname AS staff_firstname, data_persons1.surname AS staff_surname, data_branches.branch, data_branches.fk_organisation, data_organisations.organisation, vwdocuments.html FROM (((((((((((((forms JOIN forms_requests ON ((forms.pk = forms_requests.fk_form))) JOIN lu_requests ON ((forms_requests.fk_lu_request = lu_requests.pk))) JOIN lu_request_type ON ((lu_requests.fk_lu_request_type = lu_request_type.pk))) JOIN clin_consult.consult ON ((forms.fk_consult = consult.pk))) JOIN clerical.data_patients ON ((consult.fk_patient = data_patients.pk))) JOIN contacts.data_persons ON ((data_patients.fk_person = data_persons.pk))) LEFT JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk))) JOIN admin.staff ON ((consult.fk_staff = staff.pk))) JOIN contacts.data_persons data_persons1 ON ((staff.fk_person = data_persons1.pk))) LEFT JOIN contacts.data_branches ON ((forms.fk_request_provider = data_branches.pk))) LEFT JOIN contacts.data_organisations ON ((data_branches.fk_organisation = data_organisations.pk))) LEFT JOIN clin_history.past_history ON ((forms.fk_pasthistory = past_history.pk))) LEFT JOIN documents.vwdocuments ON ((forms_requests.pk = vwdocuments.fk_request))) WHERE ((forms.deleted = false) AND (forms_requests.deleted = false)) ORDER BY consult.fk_patient, forms.date DESC, forms_requests.fk_form, lu_requests.item;
+ SELECT ((forms.pk || '-'::text) || forms_requests.pk) AS pk_view,
+    forms.fk_lu_request_type,
+    lu_request_type.type,
+    forms.fk_consult,
+    consult.consult_date,
+    consult.fk_patient,
+    data_persons.firstname,
+    data_persons.surname,
+    data_persons.birthdate,
+    data_persons.fk_sex,
+    forms_requests.fk_form,
+    forms.requests_summary,
+    forms_requests.pk AS fk_forms_requests,
+    lu_requests.item,
+    forms.date,
+    forms_requests.request_result_html,
+    forms.fk_progressnote,
+    forms_requests.fk_lu_request,
+    forms_requests.deleted AS request_deleted,
+    lu_requests.fk_laterality,
+    lu_requests.fk_decision_support,
+    lu_requests.fk_instruction,
+    forms.fk_request_provider AS fk_branch,
+    forms.notes_summary,
+    forms.medications_summary,
+    forms.copyto,
+    forms.deleted,
+    forms.copyto_patient,
+    forms.urgent,
+    forms.bulk_bill,
+    forms.fasting,
+    forms.phone,
+    forms.fax,
+    forms.include_medications,
+    forms.pk_image AS fk_image,
+    forms.fk_pasthistory,
+    past_history.description,
+    lu_title.title AS staff_title,
+    staff.pk AS fk_staff,
+    data_persons1.firstname AS staff_firstname,
+    data_persons1.surname AS staff_surname,
+    data_branches.branch,
+    data_branches.fk_organisation,
+    data_organisations.organisation,
+    vwdocuments.html
+   FROM (((((((((((((forms
+   JOIN forms_requests ON ((forms.pk = forms_requests.fk_form)))
+   JOIN lu_requests ON ((forms_requests.fk_lu_request = lu_requests.pk)))
+   JOIN lu_request_type ON ((lu_requests.fk_lu_request_type = lu_request_type.pk)))
+   JOIN clin_consult.consult ON ((forms.fk_consult = consult.pk)))
+   JOIN clerical.data_patients ON ((consult.fk_patient = data_patients.pk)))
+   JOIN contacts.data_persons ON ((data_patients.fk_person = data_persons.pk)))
+   LEFT JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk)))
+   JOIN admin.staff ON ((consult.fk_staff = staff.pk)))
+   JOIN contacts.data_persons data_persons1 ON ((staff.fk_person = data_persons1.pk)))
+   LEFT JOIN contacts.data_branches ON ((forms.fk_request_provider = data_branches.pk)))
+   LEFT JOIN contacts.data_organisations ON ((data_branches.fk_organisation = data_organisations.pk)))
+   LEFT JOIN clin_history.past_history ON ((forms.fk_pasthistory = past_history.pk)))
+   LEFT JOIN documents.vwdocuments ON ((forms_requests.pk = vwdocuments.fk_request)))
+  WHERE ((forms.deleted = false) AND (forms_requests.deleted = false))
+  ORDER BY consult.fk_patient, forms.date DESC, forms_requests.fk_form, lu_requests.item;
 
 
 ALTER TABLE clin_requests.vwrequestsordered OWNER TO easygp;
@@ -14343,7 +17495,15 @@ ALTER TABLE clin_requests.vwrequestsordered OWNER TO easygp;
 --
 
 CREATE VIEW vwrequestsynonyms AS
-    SELECT lu_link_provider_user_requests.pk AS pk_lu_link_provider_user_requests, lu_link_provider_user_requests.provider_request_name, lu_link_provider_user_requests.lateralisation, lu_link_provider_user_requests.deleted, lu_requests.pk AS fk_lu_request, lu_requests.item AS user_request_name FROM lu_requests, lu_link_provider_user_requests WHERE (lu_link_provider_user_requests.fk_lu_request = lu_requests.pk);
+ SELECT lu_link_provider_user_requests.pk AS pk_lu_link_provider_user_requests,
+    lu_link_provider_user_requests.provider_request_name,
+    lu_link_provider_user_requests.lateralisation,
+    lu_link_provider_user_requests.deleted,
+    lu_requests.pk AS fk_lu_request,
+    lu_requests.item AS user_request_name
+   FROM lu_requests,
+    lu_link_provider_user_requests
+  WHERE (lu_link_provider_user_requests.fk_lu_request = lu_requests.pk);
 
 
 ALTER TABLE clin_requests.vwrequestsynonyms OWNER TO easygp;
@@ -14353,7 +17513,55 @@ ALTER TABLE clin_requests.vwrequestsynonyms OWNER TO easygp;
 --
 
 CREATE VIEW vwuserproviderdefaults AS
-    SELECT vwrequestproviders.type, vwrequestproviders.fk_headoffice_branch, vwrequestproviders.fk_employee, vwrequestproviders.fk_person, vwrequestproviders.fk_lu_request_type, vwrequestproviders.request_provider_deleted, vwrequestproviders.staff_default, vwrequestproviders.organisation, vwrequestproviders.category, vwrequestproviders.headoffice_branch, vwrequestproviders.fk_organisation, vwrequestproviders.headoffice_branch_deleted, vwrequestproviders.headoffice_street1, vwrequestproviders.headoffice_street2, vwrequestproviders.headoffice_address_deleted, vwrequestproviders.headoffice_postcode, vwrequestproviders.headoffice_town, vwrequestproviders.headoffice_state, vwrequestproviders.wholename, vwrequestproviders.firstname, vwrequestproviders.surname, vwrequestproviders.salutation, vwrequestproviders.fk_title, vwrequestproviders.title, vwrequestproviders.fk_sex, vwrequestproviders.sex, vwrequestproviders.fk_occupation, vwrequestproviders.occupation, user_provider_defaults.fk_staff, user_provider_defaults.fk_request_provider, user_provider_defaults.pk AS pk_default, user_provider_defaults.send_electronically, user_provider_defaults.print_paper, user_provider_defaults.deleted, user_provider_defaults.fk_default_branch, data_branches.branch AS default_branch, data_addresses.street1 AS default_branch_street1, data_addresses.street2 AS default_branch_street2, lu_towns.postcode AS default_branch_postcode, lu_towns.town AS default_branch_town, lu_towns.state AS default_branch_state, lu_request_type.type AS request_type FROM (((((user_provider_defaults JOIN vwrequestproviders ON ((user_provider_defaults.fk_request_provider = vwrequestproviders.pk_request_provider))) LEFT JOIN contacts.data_branches ON ((user_provider_defaults.fk_default_branch = data_branches.pk))) LEFT JOIN contacts.data_addresses ON ((data_branches.fk_address = data_addresses.pk))) LEFT JOIN contacts.lu_towns ON ((data_addresses.fk_town = lu_towns.pk))) JOIN lu_request_type ON ((user_provider_defaults.fk_lu_request_type = lu_request_type.pk))) ORDER BY user_provider_defaults.fk_staff;
+ SELECT vwrequestproviders.type,
+    vwrequestproviders.fk_headoffice_branch,
+    vwrequestproviders.fk_employee,
+    vwrequestproviders.fk_person,
+    vwrequestproviders.fk_lu_request_type,
+    vwrequestproviders.request_provider_deleted,
+    vwrequestproviders.staff_default,
+    vwrequestproviders.organisation,
+    vwrequestproviders.category,
+    vwrequestproviders.headoffice_branch,
+    vwrequestproviders.fk_organisation,
+    vwrequestproviders.headoffice_branch_deleted,
+    vwrequestproviders.headoffice_street1,
+    vwrequestproviders.headoffice_street2,
+    vwrequestproviders.headoffice_address_deleted,
+    vwrequestproviders.headoffice_postcode,
+    vwrequestproviders.headoffice_town,
+    vwrequestproviders.headoffice_state,
+    vwrequestproviders.wholename,
+    vwrequestproviders.firstname,
+    vwrequestproviders.surname,
+    vwrequestproviders.salutation,
+    vwrequestproviders.fk_title,
+    vwrequestproviders.title,
+    vwrequestproviders.fk_sex,
+    vwrequestproviders.sex,
+    vwrequestproviders.fk_occupation,
+    vwrequestproviders.occupation,
+    user_provider_defaults.fk_staff,
+    user_provider_defaults.fk_request_provider,
+    user_provider_defaults.pk AS pk_default,
+    user_provider_defaults.send_electronically,
+    user_provider_defaults.print_paper,
+    user_provider_defaults.deleted,
+    user_provider_defaults.fk_default_branch,
+    data_branches.branch AS default_branch,
+    data_addresses.street1 AS default_branch_street1,
+    data_addresses.street2 AS default_branch_street2,
+    lu_towns.postcode AS default_branch_postcode,
+    lu_towns.town AS default_branch_town,
+    lu_towns.state AS default_branch_state,
+    lu_request_type.type AS request_type
+   FROM (((((user_provider_defaults
+   JOIN vwrequestproviders ON ((user_provider_defaults.fk_request_provider = vwrequestproviders.pk_request_provider)))
+   LEFT JOIN contacts.data_branches ON ((user_provider_defaults.fk_default_branch = data_branches.pk)))
+   LEFT JOIN contacts.data_addresses ON ((data_branches.fk_address = data_addresses.pk)))
+   LEFT JOIN contacts.lu_towns ON ((data_addresses.fk_town = lu_towns.pk)))
+   JOIN lu_request_type ON ((user_provider_defaults.fk_lu_request_type = lu_request_type.pk)))
+  ORDER BY user_provider_defaults.fk_staff;
 
 
 ALTER TABLE clin_requests.vwuserproviderdefaults OWNER TO easygp;
@@ -14366,7 +17574,7 @@ SET search_path = clin_vaccination, pg_catalog;
 
 CREATE TABLE lu_descriptions (
     pk integer NOT NULL,
-    description text,
+    description text NOT NULL,
     deleted boolean DEFAULT false
 );
 
@@ -14516,7 +17724,6 @@ ALTER SEQUENCE lu_schedules_pk_seq OWNED BY lu_schedules.pk;
 CREATE TABLE lu_vaccines (
     pk integer NOT NULL,
     brand text,
-    form text,
     fk_description integer,
     fk_route integer,
     inactive boolean DEFAULT false,
@@ -14748,7 +17955,11 @@ ALTER SEQUENCE vaccine_serial_numbers_pk_seq OWNED BY vaccine_serial_numbers.pk;
 --
 
 CREATE VIEW vwvaccineroutesadministration AS
-    SELECT lu_route_administration.pk, lu_route_administration.abbreviation, lu_route_administration.route FROM common.lu_route_administration WHERE (lu_route_administration.pk < 9);
+ SELECT lu_route_administration.pk,
+    lu_route_administration.abbreviation,
+    lu_route_administration.route
+   FROM common.lu_route_administration
+  WHERE (lu_route_administration.pk < 9);
 
 
 ALTER TABLE clin_vaccination.vwvaccineroutesadministration OWNER TO easygp;
@@ -14758,7 +17969,24 @@ ALTER TABLE clin_vaccination.vwvaccineroutesadministration OWNER TO easygp;
 --
 
 CREATE VIEW vwvaccines AS
-    SELECT lu_vaccines.pk, lu_vaccines.brand, lu_vaccines.fk_form, lu_formulation.form, lu_vaccines.fk_description, lu_vaccines.fk_route, lu_route_administration.route, lu_vaccines.notes, lu_vaccines.female_only, lu_vaccines.inactive AS vaccine_inactive, lu_vaccines.deleted, lu_descriptions.description, lu_descriptions.deleted AS decription_deleted FROM (((lu_vaccines JOIN lu_descriptions ON ((lu_vaccines.fk_description = lu_descriptions.pk))) LEFT JOIN common.lu_route_administration ON ((lu_vaccines.fk_route = lu_route_administration.pk))) LEFT JOIN lu_formulation ON ((lu_vaccines.fk_form = lu_formulation.pk))) ORDER BY lu_descriptions.description;
+ SELECT lu_vaccines.pk,
+    lu_vaccines.brand,
+    lu_vaccines.fk_form,
+    lu_formulation.form,
+    lu_vaccines.fk_description,
+    lu_vaccines.fk_route,
+    lu_route_administration.route,
+    lu_vaccines.notes,
+    lu_vaccines.female_only,
+    lu_vaccines.inactive AS vaccine_inactive,
+    lu_vaccines.deleted,
+    lu_descriptions.description,
+    lu_descriptions.deleted AS decription_deleted
+   FROM (((lu_vaccines
+   JOIN lu_descriptions ON ((lu_vaccines.fk_description = lu_descriptions.pk)))
+   LEFT JOIN common.lu_route_administration ON ((lu_vaccines.fk_route = lu_route_administration.pk)))
+   LEFT JOIN lu_formulation ON ((lu_vaccines.fk_form = lu_formulation.pk)))
+  ORDER BY lu_descriptions.description;
 
 
 ALTER TABLE clin_vaccination.vwvaccines OWNER TO easygp;
@@ -14797,7 +18025,52 @@ SET search_path = clin_vaccination, pg_catalog;
 --
 
 CREATE VIEW vwvaccinesgiven AS
-    SELECT vaccinations.pk AS pk_view, vaccinations.pk AS fk_vaccination, vaccinations.fk_consult, consult.fk_patient, vwstaff.title AS staff_title, vwstaff.wholename AS staff_wholename, consult.consult_date, consult.fk_staff, lu_schedules.age_due_from_months, lu_schedules.age_due_to_months, lu_schedules.schedule, lu_schedules.female_only, lu_schedules.atsi_only, lu_schedules.fk_season, lu_schedules.inactive AS schedule_inactive, lu_schedules.date_inactive AS date_schedule_inactive, lu_schedules.deleted AS schedule_deleted, lu_schedules.multiple_vaccines, lu_schedules.notes AS schedule_notes, lu_seasons.season, lu_laterality.laterality, lu_site_administration.site, lu_vaccines.brand, lu_vaccines.form, lu_vaccines.fk_description, lu_vaccines.fk_route, lu_vaccines.inactive, vaccinations.fk_vaccine, vaccinations.fk_schedule, vaccinations.fk_site, vaccinations.fk_laterality, vaccinations.date_given, vaccinations.serial_no, vaccinations.fk_progressnote, vaccinations.not_given, vaccinations.notes, vaccinations.deleted FROM (((((((vaccinations JOIN clin_consult.consult ON ((vaccinations.fk_consult = consult.pk))) JOIN admin.vwstaff ON ((consult.fk_staff = vwstaff.fk_staff))) LEFT JOIN common.lu_site_administration ON ((vaccinations.fk_site = lu_site_administration.pk))) LEFT JOIN common.lu_laterality ON ((vaccinations.fk_laterality = lu_laterality.pk))) JOIN lu_schedules ON ((vaccinations.fk_schedule = lu_schedules.pk))) JOIN lu_vaccines ON ((vaccinations.fk_vaccine = lu_vaccines.pk))) LEFT JOIN common.lu_seasons ON ((lu_schedules.fk_season = lu_seasons.pk)));
+ SELECT vaccinations.pk AS pk_view,
+    vaccinations.pk AS fk_vaccination,
+    vaccinations.fk_consult,
+    consult.fk_patient,
+    vwstaff.title AS staff_title,
+    vwstaff.wholename AS staff_wholename,
+    consult.consult_date,
+    consult.fk_staff,
+    lu_schedules.age_due_from_months,
+    lu_schedules.age_due_to_months,
+    lu_schedules.schedule,
+    lu_schedules.female_only,
+    lu_schedules.atsi_only,
+    lu_schedules.fk_season,
+    lu_schedules.inactive AS schedule_inactive,
+    lu_schedules.date_inactive AS date_schedule_inactive,
+    lu_schedules.deleted AS schedule_deleted,
+    lu_schedules.multiple_vaccines,
+    lu_schedules.notes AS schedule_notes,
+    lu_seasons.season,
+    lu_laterality.laterality,
+    lu_site_administration.site,
+    lu_vaccines.brand,
+    lu_formulation.form,
+    lu_vaccines.fk_description,
+    lu_vaccines.fk_route,
+    lu_vaccines.inactive,
+    vaccinations.fk_vaccine,
+    vaccinations.fk_schedule,
+    vaccinations.fk_site,
+    vaccinations.fk_laterality,
+    vaccinations.date_given,
+    vaccinations.serial_no,
+    vaccinations.fk_progressnote,
+    vaccinations.not_given,
+    vaccinations.notes,
+    vaccinations.deleted
+   FROM ((((((((vaccinations
+   JOIN clin_consult.consult ON ((vaccinations.fk_consult = consult.pk)))
+   JOIN admin.vwstaff ON ((consult.fk_staff = vwstaff.fk_staff)))
+   LEFT JOIN common.lu_site_administration ON ((vaccinations.fk_site = lu_site_administration.pk)))
+   LEFT JOIN common.lu_laterality ON ((vaccinations.fk_laterality = lu_laterality.pk)))
+   JOIN lu_schedules ON ((vaccinations.fk_schedule = lu_schedules.pk)))
+   JOIN lu_vaccines ON ((vaccinations.fk_vaccine = lu_vaccines.pk)))
+   JOIN lu_formulation ON ((lu_vaccines.fk_form = lu_formulation.pk)))
+   LEFT JOIN common.lu_seasons ON ((lu_schedules.fk_season = lu_seasons.pk)));
 
 
 ALTER TABLE clin_vaccination.vwvaccinesgiven OWNER TO easygp;
@@ -14807,7 +18080,38 @@ ALTER TABLE clin_vaccination.vwvaccinesgiven OWNER TO easygp;
 --
 
 CREATE VIEW vwvaccinesinschedule AS
-    SELECT lu_vaccines_in_schedule.pk AS pk_view, lu_vaccines_in_schedule.pk AS fk_lu_vaccines_in_schedule, lu_vaccines_in_schedule.fk_schedule, lu_vaccines_in_schedule.fk_vaccine, lu_vaccines_in_schedule.atsi_only AS vaccine_atsi_only, lu_vaccines_in_schedule.date_inactive AS date_vaccine_in_schedule_inactive, lu_schedules.age_due_from_months, lu_schedules.age_due_to_months, lu_schedules.schedule, lu_schedules.female_only AS schedule_female_only, lu_schedules.atsi_only AS schedule_atsi_only, lu_schedules.fk_season, lu_schedules.inactive AS schedule_inactive, lu_schedules.date_inactive AS date_schedule_inactive, lu_schedules.deleted AS schedule_deleted, lu_schedules.multiple_vaccines, lu_schedules.notes, lu_vaccines.brand, lu_vaccines.form, lu_vaccines.fk_description, lu_vaccines.fk_route, lu_vaccines.inactive AS vaccine_inactive, lu_seasons.season, lu_descriptions.description AS vaccine_description FROM ((((lu_vaccines_in_schedule JOIN lu_schedules ON ((lu_vaccines_in_schedule.fk_schedule = lu_schedules.pk))) JOIN lu_vaccines ON ((lu_vaccines_in_schedule.fk_vaccine = lu_vaccines.pk))) LEFT JOIN common.lu_seasons ON ((lu_schedules.fk_season = lu_seasons.pk))) JOIN lu_descriptions ON ((lu_vaccines.fk_description = lu_descriptions.pk))) ORDER BY lu_vaccines_in_schedule.fk_schedule, lu_vaccines.brand;
+ SELECT lu_vaccines_in_schedule.pk AS pk_view,
+    lu_vaccines_in_schedule.pk AS fk_lu_vaccines_in_schedule,
+    lu_vaccines_in_schedule.fk_schedule,
+    lu_vaccines_in_schedule.fk_vaccine,
+    lu_vaccines_in_schedule.atsi_only AS vaccine_atsi_only,
+    lu_vaccines_in_schedule.date_inactive AS date_vaccine_in_schedule_inactive,
+    lu_schedules.age_due_from_months,
+    lu_schedules.age_due_to_months,
+    lu_schedules.schedule,
+    lu_schedules.female_only AS schedule_female_only,
+    lu_schedules.atsi_only AS schedule_atsi_only,
+    lu_schedules.fk_season,
+    lu_schedules.inactive AS schedule_inactive,
+    lu_schedules.date_inactive AS date_schedule_inactive,
+    lu_schedules.deleted AS schedule_deleted,
+    lu_schedules.multiple_vaccines,
+    lu_schedules.notes,
+    lu_vaccines.brand,
+    lu_vaccines.fk_description,
+    lu_vaccines.fk_route,
+    lu_vaccines.inactive AS vaccine_inactive,
+    lu_formulation.form,
+    lu_vaccines.fk_form,
+    lu_seasons.season,
+    lu_descriptions.description AS vaccine_description
+   FROM (((((lu_vaccines_in_schedule
+   JOIN lu_schedules ON ((lu_vaccines_in_schedule.fk_schedule = lu_schedules.pk)))
+   JOIN lu_vaccines ON ((lu_vaccines_in_schedule.fk_vaccine = lu_vaccines.pk)))
+   LEFT JOIN common.lu_seasons ON ((lu_schedules.fk_season = lu_seasons.pk)))
+   JOIN lu_formulation ON ((lu_vaccines.fk_form = lu_formulation.pk)))
+   JOIN lu_descriptions ON ((lu_vaccines.fk_description = lu_descriptions.pk)))
+  ORDER BY lu_vaccines_in_schedule.fk_schedule, lu_vaccines.brand;
 
 
 ALTER TABLE clin_vaccination.vwvaccinesinschedule OWNER TO easygp;
@@ -15246,10 +18550,138 @@ ALTER SEQUENCE visits_pk_seq OWNED BY visits.pk;
 --
 
 CREATE VIEW vwworkcover AS
-    SELECT visits.pk AS pk_view, visits.pk AS fk_visit, visits.fk_claim, consult1.consult_date AS start_date, consult.consult_date AS visit_date, consult.fk_patient, claims.claim_number, claims.fk_occupation, claims.fk_branch, claims.hours_week_worked, claims.mechanism_of_injury, claims.date_injury, claims.contact_person, claims.memo, claims.identifier, claims.fk_person, claims.accepted, claims.deleted AS claim_deleted, claims.date_first_seen, claims.preexisting_factors, claims.consistant_with_cause, consult.fk_staff, consult.fk_type, consult.summary, vwstaff.wholename AS staff_wholename, vwstaff.surname AS staff_surname, vwstaff.firstname AS staff_firstname, vwstaff.title AS staff_title, lu_occupations.occupation, vworganisations.branch, vworganisations.fk_organisation, vworganisations.organisation, vworganisations.street1 AS branch_street1, vworganisations.street2 AS branch_street2, vworganisations.town AS branch_town, vworganisations.branch_deleted, vwpersons.wholename AS soletrader_wholename, vwpersons.firstname AS soletrader_firstname, vwpersons.surname AS soletrader_surname, vwpersons.title AS soletrader_title, vwpersons.town AS soletrader_town, vwpersons.street1 AS soletrader_street1, vwpersons.street2 AS soletrader_street2, vwpersons.postcode AS soletrader_postcode, vwpersons.address_deleted AS soletrader_address_deleted, lu_visit_type.type AS visit_type, visits.fk_lu_visit_type, visits.diagnosis, lu_systems.system AS coding_system, visits.fk_code, CASE WHEN (visits.fk_code IS NOT NULL) THEN (SELECT DISTINCT generic_terms.term FROM coding.generic_terms WHERE (visits.fk_code = generic_terms.code)) ELSE NULL::text END AS coded_term, visits.certificate_date, visits.management_plan, visits.review_date, visits.assessworkplace, visits.hours_capable, visits.days_capable, visits.restrictions, visits.fk_caused_by_employment, visits.doctor_consented, visits.worker_consented, visits.fitness_preinjury_from, visits.fitness_suitable_from, visits.fitness_suitable_to, visits.fitness_unfit_from, visits.fitness_unfit_to, visits.fitness_perm_mod_duties_from, visits.fk_consult, visits.fk_progressnote, visits.fk_coding_system, visits.capabilities, visits.latex, visits.deleted AS visit_deleted, visits.time_return_any_duties, visits.factors_delaying_return, visits.referrals_other_providers, visits.copy_of_duties, visits.refer_rehab_provider, visits.capacity_lifting_carrying, visits.capacity_sitting_tolerance, visits.capacity_standing_tolerance, visits.capacity_pushing_pulling, visits.capacity_bend_twist_squat, visits.capacity_driving, visits.capacity_other, lu_caused_by_employment.caused_by_employment, visits.review_comments, consult1.pk AS fk_consult_claim FROM ((((((((((clin_consult.consult JOIN admin.vwstaff ON ((consult.fk_staff = vwstaff.fk_staff))) JOIN visits ON ((visits.fk_consult = consult.pk))) JOIN claims ON ((claims.pk = visits.fk_claim))) JOIN common.lu_occupations ON ((claims.fk_occupation = lu_occupations.pk))) LEFT JOIN coding.lu_systems ON ((visits.fk_coding_system = lu_systems.pk))) LEFT JOIN contacts.vworganisations ON ((claims.fk_branch = vworganisations.fk_branch))) LEFT JOIN contacts.vwpersons ON ((claims.fk_person = vwpersons.fk_person))) JOIN lu_visit_type ON ((visits.fk_lu_visit_type = lu_visit_type.pk))) JOIN lu_caused_by_employment ON ((visits.fk_caused_by_employment = lu_caused_by_employment.pk))) JOIN clin_consult.consult consult1 ON ((claims.fk_consult = consult1.pk)));
+ SELECT visits.pk AS pk_view,
+    visits.pk AS fk_visit,
+    visits.fk_claim,
+    consult1.consult_date AS start_date,
+    consult.consult_date AS visit_date,
+    consult.fk_patient,
+    claims.claim_number,
+    claims.fk_occupation,
+    claims.fk_branch,
+    claims.hours_week_worked,
+    claims.mechanism_of_injury,
+    claims.date_injury,
+    claims.contact_person,
+    claims.memo,
+    claims.identifier,
+    claims.fk_person,
+    claims.accepted,
+    claims.deleted AS claim_deleted,
+    claims.date_first_seen,
+    claims.preexisting_factors,
+    claims.consistant_with_cause,
+    consult.fk_staff,
+    consult.fk_type,
+    consult.summary,
+    vwstaff.wholename AS staff_wholename,
+    vwstaff.surname AS staff_surname,
+    vwstaff.firstname AS staff_firstname,
+    vwstaff.title AS staff_title,
+    lu_occupations.occupation,
+    vworganisations.branch,
+    vworganisations.fk_organisation,
+    vworganisations.organisation,
+    vworganisations.street1 AS branch_street1,
+    vworganisations.street2 AS branch_street2,
+    vworganisations.town AS branch_town,
+    vworganisations.branch_deleted,
+    vwpersons.wholename AS soletrader_wholename,
+    vwpersons.firstname AS soletrader_firstname,
+    vwpersons.surname AS soletrader_surname,
+    vwpersons.title AS soletrader_title,
+    vwpersons.town AS soletrader_town,
+    vwpersons.street1 AS soletrader_street1,
+    vwpersons.street2 AS soletrader_street2,
+    vwpersons.postcode AS soletrader_postcode,
+    vwpersons.address_deleted AS soletrader_address_deleted,
+    lu_visit_type.type AS visit_type,
+    visits.fk_lu_visit_type,
+    visits.diagnosis,
+    lu_systems.system AS coding_system,
+    visits.fk_code,
+        CASE
+            WHEN (visits.fk_code IS NOT NULL) THEN ( SELECT DISTINCT generic_terms.term
+               FROM coding.generic_terms
+              WHERE (visits.fk_code = generic_terms.code))
+            ELSE NULL::text
+        END AS coded_term,
+    visits.certificate_date,
+    visits.management_plan,
+    visits.review_date,
+    visits.assessworkplace,
+    visits.hours_capable,
+    visits.days_capable,
+    visits.restrictions,
+    visits.fk_caused_by_employment,
+    visits.doctor_consented,
+    visits.worker_consented,
+    visits.fitness_preinjury_from,
+    visits.fitness_suitable_from,
+    visits.fitness_suitable_to,
+    visits.fitness_unfit_from,
+    visits.fitness_unfit_to,
+    visits.fitness_perm_mod_duties_from,
+    visits.fk_consult,
+    visits.fk_progressnote,
+    visits.fk_coding_system,
+    visits.capabilities,
+    visits.latex,
+    visits.deleted AS visit_deleted,
+    visits.time_return_any_duties,
+    visits.factors_delaying_return,
+    visits.referrals_other_providers,
+    visits.copy_of_duties,
+    visits.refer_rehab_provider,
+    visits.capacity_lifting_carrying,
+    visits.capacity_sitting_tolerance,
+    visits.capacity_standing_tolerance,
+    visits.capacity_pushing_pulling,
+    visits.capacity_bend_twist_squat,
+    visits.capacity_driving,
+    visits.capacity_other,
+    lu_caused_by_employment.caused_by_employment,
+    visits.review_comments,
+    consult1.pk AS fk_consult_claim
+   FROM ((((((((((clin_consult.consult
+   JOIN admin.vwstaff ON ((consult.fk_staff = vwstaff.fk_staff)))
+   JOIN visits ON ((visits.fk_consult = consult.pk)))
+   JOIN claims ON ((claims.pk = visits.fk_claim)))
+   JOIN common.lu_occupations ON ((claims.fk_occupation = lu_occupations.pk)))
+   LEFT JOIN coding.lu_systems ON ((visits.fk_coding_system = lu_systems.pk)))
+   LEFT JOIN contacts.vworganisations ON ((claims.fk_branch = vworganisations.fk_branch)))
+   LEFT JOIN contacts.vwpersons ON ((claims.fk_person = vwpersons.fk_person)))
+   JOIN lu_visit_type ON ((visits.fk_lu_visit_type = lu_visit_type.pk)))
+   JOIN lu_caused_by_employment ON ((visits.fk_caused_by_employment = lu_caused_by_employment.pk)))
+   JOIN clin_consult.consult consult1 ON ((claims.fk_consult = consult1.pk)));
 
 
 ALTER TABLE clin_workcover.vwworkcover OWNER TO easygp;
+
+--
+-- Name: vwpatientswithworkcover; Type: VIEW; Schema: clin_workcover; Owner: easygp
+--
+
+CREATE VIEW vwpatientswithworkcover AS
+ SELECT vwpatients.fk_patient,
+    vwpatients.pk_view,
+    vwpatients.fk_person,
+    vwpatients.firstname,
+    vwpatients.surname,
+    vwpatients.birthdate,
+    vwpatients.age_display,
+    vwpatients.age_numeric,
+    vwpatients.street2,
+    vwpatients.street1,
+    vwpatients.title,
+    vwpatients.town,
+    vwpatients.state
+   FROM contacts.vwpatients,
+    vwworkcover
+  WHERE (vwpatients.fk_patient = vwworkcover.fk_patient);
+
+
+ALTER TABLE clin_workcover.vwpatientswithworkcover OWNER TO easygp;
 
 SET search_path = coding, pg_catalog;
 
@@ -15479,6 +18911,48 @@ ALTER SEQUENCE lu_systems_pk_seq OWNED BY lu_systems.pk;
 
 
 --
+-- Name: user_favourites; Type: TABLE; Schema: coding; Owner: easygp; Tablespace: 
+--
+
+CREATE TABLE user_favourites (
+    pk integer NOT NULL,
+    fk_code text NOT NULL,
+    fk_staff integer NOT NULL,
+    deleted boolean DEFAULT false
+);
+
+
+ALTER TABLE coding.user_favourites OWNER TO easygp;
+
+--
+-- Name: TABLE user_favourites; Type: COMMENT; Schema: coding; Owner: easygp
+--
+
+COMMENT ON TABLE user_favourites IS ' A table to keep a list of users favourite codes for user in coding consultations see FProgressNoteEditor.class';
+
+
+--
+-- Name: user_favourites_pk_seq; Type: SEQUENCE; Schema: coding; Owner: easygp
+--
+
+CREATE SEQUENCE user_favourites_pk_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE coding.user_favourites_pk_seq OWNER TO easygp;
+
+--
+-- Name: user_favourites_pk_seq; Type: SEQUENCE OWNED BY; Schema: coding; Owner: easygp
+--
+
+ALTER SEQUENCE user_favourites_pk_seq OWNED BY user_favourites.pk;
+
+
+--
 -- Name: usr_codes_weighting; Type: TABLE; Schema: coding; Owner: easygp; Tablespace: 
 --
 
@@ -15519,7 +18993,13 @@ ALTER SEQUENCE usr_codes_weighting_pk_seq OWNED BY usr_codes_weighting.pk;
 --
 
 CREATE VIEW vwcodesweighted AS
-    SELECT t.code, t.fk_coding_system, t.term, w.fk_staff, w.weighting FROM (generic_terms t LEFT JOIN usr_codes_weighting w ON (((t.code = w.code) AND (w.fk_coding_system = t.fk_coding_system))));
+ SELECT t.code,
+    t.fk_coding_system,
+    t.term,
+    w.fk_staff,
+    w.weighting
+   FROM (generic_terms t
+   LEFT JOIN usr_codes_weighting w ON (((t.code = w.code) AND (w.fk_coding_system = t.fk_coding_system))));
 
 
 ALTER TABLE coding.vwcodesweighted OWNER TO easygp;
@@ -15529,10 +19009,45 @@ ALTER TABLE coding.vwcodesweighted OWNER TO easygp;
 --
 
 CREATE VIEW vwgenericterms AS
-    SELECT DISTINCT generic_terms.code AS pk_view, generic_terms.code, generic_terms.body_system, generic_terms.code_role, generic_terms.term, generic_terms.fk_coding_system, generic_terms.icd10, generic_terms.active, s.system, s.preferred FROM generic_terms, lu_systems s WHERE (s.pk = generic_terms.fk_coding_system);
+ SELECT DISTINCT generic_terms.code AS pk_view,
+    generic_terms.code,
+    generic_terms.body_system,
+    generic_terms.code_role,
+    generic_terms.term,
+    generic_terms.fk_coding_system,
+    generic_terms.icd10,
+    generic_terms.active,
+    s.system,
+    s.preferred
+   FROM generic_terms,
+    lu_systems s
+  WHERE (s.pk = generic_terms.fk_coding_system);
 
 
 ALTER TABLE coding.vwgenericterms OWNER TO easygp;
+
+--
+-- Name: vwuserfavourites; Type: VIEW; Schema: coding; Owner: easygp
+--
+
+CREATE VIEW vwuserfavourites AS
+ SELECT user_favourites.pk,
+    user_favourites.fk_staff,
+    vwgenericterms.code,
+    vwgenericterms.body_system,
+    vwgenericterms.code_role,
+    vwgenericterms.term,
+    vwgenericterms.fk_coding_system,
+    vwgenericterms.icd10,
+    vwgenericterms.active,
+    vwgenericterms.system,
+    vwgenericterms.preferred
+   FROM vwgenericterms,
+    user_favourites
+  WHERE ((user_favourites.fk_code = vwgenericterms.code) AND (user_favourites.deleted = false));
+
+
+ALTER TABLE coding.vwuserfavourites OWNER TO easygp;
 
 SET search_path = common, pg_catalog;
 
@@ -16419,7 +19934,16 @@ ALTER SEQUENCE lu_whisper_test_pk_seq OWNED BY lu_whisper_test.pk;
 --
 
 CREATE VIEW vwrecreationaldrugs AS
-    SELECT lu_recreational_drugs.pk, lu_recreational_drugs.drug, lu_route_administration.route, lu_recreational_drugs.alternative_names, lu_recreational_drugs.illicit, lu_recreational_drugs.quantification, lu_recreational_drugs.default_fk_lu_route_administration FROM lu_route_administration, lu_recreational_drugs WHERE (lu_recreational_drugs.default_fk_lu_route_administration = lu_route_administration.pk);
+ SELECT lu_recreational_drugs.pk,
+    lu_recreational_drugs.drug,
+    lu_route_administration.route,
+    lu_recreational_drugs.alternative_names,
+    lu_recreational_drugs.illicit,
+    lu_recreational_drugs.quantification,
+    lu_recreational_drugs.default_fk_lu_route_administration
+   FROM lu_route_administration,
+    lu_recreational_drugs
+  WHERE (lu_recreational_drugs.default_fk_lu_route_administration = lu_route_administration.pk);
 
 
 ALTER TABLE common.vwrecreationaldrugs OWNER TO postgres;
@@ -16429,7 +19953,18 @@ ALTER TABLE common.vwrecreationaldrugs OWNER TO postgres;
 --
 
 CREATE VIEW vwreligions AS
-    SELECT CASE WHEN (lu_sub_religions.fk_religion > 0) THEN ((lu_religions.pk || '-'::text) || lu_sub_religions.pk) ELSE (lu_religions.pk || '-0'::text) END AS pk_view, lu_religions.religion, lu_sub_religions.sub_religion, lu_religions.pk AS fk_religion, lu_sub_religions.pk AS fk_lu_sub_religion FROM (lu_sub_religions RIGHT JOIN lu_religions ON ((lu_sub_religions.fk_religion = lu_religions.pk))) ORDER BY lu_sub_religions.fk_religion, lu_sub_religions.pk;
+ SELECT
+        CASE
+            WHEN (lu_sub_religions.fk_religion > 0) THEN ((lu_religions.pk || '-'::text) || lu_sub_religions.pk)
+            ELSE (lu_religions.pk || '-0'::text)
+        END AS pk_view,
+    lu_religions.religion,
+    lu_sub_religions.sub_religion,
+    lu_religions.pk AS fk_religion,
+    lu_sub_religions.pk AS fk_lu_sub_religion
+   FROM (lu_sub_religions
+   RIGHT JOIN lu_religions ON ((lu_sub_religions.fk_religion = lu_religions.pk)))
+  ORDER BY lu_sub_religions.fk_religion, lu_sub_religions.pk;
 
 
 ALTER TABLE common.vwreligions OWNER TO easygp;
@@ -17017,21 +20552,78 @@ ALTER SEQUENCE lu_towns_pk_seq OWNED BY lu_towns.pk;
 
 
 --
--- Name: vwbranchescomms; Type: VIEW; Schema: contacts; Owner: easygp
---
-
-CREATE VIEW vwbranchescomms AS
-    SELECT comms.pk, comms.value, comms.note, comms.preferred_method, comms.confidential, comms.deleted, comms.fk_type, type.type, branches.pk AS fk_branch, links.deleted AS comm_link_deleted FROM (((data_branches branches JOIN links_branches_comms links ON ((branches.pk = links.fk_branch))) JOIN data_communications comms ON ((links.fk_comm = comms.pk))) JOIN lu_contact_type type ON ((comms.fk_type = type.pk))) WHERE (links.deleted = false) ORDER BY branches.pk;
-
-
-ALTER TABLE contacts.vwbranchescomms OWNER TO easygp;
-
---
 -- Name: vwemployees; Type: VIEW; Schema: contacts; Owner: easygp
 --
 
 CREATE VIEW vwemployees AS
-    SELECT data_employees.pk AS fk_employee, data_employees.fk_person, lu_title.title, data_persons.firstname, data_persons.surname, data_persons.birthdate, data_employees.fk_occupation, lu_occupations.occupation, data_employees.memo AS employee_memo, data_employees.deleted AS employee_deleted, data_employees.fk_status, data_employees.fk_branch, data_branches.branch, data_organisations.organisation, data_branches.fk_organisation, data_branches.fk_address, data_branches.memo AS fk_address_organisation, data_branches.fk_category AS fk_category_organisation, lu_categories.category AS category_organisation, data_persons.salutation, data_persons.fk_ethnicity, data_persons.fk_language, data_persons.memo, data_persons.fk_marital, data_persons.fk_title, data_persons.fk_sex, data_persons.country_code, data_persons.fk_image, data_persons.retired, data_persons.deleted AS person_deleted, data_persons.deceased, data_persons.date_deceased, lu_sex.sex, data_addresses.street1, data_addresses.street2, data_addresses.fk_town, data_addresses.preferred_address, data_addresses.postal_address, data_addresses.head_office, lu_towns.postcode, lu_towns.town, lu_towns.state, data_addresses.deleted AS organisation_address_deleted, data_persons.surname_normalised, employee_numbers.provider_number, employee_numbers.pk AS employees_pk_data_numbers, data_numbers_persons.prescriber_number, data_numbers_persons.hpii, data_numbers_persons.pk AS pk_data_numbers_persons, organisations_numbers.australian_business_number, organisations_numbers.hpio, organisations_numbers.pk AS organisations_pk_data_numbers, images.image FROM (((((((((((((data_employees JOIN data_branches ON ((data_employees.fk_branch = data_branches.pk))) JOIN data_organisations ON ((data_branches.fk_organisation = data_organisations.pk))) JOIN lu_categories ON ((data_branches.fk_category = lu_categories.pk))) JOIN data_persons ON ((data_employees.fk_person = data_persons.pk))) LEFT JOIN lu_sex ON ((data_persons.fk_sex = lu_sex.pk))) LEFT JOIN common.lu_occupations ON ((data_employees.fk_occupation = lu_occupations.pk))) LEFT JOIN lu_title ON ((data_persons.fk_title = lu_title.pk))) LEFT JOIN data_addresses ON ((data_branches.fk_address = data_addresses.pk))) LEFT JOIN lu_towns ON ((data_addresses.fk_town = lu_towns.pk))) LEFT JOIN data_numbers employee_numbers ON (((employee_numbers.fk_person = data_employees.fk_person) AND (employee_numbers.fk_branch = data_employees.fk_branch)))) LEFT JOIN data_numbers_persons ON ((data_numbers_persons.fk_person = data_employees.fk_person))) LEFT JOIN data_numbers organisations_numbers ON (((organisations_numbers.fk_person IS NULL) AND (organisations_numbers.fk_branch = data_employees.fk_branch)))) LEFT JOIN blobs.images ON ((data_persons.fk_image = images.pk))) WHERE (NOT data_employees.deleted);
+ SELECT data_employees.pk AS fk_employee,
+    data_employees.fk_person,
+    lu_title.title,
+    data_persons.firstname,
+    data_persons.surname,
+    data_persons.birthdate,
+    data_employees.fk_occupation,
+    lu_occupations.occupation,
+    data_employees.memo AS employee_memo,
+    data_employees.deleted AS employee_deleted,
+    data_employees.fk_status,
+    data_employees.fk_branch,
+    data_branches.branch,
+    data_organisations.organisation,
+    data_branches.fk_organisation,
+    data_branches.fk_address,
+    data_branches.memo AS fk_address_organisation,
+    data_branches.fk_category AS fk_category_organisation,
+    lu_categories.category AS category_organisation,
+    data_persons.salutation,
+    data_persons.fk_ethnicity,
+    data_persons.fk_language,
+    data_persons.memo,
+    data_persons.fk_marital,
+    data_persons.fk_title,
+    data_persons.fk_sex,
+    data_persons.country_code,
+    data_persons.fk_image,
+    data_persons.retired,
+    data_persons.deleted AS person_deleted,
+    data_persons.deceased,
+    data_persons.date_deceased,
+    lu_sex.sex,
+    data_addresses.street1,
+    data_addresses.street2,
+    data_addresses.fk_town,
+    data_addresses.preferred_address,
+    data_addresses.postal_address,
+    data_addresses.head_office,
+    lu_towns.postcode,
+    lu_towns.town,
+    lu_towns.state,
+    data_addresses.deleted AS organisation_address_deleted,
+    data_persons.surname_normalised,
+    employee_numbers.provider_number,
+    employee_numbers.pk AS employees_pk_data_numbers,
+    data_numbers_persons.prescriber_number,
+    data_numbers_persons.hpii,
+    data_numbers_persons.pk AS pk_data_numbers_persons,
+    organisations_numbers.australian_business_number,
+    organisations_numbers.hpio,
+    organisations_numbers.pk AS organisations_pk_data_numbers,
+    images.image
+   FROM (((((((((((((data_employees
+   JOIN data_branches ON ((data_employees.fk_branch = data_branches.pk)))
+   JOIN data_organisations ON ((data_branches.fk_organisation = data_organisations.pk)))
+   JOIN lu_categories ON ((data_branches.fk_category = lu_categories.pk)))
+   JOIN data_persons ON ((data_employees.fk_person = data_persons.pk)))
+   LEFT JOIN lu_sex ON ((data_persons.fk_sex = lu_sex.pk)))
+   LEFT JOIN common.lu_occupations ON ((data_employees.fk_occupation = lu_occupations.pk)))
+   LEFT JOIN lu_title ON ((data_persons.fk_title = lu_title.pk)))
+   LEFT JOIN data_addresses ON ((data_branches.fk_address = data_addresses.pk)))
+   LEFT JOIN lu_towns ON ((data_addresses.fk_town = lu_towns.pk)))
+   LEFT JOIN data_numbers employee_numbers ON (((employee_numbers.fk_person = data_employees.fk_person) AND (employee_numbers.fk_branch = data_employees.fk_branch))))
+   LEFT JOIN data_numbers_persons ON ((data_numbers_persons.fk_person = data_employees.fk_person)))
+   LEFT JOIN data_numbers organisations_numbers ON (((organisations_numbers.fk_person IS NULL) AND (organisations_numbers.fk_branch = data_employees.fk_branch))))
+   LEFT JOIN blobs.images ON ((data_persons.fk_image = images.pk)))
+  WHERE (NOT data_employees.deleted);
 
 
 ALTER TABLE contacts.vwemployees OWNER TO easygp;
@@ -17055,7 +20647,16 @@ ALTER TABLE contacts.vworganisations_pk_seq OWNER TO easygp;
 --
 
 CREATE VIEW vworganisationsbycategory AS
-    SELECT DISTINCT data_organisations.organisation, data_branches.branch, data_branches.pk AS pk_branch, lu_categories.category, data_branches.fk_organisation FROM ((data_branches JOIN data_organisations ON ((data_branches.fk_organisation = data_organisations.pk))) JOIN lu_categories ON ((data_branches.fk_category = lu_categories.pk))) WHERE ((data_organisations.deleted = false) AND (data_branches.deleted = false)) ORDER BY lu_categories.category, data_organisations.organisation, data_branches.branch;
+ SELECT DISTINCT data_organisations.organisation,
+    data_branches.branch,
+    data_branches.pk AS pk_branch,
+    lu_categories.category,
+    data_branches.fk_organisation
+   FROM ((data_branches
+   JOIN data_organisations ON ((data_branches.fk_organisation = data_organisations.pk)))
+   JOIN lu_categories ON ((data_branches.fk_category = lu_categories.pk)))
+  WHERE ((data_organisations.deleted = false) AND (data_branches.deleted = false))
+  ORDER BY lu_categories.category, data_organisations.organisation, data_branches.branch;
 
 
 ALTER TABLE contacts.vworganisationsbycategory OWNER TO easygp;
@@ -17079,7 +20680,29 @@ ALTER TABLE contacts.vwpatients_pk_seq OWNER TO easygp;
 --
 
 CREATE VIEW vwpersonsaddresses AS
-    SELECT links_persons_addresses.fk_address AS pk_view, links_persons_addresses.fk_person, links_persons_addresses.fk_address, data_addresses.street1, data_addresses.street2, data_addresses.fk_town, lu_address_types.type AS address_type, data_addresses.preferred_address, data_addresses.postal_address, data_addresses.head_office, data_addresses.geolocation, data_addresses.country_code, data_addresses.fk_lu_address_type, data_addresses.deleted, lu_towns.postcode, lu_towns.town, lu_towns.state FROM (((links_persons_addresses JOIN data_addresses ON ((links_persons_addresses.fk_address = data_addresses.pk))) JOIN lu_towns ON ((data_addresses.fk_town = lu_towns.pk))) LEFT JOIN lu_address_types ON ((data_addresses.fk_lu_address_type = lu_address_types.pk))) WHERE ((data_addresses.head_office = false) AND (data_addresses.deleted = false)) ORDER BY links_persons_addresses.fk_person;
+ SELECT links_persons_addresses.fk_address AS pk_view,
+    links_persons_addresses.fk_person,
+    links_persons_addresses.fk_address,
+    data_addresses.street1,
+    data_addresses.street2,
+    data_addresses.fk_town,
+    lu_address_types.type AS address_type,
+    data_addresses.preferred_address,
+    data_addresses.postal_address,
+    data_addresses.head_office,
+    data_addresses.geolocation,
+    data_addresses.country_code,
+    data_addresses.fk_lu_address_type,
+    data_addresses.deleted,
+    lu_towns.postcode,
+    lu_towns.town,
+    lu_towns.state
+   FROM (((links_persons_addresses
+   JOIN data_addresses ON ((links_persons_addresses.fk_address = data_addresses.pk)))
+   JOIN lu_towns ON ((data_addresses.fk_town = lu_towns.pk)))
+   LEFT JOIN lu_address_types ON ((data_addresses.fk_lu_address_type = lu_address_types.pk)))
+  WHERE ((data_addresses.head_office = false) AND (data_addresses.deleted = false))
+  ORDER BY links_persons_addresses.fk_person;
 
 
 ALTER TABLE contacts.vwpersonsaddresses OWNER TO easygp;
@@ -17089,7 +20712,60 @@ ALTER TABLE contacts.vwpersonsaddresses OWNER TO easygp;
 --
 
 CREATE VIEW vwpersonsexcludingpatients AS
-    SELECT vwpersons.fk_person, vwpersons.pk_view, vwpersons.wholename, vwpersons.firstname, vwpersons.surname, vwpersons.salutation, vwpersons.birthdate, vwpersons.fk_ethnicity, vwpersons.fk_language, vwpersons.language_problems, vwpersons.memo, vwpersons.fk_marital, vwpersons.fk_title, vwpersons.fk_sex, vwpersons.fk_image, vwpersons.fk_occupation, vwpersons.retired, vwpersons.deceased, vwpersons.date_deceased, vwpersons.sex, vwpersons.sex_text, vwpersons.title, vwpersons.marital, vwpersons.occupation, vwpersons.language, vwpersons.country, vwpersons.fk_link_address, vwpersons.fk_address, vwpersons.postcode, vwpersons.town, vwpersons.state, vwpersons.country_code, vwpersons.street1, vwpersons.street2, vwpersons.fk_town, vwpersons.fk_lu_address_type, vwpersons.address_type, vwpersons.preferred_address, vwpersons.postal_address, vwpersons.head_office, vwpersons.address_deleted, vwpersons.image, vwpersons.deleted, vwpersons.surname_normalised, vwpersons.pk_data_numbers, vwpersons.provider_number, vwpersons.hpii, vwpersons.hpio, vwpersons.pk_data_numbers_persons FROM ((vwpersons LEFT JOIN clerical.data_patients ON ((vwpersons.fk_person = data_patients.fk_person))) LEFT JOIN blobs.images ON ((vwpersons.fk_image = images.pk))) WHERE (data_patients.pk IS NULL) ORDER BY vwpersons.fk_person, vwpersons.fk_address;
+ SELECT vwpersons.fk_person,
+    vwpersons.pk_view,
+    vwpersons.wholename,
+    vwpersons.firstname,
+    vwpersons.surname,
+    vwpersons.salutation,
+    vwpersons.birthdate,
+    vwpersons.fk_ethnicity,
+    vwpersons.fk_language,
+    vwpersons.language_problems,
+    vwpersons.memo,
+    vwpersons.fk_marital,
+    vwpersons.fk_title,
+    vwpersons.fk_sex,
+    vwpersons.fk_image,
+    vwpersons.fk_occupation,
+    vwpersons.retired,
+    vwpersons.deceased,
+    vwpersons.date_deceased,
+    vwpersons.sex,
+    vwpersons.sex_text,
+    vwpersons.title,
+    vwpersons.marital,
+    vwpersons.occupation,
+    vwpersons.language,
+    vwpersons.country,
+    vwpersons.fk_link_address,
+    vwpersons.fk_address,
+    vwpersons.postcode,
+    vwpersons.town,
+    vwpersons.state,
+    vwpersons.country_code,
+    vwpersons.street1,
+    vwpersons.street2,
+    vwpersons.fk_town,
+    vwpersons.fk_lu_address_type,
+    vwpersons.address_type,
+    vwpersons.preferred_address,
+    vwpersons.postal_address,
+    vwpersons.head_office,
+    vwpersons.address_deleted,
+    vwpersons.image,
+    vwpersons.deleted,
+    vwpersons.surname_normalised,
+    vwpersons.pk_data_numbers,
+    vwpersons.provider_number,
+    vwpersons.hpii,
+    vwpersons.hpio,
+    vwpersons.pk_data_numbers_persons
+   FROM ((vwpersons
+   LEFT JOIN clerical.data_patients ON ((vwpersons.fk_person = data_patients.fk_person)))
+   LEFT JOIN blobs.images ON ((vwpersons.fk_image = images.pk)))
+  WHERE (data_patients.pk IS NULL)
+  ORDER BY vwpersons.fk_person, vwpersons.fk_address;
 
 
 ALTER TABLE contacts.vwpersonsexcludingpatients OWNER TO easygp;
@@ -17099,7 +20775,49 @@ ALTER TABLE contacts.vwpersonsexcludingpatients OWNER TO easygp;
 --
 
 CREATE VIEW vwpersonsandemployeesaddresses AS
-    SELECT vworganisationsemployees.fk_address, CASE WHEN (vworganisationsemployees.fk_address IS NULL) THEN (vworganisationsemployees.fk_person || '-0'::text) ELSE ((vworganisationsemployees.fk_person || '-'::text) || (vworganisationsemployees.fk_address)::text) END AS pk_view, vworganisationsemployees.fk_branch, vworganisationsemployees.branch, vworganisationsemployees.organisation, vworganisationsemployees.fk_organisation, vworganisationsemployees.fk_person, vworganisationsemployees.firstname, vworganisationsemployees.surname, vworganisationsemployees.title, vworganisationsemployees.occupation, vworganisationsemployees.street1, vworganisationsemployees.street2, vworganisationsemployees.town, vworganisationsemployees.state, vworganisationsemployees.postcode FROM vworganisationsemployees WHERE (vworganisationsemployees.fk_person <> 0) UNION SELECT vwpersonsexcludingpatients.fk_address, CASE WHEN (vwpersonsexcludingpatients.fk_address IS NULL) THEN (vwpersonsexcludingpatients.fk_person || '-0'::text) ELSE ((vwpersonsexcludingpatients.fk_person || '-'::text) || (vwpersonsexcludingpatients.fk_address)::text) END AS pk_view, NULL::integer AS fk_branch, NULL::text AS branch, NULL::text AS organisation, NULL::integer AS fk_organisation, vwpersonsexcludingpatients.fk_person, vwpersonsexcludingpatients.firstname, vwpersonsexcludingpatients.surname, vwpersonsexcludingpatients.title, vwpersonsexcludingpatients.occupation, vwpersonsexcludingpatients.street1, vwpersonsexcludingpatients.street2, vwpersonsexcludingpatients.town, vwpersonsexcludingpatients.state, vwpersonsexcludingpatients.postcode FROM vwpersonsexcludingpatients WHERE ((vwpersonsexcludingpatients.fk_person <> 0) AND (vwpersonsexcludingpatients.fk_address IS NOT NULL));
+         SELECT vworganisationsemployees.fk_address,
+                CASE
+                    WHEN (vworganisationsemployees.fk_address IS NULL) THEN (vworganisationsemployees.fk_person || '-0'::text)
+                    ELSE ((vworganisationsemployees.fk_person || '-'::text) || (vworganisationsemployees.fk_address)::text)
+                END AS pk_view,
+            vworganisationsemployees.fk_branch,
+            vworganisationsemployees.branch,
+            vworganisationsemployees.organisation,
+            vworganisationsemployees.fk_organisation,
+            vworganisationsemployees.fk_person,
+            vworganisationsemployees.firstname,
+            vworganisationsemployees.surname,
+            vworganisationsemployees.title,
+            vworganisationsemployees.occupation,
+            vworganisationsemployees.street1,
+            vworganisationsemployees.street2,
+            vworganisationsemployees.town,
+            vworganisationsemployees.state,
+            vworganisationsemployees.postcode
+           FROM vworganisationsemployees
+          WHERE (vworganisationsemployees.fk_person <> 0)
+UNION
+         SELECT vwpersonsexcludingpatients.fk_address,
+                CASE
+                    WHEN (vwpersonsexcludingpatients.fk_address IS NULL) THEN (vwpersonsexcludingpatients.fk_person || '-0'::text)
+                    ELSE ((vwpersonsexcludingpatients.fk_person || '-'::text) || (vwpersonsexcludingpatients.fk_address)::text)
+                END AS pk_view,
+            NULL::integer AS fk_branch,
+            NULL::text AS branch,
+            NULL::text AS organisation,
+            NULL::integer AS fk_organisation,
+            vwpersonsexcludingpatients.fk_person,
+            vwpersonsexcludingpatients.firstname,
+            vwpersonsexcludingpatients.surname,
+            vwpersonsexcludingpatients.title,
+            vwpersonsexcludingpatients.occupation,
+            vwpersonsexcludingpatients.street1,
+            vwpersonsexcludingpatients.street2,
+            vwpersonsexcludingpatients.town,
+            vwpersonsexcludingpatients.state,
+            vwpersonsexcludingpatients.postcode
+           FROM vwpersonsexcludingpatients
+          WHERE ((vwpersonsexcludingpatients.fk_person <> 0) AND (vwpersonsexcludingpatients.fk_address IS NOT NULL));
 
 
 ALTER TABLE contacts.vwpersonsandemployeesaddresses OWNER TO easygp;
@@ -17109,7 +20827,19 @@ ALTER TABLE contacts.vwpersonsandemployeesaddresses OWNER TO easygp;
 --
 
 CREATE VIEW vwpersonscomms AS
-    SELECT links_person_comms.fk_person, comms.pk, comms.value, comms.note, comms.preferred_method, comms.confidential, comms.deleted, comms.fk_type, comm_types.type FROM ((data_communications comms JOIN lu_contact_type comm_types ON ((comms.fk_type = comm_types.pk))) JOIN links_persons_comms links_person_comms ON ((comms.pk = links_person_comms.fk_comm))) ORDER BY links_person_comms.fk_person;
+ SELECT links_person_comms.fk_person,
+    comms.pk,
+    comms.value,
+    comms.note,
+    comms.preferred_method,
+    comms.confidential,
+    comms.deleted,
+    comms.fk_type,
+    comm_types.type
+   FROM ((data_communications comms
+   JOIN lu_contact_type comm_types ON ((comms.fk_type = comm_types.pk)))
+   JOIN links_persons_comms links_person_comms ON ((comms.pk = links_person_comms.fk_comm)))
+  ORDER BY links_person_comms.fk_person;
 
 
 ALTER TABLE contacts.vwpersonscomms OWNER TO easygp;
@@ -17119,7 +20849,90 @@ ALTER TABLE contacts.vwpersonscomms OWNER TO easygp;
 --
 
 CREATE VIEW vwpersonsemployeesbyoccupation AS
-    SELECT DISTINCT ((vwpersonsexcludingpatients.fk_person || '-'::text) || (COALESCE(vwpersonsexcludingpatients.fk_address, 0))::text) AS pk_view, vwpersonsexcludingpatients.fk_person, vwpersonsexcludingpatients.title, vwpersonsexcludingpatients.fk_title, vwpersonsexcludingpatients.surname, vwpersonsexcludingpatients.firstname, vwpersonsexcludingpatients.occupation, vwpersonsexcludingpatients.fk_occupation, vwpersonsexcludingpatients.sex, vwpersonsexcludingpatients.fk_sex, vwpersonsexcludingpatients.retired, vwpersonsexcludingpatients.deceased, vwpersonsexcludingpatients.salutation, NULL::text AS organisation, NULL::text AS branch, 0 AS fk_organisation, 0 AS fk_branch, vwpersonsexcludingpatients.fk_address, 0 AS fk_employee, vwpersonsexcludingpatients.street1, vwpersonsexcludingpatients.street2, vwpersonsexcludingpatients.town, vwpersonsexcludingpatients.state, vwpersonsexcludingpatients.postcode, vwpersonsexcludingpatients.wholename, vwpersonsexcludingpatients.surname_normalised, persons_numbers.provider_number, data_numbers_persons.prescriber_number, data_numbers_persons.hpii, persons_numbers.hpio, persons_numbers.australian_business_number, vwpersonscomms.value AS fax, vwpersonsexcludingpatients.memo, vwpersonsexcludingpatients.fk_image, vwpersonsexcludingpatients.image, 0 AS fk_status FROM (((vwpersonsexcludingpatients LEFT JOIN data_numbers persons_numbers ON (((persons_numbers.fk_person = vwpersonsexcludingpatients.fk_person) AND (persons_numbers.fk_branch IS NULL)))) LEFT JOIN data_numbers_persons ON ((data_numbers_persons.fk_person = vwpersonsexcludingpatients.fk_person))) LEFT JOIN vwpersonscomms ON (((vwpersonscomms.fk_person = vwpersonsexcludingpatients.fk_person) AND (vwpersonscomms.fk_type = 2)))) WHERE (((vwpersonsexcludingpatients.fk_address IS NOT NULL) AND ((vwpersonsexcludingpatients.address_deleted IS FALSE) OR (vwpersonsexcludingpatients.address_deleted IS NULL))) AND (vwpersonsexcludingpatients.deleted = false)) UNION SELECT DISTINCT ((vwemployees.fk_person || '-'::text) || (COALESCE(vwemployees.fk_address, 0))::text) AS pk_view, vwemployees.fk_person, vwemployees.title, vwemployees.fk_title, vwemployees.surname, vwemployees.firstname, vwemployees.occupation, vwemployees.fk_occupation, vwemployees.sex, vwemployees.fk_sex, vwemployees.retired, vwemployees.deceased, vwemployees.salutation, vwemployees.organisation, CASE WHEN (lower(vwemployees.branch) = 'head office'::text) THEN ''::text ELSE vwemployees.branch END AS branch, vwemployees.fk_organisation, vwemployees.fk_branch, vwemployees.fk_address, vwemployees.fk_employee, vwemployees.street1, vwemployees.street2, vwemployees.town, vwemployees.state, vwemployees.postcode, ((((vwemployees.title || ' '::text) || vwemployees.firstname) || ' '::text) || vwemployees.surname) AS wholename, vwemployees.surname_normalised, vwemployees.provider_number, vwemployees.prescriber_number, vwemployees.hpii, vwemployees.hpio, vwemployees.australian_business_number, vwbranchescomms.value AS fax, vwemployees.memo, vwemployees.fk_image, vwemployees.image, vwemployees.fk_status FROM (vwemployees LEFT JOIN vwbranchescomms ON (((vwbranchescomms.fk_branch = vwemployees.fk_branch) AND (vwbranchescomms.fk_type = 2)))) WHERE (((vwemployees.employee_deleted = false) AND (vwemployees.person_deleted = false)) AND ((vwemployees.organisation_address_deleted = false) OR (vwemployees.organisation_address_deleted IS NULL)));
+         SELECT DISTINCT ((vwpersonsexcludingpatients.fk_person || '-'::text) || (COALESCE(vwpersonsexcludingpatients.fk_address, 0))::text) AS pk_view,
+            vwpersonsexcludingpatients.fk_person,
+            vwpersonsexcludingpatients.title,
+            vwpersonsexcludingpatients.fk_title,
+            vwpersonsexcludingpatients.surname,
+            vwpersonsexcludingpatients.firstname,
+            vwpersonsexcludingpatients.occupation,
+            vwpersonsexcludingpatients.fk_occupation,
+            vwpersonsexcludingpatients.sex,
+            vwpersonsexcludingpatients.fk_sex,
+            vwpersonsexcludingpatients.retired,
+            vwpersonsexcludingpatients.deceased,
+            vwpersonsexcludingpatients.salutation,
+            NULL::text AS organisation,
+            NULL::text AS branch,
+            0 AS fk_organisation,
+            0 AS fk_branch,
+            vwpersonsexcludingpatients.fk_address,
+            0 AS fk_employee,
+            vwpersonsexcludingpatients.street1,
+            vwpersonsexcludingpatients.street2,
+            vwpersonsexcludingpatients.town,
+            vwpersonsexcludingpatients.state,
+            vwpersonsexcludingpatients.postcode,
+            vwpersonsexcludingpatients.wholename,
+            vwpersonsexcludingpatients.surname_normalised,
+            persons_numbers.provider_number,
+            data_numbers_persons.prescriber_number,
+            data_numbers_persons.hpii,
+            persons_numbers.hpio,
+            persons_numbers.australian_business_number,
+            vwpersonscomms.value AS fax,
+            vwpersonsexcludingpatients.memo,
+            vwpersonsexcludingpatients.fk_image,
+            vwpersonsexcludingpatients.image,
+            0 AS fk_status
+           FROM (((vwpersonsexcludingpatients
+      LEFT JOIN data_numbers persons_numbers ON (((persons_numbers.fk_person = vwpersonsexcludingpatients.fk_person) AND (persons_numbers.fk_branch IS NULL))))
+   LEFT JOIN data_numbers_persons ON ((data_numbers_persons.fk_person = vwpersonsexcludingpatients.fk_person)))
+   LEFT JOIN vwpersonscomms ON (((vwpersonscomms.fk_person = vwpersonsexcludingpatients.fk_person) AND (vwpersonscomms.fk_type = 2))))
+  WHERE (((vwpersonsexcludingpatients.fk_address IS NOT NULL) AND ((vwpersonsexcludingpatients.address_deleted IS FALSE) OR (vwpersonsexcludingpatients.address_deleted IS NULL))) AND (vwpersonsexcludingpatients.deleted = false))
+UNION
+         SELECT DISTINCT ((vwemployees.fk_person || '-'::text) || (COALESCE(vwemployees.fk_address, 0))::text) AS pk_view,
+            vwemployees.fk_person,
+            vwemployees.title,
+            vwemployees.fk_title,
+            vwemployees.surname,
+            vwemployees.firstname,
+            vwemployees.occupation,
+            vwemployees.fk_occupation,
+            vwemployees.sex,
+            vwemployees.fk_sex,
+            vwemployees.retired,
+            vwemployees.deceased,
+            vwemployees.salutation,
+            vwemployees.organisation,
+                CASE
+                    WHEN (lower(vwemployees.branch) = 'head office'::text) THEN ''::text
+                    ELSE vwemployees.branch
+                END AS branch,
+            vwemployees.fk_organisation,
+            vwemployees.fk_branch,
+            vwemployees.fk_address,
+            vwemployees.fk_employee,
+            vwemployees.street1,
+            vwemployees.street2,
+            vwemployees.town,
+            vwemployees.state,
+            vwemployees.postcode,
+            ((((vwemployees.title || ' '::text) || vwemployees.firstname) || ' '::text) || vwemployees.surname) AS wholename,
+            vwemployees.surname_normalised,
+            vwemployees.provider_number,
+            vwemployees.prescriber_number,
+            vwemployees.hpii,
+            vwemployees.hpio,
+            vwemployees.australian_business_number,
+            vwbranchescomms.value AS fax,
+            vwemployees.memo,
+            vwemployees.fk_image,
+            vwemployees.image,
+            vwemployees.fk_status
+           FROM (vwemployees
+      LEFT JOIN vwbranchescomms ON (((vwbranchescomms.fk_branch = vwemployees.fk_branch) AND (vwbranchescomms.fk_type = 2))))
+     WHERE (((vwemployees.employee_deleted = false) AND (vwemployees.person_deleted = false)) AND ((vwemployees.organisation_address_deleted = false) OR (vwemployees.organisation_address_deleted IS NULL)));
 
 
 ALTER TABLE contacts.vwpersonsemployeesbyoccupation OWNER TO easygp;
@@ -17129,7 +20942,13 @@ ALTER TABLE contacts.vwpersonsemployeesbyoccupation OWNER TO easygp;
 --
 
 CREATE VIEW vwtowns AS
-    SELECT lu_towns.pk, lu_towns.postcode, lu_towns.town, lu_towns.state, lu_towns.comment FROM lu_towns ORDER BY lu_towns.town;
+ SELECT lu_towns.pk,
+    lu_towns.postcode,
+    lu_towns.town,
+    lu_towns.state,
+    lu_towns.comment
+   FROM lu_towns
+  ORDER BY lu_towns.town;
 
 
 ALTER TABLE contacts.vwtowns OWNER TO easygp;
@@ -17632,7 +21451,20 @@ ALTER SEQUENCE temp_pk_seq OWNED BY temp.pk;
 --
 
 CREATE VIEW vwprinterstasks AS
-    SELECT data_branches.branch, lu_printer_host.hostname, lu_printer_host.printer, lu_printer_task.task, lu_link_printer_task.fk_task, lu_link_printer_task.fk_lu_printer_host, lu_printer_host.fk_clinic, clinics.fk_branch, lu_link_printer_task.pk AS pk_lu_link_printer_task FROM ((((lu_link_printer_task JOIN lu_printer_host ON ((lu_link_printer_task.fk_lu_printer_host = lu_printer_host.pk))) JOIN lu_printer_task ON ((lu_link_printer_task.fk_task = lu_printer_task.pk))) JOIN admin.clinics ON ((lu_printer_host.fk_clinic = clinics.pk))) JOIN contacts.data_branches ON ((clinics.fk_branch = data_branches.pk)));
+ SELECT data_branches.branch,
+    lu_printer_host.hostname,
+    lu_printer_host.printer,
+    lu_printer_task.task,
+    lu_link_printer_task.fk_task,
+    lu_link_printer_task.fk_lu_printer_host,
+    lu_printer_host.fk_clinic,
+    clinics.fk_branch,
+    lu_link_printer_task.pk AS pk_lu_link_printer_task
+   FROM ((((lu_link_printer_task
+   JOIN lu_printer_host ON ((lu_link_printer_task.fk_lu_printer_host = lu_printer_host.pk)))
+   JOIN lu_printer_task ON ((lu_link_printer_task.fk_task = lu_printer_task.pk)))
+   JOIN admin.clinics ON ((lu_printer_host.fk_clinic = clinics.pk)))
+   JOIN contacts.data_branches ON ((clinics.fk_branch = data_branches.pk)));
 
 
 ALTER TABLE defaults.vwprinterstasks OWNER TO easygp;
@@ -17923,7 +21755,24 @@ ALTER SEQUENCE observations_pk_seq OWNED BY observations.pk;
 --
 
 CREATE VIEW vwgraphableobservations AS
-    SELECT observations.pk AS pk_observations, lu_loinc_abbrev.component, observations.loinc, observations.fk_document, observations.identifier, observations.reference_range, observations.units, observations.abnormal, observations.observation_date, observations.value, observations.value_numeric, observations.value_numeric_qualifier, documents.fk_patient FROM coding.lu_loinc_abbrev, observations, documents WHERE ((((observations.loinc = lu_loinc_abbrev.loinc_num) AND (observations.fk_document = documents.pk)) AND (observations.identifier <> ''::text)) AND (observations.loinc <> '15418-7'::text)) ORDER BY observations.pk;
+ SELECT observations.pk AS pk_observations,
+    lu_loinc_abbrev.component,
+    observations.loinc,
+    observations.fk_document,
+    observations.identifier,
+    observations.reference_range,
+    observations.units,
+    observations.abnormal,
+    observations.observation_date,
+    observations.value,
+    observations.value_numeric,
+    observations.value_numeric_qualifier,
+    documents.fk_patient
+   FROM coding.lu_loinc_abbrev,
+    observations,
+    documents
+  WHERE ((((observations.loinc = lu_loinc_abbrev.loinc_num) AND (observations.fk_document = documents.pk)) AND (observations.identifier <> ''::text)) AND (observations.loinc <> '15418-7'::text))
+  ORDER BY observations.pk;
 
 
 ALTER TABLE documents.vwgraphableobservations OWNER TO easygp;
@@ -17933,7 +21782,9 @@ ALTER TABLE documents.vwgraphableobservations OWNER TO easygp;
 --
 
 CREATE VIEW patientshba1cover75 AS
-    SELECT DISTINCT vwgraphableobservations.fk_patient FROM vwgraphableobservations WHERE ((vwgraphableobservations.loinc = '4548-4'::text) AND (vwgraphableobservations.value_numeric > 7.5));
+ SELECT DISTINCT vwgraphableobservations.fk_patient
+   FROM vwgraphableobservations
+  WHERE ((vwgraphableobservations.loinc = '4548-4'::text) AND (vwgraphableobservations.value_numeric > 7.5));
 
 
 ALTER TABLE documents.patientshba1cover75 OWNER TO easygp;
@@ -18196,7 +22047,9 @@ ALTER SEQUENCE unmatched_staff_pk_seq OWNED BY unmatched_staff.pk;
 --
 
 CREATE VIEW vwhba1cover75 AS
-    SELECT DISTINCT vwgraphableobservations.fk_patient FROM vwgraphableobservations WHERE ((vwgraphableobservations.loinc = '4548-4'::text) AND (vwgraphableobservations.value_numeric > 7.5));
+ SELECT DISTINCT vwgraphableobservations.fk_patient
+   FROM vwgraphableobservations
+  WHERE ((vwgraphableobservations.loinc = '4548-4'::text) AND (vwgraphableobservations.value_numeric > 7.5));
 
 
 ALTER TABLE documents.vwhba1cover75 OWNER TO easygp;
@@ -18206,7 +22059,10 @@ ALTER TABLE documents.vwhba1cover75 OWNER TO easygp;
 --
 
 CREATE VIEW vwhl7filesimported AS
-    SELECT DISTINCT vwdocuments.source_file FROM vwdocuments WHERE (vwdocuments.md5sum IS NULL) ORDER BY vwdocuments.source_file;
+ SELECT DISTINCT vwdocuments.source_file
+   FROM vwdocuments
+  WHERE (vwdocuments.md5sum IS NULL)
+  ORDER BY vwdocuments.source_file;
 
 
 ALTER TABLE documents.vwhl7filesimported OWNER TO easygp;
@@ -18216,7 +22072,23 @@ ALTER TABLE documents.vwhl7filesimported OWNER TO easygp;
 --
 
 CREATE VIEW vwinboxstaff AS
-    SELECT vwstaffinclinics.pk_view, vwstaffinclinics.title, vwstaffinclinics.fk_staff, vwstaffinclinics.wholename, vwstaffinclinics.surname, NULL::integer AS fk_unmatched_staff FROM admin.vwstaffinclinics UNION SELECT ((unmatched_staff.pk || '-'::text) || 'unmatched'::text) AS pk_view, unmatched_staff.title, unmatched_staff.fk_real_staff AS fk_staff, ((unmatched_staff.firstname || ' '::text) || (unmatched_staff.surname || ' [Unkown]'::text)) AS wholename, unmatched_staff.surname, unmatched_staff.pk AS fk_unmatched_staff FROM unmatched_staff WHERE (unmatched_staff.fk_real_staff IS NULL) ORDER BY 5;
+         SELECT vwstaffinclinics.pk_view,
+            vwstaffinclinics.title,
+            vwstaffinclinics.fk_staff,
+            vwstaffinclinics.wholename,
+            vwstaffinclinics.surname,
+            NULL::integer AS fk_unmatched_staff
+           FROM admin.vwstaffinclinics
+UNION
+         SELECT ((unmatched_staff.pk || '-'::text) || 'unmatched'::text) AS pk_view,
+            unmatched_staff.title,
+            unmatched_staff.fk_real_staff AS fk_staff,
+            ((unmatched_staff.firstname || ' '::text) || (unmatched_staff.surname || ' [Unkown]'::text)) AS wholename,
+            unmatched_staff.surname,
+            unmatched_staff.pk AS fk_unmatched_staff
+           FROM unmatched_staff
+          WHERE (unmatched_staff.fk_real_staff IS NULL)
+  ORDER BY 5;
 
 
 ALTER TABLE documents.vwinboxstaff OWNER TO easygp;
@@ -18235,7 +22107,20 @@ COMMENT ON VIEW vwinboxstaff IS 'All staff with an inbox. If the staff member is
 --
 
 CREATE VIEW vwobservations AS
-    SELECT documents.fk_patient, observations.pk, observations.identifier, observations.observation_date, observations.value_numeric, observations.value_numeric_qualifier, observations.units, observations.reference_range, observations.abnormal, observations.loinc FROM observations, documents WHERE (documents.pk = observations.fk_document) ORDER BY documents.fk_patient, observations.observation_date, observations.set_id;
+ SELECT documents.fk_patient,
+    observations.pk,
+    observations.identifier,
+    observations.observation_date,
+    observations.value_numeric,
+    observations.value_numeric_qualifier,
+    observations.units,
+    observations.reference_range,
+    observations.abnormal,
+    observations.loinc
+   FROM observations,
+    documents
+  WHERE (documents.pk = observations.fk_document)
+  ORDER BY documents.fk_patient, observations.observation_date, observations.set_id;
 
 
 ALTER TABLE documents.vwobservations OWNER TO easygp;
@@ -18883,7 +22768,25 @@ ALTER SEQUENCE synonyms_pk_seq OWNED BY synonyms.pk;
 --
 
 CREATE VIEW vw_basic_drug_pi AS
-    SELECT pregnancy_code.code AS pregnancy_code, pregnancy_code.safety AS pregnancy_safety, drug.pk, drug.drugbank_id, drug.description, drug.cas_number, drug.indication, drug.pharmacology, drug.mechanism_of_action, drug.toxicity, drug.biotransformation, drug.absorption, drug.half_life, drug.route_of_elimination, drug.volume_of_distribution, drug.clearance, drug.name FROM (drug LEFT JOIN pregnancy_code ON ((pregnancy_code.fk_drug = drug.pk)));
+ SELECT pregnancy_code.code AS pregnancy_code,
+    pregnancy_code.safety AS pregnancy_safety,
+    drug.pk,
+    drug.drugbank_id,
+    drug.description,
+    drug.cas_number,
+    drug.indication,
+    drug.pharmacology,
+    drug.mechanism_of_action,
+    drug.toxicity,
+    drug.biotransformation,
+    drug.absorption,
+    drug.half_life,
+    drug.route_of_elimination,
+    drug.volume_of_distribution,
+    drug.clearance,
+    drug.name
+   FROM (drug
+   LEFT JOIN pregnancy_code ON ((pregnancy_code.fk_drug = drug.pk)));
 
 
 ALTER TABLE drugbank.vw_basic_drug_pi OWNER TO easygp;
@@ -18893,7 +22796,15 @@ ALTER TABLE drugbank.vw_basic_drug_pi OWNER TO easygp;
 --
 
 CREATE VIEW vwatcdrugfoodinteractions AS
-    SELECT atc_codes.atc_code, drug.name, food_interactions.pk, food_interactions.food_interaction FROM food_interactions, link_drug_to_atc_code, drug, atc_codes WHERE (((food_interactions.fk_drug = link_drug_to_atc_code.fk_drug) AND (link_drug_to_atc_code.fk_drug = drug.pk)) AND (link_drug_to_atc_code.fk_atc_code = atc_codes.pk));
+ SELECT atc_codes.atc_code,
+    drug.name,
+    food_interactions.pk,
+    food_interactions.food_interaction
+   FROM food_interactions,
+    link_drug_to_atc_code,
+    drug,
+    atc_codes
+  WHERE (((food_interactions.fk_drug = link_drug_to_atc_code.fk_drug) AND (link_drug_to_atc_code.fk_drug = drug.pk)) AND (link_drug_to_atc_code.fk_atc_code = atc_codes.pk));
 
 
 ALTER TABLE drugbank.vwatcdrugfoodinteractions OWNER TO easygp;
@@ -18910,7 +22821,19 @@ COMMENT ON VIEW vwatcdrugfoodinteractions IS 'a view of drugs atccode linked to 
 --
 
 CREATE VIEW vwdrugatccodeinteractions AS
-    SELECT drug_interactions.pk AS pk_view, drug.name, atc1.atc_code, drug1.name AS drug_interacts_with, drug_interactions.description, atc2.atc_code AS atc_code_interacts_with FROM ((((((drug JOIN drug_interactions ON ((drug.pk = drug_interactions.fk_drug))) JOIN link_drug_to_atc_code ON ((drug.pk = link_drug_to_atc_code.fk_drug))) JOIN atc_codes atc1 ON ((link_drug_to_atc_code.fk_atc_code = atc1.pk))) JOIN drug drug1 ON ((drug_interactions.fk_interacts_with = drug1.pk))) JOIN link_drug_to_atc_code link_drug_atc2 ON ((drug1.pk = link_drug_atc2.fk_drug))) JOIN atc_codes atc2 ON ((link_drug_atc2.fk_atc_code = atc2.pk)));
+ SELECT drug_interactions.pk AS pk_view,
+    drug.name,
+    atc1.atc_code,
+    drug1.name AS drug_interacts_with,
+    drug_interactions.description,
+    atc2.atc_code AS atc_code_interacts_with
+   FROM ((((((drug
+   JOIN drug_interactions ON ((drug.pk = drug_interactions.fk_drug)))
+   JOIN link_drug_to_atc_code ON ((drug.pk = link_drug_to_atc_code.fk_drug)))
+   JOIN atc_codes atc1 ON ((link_drug_to_atc_code.fk_atc_code = atc1.pk)))
+   JOIN drug drug1 ON ((drug_interactions.fk_interacts_with = drug1.pk)))
+   JOIN link_drug_to_atc_code link_drug_atc2 ON ((drug1.pk = link_drug_atc2.fk_drug)))
+   JOIN atc_codes atc2 ON ((link_drug_atc2.fk_atc_code = atc2.pk)));
 
 
 ALTER TABLE drugbank.vwdrugatccodeinteractions OWNER TO easygp;
@@ -19445,7 +23368,14 @@ ALTER TABLE drugs.version OWNER TO postgres;
 --
 
 CREATE VIEW vwdistinctbrandsforgenericproduct AS
-    SELECT DISTINCT brand.pk AS pk_view, brand.fk_product, product.generic, brand.brand, brand.product_information_filename, brand.pk AS fk_brand FROM (brand JOIN product ON ((product.pk = brand.fk_product)));
+ SELECT DISTINCT brand.pk AS pk_view,
+    brand.fk_product,
+    product.generic,
+    brand.brand,
+    brand.product_information_filename,
+    brand.pk AS fk_brand
+   FROM (brand
+   JOIN product ON ((product.pk = brand.fk_product)));
 
 
 ALTER TABLE drugs.vwdistinctbrandsforgenericproduct OWNER TO postgres;
@@ -19455,7 +23385,50 @@ ALTER TABLE drugs.vwdistinctbrandsforgenericproduct OWNER TO postgres;
 --
 
 CREATE VIEW vwpbs AS
-    SELECT pbs.quantity, pbs.max_rpt, pbs.pbscode, pbs.chapter, pbs.restrictionflag, pbs.fk_product, ((CASE WHEN ((pbs.chapter)::text = 'GE'::text) THEN 'PBS'::text WHEN ((pbs.chapter)::text = 'R1'::text) THEN 'RPBS'::text WHEN ((pbs.chapter)::text = 'OT'::text) THEN 'OPTOMETRIST'::text WHEN ((pbs.chapter)::text = 'PL'::text) THEN 'PBS PALLIATIVE CARE'::text WHEN ((pbs.chapter)::text = 'GH'::text) THEN 'Section 100 (GROWTH HORMONE)'::text WHEN ((pbs.chapter)::text = 'IF'::text) THEN 'Section 100 (IVF/GIFT)'::text WHEN ((pbs.chapter)::text = 'PQ'::text) THEN 'Paraplegic/Quadriplegic'::text WHEN ((pbs.chapter)::text = 'MD'::text) THEN 'Section 100 (Opiate Addiction Treatment)'::text WHEN ((pbs.chapter)::text = 'MF'::text) THEN 'Section 100 (Botulinum Toxin Program)'::text WHEN ((pbs.chapter)::text = 'SY'::text) THEN 'Section 100 (Special Authority Items) - Private Hospitals'::text WHEN ((pbs.chapter)::text = 'SZ'::text) THEN 'Section 100 (Special Authority Items) - Public Hospitals'::text WHEN ((pbs.chapter)::text = 'CS'::text) THEN 'Section100 (chemotherapy special benefits)'::text WHEN ((pbs.chapter)::text = 'DB'::text) THEN 'Doctors Bag'::text WHEN ((pbs.chapter)::text = 'HB'::text) THEN 'Section 100 (highly specialised drugs - public hospital)'::text WHEN ((pbs.chapter)::text = 'HS'::text) THEN 'Section 100 (Highly specialised drugs)'::text WHEN ((pbs.chapter)::text = 'SB'::text) THEN 'SPECIAL BENEFITS'::text WHEN ((pbs.chapter)::text = 'CT'::text) THEN 'CHEMOTHERAPY SPECIAL BENEFITS'::text WHEN ((pbs.chapter)::text = 'DT'::text) THEN 'DENTAL'::text WHEN ((pbs.chapter)::text = 'DS'::text) THEN 'DENTAL SPECIAL BENEFITS'::text ELSE NULL::text END || ' '::text) || CASE WHEN ((pbs.restrictionflag)::text = 'U'::text) THEN 'UNRESTRICTED'::text WHEN ((pbs.restrictionflag)::text = 'R'::text) THEN 'RESTRICTED'::text ELSE CASE WHEN restriction.streamlined THEN 'STREAMLINED'::text ELSE 'AUTHORITY'::text END END) AS pbs_type, restriction.restriction, restriction.restriction_type, restriction.code AS restriction_code, restriction.streamlined FROM (pbs LEFT JOIN restriction ON (((pbs.pbscode)::text = (restriction.pbscode)::text)));
+ SELECT pbs.quantity,
+    pbs.max_rpt,
+    pbs.pbscode,
+    pbs.chapter,
+    pbs.restrictionflag,
+    pbs.fk_product,
+    ((
+        CASE
+            WHEN ((pbs.chapter)::text = 'GE'::text) THEN 'PBS'::text
+            WHEN ((pbs.chapter)::text = 'R1'::text) THEN 'RPBS'::text
+            WHEN ((pbs.chapter)::text = 'OT'::text) THEN 'OPTOMETRIST'::text
+            WHEN ((pbs.chapter)::text = 'PL'::text) THEN 'PBS PALLIATIVE CARE'::text
+            WHEN ((pbs.chapter)::text = 'GH'::text) THEN 'Section 100 (GROWTH HORMONE)'::text
+            WHEN ((pbs.chapter)::text = 'IF'::text) THEN 'Section 100 (IVF/GIFT)'::text
+            WHEN ((pbs.chapter)::text = 'PQ'::text) THEN 'Paraplegic/Quadriplegic'::text
+            WHEN ((pbs.chapter)::text = 'MD'::text) THEN 'Section 100 (Opiate Addiction Treatment)'::text
+            WHEN ((pbs.chapter)::text = 'MF'::text) THEN 'Section 100 (Botulinum Toxin Program)'::text
+            WHEN ((pbs.chapter)::text = 'SY'::text) THEN 'Section 100 (Special Authority Items) - Private Hospitals'::text
+            WHEN ((pbs.chapter)::text = 'SZ'::text) THEN 'Section 100 (Special Authority Items) - Public Hospitals'::text
+            WHEN ((pbs.chapter)::text = 'CS'::text) THEN 'Section100 (chemotherapy special benefits)'::text
+            WHEN ((pbs.chapter)::text = 'DB'::text) THEN 'Doctors Bag'::text
+            WHEN ((pbs.chapter)::text = 'HB'::text) THEN 'Section 100 (highly specialised drugs - public hospital)'::text
+            WHEN ((pbs.chapter)::text = 'HS'::text) THEN 'Section 100 (Highly specialised drugs)'::text
+            WHEN ((pbs.chapter)::text = 'SB'::text) THEN 'SPECIAL BENEFITS'::text
+            WHEN ((pbs.chapter)::text = 'CT'::text) THEN 'CHEMOTHERAPY SPECIAL BENEFITS'::text
+            WHEN ((pbs.chapter)::text = 'DT'::text) THEN 'DENTAL'::text
+            WHEN ((pbs.chapter)::text = 'DS'::text) THEN 'DENTAL SPECIAL BENEFITS'::text
+            ELSE NULL::text
+        END || ' '::text) ||
+        CASE
+            WHEN ((pbs.restrictionflag)::text = 'U'::text) THEN 'UNRESTRICTED'::text
+            WHEN ((pbs.restrictionflag)::text = 'R'::text) THEN 'RESTRICTED'::text
+            ELSE
+            CASE
+                WHEN restriction.streamlined THEN 'STREAMLINED'::text
+                ELSE 'AUTHORITY'::text
+            END
+        END) AS pbs_type,
+    restriction.restriction,
+    restriction.restriction_type,
+    restriction.code AS restriction_code,
+    restriction.streamlined
+   FROM (pbs
+   LEFT JOIN restriction ON (((pbs.pbscode)::text = (restriction.pbscode)::text)));
 
 
 ALTER TABLE drugs.vwpbs OWNER TO postgres;
@@ -19493,7 +23466,54 @@ SZ Section 100 (Special Authority Items) - Public Hospitals
 --
 
 CREATE VIEW vwdrugs AS
-    SELECT ((brand.pk || (COALESCE(vwpbs.pbscode, ''::character varying))::text) || (COALESCE(vwpbs.restriction_code, ''::character varying))::text) AS pk_view, brand.fk_product, brand.fk_company, brand.brand, brand.pk AS fk_brand, brand.price, brand.from_pbs, product.atccode, product.generic, product.salt, product.fk_form, product.strength, format_strength(product.strength) AS display_strength, format_amount(product.amount, product.amount_unit, product.units_per_pack) AS display_packsize, product.units_per_pack, product.salt_strength, product.free_comment, product.fk_schedule, product.updated_at, product.pack_size, product.amount, product.amount_unit, schedules.schedule, form.form, brand.product_information_filename, brand.product_information_filename_user, COALESCE(vwpbs.quantity, product.pack_size) AS quantity, vwpbs.max_rpt, vwpbs.pbscode, vwpbs.chapter, atc.atcname, company.company, vwpbs.restrictionflag, vwpbs.pbs_type, vwpbs.restriction, vwpbs.restriction_type, vwpbs.restriction_code, vwpbs.streamlined, atc1.atccode AS class_code, atc1.atcname AS class_name FROM (((((((brand brand JOIN product ON ((brand.fk_product = product.pk))) JOIN form ON ((product.fk_form = form.pk))) JOIN atc ON (((product.atccode)::text = atc.atccode))) LEFT JOIN company ON (((company.code)::text = (brand.fk_company)::text))) LEFT JOIN vwpbs ON ((product.pk = vwpbs.fk_product))) LEFT JOIN schedules ON ((schedules.pk = product.fk_schedule))) LEFT JOIN atc atc1 ON (("substring"((product.atccode)::text, 1, 4) = atc1.atccode)));
+ SELECT ((brand.pk || (COALESCE(vwpbs.pbscode, ''::character varying))::text) || (COALESCE(vwpbs.restriction_code, ''::character varying))::text) AS pk_view,
+    brand.fk_product,
+    brand.fk_company,
+    brand.brand,
+    brand.pk AS fk_brand,
+    brand.price,
+    brand.from_pbs,
+    product.atccode,
+    product.generic,
+    product.salt,
+    product.fk_form,
+    product.strength,
+    format_strength(product.strength) AS display_strength,
+    format_amount(product.amount, product.amount_unit, product.units_per_pack) AS display_packsize,
+    product.units_per_pack,
+    product.salt_strength,
+    product.free_comment,
+    product.fk_schedule,
+    product.updated_at,
+    product.pack_size,
+    product.amount,
+    product.amount_unit,
+    schedules.schedule,
+    form.form,
+    brand.product_information_filename,
+    brand.product_information_filename_user,
+    COALESCE(vwpbs.quantity, product.pack_size) AS quantity,
+    vwpbs.max_rpt,
+    vwpbs.pbscode,
+    vwpbs.chapter,
+    atc.atcname,
+    company.company,
+    vwpbs.restrictionflag,
+    vwpbs.pbs_type,
+    vwpbs.restriction,
+    vwpbs.restriction_type,
+    vwpbs.restriction_code,
+    vwpbs.streamlined,
+    atc1.atccode AS class_code,
+    atc1.atcname AS class_name
+   FROM (((((((brand brand
+   JOIN product ON ((brand.fk_product = product.pk)))
+   JOIN form ON ((product.fk_form = form.pk)))
+   JOIN atc ON (((product.atccode)::text = atc.atccode)))
+   LEFT JOIN company ON (((company.code)::text = (brand.fk_company)::text)))
+   LEFT JOIN vwpbs ON ((product.pk = vwpbs.fk_product)))
+   LEFT JOIN schedules ON ((schedules.pk = product.fk_schedule)))
+   LEFT JOIN atc atc1 ON (("substring"((product.atccode)::text, 1, 4) = atc1.atccode)));
 
 
 ALTER TABLE drugs.vwdrugs OWNER TO postgres;
@@ -19503,7 +23523,39 @@ ALTER TABLE drugs.vwdrugs OWNER TO postgres;
 --
 
 CREATE VIEW vwgeneric AS
-    SELECT ((product.pk || (COALESCE(vwpbs.pbscode, ''::character varying))::text) || (COALESCE(vwpbs.restriction_code, ''::character varying))::text) AS pk_view, product.pk AS fk_product, NULL::character varying(3) AS fk_company, product.generic AS brand, NULL::uuid AS fk_brand, NULL::money AS price, NULL::boolean AS from_pbs, product.atccode, product.generic, product.salt, product.fk_form, product.strength, product.salt_strength, product.free_comment, product.updated_at, product.pack_size, product.amount, product.amount_unit, form.form, NULL::text AS product_information_filename, vwpbs.quantity, vwpbs.max_rpt, vwpbs.pbscode, vwpbs.chapter, vwpbs.restrictionflag, vwpbs.pbs_type, vwpbs.restriction, vwpbs.restriction_type, vwpbs.restriction_code, vwpbs.streamlined FROM ((product JOIN form ON ((product.fk_form = form.pk))) LEFT JOIN vwpbs ON ((product.pk = vwpbs.fk_product)));
+ SELECT ((product.pk || (COALESCE(vwpbs.pbscode, ''::character varying))::text) || (COALESCE(vwpbs.restriction_code, ''::character varying))::text) AS pk_view,
+    product.pk AS fk_product,
+    NULL::character varying(3) AS fk_company,
+    product.generic AS brand,
+    NULL::uuid AS fk_brand,
+    NULL::money AS price,
+    NULL::boolean AS from_pbs,
+    product.atccode,
+    product.generic,
+    product.salt,
+    product.fk_form,
+    product.strength,
+    product.salt_strength,
+    product.free_comment,
+    product.updated_at,
+    product.pack_size,
+    product.amount,
+    product.amount_unit,
+    form.form,
+    NULL::text AS product_information_filename,
+    vwpbs.quantity,
+    vwpbs.max_rpt,
+    vwpbs.pbscode,
+    vwpbs.chapter,
+    vwpbs.restrictionflag,
+    vwpbs.pbs_type,
+    vwpbs.restriction,
+    vwpbs.restriction_type,
+    vwpbs.restriction_code,
+    vwpbs.streamlined
+   FROM ((product
+   JOIN form ON ((product.fk_form = form.pk)))
+   LEFT JOIN vwpbs ON ((product.pk = vwpbs.fk_product)));
 
 
 ALTER TABLE drugs.vwgeneric OWNER TO postgres;
@@ -19683,7 +23735,34 @@ ALTER SEQUENCE lu_source_program_pk_seq OWNED BY lu_source_program.pk;
 --
 
 CREATE VIEW vwdemographictemplates AS
-    SELECT lu_source_program.pk AS pk_source_program, lu_source_program.program, lu_demographics_field_templates.pk AS fk_template, lu_demographics_field_templates.version, lu_demographics_field_templates.surname_field_order, lu_demographics_field_templates.firstname_field_order, lu_demographics_field_templates.title_field_order, lu_demographics_field_templates.sex_field_order, lu_demographics_field_templates.marital_field_order, lu_demographics_field_templates.salutation_field_order, lu_demographics_field_templates.medicare_field_order, lu_demographics_field_templates.medicare_card_pos_field_order, lu_demographics_field_templates.card_concession_number_field_order, lu_demographics_field_templates.veterens_field_order, lu_demographics_field_templates.birthdate_field_order, lu_demographics_field_templates.occupation_field_order, lu_demographics_field_templates.street1_field_order, lu_demographics_field_templates.street2_field_order, lu_demographics_field_templates.suburb_field_order, lu_demographics_field_templates.homephone_field_order, lu_demographics_field_templates.workphone_field_order, lu_demographics_field_templates.mobile_field_order, lu_demographics_field_templates.retired_field_order, lu_demographics_field_templates.field_names, lu_demographics_field_templates.fk_source_program FROM (lu_demographics_field_templates RIGHT JOIN lu_source_program ON ((lu_demographics_field_templates.fk_source_program = lu_source_program.pk))) ORDER BY lu_source_program.program;
+ SELECT lu_source_program.pk AS pk_source_program,
+    lu_source_program.program,
+    lu_demographics_field_templates.pk AS fk_template,
+    lu_demographics_field_templates.version,
+    lu_demographics_field_templates.surname_field_order,
+    lu_demographics_field_templates.firstname_field_order,
+    lu_demographics_field_templates.title_field_order,
+    lu_demographics_field_templates.sex_field_order,
+    lu_demographics_field_templates.marital_field_order,
+    lu_demographics_field_templates.salutation_field_order,
+    lu_demographics_field_templates.medicare_field_order,
+    lu_demographics_field_templates.medicare_card_pos_field_order,
+    lu_demographics_field_templates.card_concession_number_field_order,
+    lu_demographics_field_templates.veterens_field_order,
+    lu_demographics_field_templates.birthdate_field_order,
+    lu_demographics_field_templates.occupation_field_order,
+    lu_demographics_field_templates.street1_field_order,
+    lu_demographics_field_templates.street2_field_order,
+    lu_demographics_field_templates.suburb_field_order,
+    lu_demographics_field_templates.homephone_field_order,
+    lu_demographics_field_templates.workphone_field_order,
+    lu_demographics_field_templates.mobile_field_order,
+    lu_demographics_field_templates.retired_field_order,
+    lu_demographics_field_templates.field_names,
+    lu_demographics_field_templates.fk_source_program
+   FROM (lu_demographics_field_templates
+   RIGHT JOIN lu_source_program ON ((lu_demographics_field_templates.fk_source_program = lu_source_program.pk)))
+  ORDER BY lu_source_program.program;
 
 
 ALTER TABLE import_export.vwdemographictemplates OWNER TO easygp;
@@ -19804,7 +23883,30 @@ SET search_path = research, pg_catalog;
 --
 
 CREATE VIEW diabetes_patients_latest_hba1c AS
-    SELECT DISTINCT vwobservations.fk_patient, vwpatients.wholename, vwpatients.surname, vwpatients.firstname, vwpatients.birthdate, vwpatients.age_numeric, (SELECT vwobservations.observation_date FROM documents.vwobservations WHERE ((vwobservations.fk_patient = vwpatients.fk_patient) AND (vwobservations.loinc = '4548-4'::text)) ORDER BY vwobservations.observation_date DESC LIMIT 1) AS observation_date, (SELECT vwobservations.value_numeric FROM documents.vwobservations WHERE ((vwobservations.fk_patient = vwpatients.fk_patient) AND (vwobservations.loinc = '4548-4'::text)) ORDER BY vwobservations.observation_date DESC LIMIT 1) AS hba1c FROM contacts.vwpatients, documents.vwobservations WHERE ((vwobservations.fk_patient = vwpatients.fk_patient) AND (vwobservations.loinc = '4548-4'::text)) ORDER BY (SELECT vwobservations.value_numeric FROM documents.vwobservations WHERE ((vwobservations.fk_patient = vwpatients.fk_patient) AND (vwobservations.loinc = '4548-4'::text)) ORDER BY vwobservations.observation_date DESC LIMIT 1);
+ SELECT DISTINCT vwobservations.fk_patient,
+    vwpatients.wholename,
+    vwpatients.surname,
+    vwpatients.firstname,
+    vwpatients.birthdate,
+    vwpatients.age_numeric,
+    ( SELECT vwobservations_1.observation_date
+           FROM documents.vwobservations vwobservations_1
+          WHERE ((vwobservations_1.fk_patient = vwpatients.fk_patient) AND (vwobservations_1.loinc = '4548-4'::text))
+          ORDER BY vwobservations_1.observation_date DESC
+         LIMIT 1) AS observation_date,
+    ( SELECT vwobservations_1.value_numeric
+           FROM documents.vwobservations vwobservations_1
+          WHERE ((vwobservations_1.fk_patient = vwpatients.fk_patient) AND (vwobservations_1.loinc = '4548-4'::text))
+          ORDER BY vwobservations_1.observation_date DESC
+         LIMIT 1) AS hba1c
+   FROM contacts.vwpatients,
+    documents.vwobservations
+  WHERE ((vwobservations.fk_patient = vwpatients.fk_patient) AND (vwobservations.loinc = '4548-4'::text))
+  ORDER BY ( SELECT vwobservations_1.value_numeric
+           FROM documents.vwobservations vwobservations_1
+          WHERE ((vwobservations_1.fk_patient = vwpatients.fk_patient) AND (vwobservations_1.loinc = '4548-4'::text))
+          ORDER BY vwobservations_1.observation_date DESC
+         LIMIT 1);
 
 
 ALTER TABLE research.diabetes_patients_latest_hba1c OWNER TO easygp;
@@ -19814,7 +23916,27 @@ ALTER TABLE research.diabetes_patients_latest_hba1c OWNER TO easygp;
 --
 
 CREATE VIEW diabetes_patients_with_hba1c AS
-    SELECT DISTINCT vwgraphableobservations.observation_date, vwgraphableobservations.loinc, vwgraphableobservations.value_numeric, vwpatients.firstname, vwpatients.wholename, vwpatients.age_display, vwpatients.sex, vwpatients.title, vwpatients.street1, vwpatients.street2, vwpatients.town, vwpatients.state, vwpatients.occupation, vwpatients.postcode, vwpatients.surname, vwpatients.birthdate, vwpatients.age_numeric, vwpatients.marital FROM contacts.vwpatients, documents.vwgraphableobservations WHERE ((vwgraphableobservations.fk_patient = vwpatients.fk_patient) AND (vwgraphableobservations.loinc = '4548-4'::text));
+ SELECT DISTINCT vwgraphableobservations.observation_date,
+    vwgraphableobservations.loinc,
+    vwgraphableobservations.value_numeric,
+    vwpatients.firstname,
+    vwpatients.wholename,
+    vwpatients.age_display,
+    vwpatients.sex,
+    vwpatients.title,
+    vwpatients.street1,
+    vwpatients.street2,
+    vwpatients.town,
+    vwpatients.state,
+    vwpatients.occupation,
+    vwpatients.postcode,
+    vwpatients.surname,
+    vwpatients.birthdate,
+    vwpatients.age_numeric,
+    vwpatients.marital
+   FROM contacts.vwpatients,
+    documents.vwgraphableobservations
+  WHERE ((vwgraphableobservations.fk_patient = vwpatients.fk_patient) AND (vwgraphableobservations.loinc = '4548-4'::text));
 
 
 ALTER TABLE research.diabetes_patients_with_hba1c OWNER TO easygp;
@@ -19824,7 +23946,12 @@ ALTER TABLE research.diabetes_patients_with_hba1c OWNER TO easygp;
 --
 
 CREATE VIEW patientsnameshba1cover75 AS
-    SELECT DISTINCT vwpatients.wholename, vwpatients.age_display, vwpatients.sex FROM contacts.vwpatients, documents.patientshba1cover75 WHERE (patientshba1cover75.fk_patient = vwpatients.fk_patient);
+ SELECT DISTINCT vwpatients.wholename,
+    vwpatients.age_display,
+    vwpatients.sex
+   FROM contacts.vwpatients,
+    documents.patientshba1cover75
+  WHERE (patientshba1cover75.fk_patient = vwpatients.fk_patient);
 
 
 ALTER TABLE research.patientsnameshba1cover75 OWNER TO easygp;
@@ -19834,7 +23961,33 @@ ALTER TABLE research.patientsnameshba1cover75 OWNER TO easygp;
 --
 
 CREATE VIEW vwdiabetes_patients_with_hba1c AS
-    SELECT DISTINCT vwgraphableobservations.pk_observations, vwgraphableobservations.observation_date, vwgraphableobservations.loinc, vwgraphableobservations.value_numeric, vwpatients.fk_patient, vwpatients.firstname, vwpatients.surname, vwpatients.wholename, vwpatients.age_display, vwpatients.sex, vwpatients.title, vwpatients.occupation, vwpatients.fk_image, vwpatients.birthdate, vwpatients.age_numeric, vwpatients.marital, vwpatients.fk_person, vwpatients.deceased, vwpatients.active_status, vwpatients.street1, vwpatients.street2, vwpatients.town, vwpatients.state, vwpatients.postcode FROM contacts.vwpatients, documents.vwgraphableobservations WHERE ((vwgraphableobservations.fk_patient = vwpatients.fk_patient) AND (vwgraphableobservations.loinc = '4548-4'::text));
+ SELECT DISTINCT vwgraphableobservations.pk_observations,
+    vwgraphableobservations.observation_date,
+    vwgraphableobservations.loinc,
+    vwgraphableobservations.value_numeric,
+    vwpatients.fk_patient,
+    vwpatients.firstname,
+    vwpatients.surname,
+    vwpatients.wholename,
+    vwpatients.age_display,
+    vwpatients.sex,
+    vwpatients.title,
+    vwpatients.occupation,
+    vwpatients.fk_image,
+    vwpatients.birthdate,
+    vwpatients.age_numeric,
+    vwpatients.marital,
+    vwpatients.fk_person,
+    vwpatients.deceased,
+    vwpatients.active_status,
+    vwpatients.street1,
+    vwpatients.street2,
+    vwpatients.town,
+    vwpatients.state,
+    vwpatients.postcode
+   FROM contacts.vwpatients,
+    documents.vwgraphableobservations
+  WHERE ((vwgraphableobservations.fk_patient = vwpatients.fk_patient) AND (vwgraphableobservations.loinc = '4548-4'::text));
 
 
 ALTER TABLE research.vwdiabetes_patients_with_hba1c OWNER TO easygp;
@@ -19856,7 +24009,20 @@ COMMENT ON VIEW vwdiabetes_patients_with_hba1c IS 'all patients and all their hb
 --
 
 CREATE VIEW vwdiabetics_with_ldlcholesterol AS
-    SELECT vwdiabetes_patients_with_hba1c.fk_patient AS pk_view, vwgraphableobservations.loinc, vwgraphableobservations.value_numeric, vwgraphableobservations.value_numeric_qualifier, vwdiabetes_patients_with_hba1c.fk_patient, vwdiabetes_patients_with_hba1c.deceased, vwdiabetes_patients_with_hba1c.active_status, vwgraphableobservations.identifier, vwgraphableobservations.observation_date, vwgraphableobservations.reference_range, vwgraphableobservations.abnormal FROM vwdiabetes_patients_with_hba1c, documents.vwgraphableobservations WHERE ((vwdiabetes_patients_with_hba1c.fk_patient = vwgraphableobservations.fk_patient) AND (vwgraphableobservations.loinc = '22748-8'::text));
+ SELECT vwdiabetes_patients_with_hba1c.fk_patient AS pk_view,
+    vwgraphableobservations.loinc,
+    vwgraphableobservations.value_numeric,
+    vwgraphableobservations.value_numeric_qualifier,
+    vwdiabetes_patients_with_hba1c.fk_patient,
+    vwdiabetes_patients_with_hba1c.deceased,
+    vwdiabetes_patients_with_hba1c.active_status,
+    vwgraphableobservations.identifier,
+    vwgraphableobservations.observation_date,
+    vwgraphableobservations.reference_range,
+    vwgraphableobservations.abnormal
+   FROM vwdiabetes_patients_with_hba1c,
+    documents.vwgraphableobservations
+  WHERE ((vwdiabetes_patients_with_hba1c.fk_patient = vwgraphableobservations.fk_patient) AND (vwgraphableobservations.loinc = '22748-8'::text));
 
 
 ALTER TABLE research.vwdiabetics_with_ldlcholesterol OWNER TO easygp;
@@ -19879,7 +24045,58 @@ COMMENT ON VIEW vwdiabetics_with_ldlcholesterol IS 'a view of all diabetes and t
 --
 
 CREATE VIEW vwmicroalbuminuria AS
-    ((SELECT vwobservations.fk_patient, vwobservations.pk AS pk_observation, vwobservations.identifier, vwobservations.observation_date, vwobservations.value_numeric, vwobservations.value_numeric_qualifier, vwobservations.units, vwobservations.reference_range, vwobservations.abnormal, vwobservations.loinc FROM documents.vwobservations WHERE ((vwobservations.loinc = '14959-1'::text) AND (vwobservations.value_numeric IS NOT NULL)) UNION SELECT vwobservations.fk_patient, vwobservations.pk AS pk_observation, vwobservations.identifier, vwobservations.observation_date, vwobservations.value_numeric, vwobservations.value_numeric_qualifier, vwobservations.units, vwobservations.reference_range, vwobservations.abnormal, vwobservations.loinc FROM documents.vwobservations WHERE ((vwobservations.loinc = '2890-2'::text) AND (vwobservations.value_numeric IS NOT NULL))) UNION SELECT vwobservations.fk_patient, vwobservations.pk AS pk_observation, vwobservations.identifier, vwobservations.observation_date, vwobservations.value_numeric, vwobservations.value_numeric_qualifier, vwobservations.units, vwobservations.reference_range, vwobservations.abnormal, vwobservations.loinc FROM documents.vwobservations WHERE ((vwobservations.loinc = '14957-5'::text) AND (vwobservations.value_numeric IS NOT NULL))) UNION SELECT vwobservations.fk_patient, vwobservations.pk AS pk_observation, vwobservations.identifier, vwobservations.observation_date, vwobservations.value_numeric, vwobservations.value_numeric_qualifier, vwobservations.units, vwobservations.reference_range, vwobservations.abnormal, vwobservations.loinc FROM documents.vwobservations WHERE ((vwobservations.loinc = '14956-7'::text) AND (vwobservations.value_numeric IS NOT NULL)) ORDER BY 1, 4;
+        (        (         SELECT vwobservations.fk_patient,
+                            vwobservations.pk AS pk_observation,
+                            vwobservations.identifier,
+                            vwobservations.observation_date,
+                            vwobservations.value_numeric,
+                            vwobservations.value_numeric_qualifier,
+                            vwobservations.units,
+                            vwobservations.reference_range,
+                            vwobservations.abnormal,
+                            vwobservations.loinc
+                           FROM documents.vwobservations
+                          WHERE ((vwobservations.loinc = '14959-1'::text) AND (vwobservations.value_numeric IS NOT NULL))
+                UNION
+                         SELECT vwobservations.fk_patient,
+                            vwobservations.pk AS pk_observation,
+                            vwobservations.identifier,
+                            vwobservations.observation_date,
+                            vwobservations.value_numeric,
+                            vwobservations.value_numeric_qualifier,
+                            vwobservations.units,
+                            vwobservations.reference_range,
+                            vwobservations.abnormal,
+                            vwobservations.loinc
+                           FROM documents.vwobservations
+                          WHERE ((vwobservations.loinc = '2890-2'::text) AND (vwobservations.value_numeric IS NOT NULL)))
+        UNION
+                 SELECT vwobservations.fk_patient,
+                    vwobservations.pk AS pk_observation,
+                    vwobservations.identifier,
+                    vwobservations.observation_date,
+                    vwobservations.value_numeric,
+                    vwobservations.value_numeric_qualifier,
+                    vwobservations.units,
+                    vwobservations.reference_range,
+                    vwobservations.abnormal,
+                    vwobservations.loinc
+                   FROM documents.vwobservations
+                  WHERE ((vwobservations.loinc = '14957-5'::text) AND (vwobservations.value_numeric IS NOT NULL)))
+UNION
+         SELECT vwobservations.fk_patient,
+            vwobservations.pk AS pk_observation,
+            vwobservations.identifier,
+            vwobservations.observation_date,
+            vwobservations.value_numeric,
+            vwobservations.value_numeric_qualifier,
+            vwobservations.units,
+            vwobservations.reference_range,
+            vwobservations.abnormal,
+            vwobservations.loinc
+           FROM documents.vwobservations
+          WHERE ((vwobservations.loinc = '14956-7'::text) AND (vwobservations.value_numeric IS NOT NULL))
+  ORDER BY 1, 4;
 
 
 ALTER TABLE research.vwmicroalbuminuria OWNER TO easygp;
@@ -19896,7 +24113,22 @@ COMMENT ON VIEW vwmicroalbuminuria IS 'a view containing all microalbumins for a
 --
 
 CREATE VIEW vwdiabetics_with_microalbumins AS
-    SELECT vwmicroalbuminuria.identifier, vwmicroalbuminuria.observation_date, vwmicroalbuminuria.value_numeric, vwmicroalbuminuria.value_numeric_qualifier, vwmicroalbuminuria.units, vwmicroalbuminuria.reference_range, vwmicroalbuminuria.abnormal, vwmicroalbuminuria.loinc, vwdiabetes_patients_with_hba1c.fk_patient, vwdiabetes_patients_with_hba1c.fk_patient AS pk_view, vwdiabetes_patients_with_hba1c.deceased, vwdiabetes_patients_with_hba1c.active_status FROM vwmicroalbuminuria, vwdiabetes_patients_with_hba1c WHERE (vwmicroalbuminuria.fk_patient = vwdiabetes_patients_with_hba1c.fk_patient) ORDER BY vwdiabetes_patients_with_hba1c.fk_patient, vwmicroalbuminuria.observation_date;
+ SELECT vwmicroalbuminuria.identifier,
+    vwmicroalbuminuria.observation_date,
+    vwmicroalbuminuria.value_numeric,
+    vwmicroalbuminuria.value_numeric_qualifier,
+    vwmicroalbuminuria.units,
+    vwmicroalbuminuria.reference_range,
+    vwmicroalbuminuria.abnormal,
+    vwmicroalbuminuria.loinc,
+    vwdiabetes_patients_with_hba1c.fk_patient,
+    vwdiabetes_patients_with_hba1c.fk_patient AS pk_view,
+    vwdiabetes_patients_with_hba1c.deceased,
+    vwdiabetes_patients_with_hba1c.active_status
+   FROM vwmicroalbuminuria,
+    vwdiabetes_patients_with_hba1c
+  WHERE (vwmicroalbuminuria.fk_patient = vwdiabetes_patients_with_hba1c.fk_patient)
+  ORDER BY vwdiabetes_patients_with_hba1c.fk_patient, vwmicroalbuminuria.observation_date;
 
 
 ALTER TABLE research.vwdiabetics_with_microalbumins OWNER TO easygp;
@@ -19914,7 +24146,20 @@ COMMENT ON VIEW vwdiabetics_with_microalbumins IS 'A view of all patient''s with
 --
 
 CREATE VIEW vwdiabeticsegfr AS
-    SELECT vwdiabetes_patients_with_hba1c.fk_patient AS pk_view, vwgraphableobservations.loinc, vwgraphableobservations.value_numeric, vwgraphableobservations.value_numeric_qualifier, vwdiabetes_patients_with_hba1c.fk_patient, vwdiabetes_patients_with_hba1c.deceased, vwdiabetes_patients_with_hba1c.active_status, vwgraphableobservations.identifier, vwgraphableobservations.observation_date, vwgraphableobservations.reference_range, vwgraphableobservations.abnormal FROM vwdiabetes_patients_with_hba1c, documents.vwgraphableobservations WHERE ((vwdiabetes_patients_with_hba1c.fk_patient = vwgraphableobservations.fk_patient) AND (vwgraphableobservations.loinc = '33914-3'::text));
+ SELECT vwdiabetes_patients_with_hba1c.fk_patient AS pk_view,
+    vwgraphableobservations.loinc,
+    vwgraphableobservations.value_numeric,
+    vwgraphableobservations.value_numeric_qualifier,
+    vwdiabetes_patients_with_hba1c.fk_patient,
+    vwdiabetes_patients_with_hba1c.deceased,
+    vwdiabetes_patients_with_hba1c.active_status,
+    vwgraphableobservations.identifier,
+    vwgraphableobservations.observation_date,
+    vwgraphableobservations.reference_range,
+    vwgraphableobservations.abnormal
+   FROM vwdiabetes_patients_with_hba1c,
+    documents.vwgraphableobservations
+  WHERE ((vwdiabetes_patients_with_hba1c.fk_patient = vwgraphableobservations.fk_patient) AND (vwgraphableobservations.loinc = '33914-3'::text));
 
 
 ALTER TABLE research.vwdiabeticsegfr OWNER TO easygp;
@@ -19937,7 +24182,14 @@ COMMENT ON VIEW vwdiabeticsegfr IS 'a view of all diabetes and their egfr''s
 --
 
 CREATE VIEW vwldh AS
-    SELECT vwpatients.wholename, vwpatients.fk_patient, vwobservations.value_numeric, vwobservations.abnormal FROM contacts.vwpatients, documents.vwobservations WHERE (((vwobservations.identifier ~~* '%LDH%'::text) AND (vwobservations.fk_patient = vwpatients.fk_patient)) AND (vwobservations.abnormal IS NOT NULL)) ORDER BY vwobservations.value_numeric;
+ SELECT vwpatients.wholename,
+    vwpatients.fk_patient,
+    vwobservations.value_numeric,
+    vwobservations.abnormal
+   FROM contacts.vwpatients,
+    documents.vwobservations
+  WHERE (((vwobservations.identifier ~~* '%LDH%'::text) AND (vwobservations.fk_patient = vwpatients.fk_patient)) AND (vwobservations.abnormal IS NOT NULL))
+  ORDER BY vwobservations.value_numeric;
 
 
 ALTER TABLE research.vwldh OWNER TO easygp;
@@ -19947,7 +24199,19 @@ ALTER TABLE research.vwldh OWNER TO easygp;
 --
 
 CREATE VIEW vwldlcholesterol AS
-    SELECT vwobservations.fk_patient, vwobservations.pk, vwobservations.identifier, vwobservations.observation_date, vwobservations.value_numeric, vwobservations.value_numeric_qualifier, vwobservations.units, vwobservations.reference_range, vwobservations.abnormal, vwobservations.loinc FROM documents.vwobservations WHERE ((((vwobservations.loinc = '39469-2'::text) OR (vwobservations.loinc = '22748-8'::text)) OR (vwobservations.loinc = '18262-6'::text)) OR (vwobservations.loinc = '2089-1'::text)) ORDER BY vwobservations.fk_patient, vwobservations.observation_date DESC;
+ SELECT vwobservations.fk_patient,
+    vwobservations.pk,
+    vwobservations.identifier,
+    vwobservations.observation_date,
+    vwobservations.value_numeric,
+    vwobservations.value_numeric_qualifier,
+    vwobservations.units,
+    vwobservations.reference_range,
+    vwobservations.abnormal,
+    vwobservations.loinc
+   FROM documents.vwobservations
+  WHERE ((((vwobservations.loinc = '39469-2'::text) OR (vwobservations.loinc = '22748-8'::text)) OR (vwobservations.loinc = '18262-6'::text)) OR (vwobservations.loinc = '2089-1'::text))
+  ORDER BY vwobservations.fk_patient, vwobservations.observation_date DESC;
 
 
 ALTER TABLE research.vwldlcholesterol OWNER TO easygp;
@@ -19957,7 +24221,14 @@ ALTER TABLE research.vwldlcholesterol OWNER TO easygp;
 --
 
 CREATE VIEW vwmostrecenteyerelateddocuments AS
-    SELECT DISTINCT ON (vwdocuments.fk_patient) vwdocuments.fk_patient AS pk_view, vwdocuments.fk_patient, vwdocuments.pk_document AS fk_document, vwdocuments.date_created, vwdocuments.deleted FROM documents.vwdocuments WHERE ((((((vwdocuments.organisation_category)::text ~~* '%ophthal%'::text) OR ((vwdocuments.organisation_category)::text ~~* '%optom%'::text)) OR (vwdocuments.person_occupation ~~* '%ophthal%'::text)) OR (vwdocuments.person_occupation ~~* '%optom%'::text)) AND (vwdocuments.deleted = false)) ORDER BY vwdocuments.fk_patient, vwdocuments.date_created DESC;
+ SELECT DISTINCT ON (vwdocuments.fk_patient) vwdocuments.fk_patient AS pk_view,
+    vwdocuments.fk_patient,
+    vwdocuments.pk_document AS fk_document,
+    vwdocuments.date_created,
+    vwdocuments.deleted
+   FROM documents.vwdocuments
+  WHERE ((((((vwdocuments.organisation_category)::text ~~* '%ophthal%'::text) OR ((vwdocuments.organisation_category)::text ~~* '%optom%'::text)) OR (vwdocuments.person_occupation ~~* '%ophthal%'::text)) OR (vwdocuments.person_occupation ~~* '%optom%'::text)) AND (vwdocuments.deleted = false))
+  ORDER BY vwdocuments.fk_patient, vwdocuments.date_created DESC;
 
 
 ALTER TABLE research.vwmostrecenteyerelateddocuments OWNER TO easygp;
@@ -19981,7 +24252,19 @@ data that pk_view = fk_patient
 --
 
 CREATE VIEW vwtotalcholesterol AS
-    SELECT vwobservations.fk_patient, vwobservations.pk, vwobservations.identifier, vwobservations.observation_date, vwobservations.value_numeric, vwobservations.value_numeric_qualifier, vwobservations.units, vwobservations.reference_range, vwobservations.abnormal, vwobservations.loinc FROM documents.vwobservations WHERE (vwobservations.loinc = '14647-2'::text) ORDER BY vwobservations.fk_patient, vwobservations.observation_date DESC;
+ SELECT vwobservations.fk_patient,
+    vwobservations.pk,
+    vwobservations.identifier,
+    vwobservations.observation_date,
+    vwobservations.value_numeric,
+    vwobservations.value_numeric_qualifier,
+    vwobservations.units,
+    vwobservations.reference_range,
+    vwobservations.abnormal,
+    vwobservations.loinc
+   FROM documents.vwobservations
+  WHERE (vwobservations.loinc = '14647-2'::text)
+  ORDER BY vwobservations.fk_patient, vwobservations.observation_date DESC;
 
 
 ALTER TABLE research.vwtotalcholesterol OWNER TO easygp;
@@ -20886,6 +25169,13 @@ ALTER TABLE ONLY lu_ante_natal_diagnosis ALTER COLUMN pk SET DEFAULT nextval('lu
 -- Name: pk; Type: DEFAULT; Schema: clin_pregnancy; Owner: easygp
 --
 
+ALTER TABLE ONLY lu_contraception_methods ALTER COLUMN pk SET DEFAULT nextval('lu_contraception_methods_pk_seq'::regclass);
+
+
+--
+-- Name: pk; Type: DEFAULT; Schema: clin_pregnancy; Owner: easygp
+--
+
 ALTER TABLE ONLY lu_delivery_types ALTER COLUMN pk SET DEFAULT nextval('lu_delivery_types_pk_seq'::regclass);
 
 
@@ -21358,6 +25648,13 @@ ALTER TABLE ONLY lu_oid ALTER COLUMN pk SET DEFAULT nextval('lu_oid_pk_seq'::reg
 --
 
 ALTER TABLE ONLY lu_systems ALTER COLUMN pk SET DEFAULT nextval('lu_systems_pk_seq'::regclass);
+
+
+--
+-- Name: pk; Type: DEFAULT; Schema: coding; Owner: easygp
+--
+
+ALTER TABLE ONLY user_favourites ALTER COLUMN pk SET DEFAULT nextval('user_favourites_pk_seq'::regclass);
 
 
 --
@@ -23181,6 +27478,14 @@ ALTER TABLE ONLY lu_ante_natal_diagnosis
 
 
 --
+-- Name: lu_contraception_methods_pkey; Type: CONSTRAINT; Schema: clin_pregnancy; Owner: easygp; Tablespace: 
+--
+
+ALTER TABLE ONLY lu_contraception_methods
+    ADD CONSTRAINT lu_contraception_methods_pkey PRIMARY KEY (pk);
+
+
+--
 -- Name: lu_delivery_types_pkey; Type: CONSTRAINT; Schema: clin_pregnancy; Owner: easygp; Tablespace: 
 --
 
@@ -23722,6 +28027,14 @@ ALTER TABLE ONLY lu_oid
 
 ALTER TABLE ONLY lu_systems
     ADD CONSTRAINT lu_systems_pkey PRIMARY KEY (pk);
+
+
+--
+-- Name: user_favourites_pkey; Type: CONSTRAINT; Schema: coding; Owner: easygp; Tablespace: 
+--
+
+ALTER TABLE ONLY user_favourites
+    ADD CONSTRAINT user_favourites_pkey PRIMARY KEY (pk);
 
 
 --
@@ -25157,6 +29470,14 @@ ALTER TABLE ONLY items_billed
 
 
 --
+-- Name: lu_reports_fk_subreport_fkey; Type: FK CONSTRAINT; Schema: billing; Owner: easygp
+--
+
+ALTER TABLE ONLY lu_reports
+    ADD CONSTRAINT lu_reports_fk_subreport_fkey FOREIGN KEY (fk_subreport) REFERENCES lu_reports(pk);
+
+
+--
 -- Name: payments_received_fk_invoice_fkey; Type: FK CONSTRAINT; Schema: billing; Owner: easygp
 --
 
@@ -25769,11 +30090,61 @@ ALTER TABLE ONLY user_provider_defaults
 SET search_path = clin_vaccination, pg_catalog;
 
 --
+-- Name: lu_vaccines_in_schedule_fk_schedule; Type: FK CONSTRAINT; Schema: clin_vaccination; Owner: easygp
+--
+
+ALTER TABLE ONLY lu_vaccines_in_schedule
+    ADD CONSTRAINT lu_vaccines_in_schedule_fk_schedule FOREIGN KEY (fk_schedule) REFERENCES lu_schedules(pk);
+
+
+--
+-- Name: lu_vaccines_in_schedule_fk_vaccine; Type: FK CONSTRAINT; Schema: clin_vaccination; Owner: easygp
+--
+
+ALTER TABLE ONLY lu_vaccines_in_schedule
+    ADD CONSTRAINT lu_vaccines_in_schedule_fk_vaccine FOREIGN KEY (fk_vaccine) REFERENCES lu_vaccines(pk);
+
+
+--
 -- Name: vaccinations_fk_consult; Type: FK CONSTRAINT; Schema: clin_vaccination; Owner: easygp
 --
 
 ALTER TABLE ONLY vaccinations
     ADD CONSTRAINT vaccinations_fk_consult FOREIGN KEY (fk_consult) REFERENCES clin_consult.consult(pk);
+
+
+--
+-- Name: vaccinations_fk_schedule; Type: FK CONSTRAINT; Schema: clin_vaccination; Owner: easygp
+--
+
+ALTER TABLE ONLY vaccinations
+    ADD CONSTRAINT vaccinations_fk_schedule FOREIGN KEY (fk_schedule) REFERENCES lu_schedules(pk);
+
+
+--
+-- Name: vaccinations_fk_vaccine; Type: FK CONSTRAINT; Schema: clin_vaccination; Owner: easygp
+--
+
+ALTER TABLE ONLY vaccinations
+    ADD CONSTRAINT vaccinations_fk_vaccine FOREIGN KEY (fk_vaccine) REFERENCES lu_vaccines(pk);
+
+
+--
+-- Name: vaccine_serial_numbers_fk_vaccine; Type: FK CONSTRAINT; Schema: clin_vaccination; Owner: easygp
+--
+
+ALTER TABLE ONLY vaccine_serial_numbers
+    ADD CONSTRAINT vaccine_serial_numbers_fk_vaccine FOREIGN KEY (fk_vaccine) REFERENCES lu_vaccines(pk);
+
+
+SET search_path = coding, pg_catalog;
+
+--
+-- Name: user_favourites_fk_staff_fkey; Type: FK CONSTRAINT; Schema: coding; Owner: easygp
+--
+
+ALTER TABLE ONLY user_favourites
+    ADD CONSTRAINT user_favourites_fk_staff_fkey FOREIGN KEY (fk_staff) REFERENCES admin.staff(pk);
 
 
 SET search_path = common, pg_catalog;
@@ -27020,6 +31391,16 @@ GRANT ALL ON SEQUENCE staff_pk_seq TO easygp;
 GRANT USAGE ON SEQUENCE staff_pk_seq TO staff;
 
 
+--
+-- Name: tips_seen; Type: ACL; Schema: admin; Owner: easygp
+--
+
+REVOKE ALL ON TABLE tips_seen FROM PUBLIC;
+REVOKE ALL ON TABLE tips_seen FROM easygp;
+GRANT ALL ON TABLE tips_seen TO easygp;
+GRANT ALL ON TABLE tips_seen TO staff;
+
+
 SET search_path = contacts, pg_catalog;
 
 --
@@ -27535,6 +31916,26 @@ GRANT ALL ON TABLE links_persons_addresses TO staff;
 
 
 --
+-- Name: lu_contact_type; Type: ACL; Schema: contacts; Owner: easygp
+--
+
+REVOKE ALL ON TABLE lu_contact_type FROM PUBLIC;
+REVOKE ALL ON TABLE lu_contact_type FROM easygp;
+GRANT ALL ON TABLE lu_contact_type TO easygp;
+GRANT SELECT ON TABLE lu_contact_type TO staff;
+
+
+--
+-- Name: vwbranchescomms; Type: ACL; Schema: contacts; Owner: easygp
+--
+
+REVOKE ALL ON TABLE vwbranchescomms FROM PUBLIC;
+REVOKE ALL ON TABLE vwbranchescomms FROM easygp;
+GRANT ALL ON TABLE vwbranchescomms TO easygp;
+GRANT ALL ON TABLE vwbranchescomms TO staff;
+
+
+--
 -- Name: vworganisations; Type: ACL; Schema: contacts; Owner: easygp
 --
 
@@ -27651,7 +32052,7 @@ SET search_path = billing, pg_catalog;
 REVOKE ALL ON TABLE vwinvoices FROM PUBLIC;
 REVOKE ALL ON TABLE vwinvoices FROM easygp;
 GRANT ALL ON TABLE vwinvoices TO easygp;
-GRANT ALL ON TABLE vwinvoices TO staff;
+GRANT SELECT ON TABLE vwinvoices TO staff;
 
 
 --
@@ -29439,18 +33840,6 @@ GRANT ALL ON TABLE lu_units TO easygp;
 GRANT SELECT ON TABLE lu_units TO staff;
 
 
-SET search_path = contacts, pg_catalog;
-
---
--- Name: lu_contact_type; Type: ACL; Schema: contacts; Owner: easygp
---
-
-REVOKE ALL ON TABLE lu_contact_type FROM PUBLIC;
-REVOKE ALL ON TABLE lu_contact_type FROM easygp;
-GRANT ALL ON TABLE lu_contact_type TO easygp;
-GRANT SELECT ON TABLE lu_contact_type TO staff;
-
-
 SET search_path = clin_recalls, pg_catalog;
 
 --
@@ -30103,6 +34492,16 @@ REVOKE ALL ON TABLE lu_ante_natal_diagnosis FROM PUBLIC;
 REVOKE ALL ON TABLE lu_ante_natal_diagnosis FROM easygp;
 GRANT ALL ON TABLE lu_ante_natal_diagnosis TO easygp;
 GRANT SELECT ON TABLE lu_ante_natal_diagnosis TO staff;
+
+
+--
+-- Name: lu_contraception_methods; Type: ACL; Schema: clin_pregnancy; Owner: easygp
+--
+
+REVOKE ALL ON TABLE lu_contraception_methods FROM PUBLIC;
+REVOKE ALL ON TABLE lu_contraception_methods FROM easygp;
+GRANT ALL ON TABLE lu_contraception_methods TO easygp;
+GRANT SELECT ON TABLE lu_contraception_methods TO staff;
 
 
 --
@@ -31801,6 +36200,15 @@ GRANT ALL ON TABLE lu_oid TO staff;
 
 
 --
+-- Name: user_favourites; Type: ACL; Schema: coding; Owner: easygp
+--
+
+REVOKE ALL ON TABLE user_favourites FROM PUBLIC;
+REVOKE ALL ON TABLE user_favourites FROM easygp;
+GRANT ALL ON TABLE user_favourites TO easygp;
+
+
+--
 -- Name: usr_codes_weighting; Type: ACL; Schema: coding; Owner: easygp
 --
 
@@ -31838,6 +36246,16 @@ REVOKE ALL ON TABLE vwgenericterms FROM PUBLIC;
 REVOKE ALL ON TABLE vwgenericterms FROM easygp;
 GRANT ALL ON TABLE vwgenericterms TO easygp;
 GRANT SELECT ON TABLE vwgenericterms TO staff;
+
+
+--
+-- Name: vwuserfavourites; Type: ACL; Schema: coding; Owner: easygp
+--
+
+REVOKE ALL ON TABLE vwuserfavourites FROM PUBLIC;
+REVOKE ALL ON TABLE vwuserfavourites FROM easygp;
+GRANT ALL ON TABLE vwuserfavourites TO easygp;
+GRANT SELECT ON TABLE vwuserfavourites TO staff;
 
 
 SET search_path = common, pg_catalog;
@@ -32242,16 +36660,6 @@ REVOKE ALL ON SEQUENCE lu_title_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_title_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_title_pk_seq TO easygp;
 GRANT USAGE ON SEQUENCE lu_title_pk_seq TO staff;
-
-
---
--- Name: vwbranchescomms; Type: ACL; Schema: contacts; Owner: easygp
---
-
-REVOKE ALL ON TABLE vwbranchescomms FROM PUBLIC;
-REVOKE ALL ON TABLE vwbranchescomms FROM easygp;
-GRANT ALL ON TABLE vwbranchescomms TO easygp;
-GRANT ALL ON TABLE vwbranchescomms TO staff;
 
 
 --

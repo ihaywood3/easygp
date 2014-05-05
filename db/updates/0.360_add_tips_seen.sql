@@ -1,5 +1,5 @@
 ﻿-- basic 'tips' handling for the gui, the tips are in the gui, the desire not to see them in the backend.
---drop table admin.tips_seen;
+-- drop table admin.tips_seen;
 
 create table admin.tips_seen
 (fk_staff integer not null,

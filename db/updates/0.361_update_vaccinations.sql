@@ -7,8 +7,8 @@
 
 update common.lu_route_administration set abbreviation='ID' where route ='intradermal';
 update clin_vaccination.lu_vaccines set fk_route=4 where pk=1 ; -- BCG Vaccine
-update clin_vaccination.lu_vaccines set fk_route=2 where pk= 2; -- Coxiella burnetii vaccine or q fever
-update clin_vaccination.lu_vaccines set fk_route=1 where pk= 42; -- plague vaccine or Yersinia pestis vaccine
+update clin_vaccination.lu_vaccines set fk_route=2 where pk=2; -- Coxiella burnetii vaccine or q fever
+update clin_vaccination.lu_vaccines set fk_route=1 where pk=42; -- plague vaccine or Yersinia pestis vaccine
 update clin_vaccination.lu_vaccines set fk_form = 1 where pk=2 or pk=1 or pk=42;
 update clin_vaccination.lu_descriptions set description = 'Diphtheria,Tetanus,Pertussis,HIB,Polio' where pk=8;
 update clin_vaccination.lu_descriptions set description = 'Diphtheria,Tetanus,Pertussis,Polio' where pk=38;

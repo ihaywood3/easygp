@@ -181,7 +181,7 @@ class MedicareOnline:
     def transmit_claim(self,claim, invoices=None):
         claim_id = claim["claim_id"]
         try:
-            logic_pack = self.get_logic_pack("HIC/HolClassic")`
+            logic_pack = self.get_logic_pack("HIC/HolClassic")
             if invoices is None: invoices = self.db.get_invoices_on_claim(claim['pk'])
             content_type = "HIC/HolClassic/DirectBillClaim@"+logic_pack
             path = self.create_object(content_type,"","")
@@ -264,6 +264,7 @@ class MedicareOnline:
                 line['reason_code'] = self.get("ExplanationCode")
                 lines.append(line)
                 has_row = self.next()
+            self.reset()
             if len(lines) > 0:
                 self.db.set_processing_report(claim['pk'],claim['claim_id'],lines)
         except MedicareError as e:
@@ -285,6 +286,7 @@ class MedicareOnline:
                 has_row = self.next()
             if report != "":
                 self.db.set_payment_report(claim['pk'],report)
+            self.reset()
         except MedicareError as e:
             self.db.set_payment_report(claim['pk'],str(e))
 
@@ -348,6 +350,7 @@ class MedicareOnline:
                     self.db.set_item_code(inv['pk_invoice'],service_id,reason_code,"benefit $"+amount/100.0)
                     has_row = self.next()
             self.db.set_invoice_return(inv['pk_invoice'],send_code,result)
+            self.reset()
         elif send_code == 9501:
             # failure
             self.reset()
@@ -371,7 +374,8 @@ class MedicareOnline:
                     comment = "error level "+service_error_level
                     self.db.set_item_code(inv['pk_invoice'],service_id,reason_code,comment)
                     has_row = self.next()
-            self.db.set_invoice_return(inv['pk_invoice'],error_code,result)       
+            self.db.set_invoice_return(inv['pk_invoice'],error_code,result) 
+            self.reset()
         else: # something else
             self.db.set_invoice_return(inv['fk_invoice'],send_code,"Transmission error")
             self.reset()

@@ -359,12 +359,12 @@ insert into clerical.task_components (fk_task,fk_consult,date_logged,fk_staff_al
 
     def get_claims_awaiting_processing_report(self):
         """claims successfully transmitted but no report as yet"""
-        return self.query("select * from billing.claims where processing_report_run_date is null and age(claim_date) > '1 day' and return_code=0")
+        return self.query("select * from billing.claims where processing_report_run_date is null and age(claim_date) > '1 day' and result_code=0")
 
 
     def get_claims_awaiting_payment_report(self):
         """claims successfully transmitted but no report as yet"""
-        return self.query("select * from billing.claims where payment_report_run_date is null and age(claim_date) > '1 day' and return_code=0")
+        return self.query("select * from billing.claims where payment_report_run_date is null and age(claim_date) > '1 day' and result_code=0")
 
     def get_claims_awaiting_transmission(self):
         """claims saved but needing transmission"""

@@ -94,7 +94,7 @@ Options
 
      
     def setup_log(self):
-        if self.debug_mode:
+        if True:  # FIXME: if self.debug_mode:
             logging.basicConfig(stream=sys.stderr,level=logging.DEBUG)
         else:
             if self.config['syslog'] != 'false':
@@ -221,6 +221,7 @@ Options
                 self.setup_drivers()
                 if self.overnight_mode: 
                     self.evts.overnight()
+                    pdb.set_trace()
                     if not self.mo is None: 
                         self.mo.prepare_bb_reports()
                         for i in self.db.get_claims_awaiting_transmission(): self.transmit_claim(i)

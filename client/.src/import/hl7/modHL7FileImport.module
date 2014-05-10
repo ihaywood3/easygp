@@ -45,7 +45,7 @@ Public Sub Auto_Process()
    Return
 NoAccessError:
    Message.Title = "Importing Documents or HL7"
-   Message.info("EasyGP was not able to access the directories necessary to alow you to import hl7 or scanned documents.\n\n"
+   Message.info("EasyGP was not able to access the directories necessary to allow you to import hl7 or scanned documents.\n\n"
    "Please check your Admin.Global Settings")
 Catch
    Message.info("An error occurred whilst trying to import new hl7 files.\n\nPlease contact the system administrator for assistance.") 
@@ -65,6 +65,7 @@ Private Sub Process_Dir_Or_File(fname As String)
    Dim typ As String
    Dim i As String
    Dim f As File
+   Dim s As String
    
    If IsDir(fname) Then
       If (fname = "errors") Or (fname = "LOG") Or (fname = "send") Or (fname = "error") Then ' ignore healthlink crap
@@ -77,7 +78,7 @@ Private Sub Process_Dir_Or_File(fname As String)
          If Left$(sFile, 3) = "DHM" Then  'ignore crap Fetch downloader puts into the incoming directory
             Continue
          Endif
-         If Right$(sFile, 4) = ".txt" Or Right$(sFile, 4) = ".htm" Or Right$(sFile, 4) = ".ico" Or Right$(sFile, 4) = ".xml" Or Right$(sFile, 4) = ".zip" Then ' ignore crap blasted healthlink dumps into hl7 directory
+         If Right$(sFile, 4) = ".txt" Or Right$(sFile, 4) = ".htm" Or Right$(sFile, 4) = ".ico" Or Right$(sFile, 4) = ".xml" Or Right$(sFile, 4) = ".zip" Then ' ignore crap blasted healthlink/sonic dumps into hl7 directory
             Continue
          Endif
          i = Lower$(fname &/ sFile)                                        'List all files or subdirectories in the root
@@ -88,32 +89,30 @@ Private Sub Process_Dir_Or_File(fname As String)
    Else  'yes, its a file, try and load it
       typ = "unk"
       f = Open fname For Read
-      Select Case Lower$(Right$(fname, 4))
-         Case ".pit"
-            Log.DataMsg(Subst$("decided &1 is PIT by suffix", fname))
-            typ = "pit"
-         Case ".hl7", ".oru"
-            Log.DataMsg(Subst$("decided &1 is HL7 by suffix", fname))
-            typ = "hl7"
+      Log.DebugMsg("trying to read " & fname & " it is " & Lof(f) & " bytes long")
+      i = Read #f, 3 ' "taste" the file to find type
+      Seek #f, 0
+      Select Case i
+         Case "001" 
+           Log.DataMsg(Subst$("decided &1 is PIT by header", fname))
+           typ = "pit"
+         Case "FHS", "BHS", "MSH"
+            Log.DataMsg(Subst$("decided &1 is HL7 by header", fname))
       End Select
       If typ = "unk" Then
-         Log.DebugMsg("trying to read " & fname & " it is " & Lof(f) & " bytes long")
-         i = Read #f, 3 ' "taste" the file to find type
-         Seek #f, 0
-         Select Case i
-            Case "001" 
-               Log.DataMsg(Subst$("decided &1 is PIT by header", fname))
+        Select Case Lower$(Right$(fname, 4))
+            Case ".pit"
+               Log.DataMsg(Subst$("decided &1 is PIT by suffix", fname))
                typ = "pit"
-            Case Else 
+            Case ".hl7", ".oru"
+               Log.DataMsg(Subst$("decided &1 is HL7 by suffix", fname))
                typ = "hl7"
-               Log.DataMsg(Subst$("presuming &1 is HL7 with header &2", fname, i))
-               ' for now, decide all files are HL7 if not obviously PIT
          End Select
       Endif
       If typ = "pit" Then
          If IsNull(f) Then f = Open fname For Read
          PITImporter.Import(f, File.Name(fname))
-      Else
+      Else  ' at the moment try to parse as HL7 if not clearly PIT
          i = Read #f, Lof(f)
          hl7 = New CHL7(i)
          Process_File(hl7, fname)
@@ -123,10 +122,16 @@ Private Sub Process_Dir_Or_File(fname As String)
       modDBConnect.CommitTrans()
    End If
 Catch
-   Message.Info("Richard - error parsing file " & fname)
    Let i = Error.Text & " " & Error.Where & " (" & fname & ")"
    Print #File.Err, i
    Log.ErrorMsg(i)
+   s = modAdminDBI.Config_Get("admin_email", Null)
+   If Not IsNull(s) Then
+      Message.Error("There was an error processing " & fname & "this will be reported to the Adminstrator")
+      cEmailTask.Send_Email_Easy(s, "file import error", i)
+   Else
+      Message.Error(i)
+   Endif
    Try Move fname To importdir &/ "processed/errors" &/ File.Name(fname)
    If Error Then
       i = "Error of " & Error.Text & " moving " & fname & " to " & importdir &/ "/processedhl7/errors/ (" & Error.Text & ")"
@@ -772,10 +777,10 @@ Public Function Get_Sender(SendingEntity As String, SendingApplication As String
    'the same practice seems to change its sending entity name over time.
    '------------------------------------------------------------------------------------------------
    SendingEntity = Replace$(SendingEntity, "\\T\\", "&")
-   sql = "Select * from documents.sending_entities where msh_sending_entity ILIKE $$" & SendingEntity & "$$ and deleted = False"
+   sql = "Select * from documents.vwsendingentities where msh_sending_entity ILIKE $$" & SendingEntity & "$$ and deleted = False"
    r = modDBConnect.exec_query(sql)
    If r.count Then
-      sender!fk_sending_entity = r!pk
+      sender!fk_sending_entity = r!pk_sending_entity
       sender!fk_lu_message_display_style = r!fk_lu_message_display_style
    Else
       '-----------------------------------------------------------------------

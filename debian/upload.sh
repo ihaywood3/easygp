@@ -11,6 +11,6 @@ then
   exit $E_BADARGS
 fi  
 OLDPWD=`pwd`
-cd ~/ftp
+cd ~/debian/ftp
 reprepro --ignore=wrongdistribution include easygp $OLDPWD/$1
 rsync -ravz . ihaywood@ozdocit.org:/home/ftp/pub/

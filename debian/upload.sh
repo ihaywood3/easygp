@@ -18,20 +18,20 @@ else
 fi
 
 if [ "$1" = "cron" ] ; then
-    cd $BASE/easygp
+    cd $BASE
     rm *.changes
     SVN=`svn update | grep 'At revision' | sed -e 's/At revision \([0-9]*\)./\1/'`
     OLDSVN=`cat $BASE/oldsvn`
     if [ "$OLDSVN" = "$SVN" ] ; then exit 0 ; fi
     echo $SVN > $BASE/oldsvn
-    cd $BASE/easygp/trunk/db
+    cd $BASE/easygp/db
     ./update-db.sh
     MAJOR=`psql -tA -c "select lu_major from db.lu_version" easygp -U easygp`
     MINOR=`psql -tA -c "select lu_minor from db.lu_version" easygp -U easygp`
     DBVERSION=$MAJOR.$MINOR
     NEWVERSION=svn$SVN
     NEWVERSION=$DBVERSION$NEWVERSION
-    cd $BASE/easygp/trunk
+    cd $BASE/easygp
     sed --in-place -e 1s/[0-9\\.]\*svn[0-9]\*/$NEWVERSION/ debian/changelog
     debuild || true
     cd $BASE

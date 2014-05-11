@@ -11,6 +11,35 @@ then
   exit $E_BADARGS
 fi  
 OLDPWD=`pwd`
-cd ~/debian/ftp
-reprepro --ignore=wrongdistribution include easygp $OLDPWD/$1
+if [ -d /home/ian/debian ] ; then
+   BASE=/home/ian/debian
+else
+   BASE=/home/ian
+fi
+
+if [ "$1" = "cron" ] ; then
+    cd $BASE/easygp
+    rm *.changes
+    SVN=`svn update | grep 'At revision' | sed -e 's/At revision \([0-9]*\)./\1/'`
+    OLDSVN=`cat $BASE/oldsvn`
+    if [ "$OLDSVN" = "$SVN" ] ; then exit 0 ; fi
+    echo $SVN > $BASE/oldsvn
+    cd $BASE/easygp/trunk/db
+    ./update-db.sh
+    MAJOR=`psql -tA -c "select lu_major from db.lu_version" easygp -U easygp`
+    MINOR=`psql -tA -c "select lu_minor from db.lu_version" easygp -U easygp`
+    DBVERSION=$MAJOR.$MINOR
+    NEWVERSION=svn$SVN
+    NEWVERSION=$DBVERSION$NEWVERSION
+    cd $BASE/easygp/trunk
+    sed --in-place -e 1s/[0-9\\.]\*svn[0-9]\*/$NEWVERSION/ debian/changelog
+    debuild || true
+    cd $BASE
+    $CHANGES=*.changes
+else
+  $CHANGES=$1
+fi
+
+cd $BASE/ftp
+reprepro --ignore=wrongdistribution include easygp $CHANGES
 rsync -ravz . ihaywood@ozdocit.org:/home/ftp/pub/

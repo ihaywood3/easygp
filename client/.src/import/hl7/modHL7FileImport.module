@@ -66,6 +66,7 @@ Private Sub Process_Dir_Or_File(fname As String)
    Dim i As String
    Dim f As File
    Dim s As String
+   Dim l As Integer
    
    If IsDir(fname) Then
       If (fname = "errors") Or (fname = "LOG") Or (fname = "send") Or (fname = "error") Then ' ignore healthlink crap
@@ -89,38 +90,46 @@ Private Sub Process_Dir_Or_File(fname As String)
    Else  'yes, its a file, try and load it
       typ = "unk"
       f = Open fname For Read
-      Log.DebugMsg("trying to read " & fname & " it is " & Lof(f) & " bytes long")
-      i = Read #f, 3 ' "taste" the file to find type
-      Seek #f, 0
-      Select Case i
-         Case "001" 
-           Log.DataMsg(Subst$("decided &1 is PIT by header", fname))
-           typ = "pit"
-         Case "FHS", "BHS", "MSH"
-            Log.DataMsg(Subst$("decided &1 is HL7 by header", fname))
-      End Select
-      If typ = "unk" Then
-        Select Case Lower$(Right$(fname, 4))
+      l = Lof(f)
+      Log.DebugMsg("trying to read " & fname & " it is " & l & " bytes long")
+      If l < 4 Then
+         Log.WarningMsg("skipping " & fname & " as it is too short to contain anything useful")
+         Move fname To importdir &/ "processed/errors" &/ modUtil.filepath_fix_Blanks(File.Name(fname))
+      Else
+         i = Read #f, 3 ' "taste" the file to find type
+         Seek #f, 0
+         Select Case i
+           Case "001" 
+             Log.DataMsg(Subst$("decided &1 is PIT by header", fname))
+             typ = "pit"
+           Case "FHS", "BHS", "MSH"
+              Log.DataMsg(Subst$("decided &1 is HL7 by header", fname))
+        End Select
+        If typ = "unk" Then
+          Select Case Lower$(Right$(fname, 4))
             Case ".pit"
-               Log.DataMsg(Subst$("decided &1 is PIT by suffix", fname))
-               typ = "pit"
+              Log.DataMsg(Subst$("decided &1 is PIT by suffix", fname))
+              typ = "pit"
             Case ".hl7", ".oru"
-               Log.DataMsg(Subst$("decided &1 is HL7 by suffix", fname))
-               typ = "hl7"
-         End Select
-      Endif
-      If typ = "pit" Then
-         If IsNull(f) Then f = Open fname For Read
-         PITImporter.Import(f, File.Name(fname))
-      Else  ' at the moment try to parse as HL7 if not clearly PIT
-         i = Read #f, Lof(f)
-         hl7 = New CHL7(i)
-         Process_File(hl7, fname)
-      Endif
+              Log.DataMsg(Subst$("decided &1 is HL7 by suffix", fname))
+              typ = "hl7"
+          End Select
+        Endif
+        If typ = "pit" Then
+          If IsNull(f) Then f = Open fname For Read
+          PITImporter.Import(f, File.Name(fname))
+          Close #f
+        Else  ' at the moment try to parse as HL7 if not clearly PIT
+          i = Read #f, Lof(f)
+          Close #f
+          hl7 = New CHL7(i)
+          Process_File(hl7, fname)
+        Endif
       
-      Move fname To importdir &/ "processed" &/ modUtil.filepath_fix_Blanks(File.Name(fname))
-      modDBConnect.CommitTrans()
-   End If
+        Move fname To importdir &/ "processed" &/ modUtil.filepath_fix_Blanks(File.Name(fname))
+        modDBConnect.CommitTrans()
+     Endif ' Lof(f) > 4
+   End If ' IsDir(fname)
 Catch
    Let i = Error.Text & " " & Error.Where & " (" & fname & ")"
    Print #File.Err, i
@@ -132,7 +141,7 @@ Catch
    Else
       Message.Error(i)
    Endif
-   Try Move fname To importdir &/ "processed/errors" &/ File.Name(fname)
+   Try Move fname To importdir &/ "processed/errors" &/ modUtil.filepath_fix_Blanks(File.Name(fname))
    If Error Then
       i = "Error of " & Error.Text & " moving " & fname & " to " & importdir &/ "/processedhl7/errors/ (" & Error.Text & ")"
       Print #File.Err, i

@@ -102,7 +102,7 @@ Public Sub Import(f As File, fname As String)
             s = Grab(27, 45)
             re = New Regexp(s, "^[0-9]+/[0-9]+/[0-9]+ *([0-9]?[0-9]:[0-9][0-9])?")
             If Not CheckRe(re, "collection date") Then 
-               doc!collection_date = re.Text
+              doc!collection_date = re.Text
             Endif
          Case "205"                                           'name of the test
             doc!test_name = Grab(27, 100)
@@ -419,6 +419,8 @@ Private Sub Match_Staff()
    Dim r As Result
    Dim s As String
    Dim re As Regexp
+   Dim firstname As String
+   Dim surname As String
    
    s = Subst$("select fk_staff from admin.vwstaffinclinics where provider_number = $$&1$$ limit 1", doc!addressee_provider)
    r = modDBConnect.exec_query(s)
@@ -438,12 +440,12 @@ Private Sub Match_Staff()
       Return
    Endif
    ' Look for unmatched staff by name
-   re = New Regexp(Upper$(doc!addressee), "^DR ([A-Z]+) ([A-Z ]+)$")
+   re = New Regex(doc!addressee, "^Dr ([A-Za-z]+) ([A-Za-z'\\- ]+)$", RegExp.Caseless)
    If re.Offset = 0 Then
-      s = Subst$("select pk,fk_real_staff from documents.unmatched_staff where surname = $$&1$$ and firstname = $$&2$$",
-         re[2].Text, re[1].Text)
-      r = modDBConnect.exec_query(s)
-      If r.Count = 1 Then
+      surname = re[2].Text
+      firstname = re[1].Text
+      r = modDBConnect.exec_query("select pk,fk_real_staff from documents.unmatched_staff where surname = &1 and firstname = &2", [surname, firstname])
+      If r.Count >= 1 Then
          If Not IsNull(r!fk_real_staff) Then
             doc!fk_staff = r!fk_real_staff
          Else
@@ -452,9 +454,20 @@ Private Sub Match_Staff()
          Return
       Endif
    Endif
+   ' look for unmatched staff by provider number
+   r = modDBConnect.exec_query("select pk,fk_real_staff from documents.unmatched_staff where provider_number = &1", [doc!addressee_provider])
+   If r.Count > 0 Then
+     If Not IsNull(r!fk_real_staff) Then
+       doc!fk_staff = r!fk_real_staff
+     Else
+       doc!fk_unmatched_staff = r!pk
+     Endif
+     Return
+   Endif
    ' Ok, create unmatched_staff
    doc!fk_unmatched_staff = modDBConnect.insert("documents.unmatched_staff", [
-      "surname": doc!addressee,
+      "surname": surname,
+      "firstname": firstname,
       "provider_number": doc!addressee_provider]) 
    
 End

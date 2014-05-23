@@ -289,6 +289,12 @@ def process_step2_line(drug,lineno,sct_done):
         if len(r) > 0:
             print >>sys.stderr, "SCT %s already exists, skipping" % drug["sct"]
         else:
+            if "duplicate" in drug:
+                r = query("select * from drugs.product where pk='%s'" % drug["duplicate"])
+                print >> sys.stderr, "duplicating %s %s" % (r["generic",r["strength"])
+                cmd("insert into drugs.old_sct (fk_product,sct) values ('%s','%s')" % (r[0]['pk'],r[0]['sct']))
+                cmd("update drugs.product set sct='%s',original_pbs_name=$$%s$$ where pk='%s'" % (drug["sct"],drug["original_pbs_name"],r[0]["pk"]))
+                return
             if drug["free_comment"] == "":
                 drug["free_comment"] = "NULL"
             else:

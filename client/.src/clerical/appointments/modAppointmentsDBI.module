@@ -262,23 +262,127 @@ Public Function Appointments_GetWeek(start_date As Date, fk_staff As Integer, fk
    Return modDBConnect.exec_query_collection(sql)
 
 End
+
+Public Sub Make_Recurring_Appointments(data As Collection, start_date As Date, appt_time As String, num_appts As Integer, period As Integer)
+   
+   Dim i As Integer
+   Dim factor As Integer
+   Dim the_date As Date
+   Dim j As Variant
+   Dim row As CRow
+   
+   data!fk_staff_booked = modDBConnect.currentUser!fk_staff
+   Select Case period
+      Case const.Units_week
+         period = gb.Week
+         factor = 1
+      Case const.Units_fortnight
+         period = gb.Week
+         factor = 2
+      Case const.Units_month
+         period = gb.Month
+         factor = 1
+   End Select
+   For i = 1 To num_appts
+      the_date = DateAdd(start_date, period, i * factor)
+      row = New CRow
+      For Each j In data
+         row[data.Key] = j
+      Next
+      Appointment_Process_Time(row, the_date, appt_time)
+      If Not Appointment_Save(row, True) Then Return ' stop making appointments if a clash
+   Next 
+   
+  
+End
+
+
+
+Public Sub Appointment_Process_Time(row As Crow, appt_date As Date, appt_time As String)
+
+   Dim appointment_times As String[]
+   Dim start_time As String[]
+   Dim end_time As String[]
+   Dim start_hour_as_24hrtime As Integer
+   Dim end_hour_as_24hrtime As Integer
+   Dim starttime As Date
+   Dim endtime As Date
+   
+   Appointment_times = Split(appt_time, "-") 'gives eg Appointment_times[0]=12:10:AM,   Appointment_times[1]=01:00:PM
+   Try start_time = Split(Appointment_times[0], ":")
+   Try end_time = Split(Appointment_times[1], ":")
+   '-------------------------------------------------------
+   'multiple appointment slots, convert back to 24hour time
+   '-------------------------------------------------------
+   If Appointment_times.count > 1 Then
+      '-------------------------------------------------------------
+      'first convert the start appointment time to 24hour date/time
+      '-------------------------------------------------------------
+      If InStr(Appointment_times[0], "AM") Then                      'start time in morning, keep hours
+         start_hour_as_24hrtime = Val(start_time[0])
+      Else
+         If Val(start_time[0]) < 12 Then
+            start_hour_as_24hrtime = start_time[0] + 12                'convert to 24 hour time if in afternoon
+         Else
+            start_hour_as_24hrtime = Val(start_time[0])
+         End If
+      Endif
+      starttime = Date(Year(appt_date), Month(appt_date), Day(appt_date), start_hour_as_24hrtime, Val(start_time[1]))
+      row!begin = Format$(starttime, "dd/mm/yyyy hh:nn")
+      '-------------------------------------------------------------
+      'second convert the end appointment time to 24hour date/time
+      '-------------------------------------------------------------
+      If InStr(Appointment_times[1], "AM") Then                      'start time in morning, keep hours
+         end_hour_as_24hrtime = Val(end_time[0])
+      Else
+         If Val(end_time[0]) < 12 Then
+            end_hour_as_24hrtime = end_time[0] + 12                'convert to 24 hour time if in afternoon
+         Else
+            end_hour_as_24hrtime = Val(end_time[0])
+         End If
+      Endif
+      EndTime = Date(Year(appt_date), Month(appt_date), Day(appt_date), end_hour_as_24hrtime, Val(end_time[1]))
+      row!duration = Str(Abs(DateDiff(starttime, EndTime, gb.Minute))) & " minutes"
+   Else
+      '-------------------------
+      'only one appointment slot
+      '-------------------------
+      
+      If InStr(Appointment_times[0], "AM") Then                      'start time in morning, keep hours
+         start_hour_as_24hrtime = Val(start_time[0])
+      Else
+         If Val(start_time[0]) < 12 Then
+            start_hour_as_24hrtime = start_time[0] + 12                'convert to 24 hour time if in afternoon
+         Else
+            start_hour_as_24hrtime = Val(start_time[0])
+         End If
+      Endif
+      starttime = Date(Year(appt_date), Month(appt_date), Day(appt_date), start_hour_as_24hrtime, Val(start_time[1]))
+      row!begin = Format$(starttime, "dd/mm/yyyy hh:nn")
+   Endif
+
+End
+
+
 '''Save an appointment
 
-Public Sub Appointment_Save(row As CRow, Optional bCheckSlotTaken As Boolean = True)
+Public Function Appointment_Save(row As CRow, Optional bCheckSlotTaken As Boolean = True) As Boolean
 
    Dim r As Result
 
+
    If bCheckSlotTaken Then
-      ' modDBConnect.exec_query("LOCK TABLE clerical.bookings IN SHARE ROW EXCLUSIVE MODE")
-      ' r = modDBConnect.exec_query("select * from clerical.bookings where (timestamp &1,&2::interval) overlaps (begin,duration) and deleted is not true", [row!begin, row!duration])
-      ' If r.Count > 0 Then
-      '    If Message.Question("Existing appointment at this time", "Proceed", "Cancel") = 2 Then
-      '       Return
-      '    Endif
-      ' Endif
+      modDBConnect.exec_query("LOCK TABLE clerical.bookings IN SHARE ROW EXCLUSIVE MODE")
+      r = modDBConnect.exec_query("select * from clerical.bookings where (timestamp &1,&2::interval) overlaps (begin,duration) and deleted is not true and fk_staff = &3", [row!begin, row!duration, row!fk_staff])
+      If r.Count > 0 Then
+          If Message.Question("Existing appointment at this time", "Proceed", "Cancel") = 2 Then
+             Return False
+          Endif
+       Endif
    End If
    row.Save("clerical.bookings", "pk")
-
+   Return True
+   
 End
 
 '''Mark appointment as deleted

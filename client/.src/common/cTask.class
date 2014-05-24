@@ -20,15 +20,9 @@
 ' it finishes, such as make an audit entry
 
 
+Private final_note As String
 
 Private cmd As String[]
-Private final_sql As String
-Private final_audit_note As String
-Private final_audit_action As String
-Private final_audit_consult As CConsult
-Private final_audit_section As Integer
-Private final_audit_table As String
-Private final_audit_pk As Integer
 Private pro As Process
 Private error_text As String
 Private status As Byte
@@ -36,9 +30,7 @@ Private destdir As String
 Private showing_error As Boolean
 Private crashfile As String
 
-Public Sub _new()
-  final_audit_action = "no-audit"
-  final_audit_note = "" 
+Public Sub _new() 
   error_text = ""
   status = 0
 End
@@ -60,50 +52,23 @@ Public Sub SetCrashFile(s As String)
 End
 
 
-' set an arbitrary SQL command to be run only if the task completes successfully
-Public Sub SetSql(sql2 As String)
-   final_sql = sql2
-   If status = 1 Then ' program has already run
-     Run_Sql()
-     final_sql = Null
-   Endif
-End
-
-' set an audit action on successful completion
-' call signature deliberately matches modAudit.MakeAudit
-Public Sub SetAudit(consult As CConsult, audit_action As String, tbl As String, fk_row As Integer, fk_section As Integer, Optional notes As String)
-   
-   final_audit_note &= notes
-   final_audit_consult = consult
-   final_audit_table = tbl
-   final_audit_pk = fk_row
-   final_audit_section = fk_section
-   final_audit_action = audit_action
-   If status = 1 Then ' program has already run
-      Run_Audits()
-      final_audit_action = "no-action"
-   Endif
-End
-
-
 Public Sub Process_Read()
   Dim data As String
   Dim re As RegExp
   
   data = Read #pro, Lof(pro)
   Log.DataMsg(Subst$("task process &1 returned on stdout: \"&2\"", Str$(Me), Str$(data)))
-  final_audit_note &= data
-  re = New RegExp(final_audit_note, "~FINISH~")
+  final_note &= data
+  re = New RegExp(final_note, "~FINISH~")
   If Scan_Note(re) Then
      ' Process_Kill isn't always called unfortunately
      Log.DebugMsg(Subst$("task &1 give finish signal", Str$(Me)))
      If status = 0 Then
         status = 1
-        Run_Audits()
-        Run_Sql()
+        Me.Run_Final()
      Endif
   Endif
-  re = New RegExp(final_audit_note, "~SAVE([^~]+)~([^~]+)~([^~]+)~")
+  re = New RegExp(final_note, "~SAVE([^~]+)~([^~]+)~([^~]+)~")
   If Scan_Note(re) Then
      modFiles.Put(re[1].Text, re[2].Text, re[3].Text, Null)
   Endif
@@ -112,10 +77,24 @@ End
 Private Sub Scan_Note(re As Regexp) As Boolean
    
   If re.Offset <> - 1 Then
-    final_audit_note = Left$(final_audit_note, re.Offset) & Right$(final_audit_note, - re.Offset - Len(re.Text)) 
+    final_note = Left$(final_note, re.Offset) & Right$(final_note, - re.Offset - Len(re.Text)) 
     Return True
   Endif
   Return False
+End
+
+
+' for overriding in descendants if they need special actions
+Public Sub Run_Final()
+   ' NOOP
+   
+End
+
+' for running in descendants if they need special actions
+Public Sub Run_Error()
+   
+  ' NOOP 
+   
 End
 
 
@@ -126,6 +105,7 @@ Public Sub Process_Error(err As String)
    If re.Offset = -1 Then
       status = 4
       Log.ErrorMsg(Subst$("task object &1 returned stderr:\"&2\"", Str$(Me), err))
+      Me.Run_Error()
       If Not IsNull(crashfile) And If Exist(crashfile) And If Access(crashfile, gb.Read) Then
          Log.ErrorMsg(Subst$("crashfile &1 found and contains: &2", crashfile, File.Load(crashfile)))
       Endif
@@ -146,6 +126,7 @@ Public Sub Process_Kill()
    If pro.Value <> 0 Then
       If status <> 4 Then ' we haven't already reported it
         status = 4
+        Me.Run_Error()
         If Not IsNull(crashfile) And If Exist(crashfile) And If Access(crashfile, gb.Read) Then
            Log.ErrorMsg(Subst$("crashfile &1 found and contains: &2", crashfile, File.Load(crashfile)))
         Endif
@@ -158,27 +139,8 @@ Public Sub Process_Kill()
    Endif
    If status = 0 Then
      status = 1
-     Run_Audits()
-     Run_Sql()
+     Me.Run_Final()
   Endif 
-   
-End
-
-Private Sub Run_Audits()
-
-     If final_audit_action <> "no-audit" Then
-           modAudit.MakeAudit(final_audit_consult, final_audit_action, final_audit_table, final_audit_pk, final_audit_section, final_audit_note)
-           If IsNull(final_sql) Then modDBConnect.CommitTrans()
-     Endif 
-   
-End
-
-Private Sub Run_Sql()
-   
-     If Not IsNull(final_sql) Then 
-          modDBConnect.exec_query(final_sql)
-          modDBConnect.CommitTrans()
-     Endif
    
 End
 
@@ -208,7 +170,6 @@ Static Public Sub Unit_Test()
   s = "sleep 3\nprint \"hello from ruby!\"\n"
   c = New CConsult(modContactsDBI.Patient_Get_Using_PK(38))
   t = New CTask("/bin/sh")
-  t.SetAudit(c, "completed", "clin_referrals.referrals", 1, 14, "faxed referrals")
 
   
 End

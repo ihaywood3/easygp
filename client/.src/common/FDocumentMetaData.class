@@ -141,6 +141,32 @@ Public Sub SetFilename(path As String)
    
 End
 
+' convert a given file to PDF
+
+Private Sub Force_To_PDF(fname As String) As String
+   
+   Dim ext As String
+   Dim new_fname As String
+   
+   ext = Lower$(File.Ext(fname))
+   If ext = "pdf" Then Return fname
+   If ext = "jpg" Or ext = "png" Or ext = "jpeg" Then
+      ' trick of pdfjam: if you 'join' one PNG or JPEG it will auto-convert to PDF for you
+      Return modPrinting.Join_PDF([fname])
+   Endif
+   If ext = "tif" Or ext = "tiff" Or ext = "gif" Then
+     new_fname = Temp$() & ".pdf"
+     Exec ["/usr/bin/convert", fname, new_fname] Wait
+     If Not Access(new_fname, gb.Read) Then 
+       Error.Raise("Image file conversion failed")
+     Endif
+     Return new_fname
+   Endif
+   Error.Raise("File type " & ext & " not recognised")
+End
+
+
+
 Public Sub SetTxtFocus()
    
    If txtRecipient.text <> "" Then
@@ -201,6 +227,8 @@ Private Function SaveInScanning() As Boolean
    Dim md5Output As String
    Dim errtxt As String
    Dim errwhere As String
+   Dim fname As String
+   Dim upload As CUploadFileTask
    
    If Not Valid_Document() Then Return    'returns False
    D = New Collection
@@ -249,13 +277,14 @@ Private Function SaveInScanning() As Boolean
    'means its gone!
    '------------------------------------------------------------------------------
    If cmbStaffType.index <> -1 Then
+      fname = Force_To_PDF(txtFilename.Text)
       For Each member In Staff_Members
          If member!fk_lu_staff_type = StaffTypes[cmbStaffType.index]!pk Then
             d!source_file = Replace(Document_Filename_Construct_AllStaff(d), "allstaff", member!logon_name)
             d!fk_staff_destination = member!fk_staff
             pk_document = modArchiveDocumentsDBI.Save(d)
             d.Remove("pk_document") 'don't want this key to force new copies
-            Try modFiles.Put("document_archiving_directory", d!source_file, txtFilename.Text)
+            Try modFiles.Put("document_archiving_directory", d!source_file, fname)
             If Error Then
                errtxt = Error.Text
                errwhere = Error.Where
@@ -264,13 +293,14 @@ Private Function SaveInScanning() As Boolean
                If errtxt = "File or directory does not exist" Then
                   Message.Error("The archiving directory was not available on the system. Please check network shares")
                Else
-                  modUtil.ReportError(errtxt, Null, errwhere)
+                  modUtilGUI.ReportError(errtxt, Null, errwhere)
                Endif
                Return False
             Endif
          End If
       Next
       Try Kill txtFilename.Text
+      Try Kill fname
       If Not Error Then
          bSuccess = True
          modDBConnect.CommitTrans()
@@ -279,35 +309,30 @@ Private Function SaveInScanning() As Boolean
          errwhere = Error.Where
          modDBConnect.RollBack()
          bSuccess = False
-         modUtil.ReportError(errtxt, Null, errwhere)
+         modUtilGUI.ReportError(errtxt, Null, errwhere)
       End If
    Else
-      pk_document = modArchiveDocumentsDBI.Save(d)
-      ' chicken-and-egg issue: we need the PK to generate the filename but we need the filename to save the record
+      pk_document = modArchiveDocumentsDBI.Document_New_Pk()
+      d!pk = pk_document
+      ' FIXME: check uploading one-page jpegs
+      'fname = Force_To_PDF(txtFilename.Text)
       d!source_file = Document_Filename_Construct(d)
-      ' now "save twice": triggers a UPDATE carrying the filename
-      modArchiveDocumentsDBI.Save(["pk_document": pk_document, "source_file": d!source_file])
-      Try modFiles.Put("document_archiving_directory", d!source_file, txtFilename.Text)
-      If Not Error Then
-         bSuccess = True
-         modDBConnect.CommitTrans()
-         Try Kill txtFilename.Text
+      If modFiles.Dir_Status("document_archiving_directory") = modFiles.DirRemote Then
+         upload = New CUploadFileTask(d)
+         modFiles.Put("document_archiving_directory", d!source_file, fname, upload)
       Else
-         errtxt = Error.Text
-         errwhere = Error.Where
-         modDBConnect.RollBack()
-         bSuccess = False
-         If errtxt = "File or directory does not exist" Then
-            Message.Error("The archiving directory was not available on the system. Please check network shares")
-         Else
-            modUtil.ReportError(errtxt, Null, errwhere)
-         Endif
+        modFiles.Put("document_archiving_directory", d!source_file, fname)
+        modArchiveDocumentsDBI.Save(d)
+        modDBConnect.CommitTrans()
       Endif
    End If
+
 Finally
    Dec Application.Busy
    Return bSuccess
-   
+Catch
+   modDBConnect.RollBack()
+   modUtilGUI.ReportError(Error.Text, Error.Backtrace)
 End
 
 Private Function SaveNotInScanning() As Boolean
@@ -555,7 +580,7 @@ Public Sub Init(functionality As String)
          HBox_AllStaff.Visible = True
          StaffTypes = modAdminDBI.Staff_Types_Get()
          StaffTypes = modutil.Copy_Collection_Keyed_Sequentially(modAdminDBI.Staff_Types_Get())
-         modUtil.LoadCombo(cmbStaffType, StaffTypes, "type")
+         modUtilGUI.LoadCombo(cmbStaffType, StaffTypes, "type")
          cmbStaffType.index = -1
          EditArea_Clear()
       Case "Allocated Documents"
@@ -596,7 +621,7 @@ End
 
 Public Sub _new()
    
-   document_types = modUtil.LoadCombo(cmbDocumentTypes, modRequestsDBI.RequestTypes_Get(), "type")
+   document_types = modUtilGUI.LoadCombo(cmbDocumentTypes, modRequestsDBI.RequestTypes_Get(), "type")
    
 End
 
@@ -1620,7 +1645,7 @@ Public Sub Person_Employee_Get()
       Person_Employee_Select() 'using the current Staff_Member collection
    Else
       lblmeasure.font = columnview1.Font
-      modutil.Columnview_Columns_Set_Size(columnview1, lblmeasure)
+      modUtilGUI.Columnview_Columns_Set_Size(columnview1, lblmeasure)
       With Columnview1
          .Visible = True
          .Raise
@@ -1662,7 +1687,7 @@ Public Sub Person_Get()
       Person_Select() 'using the current person collection
    Else
       lblmeasure.font = columnview1.Font
-      modutil.Columnview_Columns_Set_Size(columnview1, lblmeasure)
+      modUtilGUI.Columnview_Columns_Set_Size(columnview1, lblmeasure)
       With Columnview1
          .Visible = True
          .Raise
@@ -1904,7 +1929,7 @@ Public Function EditArea_TextBox_ExcludeKeys(keycode As Integer, tag As String) 
    
    Select Case tag
       Case "document date"
-         bKeyValid = modUtil.AllowKeys(const.AllowKeys_DateFormat, keycode)
+         bKeyValid = modUtilGUI.AllowKeys(const.AllowKeys_DateFormat, keycode)
       Case Else
          bKeyValid = True
    End Select
@@ -2066,16 +2091,20 @@ Public Function Valid_Document() As Boolean
    
 End
 
-Public Function Document_Filename_Construct(document As Collection) As String
+Public Function Document_Filename_Construct(document As Collection, Optional the_file As String) As String
    'fixme - put in module somewhere this type of routine shared with Fclinical see FClinical.tbJoin_click()
    
    Dim newfilename As String
+   Dim pk As Variant
    
+   If document.Exist("pk_document") Then pk = document!pk_document
+   If document.Exist("pk") Then pk = document!pk
+   If IsNull(the_file) Then the_file = txtFilename.Text
    If Trim(txtPatient.text) <> "" Then
       newfilename &= modutil.Filename_Protect(Trim(txtPatient.text)) & "." & modutil.DateString_Encode(lblbirthdate.text) & "." & Str(Document!fk_patient) & "."
    End If
    newfilename &= modutil.Filename_Protect(Document!originator) & "." & Str$(document!pk_document) & "."
-   newfilename &= File.Ext(txtFilename.text)
+   newfilename &= File.Ext(the_file)
    Return Lower(newfilename) 'ensure all in lower case
    
 End

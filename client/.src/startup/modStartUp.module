@@ -20,10 +20,11 @@ Public Function Startup(form_main As FMain) As Boolean
    Dim opt As New Collection
    Dim sMsg As String
    
-   If modUtil.Check_Utilities_Missing() Then
+   If modUtilGUI.Check_Utilities_Missing() Then
       Return False
    End If
-   opt = GetOptions()
+   opt = modCmdLine.GetOptions()
+   Log.InfoMsg("EasyGP client version " & Application.Version & " running on Gambas " & System.Version)
    If Logon(opt) Then
       If opt.Exist("run") Then
          RunCmd(opt!run, [])
@@ -64,25 +65,13 @@ Private Function Logon(opt As Collection) As Boolean
    Dim password As String
    Dim FLogOn As New Frmlogon
    
-   host = Settings["Autoconnect/host", Null]
-   If opt.Exist("autologon") Then
-      If opt!autologon = "never" Then host = Null ' suppress auto-logon
-      If opt!autologon = "try" And IsNull(host) Then
-         host = "unix" ' always attempt
+   If Not IsNull(opt!host) Then
+      Try dbConnect(opt)
+      If Error Then 
+         Log.ErrorMsg(Error.Text & Error.Where)
+      Else
+         Return True
       Endif
-   Endif
-   If Not IsNull(host) Then
-      username = Settings["Autoconnect/username", User.Name]
-      dbase = Settings["Autoconnect/database", "easygp"]
-      If host = "unix" Then host = ""
-      password = Settings["Autoconnect/password", ""]
-      result = modDBConnect.dbConnect_global(host, dbase, username, password)
-      If result = "success" Then Return True
-   Endif
-   ' auto-logon for command-line: die if we can't do it
-   If opt.Exist("autologon") And If opt!autologon = "always" Then
-      Print #File.Err, "login failed: see log"
-      Return False
    Endif
    ' okay, none of that worked, use the logon dialogue box
    Select Case FLogOn.ShowModal()
@@ -94,30 +83,60 @@ Private Function Logon(opt As Collection) As Boolean
    
 End
 
-Private Function GetOptions() As Collection
+
+Private Sub CheckDBVersion()
    
-   Dim opt As New Collection
-   Dim i As Integer
+   Dim db_version As Collection
+   Dim app_version As New Collection
+   Dim s As String[]
+   Dim msg As String
    
-   i = 1
-   While i < Application.Args.Count
-      Select Case Application.Args[i]
-         Case "-a", "--autologon"
-            opt!autologon = "try"
-         Case "-n", "--no-autologon"
-            opt!autologon = "never"
-         Case "--test", "-t"
-            Inc i
-            opt!test = Application.Args[i]
-         Case "--run", "-r"
-            Inc i
-            opt!run = Application.Args[i]
-      End Select
-      Inc i
-   Wend
-   Return opt
+   Try db_version = modDBConnect.exec_query_first("Select lu_minor as minor, lu_major as major  from db.lu_version")
+   If Error Then
+      msg = Error.Text
+      If Left$(msg, 48) = "Query failed: ERROR:  schema \"db\" does not exist" Then
+         Error.Raise("The database is empty and must be set up properly on the remote system. See easygp(8)")
+      Else
+         Error.Raise(msg)
+      Endif
+   Endif
+   If IsNull(db_version) Then
+      Error.Raise("No database version stored")
+   Endif
+   modCache.SetDBVersion(db_version)
+   s = Split(Application.Version, ".")
+   app_version!major = CInt(s[0])
+   app_version!minor = CInt(s[1])
+   
+   If db_version!major <> app_version!major Or If db_version!minor < app_version!minor Then
+      msg = "You are running client version " & Application.Version
+      msg &= " but the database is version " & db_version!major & "." & db_version!minor
+      msg &= "\nThese are not compatible, you cannot login to this database.\n\n"
+      msg &= "Update scripts are located in the db/updates directory of the svn. Your system administrator should know how to deal with these."
+      Log.PanicMsg(msg)
+      Message.Error(msg)
+      Error.Raise("Incompatible database version")
+   Endif
    
 End
+
+Public Function dbConnect(opt As Collection)
+   Dim the_user As Collection
+   
+   
+   modDBConnect.dbConnect_global(opt) ' errors get propagated as exceptions
+   the_user = modConsultDBI.Staff_member_Get()
+   If IsNull(the_user) And If opt!username <> "easygp" Then
+      Error.Raise("No user information in database")
+   Endif
+   modDBConnect.Set_User(the_user)
+   CheckDBVersion()
+   
+End
+
+
+
+
 
 Private Sub RunCmd(test As String, args As Variant[])
    

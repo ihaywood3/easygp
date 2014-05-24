@@ -536,8 +536,9 @@ Public Sub mnuAppointments_Click()
    'User has clicked on one of the apointment menu options
    'Default to checking the apppointment slot is not used
    '------------------------------------------------------
-   
+   Dim form_recurring As FRecurringAppointment
    Dim bCheckSlotTaken As Boolean = True
+   Dim c As Collection
    
    Select Case Last.tag
       Case "delete"
@@ -555,7 +556,7 @@ Public Sub mnuAppointments_Click()
          fk_lu_appointment_status = patient_departed
          bCheckSlotTaken = False
       Case "help"
-         modUtil.NotImplemented("Sorry, viewing help is not implemented")
+         modUtilGUI.NotImplemented("Sorry, viewing help is not implemented")
          Return
       Case "emergency"
          If Not IsNull(gridrows[onrow]!fk_patient) Then
@@ -566,13 +567,29 @@ Public Sub mnuAppointments_Click()
       Case "add fit"
          Appointment_Add_Fit()
          Return
+      Case "recurring"
+         If onrow > -1 And If onrow < gridrows.Count Then
+           form_recurring = New FRecurringAppointment
+           c = New Collection
+           c!fk_patient = gridrows[onrow]!fk_patient
+           c!fk_staff = staff_member!fk_staff
+           c!fk_lu_appointment_status = gridrows[onrow]!fk_lu_appointment_status
+           c!duration = Str(appointment_interval) & " minutes"
+           c!fk_clinic = fk_clinic
+           c!notes = gridrows[onrow]!name
+           c!fk_lu_appointment_icon = gridrows[onrow]!fk_lu_appointment_icon
+           form_recurring.Init(c, appointment_date, gridrows[onrow]!time)
+           form_recurring.Run()
+         Else
+            Error.Warning("No appointment created to recur")
+         Endif
+         Return
       Case Else
          If IsNumber(Last.tag) Then gridrows[onrow]!fk_lu_appointment_icon = Val(Last.tag)
          bCheckSlotTaken = False
    End Select
    Save(bCheckSlotTaken)
-Catch
-   Return 
+
 
 End
 
@@ -661,7 +678,7 @@ Public Sub Gridview1_Keypress()
    '------------------------------------------------------------------------------
    
    If bExit Then Return
-   If modUtil.AllowKeys(const.AllowKeys_AtoZ_UpDown_Arrows, Key.code) = False Then
+   If modUtilGUI.AllowKeys(const.AllowKeys_AtoZ_UpDown_Arrows, Key.code) = False Then
       Stop Event
       Return
    End If
@@ -830,16 +847,6 @@ Public Sub Save(Optional bCheckSlotTaken As Boolean = True)
    '-------------------------------------------------------------
    
    Dim appointment As New CRow
-   Dim starttime As Date
-   Dim endtime As Date
-   Dim Appointment_times As String[]
-   Dim appointment_length As String[]
-   Dim iStatus As Integer
-   Dim start_hour_as_24hrtime As Integer
-   Dim end_hour_as_24hrtime As Integer
-   Dim start_time As String[]
-   Dim end_time As String[]
-   Dim currow As Integer = onrow
    
    If onrow = -1 Then
       Return          'should never happen but there are bugs
@@ -849,73 +856,21 @@ Public Sub Save(Optional bCheckSlotTaken As Boolean = True)
       appointment!fk_patient = gridrows[onrow]!fk_patient
    Endif
    appointment!fk_staff = staff_member!fk_staff
-   Appointment_times = Split(gridrows[onrow]!time, "-") 'gives eg Appointment_times[0]=12:10:AM,   Appointment_times[1]=01:00:PM
-   Try start_time = Split(Appointment_times[0], ":")
-   Try end_time = Split(Appointment_times[1], ":")
-   '-------------------------------------------------------
-   'multiple appointment slots, convert back to 24hour time
-   '-------------------------------------------------------
-   If Appointment_times.count > 1 Then
-      '-------------------------------------------------------------
-      'first convert the start appointment time to 24hour date/time
-      '-------------------------------------------------------------
-      If InStr(Appointment_times[0], "AM") Then                      'start time in morning, keep hours
-         start_hour_as_24hrtime = Val(start_time[0])
-      Else
-         If Val(start_time[0]) < 12 Then
-            start_hour_as_24hrtime = start_time[0] + 12                'convert to 24 hour time if in afternoon
-         Else
-            start_hour_as_24hrtime = Val(start_time[0])
-         End If
-      Endif
-      starttime = Date(Year(appointment_date), Month(appointment_date), Day(appointment_date), start_hour_as_24hrtime, Val(start_time[1]))
-      appointment!begin = Format$(starttime, "dd/mm/yyyy hh:nn")
-      '-------------------------------------------------------------
-      'second convert the end appointment time to 24hour date/time
-      '-------------------------------------------------------------
-      If InStr(Appointment_times[1], "AM") Then                      'start time in morning, keep hours
-         end_hour_as_24hrtime = Val(end_time[0])
-      Else
-         If Val(end_time[0]) < 12 Then
-            end_hour_as_24hrtime = end_time[0] + 12                'convert to 24 hour time if in afternoon
-         Else
-            end_hour_as_24hrtime = Val(end_time[0])
-         End If
-      Endif
-      EndTime = Date(Year(appointment_date), Month(appointment_date), Day(appointment_date), end_hour_as_24hrtime, Val(end_time[1]))
-      appointment!duration = Str(Abs(DateDiff(starttime, EndTime, gb.Minute))) & " minutes"
-      If fk_lu_appointment_status = 0 Then fk_lu_appointment_status = 1 'normal appointment for 10 min or multiple of 10 min slots
+   If fk_lu_appointment_status = 0 Then fk_lu_appointment_status = 1
+   If Not IsNull(gridrows[onrow]!fk_lu_appointment_status) Then
+     appointment!fk_lu_appointment_status = gridrows[onrow]!fk_lu_appointment_status
    Else
-      '-------------------------
-      'only one appointment slot
-      '-------------------------
-      If fk_lu_appointment_status = 0 Then fk_lu_appointment_status = 1
-      
-      If InStr(Appointment_times[0], "AM") Then                      'start time in morning, keep hours
-         start_hour_as_24hrtime = Val(start_time[0])
-      Else
-         If Val(start_time[0]) < 12 Then
-            start_hour_as_24hrtime = start_time[0] + 12                'convert to 24 hour time if in afternoon
-         Else
-            start_hour_as_24hrtime = Val(start_time[0])
-         End If
-      Endif
-      starttime = Date(Year(appointment_date), Month(appointment_date), Day(appointment_date), start_hour_as_24hrtime, Val(start_time[1]))
-      appointment!begin = Format$(starttime, "dd/mm/yyyy hh:nn")
-      If Not IsNull(gridrows[onrow]!fk_lu_appointment_status) Then
-         iStatus = gridrows[onrow]!fk_lu_appointment_status
-      Else
-         iStatus = fk_lu_appointment_status
-      Endif
-      
-      If Not IsNull(gridrows[onrow]!is_fitin) Then
-         appointment_interval = "1"
-      Endif
-      If iStatus = emergency Then
-         fk_lu_appointment_status = emergency
-      Endif
-      appointment!duration = Str(appointment_interval) & " minutes"
+     appointment!fk_lu_appointment_status = fk_lu_appointment_status
    Endif
+   If appointment!fk_lu_appointment_status = emergency Then
+     fk_lu_appointment_status = emergency
+   Endif 
+   If Not IsNull(gridrows[onrow]!is_fitin) Then
+      appointment_interval = "1"
+   Endif
+   appointment!duration = Str(appointment_interval) & " minutes"
+   modAppointmentsDBI.Appointment_Process_Time(appointment, appointment_date, gridrows[onrow]!time)
+
    If Not IsNull(gridrows[onrow]!pk_appointment) Then
       appointment!pk = gridrows[onrow]!pk_appointment
    Endif

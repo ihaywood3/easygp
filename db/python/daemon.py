@@ -231,10 +231,10 @@ Options
                     if self.test_mode:
                         #self.db.synth_event("script",12)
                         #self.mo.send_bb_report(fk_staff_only=4)
-                        pdb.set_trace()
                         #self.mo.prepare_bb_reports(fk_staff_only=4)
                         #self.mo.transmit_claims()
-                        self.mo.get_bb_processing_report(self.db.get_claim('B0006@'))
+                        #self.mo.get_bb_processing_report(self.db.get_claim('B0006@'))
+                        self.mo.upload_private_invoice(1460) # Diana Kahn's 306
                     else:
                         self.db.wait_events()
             except: logging.exception("exception in child")

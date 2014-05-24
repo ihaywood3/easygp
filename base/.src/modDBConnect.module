@@ -15,6 +15,8 @@
 ' You should have received a copy of the GNU General Public License
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+Export
+
 Private $hconn As Connection
 Private inferior_ssh As Process
 Private inferior_ssh_error As String
@@ -60,6 +62,13 @@ Private Function timeDiff(startTime As Float) As String
    Endif
    
 End
+
+Public Function Set_User(u2 As Collection)
+  
+  my_current_user = u2
+  
+End
+
 
 Private Function IsConnected_Read() As Boolean
    
@@ -115,7 +124,7 @@ Private Function CheckAdminStatus() As Boolean
    
 End
 
-Public Function dbConnect_global(host As String, database As String, login As String, password As String, Optional check_version As Boolean = True) As String
+Public Sub dbConnect_global(opt As Collection)
    '-------------------------------------
    'Attempts to connect to a database
    'returns true if success, false if not
@@ -124,17 +133,13 @@ Public Function dbConnect_global(host As String, database As String, login As St
    Dim sa As String[]
    Dim r As String
    
-   conninfo = New Collection
-   sa = Split(host, "/")
+   conninfo = opt
+   sa = Split(conninfo!host, "/")
    If sa.Length = 2 Then
       conninfo!host = sa[0]
-      conninfo!database = sa[1]
-   Else
-      conninfo!host = host
-      conninfo!database = database
+      conninfo!dbname = sa[1]
    Endif
-   If IsNull(conninfo!database) Then conninfo!database = "easygp"
-   conninfo!port = "5432"
+   If IsNull(conninfo!dbname) Then conninfo!dbname = "easygp"
    sa = Split(conninfo!host, ":")
    If sa[0] = "ssh" Then
       conninfo!ssh = True
@@ -147,27 +152,18 @@ Public Function dbConnect_global(host As String, database As String, login As St
          conninfo!port = sa[1]
       Endif
    Endif
-   conninfo!login = login
-   conninfo!password = password
-   r = Actual_Connect()
+   If IsNull(conninfo!port) Then conninfo!port = "5432"
+   If IsNull(conninfo!username) Then conninfo!username = User.Name
+   Actual_Connect()
    
-   If r = "success" Then
-      If check_version Then CheckDBVersion()
-      If conninfo!login = "easygp" Then
-         my_is_admin = True
-      Else
-         my_current_user = modConsultDBI.Staff_member_Get()      
-         my_is_admin = CheckAdminStatus()                    'IAN another postgres user with super-user rights can slip past here.
-      Endif
-      If conninfo!login <> "easygp" And If IsNull(my_current_user) Then
-         ' Uh-oh: user is neither the superuser nor an ordinary user
-         ' so even though we have a DB connection, it will be useless.
-         r = "Logon failed: user is a postgres user but not an EasyGP user"
-      Endif
-      bStoring = False
-      event_listeners = New Collection
-   Endif
-   Return r
+  'If check_version Then CheckDBVersion()
+  If conninfo!login = "easygp" Then
+    my_is_admin = True
+  Else      
+    my_is_admin = CheckAdminStatus()                    'IAN another postgres user with super-user rights can slip past here.
+  Endif
+  bStoring = False
+  event_listeners = New Collection
    
 End
 
@@ -181,6 +177,43 @@ Public Sub Shutdown()
    
 End
 
+Public Sub Scp_Download(remote_file As String, local_file As String)
+   
+  Dim scp_path As String
+  Dim startTime As Float
+  
+  scp_path = modUtil.FindProgram("scp", "ssh")
+  startTime = Timer()
+  Exec [scp_path, "-q", "-o", "ControlPath /tmp/gambas-ssh-%h.%u.%r", conninfo!host & ":" & remote_file, local_file] Wait
+  Log.DebugMsg(Subst$("SSH Download of &1 took &2msec", remote_file, timeDiff(startTime)))
+   
+End
+
+Public Function Scp_Upload_Cmd_List(local_file As String, remote_file As String) As String[]
+   
+  Dim scp_path As String
+  
+  scp_path = modUtil.FindProgram("scp", "ssh")
+  Return [scp_path, "-q", "-o", "ControlPath /tmp/gambas-ssh-%h.%u.%r", local_file, conninfo!host & ":" & remote_file] 
+
+End
+
+Public Function Scp_Upload_Cmd(local_file As String, remote_file As String) As String
+   
+  Dim s As String[]
+  
+  s = Scp_Upload_Cmd_List(local_file, remote_file)
+  Return Subst$("&1 -q -o '&2' '&3' '&4'", s[0], s[3], s[4], s[5])
+
+End
+
+Public Sub Scp_Upload(local_file As String, remote_file As String)
+   
+  Exec Scp_Upload_Cmd_List(local_file, remote_file) Wait 
+   
+End
+
+
 Private Function Actual_Connect() As String
 
    Dim ssh_path As String
@@ -192,15 +225,16 @@ Private Function Actual_Connect() As String
    $hconn = New Connection
    With $hconn
       .Type = "postgresql"
-      .Login = conninfo!login
+      .Login = conninfo!username
       .Password = conninfo!password
-      .Name = conninfo!database
+      .Name = conninfo!dbname
    End With
    If conninfo!ssh Then
       ssh_path = modUtil.FindProgram("ssh", "ssh")
       inferior_ssh_connected = False
       inferior_ssh_buffer = ""
       inferior_ssh_error = Null
+      Try Shell "rm -f /tmp/gambas-ssh-*"  ' get rid of previous multiplexer listeners
       inferior_ssh = Exec [ssh_path, "-Nnv", "-L", Subst$("127.0.0.1:15432:127.0.0.1:&1", conninfo!port), "-M", "-o", "ControlPath /tmp/gambas-ssh-%h.%u.%r", conninfo!host] For Read As "Ssh"
       $hconn.Host = "127.0.0.1"
       $hconn.Port = "15432"
@@ -214,7 +248,11 @@ Private Function Actual_Connect() As String
          Return inferior_ssh_error
       Endif
    Else
-      $hconn.Host = conninfo!host
+     If conninfo!host = "unix" Then
+        $hconn.Host = ""
+     Else
+        $hconn.Host = conninfo!host
+     Endif
       $hconn.Port = conninfo!port
    Endif
    $hconn.Open
@@ -223,9 +261,6 @@ Private Function Actual_Connect() As String
    DB.Current = $hconn
    backend_pid = PQbackendPID(Connection.Handle)
    pg_socket_file = Open "." & PQsocket(Connection.Handle) For Read Watch
-   Return "success"
-Catch
-   Return DConv(Error.Text)
 
 End
 
@@ -317,7 +352,7 @@ Public Sub Register_Listener(evt As String, obj As Object)
    
    If Not event_listeners.Exist(evt) Then
       ' we are the first listener, so tell postgres we are internested in this event
-      exec_query("LISTEN " & evt)
+      If evt <> "lost_connection" Then exec_query("LISTEN " & evt)
       event_listeners[evt] = New Collection
    Endif
    event_listeners[evt].Add(obj, Str$(obj))
@@ -332,43 +367,7 @@ Public Sub Unregister_Listener(evt As String, obj As Object)
    event_listeners[evt].Remove(Str$(obj))
    If event_listeners[evt].Count = 0 Then
       event_listeners.Remove(evt)
-      exec_query("UNLISTEN " & evt)
-   Endif
-   
-End
-
-Private Sub CheckDBVersion()
-   
-   Dim db_version As Collection
-   Dim app_version As New Collection
-   Dim s As String[]
-   Dim msg As String
-   
-   Try db_version = exec_query_first("Select lu_minor as minor, lu_major as major  from db.lu_version")
-   If Error Then
-      msg = Error.Text
-      If Left$(msg, 48) = "Query failed: ERROR:  schema \"db\" does not exist" Then
-         Error.Raise("The database is empty and must be set up properly on the remote system. See easygp(8)")
-      Else
-         Error.Raise(msg)
-      Endif
-   Endif
-   If IsNull(db_version) Then
-      Error.Raise("No database version stored")
-   Endif
-   modCache.SetDBVersion(db_version)
-   s = Split(Application.Version, ".")
-   app_version!major = CInt(s[0])
-   app_version!minor = CInt(s[1])
-   
-   If db_version!major <> app_version!major Or If db_version!minor < app_version!minor Then
-      msg = "You are running client version " & Application.Version
-      msg &= " but the database is version " & db_version!major & "." & db_version!minor
-      msg &= "\nThese are not compatible, you cannot login to this database.\n\n"
-      msg &= "Update scripts are located in the db/updates directory of the svn. Your system administrator should know how to deal with these."
-      Log.PanicMsg(msg)
-      Message.Error(msg)
-      Error.Raise("Incompatible database version")
+      If evt <> "lost_connection" Then exec_query("UNLISTEN " & evt)
    Endif
    
 End
@@ -391,7 +390,6 @@ Public Function RollBack() As Result
       Try $Result = $hconn.Exec("ROLLBACK")
       If Error Then
          Log.ErrorMsg(Error.Text)
-         Message.Error(Error.Text)
       Else
          Log.DebugMsg(" ROLLBACK ( took " & timeDiff(startTime) & "msec )")
       Endif
@@ -411,7 +409,7 @@ Public Function CommitTrans() As Result
       Try $Result = $hconn.Exec("COMMIT")
       If Error Then
          Log.ErrorMsg(Error.Text)
-         Message.Error(Error.Text)
+         Error.Raise(Error.Text)
       Else
          Log.DebugMsg(" COMMIT ( took " & timeDiff(startTime) & "msec )")
       Endif
@@ -429,6 +427,9 @@ Public Function exec_query(sql As String, Optional params As Variant[]) As Resul
    Dim errtxt As String
    Dim bt As String
    Dim i As Integer
+   Dim obj As Object
+   Dim restart As Boolean
+   Dim v As Variant
    
    If Not IsNull(params) Then
       sql = Me.Subst(sql, params)
@@ -454,36 +455,30 @@ do_query:
          ' connection lost
          $hconn = Null
          Log.ErrorMsg(errtxt)
-         i = Message.Error("EasyGP has lost the Internet connection", "Try to Re-connect", "Quit Program")
-         If i = 1 Then
-         do_reconnect:
-            errtxt = Actual_Connect()
-            If errtxt = "success" Then
-               Goto do_query
-            Else
-               i = Message.Error("Reconnection failed with " & errtxt, "Try To Re-connect", "Quit Program")
-               If i = 1 Then
-                  Goto do_reconnect
-               Else
-                  Log.ErrorMsg(errtxt)
-                  Quit
-               Endif
-            Endif
+         If event_listeners.Exist("lost_connection") Then
+           restart = False
+           For Each obj In event_listeners["lost_connection"]
+             v = Null
+             Try v = Object.Call(obj, "Lost_Connection")
+             If v = "restart" Then
+               restart = True
+             Endif
+           Next
+           If restart Then
+              Actual_Connect()
+              Goto do_query
+           Endif
          Endif
       Else If errtxt Begins "Query failed: ERROR:  schema \"db\" does not exist" Then
-         Message.Error("The database you have connected to seems empty of data, please check your database setup")
-         Quit
+         Error.Raise("The database you have connected to seems empty of data, please check your database setup")
       Else If errtxt Begins "Query failed: ERROR:  plpy.Error: No such option " Then
-         Message.Error("You haven't set a directory setting. Check settings in Admin|Global Preferences")
          Log.ErrorMsg(errtxt & bt)
          Error.Raise("query failed no directory setting")
       Else If errtxt Begins "Query failed: ERROR:  IOError: [Errno 2] No such file or directory:" Then
-         Message.Error("EasyGP has tried to find a file on the server and can't. Check settings in Admin|Global Preferences")
          Log.ErrorMsg(errtxt & bt)
          Error.Raise("Can't find file")
       Else
          RollBack()
-         modUtil.ReportError(errtxt, Null, bt)
          Error.Raise("query failed " & errtxt)  'IAN URGENTLY NEED A BUG FIX TO EXIT GRACEFULLY AND RES-SET
       Endif
    Else
@@ -725,9 +720,8 @@ Public Function exec_query_collection(sql As String, Optional params As Variant[
          End If
       Next
       If Not pk_field_present Then
-         Message.info("Table in sql " & sql & " must have a field beginning with the letters pk\n Sorry, the program will now quit!")
          Log.PanicMsg("Table in sql " & sql & " must have a field beginning with the letters pk")
-         Quit
+         Error.Raise("Table in sql " & sql & " must have a field beginning with the letters pk")
       End If
       thelot[generic_pk] = a_collection
    Next
@@ -765,9 +759,8 @@ Public Function exec_query_row(sql As String, Optional params As Variant[]) As C
          End If
       Next
       If Not pk_field_present Then
-         Message.info("Table in sql " & sql & " must have a field beginning with the letters pk\n Sorry, the program will now quit!")
          Log.PanicMsg("Table in sql " & sql & " must have a field beginning with the letters pk")
-         Quit
+         Error.Raise("Table in sql " & sql & " must have a field beginning with the letters pk")
       End If
       thelot[generic_pk] = New CRow(a_collection)
    Next

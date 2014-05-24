@@ -30,7 +30,7 @@ Public Function age_onset(PH As Collection) As String
       age_onset &= "months"
    Endif
    Return age_onset
-
+   
 End
 
 Public Function ProgressNotes_Add_Page_Header_Create_PDF_File(controls_html As String, currentconsult As CConsult, sHeading As String, Optional sFilename As String = "", Optional sDir As String = "") As String
@@ -152,12 +152,585 @@ Public Function Immunisation_Summary_Construct_Latex(currentconsult As CConsult)
    
 End
 
-Public Function Health_Summary_Construct_LaTex(currentconsult As Cconsult, Optional bGPMP As Boolean = False) As CTemplate
+Public Function Health_Summary_Construct_LaTex_GPMP_FUCKED(currentconsult As Cconsult, Optional bGPMP As Boolean = False) As CTemplate
    ' If bGPMP = True(This document Is Being used As A GP ManagemWithProgressNotes_Codes_GetWithProgressNotes_Codes_Getent Plan)
    
    Dim sString As String
    Dim sString1 As String
-   ' Dim templ As New CTemplate("hsumv3", "tex")
+   Dim templ As New CTemplate("health-summary", "tex")
+   Dim item As Collection
+   Dim r As Result
+   Dim sRange As String
+   Dim height As Float
+   Dim weight As Float
+   Dim waist As Variant
+   Dim hip As Variant
+   Dim BMI As Variant
+   Dim m As Collection
+   Dim Last_Key As Integer
+   Dim sLaterality As String
+   Dim PH As Collection
+   Dim Medication As Collection
+   Dim vaccination As Collection
+   Dim recall As Collection
+   Dim max_ideal_weight As Variant = 0
+   Dim min_ideal_weight As Variant = 0
+   Dim fk_generic_product_keys As New String[]
+   Dim fluvax_year_most_recent As Integer
+   Dim fluvax As Collection
+   Dim tetanus_year_most_recent As Integer
+   Dim tetanus_vax As Collection
+   Dim typhoid_year_most_recent As Integer
+   Dim typhoid_vax As Collection
+   Dim sSmoking As String
+   Dim sAlcohol As String
+   Dim sLastOccupation As String
+   Dim x As Integer
+   Dim sSocialHistory As String
+   
+   currentconsult.Refresh("family_history")
+   currentconsult.Refresh("social_history")
+   currentconsult.Refresh("past_history")
+   currentconsult.Refresh("occupational_history")
+   currentconsult.Refresh("recalls_logged")
+   currentconsult.Refresh("recreationaldrugs")
+   currentconsult.Refresh("allergies")
+   currentconsult.Refresh("measurements")
+   currentconsult.Refresh("vaccinations_given")
+   templ.Subst_common(currentconsult)
+   If bGPMP Then
+      templ.Subst("documenttype", "GP MANAGEMENT PLAN\\\\Author " & modDBConnect.currentUser!title & " " & modDBConnect.currentUser!wholename & "\\\\")
+   Else
+      Templ.Subst("documenttype", "PATIENT HEALTH SUMMARY")
+   Endif
+   Templ.Subst("date_printed", Format(Now(), "dd/mm/yyyy"))
+   '-----------------------------------------------------------------------
+   'Construct a table of known allergies, possibilities are
+   'Unknow
+   'Nil allergies or sensitivities
+   'A heading of the table (class etc) + row(s) of allergy/sensitivity data
+   '------------------------------------------------------------------------ 
+   If Not currentconsult!allergies.count Then  
+      templ.Row("Unknown", "", "", "")
+   End If   
+   x = 0  'counter
+   For Each Item In currentconsult!allergies
+      If IsNull(item!nil_allergies_sensitivities) And x = 0 Then
+         If IsNull(item!allergen) Then  
+            templ.Row("\\textbf{\\footnotesize Class}", "Generic", "Reaction Type", "Details")
+            Inc x
+         End If 
+      Endif
+      ' class_name, generic, details, reaction_type
+      If item!nil_allergies_sensitivities = True Then
+         templ.Row("No known allergies or sensitivites")
+      Else
+         If Not IsNull(Item!allergen) Then 'non drug allergy
+            templ.Row("Non Drug Allergy:", item!allergen, "", "")
+         Else
+            templ.Row("ATC Class:" & Item!class_name, item!generic, "Type: " & item!reaction_type, "Details: " & item!details)
+         End If   
+      End If   
+   Next
+   templ.Table("allergies")
+   For Each item In currentconsult!social_history
+      sSocialHistory = item!history
+      If Not IsNull(item!history_confidential) Then
+         sSocialHistory &= " Confidential parts of this history have been omitted."
+      Endif
+      templ.Subst("socialhistory", sSocialHistory)
+      If Not IsNull(item!fk_responsible_person) Then
+         sString = item!person_responsible_title & " " & item!person_responsible_firstname & " " & item!person_responsible_surname
+      Else
+         sString = item!responsible_person
+         If Not IsNull(item!responsible_person_street1) Then
+            sSTring &= "\\\\" & item!responsible_person_street1
+         Endif
+         If Not IsNull(item!responsible_person_town) Then
+            sSTring &= "\\\\" & item!responsible_person_town & " " & item!responsible_person_postcode
+         Endif
+      End If
+      sString &= "\\\\Phone:" & item!responsible_person_contacts
+      templ.Subst("responsibleperson", Trim(sString))
+   Next
+   Templ.Subst("responsibleperson", "")
+   Templ.Subst("socialhistory", "")
+   '----------------------------------
+   'Construct the occupational history
+   '----------------------------------
+   sstring = ""
+   For Each item In currentconsult!occupational_history
+      sString = ""
+      If Not IsNull(item!from_age) Then   
+         sString = "age " & item!from_age 
+         If Not IsNull(item!to_age) Then
+            sstring &= "-" & item!to_age
+         Endif
+      Endif
+      If sLastOccupation <> item!occupation Then
+         sstring1 = item!occupation
+         If item!retired Then sstring1 &= " (Retired)"
+         templ.Row(sString1, sString, item!exposure)
+         sLastOccupation = item!occupation
+      Else
+         templ.Row("", item!from_age & " to " & item!to_age, item!exposure)
+         templ.Row("", sString, item!exposure)
+      End If
+   Next
+   templ.Table("occupationalhistory")
+   'the risk factors
+   sstring = ""
+   For Each PH In currentconsult!past_history
+      If PH!risk_factor = True And PH!confidential = False Then
+         Select Case PH!fk_laterality
+            Case const.LateralityBoth
+               sLaterality = "(Bilateral)"
+            Case const.LateralityLeft
+               sLaterality = "(Left)"
+            Case const.LateralityRight
+               sLaterality = "(Right)"
+            Case const.LateralityNone
+               sLaterality = ""
+         End Select
+         sstring &= "\\item[\\footnotesize " & PH!year_onset & "]"
+         sstring &= "{\\textbf{\\footnotesize " & UCase(PH!description) & " " & sLaterality & " " & age_onset(PH) & "}\\\\"
+         ' If the user Is Using this As A management plan, must have aims, goals And management
+         
+         If Not IsNull(PH!aim_of_plan) Then
+            If Not IsNull(PH!condition_summary) Then    
+               sstring &= "\\textbf{" & "History: " & "}" & PH!condition_summary & "." 
+            End If   
+            sstring &= "\\textbf{" & "Plan:" & "}" & PH!aim_of_plan & ". " & PH!management_summary & "\\\\"
+            
+            sstring &= "}"
+         Else
+            sstring &= "\\text{"
+            If Not IsNull(PH!condition_summary) Then 
+               sstring &= PH!condition_summary & ". "
+            Endif
+            If Not IsNull(Ph!management_summary) Then
+               sSTring &= PH!management_summary & "."
+            End If
+            sString &= "}"
+         End If 
+         '    sstring &= "\\tabularnewline "
+      Endif
+   Next
+   templ.Subst("riskfactors", sstring) 
+   Last_Key = 0
+   
+   '-----------------------------------------------
+   'Family History
+   '    Construct something like this
+   '    Mother (Hilda smith)
+   '    Hypertension onset age 50
+   '    Carcinoma Breast onset age 65 (caused death)
+   '-----------------------------------------------
+   sstring = ""
+   For Each item In currentconsult!family_history
+      If last_key <> item!fk_member Then
+         last_key = item!fk_member
+         sstring &= "\\textbf{" & item!relationship & " " & item!name & "}\\\\"
+      End If
+      sstring &= item!condition
+      If IsNull(item!age_of_onset) Then
+         sstring &= " onset?"
+      Else
+         sstring &= " onset " & item!age_of_onset
+      Endif
+      If item!cause_of_death = True Then
+         sstring &= " (caused death"
+         If Not IsNull(item!age_of_death) Then
+            sstring &= "-" & item!age_of_death & " yrs)"
+         Else
+            sstring &= ") "
+         End If
+      End If
+      sstring &= "\\\\"
+   Next
+   templ.Subst("familyhistory", sstring)
+   m = modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_Height)
+   If Not IsNull(m) Then
+      height = m!data
+      templ.Subst("height_data", m!data & "cm")
+      templ.Subst("height_date", m!date) 'already date formatted in measurement_get_latest
+   Else
+      templ.Subst("height_data", "-")
+      templ.Subst("height_date", "-")
+   Endif
+   m = modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_Weight)
+   If Not IsNull(m) Then
+      weight = m!data
+      templ.Subst("weight_data", m!data & "kg")
+      templ.Subst("weight_date", m!date) 'already date formatted in measurement_get_latest
+   Else
+      templ.Subst("weight_data", "-")
+      templ.Subst("weight_date", "-")
+   Endif
+   m = modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_BP)
+   If Not IsNull(m) Then
+      templ.Subst("bp_data", m!data & "mmHg")
+      templ.Subst("bp_date", m!date)  'already date formatted in measurement_get_latest
+   Else
+      templ.Subst("bp_data", "-")
+      templ.Subst("bp_date", "-")
+   Endif
+   
+   r = modMeasurementsDBI.Get_Loinc_Value(currentconsult!patient!fk_patient, const.Loinc_EGFR, 1, "DESC") 'Last R by date
+   If r.count Then
+      sRange = r!reference_range
+      sRange = Replace(sRange, "(", "")
+      sRange = Replace(sRange, ")", "")
+      templ.Subst("egfr_date", Format(r!observation_date, "dd/mm/yyyy"))
+      templ.Subst("egfr_data", r!value_numeric & " (" & sRange & ")")
+   Else
+      templ.Subst("egfr_data", "N/A")
+      templ.Subst("egfr_date", "")
+   End If
+   r = modMeasurementsDBI.Get_Loinc_Value(currentconsult!patient!fk_patient, const.Loinc_HBA1c, 1, "DESC")
+   If r.count Then
+      sRange = r!reference_range
+      sRange = Replace(sRange, "(", "")
+      sRange = Replace(sRange, ")", "")
+      templ.Subst("hba1c_date", Format(r!observation_date, "dd/mm/yyyy"))
+      templ.Subst("hba1c_data", r!value_numeric & " (" & sRange & ")")
+      templ.Subst("Hba1c*", "HBA1c")
+   Else
+      templ.Subst("hba1c_data", "")
+      templ.Subst("hba1c_date", "")
+      templ.Subst("Hba1c*", "")
+   Endif
+   Try BMI = Format((weight / (height ^ 2)) * 10000, "##.#")
+   If Not Error Then
+      templ.Subst("bmi_data", BMI)
+   Else
+      templ.Subst("bmi_data", "N/A")
+   End If
+   Try max_ideal_weight = 25 * (height / 100) * (height / 100)
+   Try min_ideal_weight = 20 * (height / 100) * (height / 100)
+   If max_ideal_weight <> 0 And min_ideal_weight <> 0 Then
+      templ.Subst("idealweight_data", Format(min_ideal_weight, "##") & "-" & Format(max_ideal_weight, "##") & "Kg")
+   Else
+      templ.Subst("idealweight_data", "N/A")
+   End If   'fixme null bug here
+   If Not IsNull(weight) Then
+      If weight <> 0 And max_ideal_weight <> 0 Then
+         If weight > max_ideal_weight Then
+            templ.Subst("overweight_data", Format(weight - max_ideal_weight, "##.#") & "Kg")
+         Else
+            templ.Subst("overweight_data", "N/A")
+         End If   
+      Else
+         templ.Subst("overweight_data", "N/A")
+      End If
+   End If
+   '------------------------------------------------------------------------------------
+   'Now the basic recreational drugs
+   'for two columns are used - the measurement and the date is used to complete the data
+   'as the columns are not wide enough
+   '-------------------------------------------------------------------------------------
+   sSmoking = ""                                                   'lets tell users no info recorded
+   sAlcohol = ""                                                   'lets tell users no info recorded
+   For Each item In currentconsult!recreationaldrugs
+      ' everyone should have a smoking record although of course users may not put them in
+      If item!fk_lu_recreational_drug = const.cRecreational_Drug_Nicotine Then
+         If item!never_used_drug Then
+            templ.Subst("smoking_data", "Never")
+         Else
+            If Not IsNull(item!substance_amount) Then
+               sSmoking &= Str(item!substance_amount) & "/day"
+            Else
+               sSmoking &= "?/day"
+            Endif
+            templ.Subst("smoking_data", sSmoking)
+            If Not IsNull(item!age_started) Then
+               sSmoking = "age " & Str(item!age_started) & " to "
+            Else
+               sSmoking &= "from age ? to"
+            Endif
+            If Not IsNull(item!age_last_used) Then
+               sSmoking &= Str(item!age_last_used)
+            Else
+               sSmoking &= "?"
+            Endif
+            templ.Subst("smoking_date", sSmoking)   'this is a fudge, using the date column as won't fit visually
+         End If
+      End If
+      If item!fk_lu_recreational_drug = const.cRecreational_Drug_Alcohol Then
+         If item!never_used_drug = True Then
+            templ.Subst("alcohol_data", "Nil Ever")
+         Else
+            If Not IsNull(item!age_last_used) Then
+               templ.Subst("alcohol_data", "Ex-Drinker")
+               templ.Subst("alcohol_date", sAlcohol)
+            Else                                                                   'will always be a quantity I insisted in the gui
+               If Not IsNull(item!substance_amount) Then
+                  sAlcohol = Str(item!substance_amount) & " gm"
+               Else
+                  sAlcohol = "?gm"
+               Endif
+               templ.Subst("alcohol_data", sAlcohol)
+               Select Case item!fk_lu_substance_frequency
+                  Case const.Units_day
+                     sAlcohol = " per day"
+                  Case const.Units_month
+                     sAlcohol = " per month"
+                  Case const.Units_week
+                     sAlcohol = " per week"
+               End Select
+               templ.Subst("alcohol_date", sAlcohol)
+            Endif
+         End If
+      End If
+   Next
+   templ.Subst("exercise_data", "N/A")   'FIXME - no module to put this in yet
+   templ.Subst("alcohol_data", "")
+   If sSmoking = "" Then templ.Subst("smoking_data", "No information recorded")
+   If sAlcohol = "" Then templ.Subst("alcohol_data", "No information recorded")
+   'get latest waist circumference
+   m = modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_Waist)
+   If Not IsNull(m) Then
+      waist = CFloat(m!data)
+      templ.Subst("waisthip_date", m!date)
+   Else
+      waist = 0.0
+   Endif
+   'get latest hip circumference
+   m = modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_Hip)
+   If Not IsNull(m) Then
+      hip = CFloat(m!data)
+   Else
+      hip = 0.0
+   Endif
+   'calculate and display waist/hip ratio if measurements available
+   If (waist > 0.0 And hip > 0.0) Then
+      templ.Subst("waisthip_data", Format(waist / hip, "##.##"))
+   Else
+      templ.Subst("waisthip_data", "N/A") 
+   Endif
+   templ.Subst("exercise_date", "")   'FIXME - no module to put this in yet
+   templ.Subst("alcohol_date", "")  'FIXME - no module to put this in yet
+   templ.Subst("smoking_date", "")   'FIXME - no module to put this in yet
+   templ.Subst("waisthip_date", "")   'FIXME - no module to put this in yet"
+   '------------------------------
+   'Now do the major health issues
+   '\textbf{\footnotesize 05/1998} \> \parbox[t]{8cm}{\textbf{\footnotesize OSTEOPOROSIS }\\\textbf{Plan:}Prevent further fractures and strengthen bones. Medications as listed with BMD review as decided by  Dr Ratnaraja\\\textbf{History: }bone scan showing fracture shin 08/05/1998.}\\
+   
+   '------------------------------
+   sstring = ""
+   For Each PH In currentconsult!past_history
+      If PH!major = True And PH!risk_factor = False And PH!confidential = False Then
+         Select Case PH!fk_laterality
+            Case const.LateralityBoth
+               sLaterality = "(Bilateral)"
+            Case const.LateralityLeft
+               sLaterality = "(Left)"
+            Case const.LateralityRight
+               sLaterality = "(Right)"
+            Case const.LateralityNone
+               sLaterality = ""
+         End Select
+         sstring &= "\\item[\\footnotesize " & PH!year_onset & "]"
+         sstring &= "{\\textbf{\\footnotesize " & UCase(PH!description) & " " & sLaterality & " " & age_onset(PH) & "}\\\\"
+         ' If the user Is Using this as a management plan, must have aims, goals And management
+         If Not IsNull(PH!aim_of_plan) Then
+            If Not IsNull(PH!condition_summary) Then    
+               sstring &= "\\textbf{" & "History: " & "}" & PH!condition_summary & "." & "\\\\"
+            End If   
+            sstring &= "\\textbf{" & "Goals                  : " & "}" & PH!aim_of_plan & ". \\\\" & "\\textbf{" & "Plan:    " & "}"  ' & PH!management_summary & "."
+            If Not IsNull(ph!plan_contribution_gp) Then
+               sstring &= "GP will " & ph!plan_contribution_gp & ". "
+            Endif
+            If Not IsNull(PH!plan_contribution_patient) Then
+               sstring &= "Patient will " & PH!plan_contribution_patient & ". "
+            Endif
+            If Not IsNull(Ph!plan_contribution_others) Then
+               sstring &= Ph!plan_contribution_others & "."
+            End If
+            sstring &= "\\\\"
+            sstring &= "}"
+         Else
+            sstring &= "\\text{"
+            If Not IsNull(PH!condition_summary) Then 
+               sstring &= PH!condition_summary & ". "
+            Endif
+            If Not IsNull(Ph!management_summary) Then
+               sSTring &= PH!management_summary & "."
+            End If
+            sString &= "}"
+         End If 
+      Endif
+   Next
+   templ.Subst("majorhealthissues", sstring)
+   'Now the active health issues
+   sstring = ""
+   For Each PH In currentconsult!past_history
+      If PH!active = True And PH!risk_factor = False And PH!major = False And PH!confidential = False Then
+         Select Case PH!fk_laterality
+            Case const.LateralityBoth
+               sLaterality = "(Bilateral)"
+            Case const.LateralityLeft
+               sLaterality = "(Left)"
+            Case const.LateralityRight
+               sLaterality = "(Right)"
+            Case const.LateralityNone
+               sLaterality = ""
+         End Select
+         sstring &= "\\item[\\footnotesize " & PH!year_onset & "]"
+         sstring &= "\\textbf{\\footnotesize " & UCase(PH!description) & " " & sLaterality & " " & age_onset(PH) & "}\\\\"
+         'If the user is using this as a management plan, must have aims, goals and management
+         If Not IsNull(PH!aim_of_plan) Then
+            If Not IsNull(PH!condition_summary) Then    
+               sstring &= "\\textbf{" & "History: " & "}" & PH!condition_summary & ".\\\\"
+            End If   
+            sstring &= "\\textbf{" & "Plan: " & "}" & PH!aim_of_plan & ". " & PH!management_summary 
+            
+            sstring &= "}"
+            '   sstring &= "\\textbf{" & "Plan: " & "}" & PH!aim_of_plan & ". " & PH!management_summary & "\\\\"
+            ' If Not IsNull(PH!condition_summary) Then    
+            '    sstring &= "\\textbf{" & "History: " & "}" & PH!condition_summary & "." 
+            ' End If   
+            ' sstring &= "}"
+         Else
+            sstring &= "\\text{"
+            If Not IsNull(PH!condition_summary) Then 
+               sstring &= PH!condition_summary & ". "
+            Endif
+            If Not IsNull(Ph!management_summary) Then
+               sSTring &= PH!management_summary & "."
+            End If
+            sString &= "}"
+         End If 
+         'sstring &= "\\tabularnewline"
+      Endif
+   Next
+   
+   templ.Subst("significanthealthissues", sstring)
+   '----------------------------------------------------------------------------------------
+   'Construct a Table of the current medications generic/strength/instruction/why prescribed
+   'The default (unchangeable at this time) is to print generic names only, not brands
+   'whinge to me if you can make a use-case
+   '----------------------------------------------------------------------------------------
+   templ.Row("\\textbf{\\footnotesize MEDICATIONS AND REASON FOR USE}", "", "", "")
+   If currentconsult!medications.count Then  
+      For Each medication In currentconsult!medications
+         If fk_generic_product_keys.Find(medication!prescribed!fk_medication) = True Then 'true= not found
+            fk_generic_product_keys.Add(medication!prescribed!fk_medication, fk_generic_product_keys.count)
+            If medication!med!active = True Then
+               templ.Row(medication!generic, medication!strength, medication!instruction, medication!prescribed_for)
+            End If
+         End If
+      Next
+   Else
+      templ.Row("No active medications recorded", "", "")
+   End If   
+   templ.Table("medications")
+   '---------------------------------------------------------------------------------------------
+   'Construct a Table of the vaccinations bit complicated because I allowed the date given to be
+   'text eg 2009, maybe should go back and fix this, hence they are not in sort order by date
+   '---------------------------------------------------------------------------------------------
+   templ.Row("\\textbf{\\footnotesize IMMUNIZATIONS}", "", "")
+   For Each vaccination In currentconsult!vaccinations_given
+      Select Case Lower(vaccination!schedule)      'date can be 2007, 04/2007 or 01/04/2007
+         Case "influenza"
+            x = 0
+            If IsDate(vaccination!date_given) Then
+               x = Year(Val(vaccination!date_given))
+            Else
+               If Len(vaccination!date_given) = 4 Then
+                  x = Val(vaccination!date_given)
+               Endif
+               If Len(vaccination!date_given) = 6 Then
+                  Try x = Val(Right(vaccination!date_given, 4))
+               Endif
+            End If
+            If x > fluvax_year_most_recent Then
+               fluvax_year_most_recent = x
+               fluvax = modUtil.Copy_Collection(vaccination)
+            Endif
+         Case "tetanus - every 10 years", "tetanus diphtheria pertussis", "tetanus diptheria pertussus polio"
+            x = 0
+            If IsDate(vaccination!date_given) Then
+               x = Year(Val(vaccination!date_given))
+            Else
+               If Len(vaccination!date_given) = 4 Then
+                  x = Val(vaccination!date_given)
+               Endif
+               If Len(vaccination!date_given) = 6 Then
+                  Try x = Val(Right(vaccination!date_given, 4))
+               Endif
+            End If
+            If x > tetanus_year_most_recent Then
+               tetanus_year_most_recent = x
+               tetanus_vax = modUtil.Copy_Collection(vaccination)
+            Endif
+         Case "typhoid"
+            x = 0
+            If IsDate(vaccination!date_given) Then
+               x = Year(Val(vaccination!date_given))
+            Else
+               If Len(vaccination!date_given) = 4 Then
+                  x = Val(vaccination!date_given)
+               Endif
+               If Len(vaccination!date_given) = 6 Then
+                  Try x = Val(Right(vaccination!date_given, 4))
+               Endif
+            End If
+            If x > typhoid_year_most_recent Then
+               typhoid_year_most_recent = x
+               typhoid_vax = modUtil.Copy_Collection(vaccination)
+            Endif
+         Case Else
+            templ.Row(vaccination!schedule, vaccination!date_given, vaccination!brand)
+      End Select
+   Next
+   If Not IsNull(fluvax) Then
+      templ.Row(fluvax!schedule, fluvax!date_given, fluvax!brand)
+   Endif
+   If Not IsNull(tetanus_vax) Then
+      templ.Row(tetanus_vax!schedule, tetanus_vax!date_given, tetanus_vax!brand)
+   Endif
+   If Not IsNull(typhoid_vax) Then
+      templ.Row(typhoid_vax!schedule, typhoid_vax!date_given, typhoid_vax!brand)
+   Endif
+   templ.Table("vaccinations")
+   templ.Row("\\textbf{\\footnotesize RECALLS}", "")
+   For Each recall In currentconsult!recalls_logged
+      templ.Row(Format(recall!due, "dd/mm/yyyy"), recall!reason)
+   Next
+   templ.Table("recalls")
+   'Now the inactive health issues
+   sstring = ""
+   '  sstring = "\\&\\textbf{\\footnotesize INACTIVE HEALTH ISSUES}"
+   '  sstring &= "\\tabularnewline \n\\hline"
+   For Each PH In currentconsult!past_history
+      If PH!active = False And PH!major = False And PH!risk_factor = False And PH!confidential = False Then
+         Select Case PH!fk_laterality
+            Case const.LateralityBoth
+               sLaterality = "(Bilateral)"
+            Case const.LateralityLeft
+               sLaterality = "(Left)"
+            Case const.LateralityRight
+               sLaterality = "(Right)"
+            Case const.LateralityNone
+               sLaterality = ""
+         End Select
+         sstring &= "\\item[\\footnotesize " & PH!year_onset & "]"
+         sstring &= "\\textbf{\\footnotesize " & UCase(PH!description) & " " & sLaterality & " " & age_onset(PH) & "}\\\\"
+         sstring &= "\\text{" & PH!condition_summary & ". " & PH!management_summary & "." & "}"
+         '  sstring &= "\\tabularnewline \n"
+      Endif
+   Next
+   templ.Subst("inactivehealthissues", sstring)
+   Return templ
+   
+End
+
+Public Function Health_Summary_Construct_LaTex_orig(currentconsult As Cconsult, Optional bGPMP As Boolean = False) As CTemplate
+   ' If bGPMP = True(This document Is Being used As A GP ManagemWithProgressNotes_Codes_GetWithProgressNotes_Codes_Getent Plan)
+   
+   Dim sString As String
+   Dim sString1 As String
    Dim templ As New CTemplate("health-summary", "tex")
    Dim item As Collection
    Dim r As Result
@@ -532,13 +1105,13 @@ Public Function Health_Summary_Construct_LaTex(currentconsult As Cconsult, Optio
                sLaterality = ""
          End Select
          sstring &= "\\item[\\footnotesize " & PH!year_onset & "]"
-         sstring &= "{\\textbf{\\footnotesize " & UCase(PH!description) & " " & sLaterality & "}\\\\"
+         sstring &= "{\\textbf{\\footnotesize " & UCase(PH!description) & " " & sLaterality & " " & age_onset(PH) & "}\\\\"
          ' If the user Is Using this As A management plan, must have aims, goals And management
          If Not IsNull(PH!aim_of_plan) Then
             If Not IsNull(PH!condition_summary) Then    
                sstring &= "\\textbf{" & "History: " & "}" & PH!condition_summary & "." & "\\\\"
             End If   
-            sstring &= "\\textbf{" & "Goals                  : " & "}" & PH!aim_of_plan & ". \\\\" & "\\textbf{" & "Actions: " & "}" & PH!management_summary & "\\\\"
+            sstring &= "\\textbf{" & "Goals                  : " & "}" & PH!aim_of_plan & ". \\\\" & "\\textbf{" & "Plan:    " & "}" & PH!management_summary & "\\\\"
             sstring &= "}"
          Else
             sstring &= "\\text{"
@@ -568,14 +1141,20 @@ Public Function Health_Summary_Construct_LaTex(currentconsult As Cconsult, Optio
                sLaterality = ""
          End Select
          sstring &= "\\item[\\footnotesize " & PH!year_onset & "]"
-         sstring &= "\\textbf{\\footnotesize " & UCase(PH!description) & " " & sLaterality & "}\\\\"
+         sstring &= "\\textbf{\\footnotesize " & UCase(PH!description) & " " & sLaterality & " " & age_onset(PH) & "}\\\\"
          'If the user is using this as a management plan, must have aims, goals and management
          If Not IsNull(PH!aim_of_plan) Then
-            sstring &= "\\textbf{" & "Plan: " & "}" & PH!aim_of_plan & ". " & PH!management_summary & "\\\\"
             If Not IsNull(PH!condition_summary) Then    
-               sstring &= "\\textbf{" & "History: " & "}" & PH!condition_summary & "." 
+               sstring &= "\\textbf{" & "History: " & "}" & PH!condition_summary & ".\\\\"
             End If   
+            sstring &= "\\textbf{" & "Plan: " & "}" & PH!aim_of_plan & ". " & PH!management_summary 
+            
             sstring &= "}"
+            '   sstring &= "\\textbf{" & "Plan: " & "}" & PH!aim_of_plan & ". " & PH!management_summary & "\\\\"
+            ' If Not IsNull(PH!condition_summary) Then    
+            '    sstring &= "\\textbf{" & "History: " & "}" & PH!condition_summary & "." 
+            ' End If   
+            ' sstring &= "}"
          Else
             sstring &= "\\text{"
             If Not IsNull(PH!condition_summary) Then 
@@ -701,22 +1280,25 @@ Public Function Health_Summary_Construct_LaTex(currentconsult As Cconsult, Optio
                sLaterality = ""
          End Select
          sstring &= "\\item[\\footnotesize " & PH!year_onset & "]"
-         sstring &= "\\textbf{\\footnotesize " & UCase(PH!description) & " " & sLaterality & "}\\\\"
+         sstring &= "\\textbf{\\footnotesize " & UCase(PH!description) & " " & sLaterality & " " & age_onset(PH) & "}\\\\"
          sstring &= "\\text{" & PH!condition_summary & ". " & PH!management_summary & "." & "}"
          '  sstring &= "\\tabularnewline \n"
       Endif
    Next
+   templ.Subst("health_provider_contact_list_heading", "")
+   templ.Subst("health_provider_contact_list", "")
+   templ.Subst("tca_provider_contacts_heading", "")
+   templ.Subst("tca_provider_contact_list", "")
    templ.Subst("inactivehealthissues", sstring)
    Return templ
    
 End
 
-Public Function Health_Summary_Construct_LaTex_old(currentconsult As Cconsult, Optional bGPMP As Boolean = False) As CTemplate
+Public Function Health_Summary_Construct_LaTex_first_attempt_latex_providers(currentconsult As Cconsult, Optional bGPMP As Boolean = False) As CTemplate
    ' If bGPMP = True(This document Is Being used As A GP ManagemWithProgressNotes_Codes_GetWithProgressNotes_Codes_Getent Plan)
    
    Dim sString As String
    Dim sString1 As String
-   ' Dim templ As New CTemplate("hsumv3", "tex")
    Dim templ As New CTemplate("health-summary", "tex")
    Dim item As Collection
    Dim r As Result
@@ -747,6 +1329,9 @@ Public Function Health_Summary_Construct_LaTex_old(currentconsult As Cconsult, O
    Dim sLastOccupation As String
    Dim x As Integer
    Dim sSocialHistory As String
+   ' Dim Health_Provider_contact_list As String
+   Dim TCM As Collection
+   Dim bHaveProviders As Boolean
    
    currentconsult.Refresh("family_history")
    currentconsult.Refresh("social_history")
@@ -759,10 +1344,13 @@ Public Function Health_Summary_Construct_LaTex_old(currentconsult As Cconsult, O
    currentconsult.Refresh("vaccinations_given")
    templ.Subst_common(currentconsult)
    If bGPMP Then
-      templ.Subst("documenttype", "GP MANAGEMENT PLAN")
+      sString = "GP MANAGEMENT PLAN\\\\GP: " & modDBConnect.currentUser!title & " " & modDBConnect.currentUser!wholename & "\\\\"
+      sString &= "Review Date: 01/11/2014\\\\"
+      templ.Subst("documenttype", sstring)
    Else
-      Templ.Subst("documenttype", "PATIENT HEALTH SUMMARY")
+      Templ.Subst("documenttype", "PATIENT HEALTH SUMMARY" & "\\\\")
    Endif
+   Templ.Subst("date_printed", Format(Now(), "dd/mm/yyyy"))
    '-----------------------------------------------------------------------
    'Construct a table of known allergies, possibilities are
    'Unknow
@@ -852,13 +1440,15 @@ Public Function Health_Summary_Construct_LaTex_old(currentconsult As Cconsult, O
                sLaterality = ""
          End Select
          sstring &= "\\item[\\footnotesize " & PH!year_onset & "]"
-         sstring &= "{\\textbf{\\footnotesize " & UCase(PH!description) & " " & sLaterality & "}\\\\"
+         sstring &= "{\\textbf{\\footnotesize " & UCase(PH!description) & " " & sLaterality & " " & age_onset(PH) & "}\\\\"
          ' If the user Is Using this As A management plan, must have aims, goals And management
+         
          If Not IsNull(PH!aim_of_plan) Then
-            sstring &= "\\textbf{" & "Plan:" & "}" & PH!aim_of_plan & ". " & PH!management_summary & "\\\\"
             If Not IsNull(PH!condition_summary) Then    
                sstring &= "\\textbf{" & "History: " & "}" & PH!condition_summary & "." 
             End If   
+            sstring &= "\\textbf{" & "Plan:" & "}" & PH!aim_of_plan & ". " & PH!management_summary & "\\\\"
+            
             sstring &= "}"
          Else
             sstring &= "\\text{"
@@ -1087,14 +1677,45 @@ Public Function Health_Summary_Construct_LaTex_old(currentconsult As Cconsult, O
             Case const.LateralityNone
                sLaterality = ""
          End Select
+         'jump1
+         ' sstring &= "\\item[\\footnotesize " & PH!year_onset & "]"
+         ' sstring &= "{\\textbf{\\footnotesize " & UCase(PH!description) & " " & sLaterality & " " & age_onset(PH) & "}\\\\"
+         ' ' If the user Is Using this As A management plan, must have aims, goals And management
+         ' If Not IsNull(PH!aim_of_plan) Then
+         '    If Not IsNull(PH!condition_summary) Then    
+         '       sstring &= "\\textbf{" & "History: " & "}" & PH!condition_summary & "." & "\\\\"
+         '    End If   
+         '    sstring &= "\\textbf{" & "Goals                  : " & "}" & PH!aim_of_plan & ". \\\\" & "\\textbf{" & "Plan:    " & "}" & PH!management_summary & "\\\\"
+         '    sstring &= "}"
+         ' Else
+         '    sstring &= "\\text{"
+         '    If Not IsNull(PH!condition_summary) Then 
+         '       sstring &= PH!condition_summary & ". "
+         '    Endif
+         '    If Not IsNull(Ph!management_summary) Then
+         '       sSTring &= PH!management_summary & "."
+         '    End If
+         '    sString &= "}"
+         ' End If 
+         '
          sstring &= "\\item[\\footnotesize " & PH!year_onset & "]"
-         sstring &= "{\\textbf{\\footnotesize " & UCase(PH!description) & " " & sLaterality & "}\\\\"
-         ' If the user Is Using this As A management plan, must have aims, goals And management
+         sstring &= "{\\textbf{\\footnotesize " & UCase(PH!description) & " " & sLaterality & " " & age_onset(PH) & "}\\\\"
+         ' If the user Is Using this as a management plan, must have aims, goals And management
          If Not IsNull(PH!aim_of_plan) Then
-            sstring &= "\\textbf{" & "Plan:" & "}" & PH!aim_of_plan & ". " & PH!management_summary & "\\\\"
             If Not IsNull(PH!condition_summary) Then    
-               sstring &= "\\textbf{" & "History: " & "}" & PH!condition_summary & "." 
+               sstring &= "\\textbf{" & "History: " & "}" & PH!condition_summary & "." & "\\\\"
             End If   
+            sstring &= "\\textbf{" & "Goals                  : " & "}" & PH!aim_of_plan & ". \\\\" & "\\textbf{" & "Plan:    " & "}"  ' & PH!management_summary & "."
+            If Not IsNull(ph!plan_contribution_gp) Then
+               sstring &= "GP will " & ph!plan_contribution_gp & ". "
+            Endif
+            If Not IsNull(PH!plan_contribution_patient) Then
+               sstring &= "Patient will " & PH!plan_contribution_patient & ". "
+            Endif
+            If Not IsNull(Ph!plan_contribution_others) Then
+               sstring &= Ph!plan_contribution_others & "."
+            End If
+            sstring &= "\\\\"
             sstring &= "}"
          Else
             sstring &= "\\text{"
@@ -1106,8 +1727,19 @@ Public Function Health_Summary_Construct_LaTex_old(currentconsult As Cconsult, O
             End If
             sString &= "}"
          End If 
+         
       Endif
    Next
+   If Sstring1 <> "" Then
+      '\begin{tabular}{>{\raggedright}p{7.5cm}>{\raggedright}p{2cm}>{\raggedright}p{6.5cm}}
+      
+      '  sString1 = "\\begin{center}\\textbf{\\footnotesize \\underline {HEALTH CARE PROVIDER LIST}}\\end{center}\\\\)"
+      sstring1 &= "\\begin{tabular}{>{\raggedright}p{7.5cm}>{\raggedright}p{2cm}>{\raggedright}p{6.5cm}}"
+      ' templ.Subst("health_provider_contact_list", sstring1)
+   Else
+      '  templ.Subst("health_provider_contact_list", "")
+   End If
+   
    templ.Subst("majorhealthissues", sstring)
    'Now the active health issues
    sstring = ""
@@ -1124,14 +1756,20 @@ Public Function Health_Summary_Construct_LaTex_old(currentconsult As Cconsult, O
                sLaterality = ""
          End Select
          sstring &= "\\item[\\footnotesize " & PH!year_onset & "]"
-         sstring &= "\\textbf{\\footnotesize " & UCase(PH!description) & " " & sLaterality & "}\\\\"
+         sstring &= "\\textbf{\\footnotesize " & UCase(PH!description) & " " & sLaterality & " " & age_onset(PH) & "}\\\\"
          'If the user is using this as a management plan, must have aims, goals and management
          If Not IsNull(PH!aim_of_plan) Then
-            sstring &= "\\textbf{" & "Plan: " & "}" & PH!aim_of_plan & ". " & PH!management_summary & "\\\\"
             If Not IsNull(PH!condition_summary) Then    
-               sstring &= "\\textbf{" & "History: " & "}" & PH!condition_summary & "." 
+               sstring &= "\\textbf{" & "History: " & "}" & PH!condition_summary & ".\\\\"
             End If   
+            sstring &= "\\textbf{" & "Plan: " & "}" & PH!aim_of_plan & ". " & PH!management_summary 
+            
             sstring &= "}"
+            '   sstring &= "\\textbf{" & "Plan: " & "}" & PH!aim_of_plan & ". " & PH!management_summary & "\\\\"
+            ' If Not IsNull(PH!condition_summary) Then    
+            '    sstring &= "\\textbf{" & "History: " & "}" & PH!condition_summary & "." 
+            ' End If   
+            ' sstring &= "}"
          Else
             sstring &= "\\text{"
             If Not IsNull(PH!condition_summary) Then 
@@ -1149,6 +1787,8 @@ Public Function Health_Summary_Construct_LaTex_old(currentconsult As Cconsult, O
    templ.Subst("significanthealthissues", sstring)
    '----------------------------------------------------------------------------------------
    'Construct a Table of the current medications generic/strength/instruction/why prescribed
+   'The default (unchangeable at this time) is to print generic names only, not brands
+   'whinge to me if you can make a use-case
    '----------------------------------------------------------------------------------------
    templ.Row("\\textbf{\\footnotesize MEDICATIONS AND REASON FOR USE}", "", "", "")
    If currentconsult!medications.count Then  
@@ -1255,12 +1895,1344 @@ Public Function Health_Summary_Construct_LaTex_old(currentconsult As Cconsult, O
                sLaterality = ""
          End Select
          sstring &= "\\item[\\footnotesize " & PH!year_onset & "]"
-         sstring &= "\\textbf{\\footnotesize " & UCase(PH!description) & " " & sLaterality & "}\\\\"
+         sstring &= "\\textbf{\\footnotesize " & UCase(PH!description) & " " & sLaterality & " " & age_onset(PH) & "}\\\\"
          sstring &= "\\text{" & PH!condition_summary & ". " & PH!management_summary & "." & "}"
          '  sstring &= "\\tabularnewline \n"
       Endif
    Next
    templ.Subst("inactivehealthissues", sstring)
+   '--------------------------------------------------------------------
+   'lastly if there are team care members/providers put in their details
+   '--------------------------------------------------------------------
+   For Each PH In currentconsult!past_history
+      If Not IsNull(PH!TeamCareMembers) Then
+         bHaveProviders = True   
+         For Each TCM In PH!TeamCareMembers
+            If Not InStr(sString1, TCM!wholename) Then   
+               templ.Row(TCM!wholename, Trim(TCM!street1 & " " & TCM!street2) & " " & TCM!town & " " & TCM!postcode)
+               'sstring1 &= TCM!wholename & " " & Trim(TCM!street1 & " " & TCM!street2) & " " & TCM!town & " " & TCM!postcode & "\\\\"
+            End If  
+         Next
+      Endif
+   Next 
+   If bHaveProviders Then   
+      templ.Subst("health_provider_contact_list_heading", "\\begin{center}\\textbf{HEALTH PROVIDER CONTACT LIST}\\end{center}\\\\")
+      templ.Table("health_provider_contact_list")
+   Else
+      templ.Subst("health_provider_contact_list_heading", "")
+      templ.Subst("health_provider_contact_list", "")
+   End If   
+   Return templ
+   
+End
+
+Public Function Health_Summary_Construct_LaTex(currentconsult As Cconsult, Optional bGPMP As Boolean = False, Optional selected_team_care_members As Collection = Null) As CTemplate
+   '-----------------------------------------------------------------------------------------
+   'Generate latex for either general health summary, care plan or team care arrangements
+   'If Team Care Arrangements then separate list of those providers phone numbers is included
+   '-----------------------------------------------------------------------------------------  
+   
+   Dim sString As String
+   Dim sString1 As String
+   Dim templ As New CTemplate("health-summary", "tex")
+   Dim item As Collection
+   Dim r As Result
+   Dim sRange As String
+   Dim height As Float
+   Dim weight As Float
+   Dim waist As Variant
+   Dim hip As Variant
+   Dim BMI As Variant
+   Dim m As Collection
+   Dim Last_Key As Integer
+   Dim sLaterality As String
+   Dim PH As Collection
+   Dim Medication As Collection
+   Dim vaccination As Collection
+   Dim recall As Collection
+   Dim max_ideal_weight As Variant = 0
+   Dim min_ideal_weight As Variant = 0
+   Dim fk_generic_product_keys As New String[]
+   Dim fluvax_year_most_recent As Integer
+   Dim fluvax As Collection
+   Dim tetanus_year_most_recent As Integer
+   Dim tetanus_vax As Collection
+   Dim typhoid_year_most_recent As Integer
+   Dim typhoid_vax As Collection
+   Dim sSmoking As String
+   Dim sAlcohol As String
+   Dim sLastOccupation As String
+   Dim x As Integer
+   Dim sSocialHistory As String
+   ' Dim Health_Provider_contact_list As String
+   Dim TCM As Collection
+   Dim bHaveProviders As Boolean
+   Dim comm As Collection
+   Dim comms As Collection
+   Dim selected_TCM As Collection 
+   Dim bSkipProvider As Boolean
+   
+   currentconsult.Refresh("family_history")
+   currentconsult.Refresh("social_history")
+   currentconsult.Refresh("past_history")
+   currentconsult.Refresh("occupational_history")
+   currentconsult.Refresh("recalls_logged")
+   currentconsult.Refresh("recreationaldrugs")
+   currentconsult.Refresh("allergies")
+   currentconsult.Refresh("measurements")
+   currentconsult.Refresh("vaccinations_given")
+   templ.Subst_common(currentconsult)
+   If IsNull(selected_team_care_members) Then selected_team_care_members = New Collection 
+   If bGPMP Then
+      sString = "GP MANAGEMENT PLAN"
+      If selected_team_care_members.count Then
+         sString &= " \\\\AND TEAM CARE ARRANGEMENTS" 
+      Endif
+      sString &= "\\\\GP: " & modDBConnect.currentUser!title & " " & modDBConnect.currentUser!wholename & "\\\\"
+      sSTring &= "Date Prepared: " & Format(Now(), "dd/mm/yyyy") & "\\\\"
+      sString &= "Review Date: 01/11/2014\\\\"
+      templ.Subst("documenttype", sstring)
+   Else
+      Templ.Subst("documenttype", "PATIENT HEALTH SUMMARY" & "\\\\")
+   Endif
+   Templ.Subst("date_printed", Format(Now(), "dd/mm/yyyy"))
+   '-----------------------------------------------------------------------
+   'Construct a table of known allergies, possibilities are
+   'Unknow
+   'Nil allergies or sensitivities
+   'A heading of the table (class etc) + row(s) of allergy/sensitivity data
+   '------------------------------------------------------------------------ 
+   If Not currentconsult!allergies.count Then  
+      templ.Row("Unknown", "", "", "")
+   End If   
+   x = 0  'counter
+   For Each Item In currentconsult!allergies
+      If IsNull(item!nil_allergies_sensitivities) And x = 0 Then
+         If IsNull(item!allergen) Then  
+            templ.Row("\\textbf{\\footnotesize Class}", "Generic", "Reaction Type", "Details")
+            Inc x
+         End If 
+      Endif
+      ' class_name, generic, details, reaction_type
+      If item!nil_allergies_sensitivities = True Then
+         templ.Row("No known allergies or sensitivites")
+      Else
+         If Not IsNull(Item!allergen) Then 'non drug allergy
+            templ.Row("Non Drug Allergy:", item!allergen, "", "")
+         Else
+            templ.Row("ATC Class:" & Item!class_name, item!generic, "Type: " & item!reaction_type, "Details: " & item!details)
+         End If   
+      End If   
+   Next
+   templ.Table("allergies")
+   For Each item In currentconsult!social_history
+      sSocialHistory = item!history
+      If Not IsNull(item!history_confidential) Then
+         sSocialHistory &= " Confidential parts of this history have been omitted."
+      Endif
+      templ.Subst("socialhistory", sSocialHistory)
+      If Not IsNull(item!fk_responsible_person) Then
+         sString = item!person_responsible_title & " " & item!person_responsible_firstname & " " & item!person_responsible_surname
+      Else
+         sString = item!responsible_person
+         If Not IsNull(item!responsible_person_street1) Then
+            sSTring &= "\\\\" & item!responsible_person_street1
+         Endif
+         If Not IsNull(item!responsible_person_town) Then
+            sSTring &= "\\\\" & item!responsible_person_town & " " & item!responsible_person_postcode
+         Endif
+      End If
+      sString &= "\\\\Phone:" & item!responsible_person_contacts
+      templ.Subst("responsibleperson", Trim(sString))
+   Next
+   Templ.Subst("responsibleperson", "")
+   Templ.Subst("socialhistory", "")
+   '----------------------------------
+   'Construct the occupational history
+   '----------------------------------
+   sstring = ""
+   For Each item In currentconsult!occupational_history
+      sString = ""
+      If Not IsNull(item!from_age) Then   
+         sString = "age " & item!from_age 
+         If Not IsNull(item!to_age) Then
+            sstring &= "-" & item!to_age
+         Endif
+      Endif
+      If sLastOccupation <> item!occupation Then
+         sstring1 = item!occupation
+         If item!retired Then sstring1 &= " (Retired)"
+         templ.Row(sString1, sString, item!exposure)
+         sLastOccupation = item!occupation
+      Else
+         templ.Row("", item!from_age & " to " & item!to_age, item!exposure)
+         templ.Row("", sString, item!exposure)
+      End If
+   Next
+   templ.Table("occupationalhistory")
+   'the risk factors
+   sstring = ""
+   For Each PH In currentconsult!past_history
+      If PH!risk_factor = True And PH!confidential = False Then
+         Select Case PH!fk_laterality
+            Case const.LateralityBoth
+               sLaterality = "(Bilateral)"
+            Case const.LateralityLeft
+               sLaterality = "(Left)"
+            Case const.LateralityRight
+               sLaterality = "(Right)"
+            Case const.LateralityNone
+               sLaterality = ""
+         End Select
+         sstring &= "\\item[\\footnotesize " & PH!year_onset & "]"
+         sstring &= "{\\textbf{\\footnotesize " & UCase(PH!description) & " " & sLaterality & " " & age_onset(PH) & "}\\\\"
+         ' If the user Is Using this As A management plan, must have aims, goals And management
+         
+         If Not IsNull(PH!aim_of_plan) Then
+            If Not IsNull(PH!condition_summary) Then    
+               sstring &= "\\textbf{" & "History: " & "}" & PH!condition_summary & "." 
+            End If   
+            sstring &= "\\textbf{" & "Plan:" & "}" & PH!aim_of_plan & ". " & PH!management_summary & "\\\\"
+            
+            sstring &= "}"
+         Else
+            sstring &= "\\text{"
+            If Not IsNull(PH!condition_summary) Then 
+               sstring &= PH!condition_summary & ". "
+            Endif
+            If Not IsNull(Ph!management_summary) Then
+               sSTring &= PH!management_summary & "."
+            End If
+            sString &= "}"
+         End If 
+         '    sstring &= "\\tabularnewline "
+      Endif
+   Next
+   templ.Subst("riskfactors", sstring) 
+   Last_Key = 0
+   
+   '-----------------------------------------------
+   'Family History
+   '    Construct something like this
+   '    Mother (Hilda smith)
+   '    Hypertension onset age 50
+   '    Carcinoma Breast onset age 65 (caused death)
+   '-----------------------------------------------
+   sstring = ""
+   For Each item In currentconsult!family_history
+      If last_key <> item!fk_member Then
+         last_key = item!fk_member
+         sstring &= "\\textbf{" & item!relationship & " " & item!name & "}\\\\"
+      End If
+      sstring &= item!condition
+      If IsNull(item!age_of_onset) Then
+         sstring &= " onset?"
+      Else
+         sstring &= " onset " & item!age_of_onset
+      Endif
+      If item!cause_of_death = True Then
+         sstring &= " (caused death"
+         If Not IsNull(item!age_of_death) Then
+            sstring &= "-" & item!age_of_death & " yrs)"
+         Else
+            sstring &= ") "
+         End If
+      End If
+      sstring &= "\\\\"
+   Next
+   templ.Subst("familyhistory", sstring)
+   m = modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_Height)
+   If Not IsNull(m) Then
+      height = m!data
+      templ.Subst("height_data", m!data & "cm")
+      templ.Subst("height_date", m!date) 'already date formatted in measurement_get_latest
+   Else
+      templ.Subst("height_data", "-")
+      templ.Subst("height_date", "-")
+   Endif
+   m = modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_Weight)
+   If Not IsNull(m) Then
+      weight = m!data
+      templ.Subst("weight_data", m!data & "kg")
+      templ.Subst("weight_date", m!date) 'already date formatted in measurement_get_latest
+   Else
+      templ.Subst("weight_data", "-")
+      templ.Subst("weight_date", "-")
+   Endif
+   m = modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_BP)
+   If Not IsNull(m) Then
+      templ.Subst("bp_data", m!data & "mmHg")
+      templ.Subst("bp_date", m!date)  'already date formatted in measurement_get_latest
+   Else
+      templ.Subst("bp_data", "-")
+      templ.Subst("bp_date", "-")
+   Endif
+   
+   r = modMeasurementsDBI.Get_Loinc_Value(currentconsult!patient!fk_patient, const.Loinc_EGFR, 1, "DESC") 'Last R by date
+   If r.count Then
+      sRange = r!reference_range
+      sRange = Replace(sRange, "(", "")
+      sRange = Replace(sRange, ")", "")
+      templ.Subst("egfr_date", Format(r!observation_date, "dd/mm/yyyy"))
+      templ.Subst("egfr_data", r!value_numeric & " (" & sRange & ")")
+   Else
+      templ.Subst("egfr_data", "N/A")
+      templ.Subst("egfr_date", "")
+   End If
+   r = modMeasurementsDBI.Get_Loinc_Value(currentconsult!patient!fk_patient, const.Loinc_HBA1c, 1, "DESC")
+   If r.count Then
+      sRange = r!reference_range
+      sRange = Replace(sRange, "(", "")
+      sRange = Replace(sRange, ")", "")
+      templ.Subst("hba1c_date", Format(r!observation_date, "dd/mm/yyyy"))
+      templ.Subst("hba1c_data", r!value_numeric & " (" & sRange & ")")
+      templ.Subst("Hba1c*", "HBA1c")
+   Else
+      templ.Subst("hba1c_data", "")
+      templ.Subst("hba1c_date", "")
+      templ.Subst("Hba1c*", "")
+   Endif
+   Try BMI = Format((weight / (height ^ 2)) * 10000, "##.#")
+   If Not Error Then
+      templ.Subst("bmi_data", BMI)
+   Else
+      templ.Subst("bmi_data", "N/A")
+   End If
+   Try max_ideal_weight = 25 * (height / 100) * (height / 100)
+   Try min_ideal_weight = 20 * (height / 100) * (height / 100)
+   If max_ideal_weight <> 0 And min_ideal_weight <> 0 Then
+      templ.Subst("idealweight_data", Format(min_ideal_weight, "##") & "-" & Format(max_ideal_weight, "##") & "Kg")
+   Else
+      templ.Subst("idealweight_data", "N/A")
+   End If   'fixme null bug here
+   If Not IsNull(weight) Then
+      If weight <> 0 And max_ideal_weight <> 0 Then
+         If weight > max_ideal_weight Then
+            templ.Subst("overweight_data", Format(weight - max_ideal_weight, "##.#") & "Kg")
+         Else
+            templ.Subst("overweight_data", "N/A")
+         End If   
+      Else
+         templ.Subst("overweight_data", "N/A")
+      End If
+   End If
+   '------------------------------------------------------------------------------------
+   'Now the basic recreational drugs
+   'for two columns are used - the measurement and the date is used to complete the data
+   'as the columns are not wide enough
+   '-------------------------------------------------------------------------------------
+   sSmoking = ""                                                   'lets tell users no info recorded
+   sAlcohol = ""                                                   'lets tell users no info recorded
+   For Each item In currentconsult!recreationaldrugs
+      ' everyone should have a smoking record although of course users may not put them in
+      If item!fk_lu_recreational_drug = const.cRecreational_Drug_Nicotine Then
+         If item!never_used_drug Then
+            templ.Subst("smoking_data", "Never")
+         Else
+            If Not IsNull(item!substance_amount) Then
+               sSmoking &= Str(item!substance_amount) & "/day"
+            Else
+               sSmoking &= "?/day"
+            Endif
+            templ.Subst("smoking_data", sSmoking)
+            If Not IsNull(item!age_started) Then
+               sSmoking = "age " & Str(item!age_started) & " to "
+            Else
+               sSmoking &= "from age ? to"
+            Endif
+            If Not IsNull(item!age_last_used) Then
+               sSmoking &= Str(item!age_last_used)
+            Else
+               sSmoking &= "?"
+            Endif
+            templ.Subst("smoking_date", sSmoking)   'this is a fudge, using the date column as won't fit visually
+         End If
+      End If
+      If item!fk_lu_recreational_drug = const.cRecreational_Drug_Alcohol Then
+         If item!never_used_drug = True Then
+            templ.Subst("alcohol_data", "Nil Ever")
+         Else
+            If Not IsNull(item!age_last_used) Then
+               templ.Subst("alcohol_data", "Ex-Drinker")
+               templ.Subst("alcohol_date", sAlcohol)
+            Else                                                                   'will always be a quantity I insisted in the gui
+               If Not IsNull(item!substance_amount) Then
+                  sAlcohol = Str(item!substance_amount) & " gm"
+               Else
+                  sAlcohol = "?gm"
+               Endif
+               templ.Subst("alcohol_data", sAlcohol)
+               Select Case item!fk_lu_substance_frequency
+                  Case const.Units_day
+                     sAlcohol = " per day"
+                  Case const.Units_month
+                     sAlcohol = " per month"
+                  Case const.Units_week
+                     sAlcohol = " per week"
+               End Select
+               templ.Subst("alcohol_date", sAlcohol)
+            Endif
+         End If
+      End If
+   Next
+   templ.Subst("exercise_data", "N/A")   'FIXME - no module to put this in yet
+   templ.Subst("alcohol_data", "")
+   If sSmoking = "" Then templ.Subst("smoking_data", "No information recorded")
+   If sAlcohol = "" Then templ.Subst("alcohol_data", "No information recorded")
+   'get latest waist circumference
+   m = modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_Waist)
+   If Not IsNull(m) Then
+      waist = CFloat(m!data)
+      templ.Subst("waisthip_date", m!date)
+   Else
+      waist = 0.0
+   Endif
+   'get latest hip circumference
+   m = modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_Hip)
+   If Not IsNull(m) Then
+      hip = CFloat(m!data)
+   Else
+      hip = 0.0
+   Endif
+   'calculate and display waist/hip ratio if measurements available
+   If (waist > 0.0 And hip > 0.0) Then
+      templ.Subst("waisthip_data", Format(waist / hip, "##.##"))
+   Else
+      templ.Subst("waisthip_data", "N/A") 
+   Endif
+   templ.Subst("exercise_date", "")   'FIXME - no module to put this in yet
+   templ.Subst("alcohol_date", "")  'FIXME - no module to put this in yet
+   templ.Subst("smoking_date", "")   'FIXME - no module to put this in yet
+   templ.Subst("waisthip_date", "")   'FIXME - no module to put this in yet"
+   '------------------------------
+   'Now do the major health issues
+   '\textbf{\footnotesize 05/1998} \> \parbox[t]{8cm}{\textbf{\footnotesize OSTEOPOROSIS }\\\textbf{Plan:}Prevent further fractures and strengthen bones. Medications as listed with BMD review as decided by  Dr Ratnaraja\\\textbf{History: }bone scan showing fracture shin 08/05/1998.}\\
+   
+   '------------------------------
+   sstring = ""
+   For Each PH In currentconsult!past_history
+      If PH!major = True And PH!risk_factor = False And PH!confidential = False Then
+         Select Case PH!fk_laterality
+            Case const.LateralityBoth
+               sLaterality = "(Bilateral)"
+            Case const.LateralityLeft
+               sLaterality = "(Left)"
+            Case const.LateralityRight
+               sLaterality = "(Right)"
+            Case const.LateralityNone
+               sLaterality = ""
+         End Select
+         'jump1
+         sstring &= "\\item[\\footnotesize " & PH!year_onset & "]"
+         sstring &= "{\\textbf{\\footnotesize " & UCase(PH!description) & " " & sLaterality & " " & age_onset(PH) & "}\\\\"
+         ' If the user Is Using this as a management plan, must have aims, goals And management
+         If Not IsNull(PH!aim_of_plan) Then
+            If Not IsNull(PH!condition_summary) Then    
+               sstring &= "\\textbf{" & "History: " & "}" & PH!condition_summary & "." & "\\\\"
+            End If   
+            sstring &= "\\textbf{" & "Goals                  : " & "}" & PH!aim_of_plan & ". \\\\" & "\\textbf{" & "Plan:    " & "}"  ' & PH!management_summary & "."
+            If Not IsNull(ph!plan_contribution_gp) Then
+               sstring &= "GP will " & ph!plan_contribution_gp & ". "
+            Endif
+            If Not IsNull(PH!plan_contribution_patient) Then
+               sstring &= "Patient will " & PH!plan_contribution_patient & ". "
+            Endif
+            If Not IsNull(Ph!plan_contribution_others) Then
+               sstring &= Ph!plan_contribution_others & "."
+            End If
+            sstring &= "\\\\"
+            sstring &= "}"
+         Else
+            sstring &= "\\text{"
+            If Not IsNull(PH!condition_summary) Then 
+               sstring &= PH!condition_summary & ". "
+            Endif
+            If Not IsNull(Ph!management_summary) Then
+               sSTring &= PH!management_summary & "."
+            End If
+            sString &= "}"
+         End If 
+         
+      Endif
+   Next
+   ' If Sstring1 <> "" Then
+   '\begin{tabular}{>{\raggedright}p{7.5cm}>{\raggedright}p{2cm}>{\raggedright}p{6.5cm}}
+   
+   '  sString1 = "\\begin{center}\\textbf{\\footnotesize \\underline {HEALTH CARE PROVIDER LIST}}\\end{center}\\\\)"
+   '   sstring1 &= "\\begin{tabular}{>{\raggedright}p{7.5cm}>{\raggedright}p{2cm}>{\raggedright}p{6.5cm}}"
+   ' templ.Subst("health_provider_contact_list", sstring1)
+   '  Else
+   '  templ.Subst("health_provider_contact_list", "")
+   '  End If
+   
+   templ.Subst("majorhealthissues", sstring)
+   'Now the active health issues
+   sstring = ""
+   For Each PH In currentconsult!past_history
+      If PH!active = True And PH!risk_factor = False And PH!major = False And PH!confidential = False Then
+         Select Case PH!fk_laterality
+            Case const.LateralityBoth
+               sLaterality = "(Bilateral)"
+            Case const.LateralityLeft
+               sLaterality = "(Left)"
+            Case const.LateralityRight
+               sLaterality = "(Right)"
+            Case const.LateralityNone
+               sLaterality = ""
+         End Select
+         sstring &= "\\item[\\footnotesize " & PH!year_onset & "]"
+         sstring &= "\\textbf{\\footnotesize " & UCase(PH!description) & " " & sLaterality & " " & age_onset(PH) & "}\\\\"
+         'If the user is using this as a management plan, must have aims, goals and management
+         If Not IsNull(PH!aim_of_plan) Then
+            If Not IsNull(PH!condition_summary) Then    
+               sstring &= "\\textbf{" & "History: " & "}" & PH!condition_summary & ".\\\\"
+            End If   
+            sstring &= "\\textbf{" & "Plan: " & "}" & PH!aim_of_plan & ". " & PH!management_summary 
+            
+            sstring &= "}"
+            '   sstring &= "\\textbf{" & "Plan: " & "}" & PH!aim_of_plan & ". " & PH!management_summary & "\\\\"
+            ' If Not IsNull(PH!condition_summary) Then    
+            '    sstring &= "\\textbf{" & "History: " & "}" & PH!condition_summary & "." 
+            ' End If   
+            ' sstring &= "}"
+         Else
+            sstring &= "\\text{"
+            If Not IsNull(PH!condition_summary) Then 
+               sstring &= PH!condition_summary & ". "
+            Endif
+            If Not IsNull(Ph!management_summary) Then
+               sSTring &= PH!management_summary & "."
+            End If
+            sString &= "}"
+         End If 
+         'sstring &= "\\tabularnewline"
+      Endif
+   Next
+   
+   templ.Subst("significanthealthissues", sstring)
+   '----------------------------------------------------------------------------------------
+   'Construct a Table of the current medications generic/strength/instruction/why prescribed
+   'The default (unchangeable at this time) is to print generic names only, not brands
+   'whinge to me if you can make a use-case
+   '----------------------------------------------------------------------------------------
+   templ.Row("\\textbf{\\footnotesize MEDICATIONS AND REASON FOR USE}", "", "", "")
+   If currentconsult!medications.count Then  
+      For Each medication In currentconsult!medications
+         If fk_generic_product_keys.Find(medication!prescribed!fk_medication) = True Then 'true= not found
+            fk_generic_product_keys.Add(medication!prescribed!fk_medication, fk_generic_product_keys.count)
+            If medication!med!active = True Then
+               templ.Row(medication!generic, medication!strength, medication!instruction, medication!prescribed_for)
+            End If
+         End If
+      Next
+   Else
+      templ.Row("No active medications recorded", "", "")
+   End If   
+   templ.Table("medications")
+   '---------------------------------------------------------------------------------------------
+   'Construct a Table of the vaccinations bit complicated because I allowed the date given to be
+   'text eg 2009, maybe should go back and fix this, hence they are not in sort order by date
+   '---------------------------------------------------------------------------------------------
+   templ.Row("\\textbf{\\footnotesize IMMUNIZATIONS}", "", "")
+   For Each vaccination In currentconsult!vaccinations_given
+      Select Case Lower(vaccination!schedule)      'date can be 2007, 04/2007 or 01/04/2007
+         Case "influenza"
+            x = 0
+            If IsDate(vaccination!date_given) Then
+               x = Year(Val(vaccination!date_given))
+            Else
+               If Len(vaccination!date_given) = 4 Then
+                  x = Val(vaccination!date_given)
+               Endif
+               If Len(vaccination!date_given) = 6 Then
+                  Try x = Val(Right(vaccination!date_given, 4))
+               Endif
+            End If
+            If x > fluvax_year_most_recent Then
+               fluvax_year_most_recent = x
+               fluvax = modUtil.Copy_Collection(vaccination)
+            Endif
+         Case "tetanus - every 10 years", "tetanus diphtheria pertussis", "tetanus diptheria pertussus polio"
+            x = 0
+            If IsDate(vaccination!date_given) Then
+               x = Year(Val(vaccination!date_given))
+            Else
+               If Len(vaccination!date_given) = 4 Then
+                  x = Val(vaccination!date_given)
+               Endif
+               If Len(vaccination!date_given) = 6 Then
+                  Try x = Val(Right(vaccination!date_given, 4))
+               Endif
+            End If
+            If x > tetanus_year_most_recent Then
+               tetanus_year_most_recent = x
+               tetanus_vax = modUtil.Copy_Collection(vaccination)
+            Endif
+         Case "typhoid"
+            x = 0
+            If IsDate(vaccination!date_given) Then
+               x = Year(Val(vaccination!date_given))
+            Else
+               If Len(vaccination!date_given) = 4 Then
+                  x = Val(vaccination!date_given)
+               Endif
+               If Len(vaccination!date_given) = 6 Then
+                  Try x = Val(Right(vaccination!date_given, 4))
+               Endif
+            End If
+            If x > typhoid_year_most_recent Then
+               typhoid_year_most_recent = x
+               typhoid_vax = modUtil.Copy_Collection(vaccination)
+            Endif
+         Case Else
+            templ.Row(vaccination!schedule, vaccination!date_given, vaccination!brand)
+      End Select
+   Next
+   If Not IsNull(fluvax) Then
+      templ.Row(fluvax!schedule, fluvax!date_given, fluvax!brand)
+   Endif
+   If Not IsNull(tetanus_vax) Then
+      templ.Row(tetanus_vax!schedule, tetanus_vax!date_given, tetanus_vax!brand)
+   Endif
+   If Not IsNull(typhoid_vax) Then
+      templ.Row(typhoid_vax!schedule, typhoid_vax!date_given, typhoid_vax!brand)
+   Endif
+   templ.Table("vaccinations")
+   templ.Row("\\textbf{\\footnotesize RECALLS}", "")
+   For Each recall In currentconsult!recalls_logged
+      templ.Row(Format(recall!due, "dd/mm/yyyy"), recall!reason)
+   Next
+   templ.Table("recalls")
+   'Now the inactive health issues
+   sstring = ""
+   '  sstring = "\\&\\textbf{\\footnotesize INACTIVE HEALTH ISSUES}"
+   '  sstring &= "\\tabularnewline \n\\hline"
+   For Each PH In currentconsult!past_history
+      If PH!active = False And PH!major = False And PH!risk_factor = False And PH!confidential = False Then
+         Select Case PH!fk_laterality
+            Case const.LateralityBoth
+               sLaterality = "(Bilateral)"
+            Case const.LateralityLeft
+               sLaterality = "(Left)"
+            Case const.LateralityRight
+               sLaterality = "(Right)"
+            Case const.LateralityNone
+               sLaterality = ""
+         End Select
+         sstring &= "\\item[\\footnotesize " & PH!year_onset & "]"
+         sstring &= "\\textbf{\\footnotesize " & UCase(PH!description) & " " & sLaterality & " " & age_onset(PH) & "}\\\\"
+         sstring &= "\\text{" & PH!condition_summary & ". " & PH!management_summary & "." & "}"
+         '  sstring &= "\\tabularnewline \n"
+      Endif
+   Next
+   templ.Subst("inactivehealthissues", sstring)
+   '---------------------------------------------------------------------------------------------------------------
+   'First, if this LaTex is being used as a Team Care Arrangement - put separate list of Team Care Members Contacts
+   '---------------------------------------------------------------------------------------------------------------
+   For Each TCM In selected_team_care_members  
+      templ.Row(TCM!wholename, Trim(TCM!street1 & " " & TCM!street2) & " " & TCM!town & " " & TCM!postcode)  'create a row in the table
+      If TCM!fk_person Then                                             'get comms for person
+         comms = modContactsDBI.person_comms_get(TCM!fk_person)
+      Else
+         If TCM!fk_branch Then
+            comms = modContactsDBI.Branch_Comms_Get(TCM!fk_branch)      'or branch
+         Endif
+      Endif
+      For Each comm In comms                                            'and put them in the table
+         templ.Row("", comm!type & " " & comm!value)
+      Next
+   Next
+   If selected_team_care_members.count Then
+      'templ.Subst("tca_provider_contacts_heading", "\\begin{center}\\textbf{TEAM CARE PROVIDERS CONTACT LIST}\\end{center}\\\\")
+      templ.Subst("tca_provider_contacts_heading", "\\textbf{TEAM CARE PROVIDERS CONTACT LIST}\\\\")
+      
+      templ.Table("tca_provider_contact_list")
+   Else
+      templ.Subst("tca_provider_contacts_heading", "")
+      templ.Subst("tca_provider_contact_list", "")
+   End If   
+   '----------------------------------------------------------------------------
+   'lastly if there are team care members/providers put in their contact details
+   'excluding those in the previous list if team care arrangements in place
+   '----------------------------------------------------------------------------
+   sstring1 = ""
+   For Each PH In currentconsult!past_history                                        'Loop through all health issue items               
+      If Not IsNull(PH!TeamCareMembers) Then                                         'If the health issue has team care member(s)
+         For Each TCM In PH!TeamCareMembers                                          'for each of the team members for this particular health issue
+            bSkipProvider = False                                                    
+            For Each selected_TCM In selected_team_care_members                      'check its not one we want to print under the team care members contact ist                 '
+               If TCM!fk_team_care_member = selected_TCM!fk_team_care_member Then    'Yes?
+                  bSkipProvider = True                                               'then skip this, don't put on the general providers list
+                  Break
+               Endif
+            Next
+            If Not bSkipProvider Then                                               'not part of the team care listing
+               If Not InStr(sString1, TCM!wholename) Then                           'check not duplicated in another health issue
+                  bHaveProviders = True                                             'flag will tell us to print an 'other's provider list'
+                  templ.Row(TCM!wholename, Trim(TCM!street1 & " " & TCM!street2) & " " & TCM!town & " " & TCM!postcode)  'create a row in the table
+                  If TCM!fk_person Then                                             'get comms for person
+                     comms = modContactsDBI.person_comms_get(TCM!fk_person)
+                  Else
+                     If TCM!fk_branch Then
+                        comms = modContactsDBI.Branch_Comms_Get(TCM!fk_branch)      'or branch
+                     Endif
+                  Endif
+                  For Each comm In comms                                            'and put them in the table
+                     templ.Row("", comm!type & " " & comm!value)
+                  Next
+                  sstring1 &= TCM!wholename & " "                                  'keep provider name so we can check it's not used again
+               End If  
+            End If
+         Next
+      Endif
+   Next 
+   
+   If bHaveProviders Then 
+      ' If selected_team_care_members.count Then     
+      '    templ.Subst("health_provider_contact_list_heading", "\\begin{center}\\textbf{OTHER HEALTH PROVIDERS CONTACT LIST}\\end{center}\\\\")
+      ' Else
+      '    templ.Subst("health_provider_contact_list_heading", "\\begin{center}\\textbf{HEALTH PROVIDERS CONTACT LIST}\\end{center}\\\\")
+      ' End If
+      If selected_team_care_members.count Then     
+         templ.Subst("health_provider_contact_list_heading", "\\textbf{OTHER HEALTH PROVIDERS CONTACT LIST}\\\\")
+      Else
+         templ.Subst("health_provider_contact_list_heading", "\\textbf{HEALTH PROVIDERS CONTACT LIST}\\\\")
+      End If
+      
+      templ.Table("health_provider_contact_list")
+   Else
+      templ.Subst("health_provider_contact_list_heading", "")
+      templ.Subst("health_provider_contact_list", "")
+   End If   
+   Return templ
+   
+End
+
+Public Function Health_Summary_Construct_LaTex_second_attempt(currentconsult As Cconsult, Optional bGPMP As Boolean = False, Optional bTeamCareArrangements As Boolean = False) As CTemplate
+   ' If bGPMP = True(This document Is Being used As A GP ManagemWithProgressNotes_Codes_GetWithProgressNotes_Codes_Getent Plan)
+   
+   Dim sString As String
+   Dim sString1 As String
+   Dim templ As New CTemplate("health-summary", "tex")
+   Dim item As Collection
+   Dim r As Result
+   Dim sRange As String
+   Dim height As Float
+   Dim weight As Float
+   Dim waist As Variant
+   Dim hip As Variant
+   Dim BMI As Variant
+   Dim m As Collection
+   Dim Last_Key As Integer
+   Dim sLaterality As String
+   Dim PH As Collection
+   Dim Medication As Collection
+   Dim vaccination As Collection
+   Dim recall As Collection
+   Dim max_ideal_weight As Variant = 0
+   Dim min_ideal_weight As Variant = 0
+   Dim fk_generic_product_keys As New String[]
+   Dim fluvax_year_most_recent As Integer
+   Dim fluvax As Collection
+   Dim tetanus_year_most_recent As Integer
+   Dim tetanus_vax As Collection
+   Dim typhoid_year_most_recent As Integer
+   Dim typhoid_vax As Collection
+   Dim sSmoking As String
+   Dim sAlcohol As String
+   Dim sLastOccupation As String
+   Dim x As Integer
+   Dim sSocialHistory As String
+   ' Dim Health_Provider_contact_list As String
+   Dim TCM As Collection
+   Dim bHaveProviders As Boolean
+   Dim comm As Collection
+   Dim comms As Collection
+   
+   currentconsult.Refresh("family_history")
+   currentconsult.Refresh("social_history")
+   currentconsult.Refresh("past_history")
+   currentconsult.Refresh("occupational_history")
+   currentconsult.Refresh("recalls_logged")
+   currentconsult.Refresh("recreationaldrugs")
+   currentconsult.Refresh("allergies")
+   currentconsult.Refresh("measurements")
+   currentconsult.Refresh("vaccinations_given")
+   templ.Subst_common(currentconsult)
+   If bGPMP Then
+      sString = "GP MANAGEMENT PLAN"
+      If bTeamCareArrangements Then
+         sString &= "/TCA" 
+         
+      Endif
+      sString &= "\\\\GP: " & modDBConnect.currentUser!title & " " & modDBConnect.currentUser!wholename & "\\\\"
+      sString &= "Review Date: 01/11/2014\\\\"
+      templ.Subst("documenttype", sstring)
+   Else
+      Templ.Subst("documenttype", "PATIENT HEALTH SUMMARY" & "\\\\")
+   Endif
+   Templ.Subst("date_printed", Format(Now(), "dd/mm/yyyy"))
+   '-----------------------------------------------------------------------
+   'Construct a table of known allergies, possibilities are
+   'Unknow
+   'Nil allergies or sensitivities
+   'A heading of the table (class etc) + row(s) of allergy/sensitivity data
+   '------------------------------------------------------------------------ 
+   If Not currentconsult!allergies.count Then  
+      templ.Row("Unknown", "", "", "")
+   End If   
+   x = 0  'counter
+   For Each Item In currentconsult!allergies
+      If IsNull(item!nil_allergies_sensitivities) And x = 0 Then
+         If IsNull(item!allergen) Then  
+            templ.Row("\\textbf{\\footnotesize Class}", "Generic", "Reaction Type", "Details")
+            Inc x
+         End If 
+      Endif
+      ' class_name, generic, details, reaction_type
+      If item!nil_allergies_sensitivities = True Then
+         templ.Row("No known allergies or sensitivites")
+      Else
+         If Not IsNull(Item!allergen) Then 'non drug allergy
+            templ.Row("Non Drug Allergy:", item!allergen, "", "")
+         Else
+            templ.Row("ATC Class:" & Item!class_name, item!generic, "Type: " & item!reaction_type, "Details: " & item!details)
+         End If   
+      End If   
+   Next
+   templ.Table("allergies")
+   For Each item In currentconsult!social_history
+      sSocialHistory = item!history
+      If Not IsNull(item!history_confidential) Then
+         sSocialHistory &= " Confidential parts of this history have been omitted."
+      Endif
+      templ.Subst("socialhistory", sSocialHistory)
+      If Not IsNull(item!fk_responsible_person) Then
+         sString = item!person_responsible_title & " " & item!person_responsible_firstname & " " & item!person_responsible_surname
+      Else
+         sString = item!responsible_person
+         If Not IsNull(item!responsible_person_street1) Then
+            sSTring &= "\\\\" & item!responsible_person_street1
+         Endif
+         If Not IsNull(item!responsible_person_town) Then
+            sSTring &= "\\\\" & item!responsible_person_town & " " & item!responsible_person_postcode
+         Endif
+      End If
+      sString &= "\\\\Phone:" & item!responsible_person_contacts
+      templ.Subst("responsibleperson", Trim(sString))
+   Next
+   Templ.Subst("responsibleperson", "")
+   Templ.Subst("socialhistory", "")
+   '----------------------------------
+   'Construct the occupational history
+   '----------------------------------
+   sstring = ""
+   For Each item In currentconsult!occupational_history
+      sString = ""
+      If Not IsNull(item!from_age) Then   
+         sString = "age " & item!from_age 
+         If Not IsNull(item!to_age) Then
+            sstring &= "-" & item!to_age
+         Endif
+      Endif
+      If sLastOccupation <> item!occupation Then
+         sstring1 = item!occupation
+         If item!retired Then sstring1 &= " (Retired)"
+         templ.Row(sString1, sString, item!exposure)
+         sLastOccupation = item!occupation
+      Else
+         templ.Row("", item!from_age & " to " & item!to_age, item!exposure)
+         templ.Row("", sString, item!exposure)
+      End If
+   Next
+   templ.Table("occupationalhistory")
+   'the risk factors
+   sstring = ""
+   For Each PH In currentconsult!past_history
+      If PH!risk_factor = True And PH!confidential = False Then
+         Select Case PH!fk_laterality
+            Case const.LateralityBoth
+               sLaterality = "(Bilateral)"
+            Case const.LateralityLeft
+               sLaterality = "(Left)"
+            Case const.LateralityRight
+               sLaterality = "(Right)"
+            Case const.LateralityNone
+               sLaterality = ""
+         End Select
+         sstring &= "\\item[\\footnotesize " & PH!year_onset & "]"
+         sstring &= "{\\textbf{\\footnotesize " & UCase(PH!description) & " " & sLaterality & " " & age_onset(PH) & "}\\\\"
+         ' If the user Is Using this As A management plan, must have aims, goals And management
+         
+         If Not IsNull(PH!aim_of_plan) Then
+            If Not IsNull(PH!condition_summary) Then    
+               sstring &= "\\textbf{" & "History: " & "}" & PH!condition_summary & "." 
+            End If   
+            sstring &= "\\textbf{" & "Plan:" & "}" & PH!aim_of_plan & ". " & PH!management_summary & "\\\\"
+            
+            sstring &= "}"
+         Else
+            sstring &= "\\text{"
+            If Not IsNull(PH!condition_summary) Then 
+               sstring &= PH!condition_summary & ". "
+            Endif
+            If Not IsNull(Ph!management_summary) Then
+               sSTring &= PH!management_summary & "."
+            End If
+            sString &= "}"
+         End If 
+         '    sstring &= "\\tabularnewline "
+      Endif
+   Next
+   templ.Subst("riskfactors", sstring) 
+   Last_Key = 0
+   
+   '-----------------------------------------------
+   'Family History
+   '    Construct something like this
+   '    Mother (Hilda smith)
+   '    Hypertension onset age 50
+   '    Carcinoma Breast onset age 65 (caused death)
+   '-----------------------------------------------
+   sstring = ""
+   For Each item In currentconsult!family_history
+      If last_key <> item!fk_member Then
+         last_key = item!fk_member
+         sstring &= "\\textbf{" & item!relationship & " " & item!name & "}\\\\"
+      End If
+      sstring &= item!condition
+      If IsNull(item!age_of_onset) Then
+         sstring &= " onset?"
+      Else
+         sstring &= " onset " & item!age_of_onset
+      Endif
+      If item!cause_of_death = True Then
+         sstring &= " (caused death"
+         If Not IsNull(item!age_of_death) Then
+            sstring &= "-" & item!age_of_death & " yrs)"
+         Else
+            sstring &= ") "
+         End If
+      End If
+      sstring &= "\\\\"
+   Next
+   templ.Subst("familyhistory", sstring)
+   m = modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_Height)
+   If Not IsNull(m) Then
+      height = m!data
+      templ.Subst("height_data", m!data & "cm")
+      templ.Subst("height_date", m!date) 'already date formatted in measurement_get_latest
+   Else
+      templ.Subst("height_data", "-")
+      templ.Subst("height_date", "-")
+   Endif
+   m = modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_Weight)
+   If Not IsNull(m) Then
+      weight = m!data
+      templ.Subst("weight_data", m!data & "kg")
+      templ.Subst("weight_date", m!date) 'already date formatted in measurement_get_latest
+   Else
+      templ.Subst("weight_data", "-")
+      templ.Subst("weight_date", "-")
+   Endif
+   m = modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_BP)
+   If Not IsNull(m) Then
+      templ.Subst("bp_data", m!data & "mmHg")
+      templ.Subst("bp_date", m!date)  'already date formatted in measurement_get_latest
+   Else
+      templ.Subst("bp_data", "-")
+      templ.Subst("bp_date", "-")
+   Endif
+   
+   r = modMeasurementsDBI.Get_Loinc_Value(currentconsult!patient!fk_patient, const.Loinc_EGFR, 1, "DESC") 'Last R by date
+   If r.count Then
+      sRange = r!reference_range
+      sRange = Replace(sRange, "(", "")
+      sRange = Replace(sRange, ")", "")
+      templ.Subst("egfr_date", Format(r!observation_date, "dd/mm/yyyy"))
+      templ.Subst("egfr_data", r!value_numeric & " (" & sRange & ")")
+   Else
+      templ.Subst("egfr_data", "N/A")
+      templ.Subst("egfr_date", "")
+   End If
+   r = modMeasurementsDBI.Get_Loinc_Value(currentconsult!patient!fk_patient, const.Loinc_HBA1c, 1, "DESC")
+   If r.count Then
+      sRange = r!reference_range
+      sRange = Replace(sRange, "(", "")
+      sRange = Replace(sRange, ")", "")
+      templ.Subst("hba1c_date", Format(r!observation_date, "dd/mm/yyyy"))
+      templ.Subst("hba1c_data", r!value_numeric & " (" & sRange & ")")
+      templ.Subst("Hba1c*", "HBA1c")
+   Else
+      templ.Subst("hba1c_data", "")
+      templ.Subst("hba1c_date", "")
+      templ.Subst("Hba1c*", "")
+   Endif
+   Try BMI = Format((weight / (height ^ 2)) * 10000, "##.#")
+   If Not Error Then
+      templ.Subst("bmi_data", BMI)
+   Else
+      templ.Subst("bmi_data", "N/A")
+   End If
+   Try max_ideal_weight = 25 * (height / 100) * (height / 100)
+   Try min_ideal_weight = 20 * (height / 100) * (height / 100)
+   If max_ideal_weight <> 0 And min_ideal_weight <> 0 Then
+      templ.Subst("idealweight_data", Format(min_ideal_weight, "##") & "-" & Format(max_ideal_weight, "##") & "Kg")
+   Else
+      templ.Subst("idealweight_data", "N/A")
+   End If   'fixme null bug here
+   If Not IsNull(weight) Then
+      If weight <> 0 And max_ideal_weight <> 0 Then
+         If weight > max_ideal_weight Then
+            templ.Subst("overweight_data", Format(weight - max_ideal_weight, "##.#") & "Kg")
+         Else
+            templ.Subst("overweight_data", "N/A")
+         End If   
+      Else
+         templ.Subst("overweight_data", "N/A")
+      End If
+   End If
+   '------------------------------------------------------------------------------------
+   'Now the basic recreational drugs
+   'for two columns are used - the measurement and the date is used to complete the data
+   'as the columns are not wide enough
+   '-------------------------------------------------------------------------------------
+   sSmoking = ""                                                   'lets tell users no info recorded
+   sAlcohol = ""                                                   'lets tell users no info recorded
+   For Each item In currentconsult!recreationaldrugs
+      ' everyone should have a smoking record although of course users may not put them in
+      If item!fk_lu_recreational_drug = const.cRecreational_Drug_Nicotine Then
+         If item!never_used_drug Then
+            templ.Subst("smoking_data", "Never")
+         Else
+            If Not IsNull(item!substance_amount) Then
+               sSmoking &= Str(item!substance_amount) & "/day"
+            Else
+               sSmoking &= "?/day"
+            Endif
+            templ.Subst("smoking_data", sSmoking)
+            If Not IsNull(item!age_started) Then
+               sSmoking = "age " & Str(item!age_started) & " to "
+            Else
+               sSmoking &= "from age ? to"
+            Endif
+            If Not IsNull(item!age_last_used) Then
+               sSmoking &= Str(item!age_last_used)
+            Else
+               sSmoking &= "?"
+            Endif
+            templ.Subst("smoking_date", sSmoking)   'this is a fudge, using the date column as won't fit visually
+         End If
+      End If
+      If item!fk_lu_recreational_drug = const.cRecreational_Drug_Alcohol Then
+         If item!never_used_drug = True Then
+            templ.Subst("alcohol_data", "Nil Ever")
+         Else
+            If Not IsNull(item!age_last_used) Then
+               templ.Subst("alcohol_data", "Ex-Drinker")
+               templ.Subst("alcohol_date", sAlcohol)
+            Else                                                                   'will always be a quantity I insisted in the gui
+               If Not IsNull(item!substance_amount) Then
+                  sAlcohol = Str(item!substance_amount) & " gm"
+               Else
+                  sAlcohol = "?gm"
+               Endif
+               templ.Subst("alcohol_data", sAlcohol)
+               Select Case item!fk_lu_substance_frequency
+                  Case const.Units_day
+                     sAlcohol = " per day"
+                  Case const.Units_month
+                     sAlcohol = " per month"
+                  Case const.Units_week
+                     sAlcohol = " per week"
+               End Select
+               templ.Subst("alcohol_date", sAlcohol)
+            Endif
+         End If
+      End If
+   Next
+   templ.Subst("exercise_data", "N/A")   'FIXME - no module to put this in yet
+   templ.Subst("alcohol_data", "")
+   If sSmoking = "" Then templ.Subst("smoking_data", "No information recorded")
+   If sAlcohol = "" Then templ.Subst("alcohol_data", "No information recorded")
+   'get latest waist circumference
+   m = modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_Waist)
+   If Not IsNull(m) Then
+      waist = CFloat(m!data)
+      templ.Subst("waisthip_date", m!date)
+   Else
+      waist = 0.0
+   Endif
+   'get latest hip circumference
+   m = modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_Hip)
+   If Not IsNull(m) Then
+      hip = CFloat(m!data)
+   Else
+      hip = 0.0
+   Endif
+   'calculate and display waist/hip ratio if measurements available
+   If (waist > 0.0 And hip > 0.0) Then
+      templ.Subst("waisthip_data", Format(waist / hip, "##.##"))
+   Else
+      templ.Subst("waisthip_data", "N/A") 
+   Endif
+   templ.Subst("exercise_date", "")   'FIXME - no module to put this in yet
+   templ.Subst("alcohol_date", "")  'FIXME - no module to put this in yet
+   templ.Subst("smoking_date", "")   'FIXME - no module to put this in yet
+   templ.Subst("waisthip_date", "")   'FIXME - no module to put this in yet"
+   '------------------------------
+   'Now do the major health issues
+   '\textbf{\footnotesize 05/1998} \> \parbox[t]{8cm}{\textbf{\footnotesize OSTEOPOROSIS }\\\textbf{Plan:}Prevent further fractures and strengthen bones. Medications as listed with BMD review as decided by  Dr Ratnaraja\\\textbf{History: }bone scan showing fracture shin 08/05/1998.}\\
+   
+   '------------------------------
+   sstring = ""
+   For Each PH In currentconsult!past_history
+      If PH!major = True And PH!risk_factor = False And PH!confidential = False Then
+         Select Case PH!fk_laterality
+            Case const.LateralityBoth
+               sLaterality = "(Bilateral)"
+            Case const.LateralityLeft
+               sLaterality = "(Left)"
+            Case const.LateralityRight
+               sLaterality = "(Right)"
+            Case const.LateralityNone
+               sLaterality = ""
+         End Select
+         'jump1
+         sstring &= "\\item[\\footnotesize " & PH!year_onset & "]"
+         sstring &= "{\\textbf{\\footnotesize " & UCase(PH!description) & " " & sLaterality & " " & age_onset(PH) & "}\\\\"
+         ' If the user Is Using this as a management plan, must have aims, goals And management
+         If Not IsNull(PH!aim_of_plan) Then
+            If Not IsNull(PH!condition_summary) Then    
+               sstring &= "\\textbf{" & "History: " & "}" & PH!condition_summary & "." & "\\\\"
+            End If   
+            sstring &= "\\textbf{" & "Goals                  : " & "}" & PH!aim_of_plan & ". \\\\" & "\\textbf{" & "Plan:    " & "}"  ' & PH!management_summary & "."
+            If Not IsNull(ph!plan_contribution_gp) Then
+               sstring &= "GP will " & ph!plan_contribution_gp & ". "
+            Endif
+            If Not IsNull(PH!plan_contribution_patient) Then
+               sstring &= "Patient will " & PH!plan_contribution_patient & ". "
+            Endif
+            If Not IsNull(Ph!plan_contribution_others) Then
+               sstring &= Ph!plan_contribution_others & "."
+            End If
+            sstring &= "\\\\"
+            sstring &= "}"
+         Else
+            sstring &= "\\text{"
+            If Not IsNull(PH!condition_summary) Then 
+               sstring &= PH!condition_summary & ". "
+            Endif
+            If Not IsNull(Ph!management_summary) Then
+               sSTring &= PH!management_summary & "."
+            End If
+            sString &= "}"
+         End If 
+         
+      Endif
+   Next
+   If Sstring1 <> "" Then
+      '\begin{tabular}{>{\raggedright}p{7.5cm}>{\raggedright}p{2cm}>{\raggedright}p{6.5cm}}
+      
+      '  sString1 = "\\begin{center}\\textbf{\\footnotesize \\underline {HEALTH CARE PROVIDER LIST}}\\end{center}\\\\)"
+      sstring1 &= "\\begin{tabular}{>{\raggedright}p{7.5cm}>{\raggedright}p{2cm}>{\raggedright}p{6.5cm}}"
+      ' templ.Subst("health_provider_contact_list", sstring1)
+   Else
+      '  templ.Subst("health_provider_contact_list", "")
+   End If
+   
+   templ.Subst("majorhealthissues", sstring)
+   'Now the active health issues
+   sstring = ""
+   For Each PH In currentconsult!past_history
+      If PH!active = True And PH!risk_factor = False And PH!major = False And PH!confidential = False Then
+         Select Case PH!fk_laterality
+            Case const.LateralityBoth
+               sLaterality = "(Bilateral)"
+            Case const.LateralityLeft
+               sLaterality = "(Left)"
+            Case const.LateralityRight
+               sLaterality = "(Right)"
+            Case const.LateralityNone
+               sLaterality = ""
+         End Select
+         sstring &= "\\item[\\footnotesize " & PH!year_onset & "]"
+         sstring &= "\\textbf{\\footnotesize " & UCase(PH!description) & " " & sLaterality & " " & age_onset(PH) & "}\\\\"
+         'If the user is using this as a management plan, must have aims, goals and management
+         If Not IsNull(PH!aim_of_plan) Then
+            If Not IsNull(PH!condition_summary) Then    
+               sstring &= "\\textbf{" & "History: " & "}" & PH!condition_summary & ".\\\\"
+            End If   
+            sstring &= "\\textbf{" & "Plan: " & "}" & PH!aim_of_plan & ". " & PH!management_summary 
+            
+            sstring &= "}"
+            '   sstring &= "\\textbf{" & "Plan: " & "}" & PH!aim_of_plan & ". " & PH!management_summary & "\\\\"
+            ' If Not IsNull(PH!condition_summary) Then    
+            '    sstring &= "\\textbf{" & "History: " & "}" & PH!condition_summary & "." 
+            ' End If   
+            ' sstring &= "}"
+         Else
+            sstring &= "\\text{"
+            If Not IsNull(PH!condition_summary) Then 
+               sstring &= PH!condition_summary & ". "
+            Endif
+            If Not IsNull(Ph!management_summary) Then
+               sSTring &= PH!management_summary & "."
+            End If
+            sString &= "}"
+         End If 
+         'sstring &= "\\tabularnewline"
+      Endif
+   Next
+   
+   templ.Subst("significanthealthissues", sstring)
+   '----------------------------------------------------------------------------------------
+   'Construct a Table of the current medications generic/strength/instruction/why prescribed
+   'The default (unchangeable at this time) is to print generic names only, not brands
+   'whinge to me if you can make a use-case
+   '----------------------------------------------------------------------------------------
+   templ.Row("\\textbf{\\footnotesize MEDICATIONS AND REASON FOR USE}", "", "", "")
+   If currentconsult!medications.count Then  
+      For Each medication In currentconsult!medications
+         If fk_generic_product_keys.Find(medication!prescribed!fk_medication) = True Then 'true= not found
+            fk_generic_product_keys.Add(medication!prescribed!fk_medication, fk_generic_product_keys.count)
+            If medication!med!active = True Then
+               templ.Row(medication!generic, medication!strength, medication!instruction, medication!prescribed_for)
+            End If
+         End If
+      Next
+   Else
+      templ.Row("No active medications recorded", "", "")
+   End If   
+   templ.Table("medications")
+   '---------------------------------------------------------------------------------------------
+   'Construct a Table of the vaccinations bit complicated because I allowed the date given to be
+   'text eg 2009, maybe should go back and fix this, hence they are not in sort order by date
+   '---------------------------------------------------------------------------------------------
+   templ.Row("\\textbf{\\footnotesize IMMUNIZATIONS}", "", "")
+   For Each vaccination In currentconsult!vaccinations_given
+      Select Case Lower(vaccination!schedule)      'date can be 2007, 04/2007 or 01/04/2007
+         Case "influenza"
+            x = 0
+            If IsDate(vaccination!date_given) Then
+               x = Year(Val(vaccination!date_given))
+            Else
+               If Len(vaccination!date_given) = 4 Then
+                  x = Val(vaccination!date_given)
+               Endif
+               If Len(vaccination!date_given) = 6 Then
+                  Try x = Val(Right(vaccination!date_given, 4))
+               Endif
+            End If
+            If x > fluvax_year_most_recent Then
+               fluvax_year_most_recent = x
+               fluvax = modUtil.Copy_Collection(vaccination)
+            Endif
+         Case "tetanus - every 10 years", "tetanus diphtheria pertussis", "tetanus diptheria pertussus polio"
+            x = 0
+            If IsDate(vaccination!date_given) Then
+               x = Year(Val(vaccination!date_given))
+            Else
+               If Len(vaccination!date_given) = 4 Then
+                  x = Val(vaccination!date_given)
+               Endif
+               If Len(vaccination!date_given) = 6 Then
+                  Try x = Val(Right(vaccination!date_given, 4))
+               Endif
+            End If
+            If x > tetanus_year_most_recent Then
+               tetanus_year_most_recent = x
+               tetanus_vax = modUtil.Copy_Collection(vaccination)
+            Endif
+         Case "typhoid"
+            x = 0
+            If IsDate(vaccination!date_given) Then
+               x = Year(Val(vaccination!date_given))
+            Else
+               If Len(vaccination!date_given) = 4 Then
+                  x = Val(vaccination!date_given)
+               Endif
+               If Len(vaccination!date_given) = 6 Then
+                  Try x = Val(Right(vaccination!date_given, 4))
+               Endif
+            End If
+            If x > typhoid_year_most_recent Then
+               typhoid_year_most_recent = x
+               typhoid_vax = modUtil.Copy_Collection(vaccination)
+            Endif
+         Case Else
+            templ.Row(vaccination!schedule, vaccination!date_given, vaccination!brand)
+      End Select
+   Next
+   If Not IsNull(fluvax) Then
+      templ.Row(fluvax!schedule, fluvax!date_given, fluvax!brand)
+   Endif
+   If Not IsNull(tetanus_vax) Then
+      templ.Row(tetanus_vax!schedule, tetanus_vax!date_given, tetanus_vax!brand)
+   Endif
+   If Not IsNull(typhoid_vax) Then
+      templ.Row(typhoid_vax!schedule, typhoid_vax!date_given, typhoid_vax!brand)
+   Endif
+   templ.Table("vaccinations")
+   templ.Row("\\textbf{\\footnotesize RECALLS}", "")
+   For Each recall In currentconsult!recalls_logged
+      templ.Row(Format(recall!due, "dd/mm/yyyy"), recall!reason)
+   Next
+   templ.Table("recalls")
+   'Now the inactive health issues
+   sstring = ""
+   '  sstring = "\\&\\textbf{\\footnotesize INACTIVE HEALTH ISSUES}"
+   '  sstring &= "\\tabularnewline \n\\hline"
+   For Each PH In currentconsult!past_history
+      If PH!active = False And PH!major = False And PH!risk_factor = False And PH!confidential = False Then
+         Select Case PH!fk_laterality
+            Case const.LateralityBoth
+               sLaterality = "(Bilateral)"
+            Case const.LateralityLeft
+               sLaterality = "(Left)"
+            Case const.LateralityRight
+               sLaterality = "(Right)"
+            Case const.LateralityNone
+               sLaterality = ""
+         End Select
+         sstring &= "\\item[\\footnotesize " & PH!year_onset & "]"
+         sstring &= "\\textbf{\\footnotesize " & UCase(PH!description) & " " & sLaterality & " " & age_onset(PH) & "}\\\\"
+         sstring &= "\\text{" & PH!condition_summary & ". " & PH!management_summary & "." & "}"
+         '  sstring &= "\\tabularnewline \n"
+      Endif
+   Next
+   templ.Subst("inactivehealthissues", sstring)
+   '--------------------------------------------------------------------
+   'lastly if there are team care members/providers put in their details
+   '--------------------------------------------------------------------
+   For Each PH In currentconsult!past_history
+      If Not IsNull(PH!TeamCareMembers) Then
+         bHaveProviders = True   
+         For Each TCM In PH!TeamCareMembers
+            If Not InStr(sString1, TCM!wholename) Then   
+               templ.Row(TCM!wholename, Trim(TCM!street1 & " " & TCM!street2) & " " & TCM!town & " " & TCM!postcode)
+               If TCM!fk_person Then
+                  comms = modContactsDBI.person_comms_get(TCM!fk_person)
+               Else
+                  If TCM!fk_branch Then
+                     comms = modContactsDBI.Branch_Comms_Get(TCM!fk_branch)
+                  Endif
+               Endif
+               For Each comm In comms  
+                  templ.Row("                                     ", comm!type & " " & comm!value)
+               Next
+               'sstring1 &= TCM!wholename & " " & Trim(TCM!street1 & " " & TCM!street2) & " " & TCM!town & " " & TCM!postcode & "\\\\"
+            End If  
+         Next
+      Endif
+   Next 
+   If bHaveProviders Then   
+      templ.Subst("health_provider_contact_list_heading", "\\begin{center}\\textbf{HEALTH PROVIDER CONTACT LIST}\\end{center}\\\\")
+      templ.Table("health_provider_contact_list")
+   Else
+      templ.Subst("health_provider_contact_list_heading", "")
+      templ.Subst("health_provider_contact_list", "")
+   End If   
    Return templ
    
 End

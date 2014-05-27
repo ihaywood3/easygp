@@ -291,7 +291,7 @@ def process_step2_line(drug,lineno,sct_done):
         else:
             if "duplicate" in drug:
                 r = query("select * from drugs.product where pk='%s'" % drug["duplicate"])
-                print >> sys.stderr, "duplicating %s %s" % (r["generic",r["strength"])
+                print >> sys.stderr, "duplicating %s %s" % (r["generic"],r["strength"])
                 cmd("insert into drugs.old_sct (fk_product,sct) values ('%s','%s')" % (r[0]['pk'],r[0]['sct']))
                 cmd("update drugs.product set sct='%s',original_pbs_name=$$%s$$ where pk='%s'" % (drug["sct"],drug["original_pbs_name"],r[0]["pk"]))
                 return
@@ -479,6 +479,30 @@ cmd is:
   """
 
 
+def find_lost_pdfs():
+    with open('/var/lib/easygp/drug_pis/pi_complete.txt') as f:
+        for l in f:
+            pdf = l[:12]
+            brand = l[13:].strip()
+            r = query("select brand from drugs.brand where product_information_filename ilike %s",(pdf,))
+            if len(r) == 0:
+                r = query("select * from drugs.brand where product_information_filename_user ilike %s",(pdf,))
+                if len(r) > 0:
+                    print "--%s %s found in user filename, setting standard also" % (pdf,brand)
+                    for i in r:
+                        cmd("update drugs.brand set product_information_filename=$$%s$$ where pk=%s",(pdf,i['pk']))
+                else:
+                    r = query("select distinct brand from drugs.brand where brand ilike %s",(brand+'%',))
+                    if len(r) == 0:
+                        #r = query("select * from drugs.brand where $$%s$$ ilike replace(brand,'%'
+                        print "--%s %s no match found" % (pdf,brand)
+                    else:
+                        print "--possible match %s = %s %s" % (r[0]['brand'],brand,pdf)
+                        for i in r:
+                            print "update drugs.brand set product_information_filename=$$%s$$ where brand = $$%s$$" % (pdf,i['brand'])
+            else:
+                print "--%s %s already matched to %s" % (r[0]['brand'],pdf,brand)
+
 if len(sys.argv) > 1:
     cd = sys.argv[1]
 else:
@@ -492,19 +516,11 @@ elif cd == '3' or cd == 'brands':
     verify_brands(get_xml_etree()) # brands, may spit out errors
 elif cd == '4' or cd == 'print':
     t = get_xml_etree()
-    print """\\set ON_ERROR_STOP 1
+    print """-- EasyGP drugs update %s
+\\set ON_ERROR_STOP 1
 \\o /dev/null
 \\set QUIET 1
-DO language plpgsql $$
-DECLARE
-   vers db.lu_version%ROWTYPE;
-BEGIN
-   select * into vers from db.lu_version;
-   if vers.lu_minor < 317 then 
-      raise exception 'database version must be 317 or higher';
-   end if;
-END$$;
-"""
+""" % release_date
     import_mnfr(t) # company information
     import_atc(t)
     print_products() # idempotent sql commands for full dump of products
@@ -519,6 +535,8 @@ elif cd == "--help":
     print_help()
 elif cd == 'set_orig_names':
     set_original_pbs_names(get_xml_etree())
+elif cd == 'lost_pdfs':
+    find_lost_pdfs()
 else:
     print >>sys.stderr,"unknown command: %s" % cd
     print_help()

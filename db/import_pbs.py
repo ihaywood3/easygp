@@ -478,30 +478,43 @@ cmd is:
   - print: complete sql update on stdout
   """
 
+def write_key(d,key,s):
+    if key in d:
+        d[key] = d[key]+s+'\n'
+    else:
+        d[key] = s+'\n'
 
 def find_lost_pdfs():
     with open('/var/lib/easygp/drug_pis/pi_complete.txt') as f:
-        for l in f:
-            pdf = l[:12]
-            brand = l[13:].strip()
+        drugs= sorted(((l[:12], l[13:].strip()) for l in f), key=lambda x: len(x[1]), reverse=True)
+        d = {}
+        matched = set()
+        for pdf, brand in drugs:
+            if len(brand) < 2: continue
             r = query("select brand from drugs.brand where product_information_filename ilike %s",(pdf,))
             if len(r) == 0:
                 r = query("select * from drugs.brand where product_information_filename_user ilike %s",(pdf,))
                 if len(r) > 0:
-                    print "--%s %s found in user filename, setting standard also" % (pdf,brand)
+                    write_key(d,brand,"-- %s %s found in user filename, setting standard also" % (pdf,brand))
                     for i in r:
                         cmd("update drugs.brand set product_information_filename=$$%s$$ where pk=%s",(pdf,i['pk']))
                 else:
                     r = query("select distinct brand from drugs.brand where brand ilike %s",(brand+'%',))
                     if len(r) == 0:
                         #r = query("select * from drugs.brand where $$%s$$ ilike replace(brand,'%'
-                        print "--%s %s no match found" % (pdf,brand)
+                        write_key(d,brand,"-- %s %s no match found" % (pdf,brand))
                     else:
-                        print "--possible match %s = %s %s" % (r[0]['brand'],brand,pdf)
+                        write_key(d,brand,"-- possible match on %s %s" % (pdf,brand))
                         for i in r:
-                            print "update drugs.brand set product_information_filename=$$%s$$ where brand = $$%s$$" % (pdf,i['brand'])
-            else:
-                print "--%s %s already matched to %s" % (r[0]['brand'],pdf,brand)
+                            if i['brand'] in matched:
+                                write_key(d,brand,"-- %s matched this session" % i['brand'])
+                            else:
+                                matched.add(i['brand'])
+                                write_key(d,brand,"update drugs.brand set product_information_filename=$$%s$$ where brand = $$%s$$;" % (pdf,i['brand']))
+            #else:
+            #    write_key(d,brand,"-- %s %s already matched to %s" % (pdf,brand,r[0]['brand']))
+        for k in sorted(d.keys()):
+            print d[k]
 
 if len(sys.argv) > 1:
     cd = sys.argv[1]

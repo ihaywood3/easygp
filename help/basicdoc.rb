@@ -289,7 +289,7 @@ else
   system "rm index.txt.in"
   Dir.chdir("..") if $debian
   system "find -type d \\( \\! -path \"*.svn*\" \\) \\( \\! -path \"*build*\" \\) -exec mkdir -p build/\\{} \\;"
-  system "find -name *.png \\! -path '*build*' -exec cp \\{} build/\\{} \\;"
+  system "find -name '*.png' \\! -path '*build*' -exec cp \\{} build/\\{} \\;"
   $latex.write File.open("gpl-3.0.tex") {|f| f.read}
   $latex.write("\n\\end{document}\n")
   $latex.close

@@ -17,6 +17,154 @@
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '----------------------------------------------------------------------
 
+Public Function Medication_Progressnote_Delete(fk_progressnote As Integer) As Boolean
+   
+   Return modDBConnect.update("clin_consult.progressnotes", Null, ["pk": fk_progressnote, "deleted": True])
+   
+End
+
+Public Function Medication_update_Progress_notes(currentconsult As CConsult)
+   '---------------------------------------------------------------------------------------
+   'whenever medications are added or deleted 'today' update progress notes to reflect this
+   '--------------------------------------------------------------------------------------- 
+   
+   Dim ProgressNote As CRow
+   Dim fk_medications_progressnote As Integer
+   
+   currentconsult.Refresh("prescriptions_written")
+   fk_medications_progressnote = modPrescribingDBI.ProgressNote_Written_Today_Get_Pk(currentconsult)
+   If currentconsult!prescriptions_written.count = 0 Then   
+      '   If cvwPrescriptions.count = 0 Then             'nothing on the script pad
+      If fk_medications_progressnote Then         'but have a progress note key, must have deleted the last one
+         If modPrescribingDBI.Medication_Progressnote_Delete(fk_medications_progressnote) Then
+            modDBConnect.CommitTrans
+         Else
+            modDBConnect.RollBack                                       
+         Endif
+      End If   
+   Else
+      ProgressNote = New CRow
+      If fk_medications_progressnote Then
+         ProgressNote.put_unchanged(fk_medications_progressnote, "fk_medications_progressnote")
+         ProgressNote!fk_audit_action = const.cAuditAction_Edit
+      Else     
+         ProgressNote!fk_audit_action = const.cAuditAction_Insert                  'is an insert     
+      End If   
+      ProgressNote!fk_consult = currentconsult.GetPK()
+      ProgressNote!notes = modPrescribingDBI.Medications_Prepare_List(currentconsult, "tinsert medication list today's medications with heading")
+      ProgressNote!fk_section = const.cSection_Prescriptions
+      ProgressNote!problem = "Prescription"
+      ProgressNote.Save("clin_consult.progressnotes", "fk_medications_progressnote")
+      modProgressNotesDBI.ProgressNote_Code(ProgressNote!fk_medications_progressnote, "prescription written")
+      modDBConnect.CommitTrans()
+   End If   
+   FProgressNoteEditor.cvwMedicationsToday_Update()                                'update the list under progress notes
+   If FClinical.IsSamePatient(currentconsult!patient!fk_patient) Then   
+      FClinical.Refresh_AllPreviousNotes()
+   End If   
+   
+End
+
+Public Function ProgressNote_Written_Today_Get_pk(currentconsult As CConsult) As Integer
+   'returns pk of clin_consult.progressnotes if a medication progress note written today
+   
+   Dim sql As String
+   Dim R As Result
+   
+   sql = "select * from clin_consult.progressnotes where fk_consult = " & currentconsult.getpk() & " and deleted is not true"
+   sql &= " ANd fk_section = " & const.cSection_Prescriptions
+   R = modDBConnect.exec_query(sql)
+   If R.count Then 
+      Return R!pk
+   End If   
+   
+End
+
+Public Function Medications_Prepare_List(currentconsult As CConsult, sMenuText As String, Optional cvwMedicationsToday As Columnview) As String
+   '---------------------------------------------------------------------------------------------------------
+   'Prepares a list of the current medications as a string Either with heading, the whole list, or just today
+   'or puts the meds in a columnview
+   '---------------------------------------------------------------------------------------------------------
+   
+   Dim medication As Collection
+   Dim medications As Collection
+   Dim sMedlist As String
+   
+   If InStr(sMenuText, "today") Then
+      medications = medications_prescribed_today_list(currentconsult, cvwMedicationsToday)
+   Else
+      medications = modPrescribingDBI.active_medication_list(currentconsult)
+   Endif
+   
+   If InStr(sMenuText, "heading") And Not InStr(sMenuText, "today") Then
+      sMedlist = "<B>Medications</B><BR>"
+   Endif
+   If Not medications.count Then 
+      sMedList &= "No active medications recorded<BR>"
+      Return sMedList 
+   End If   
+   sMedlist = "<BR>"
+   If InStr(sMenuText, "heading") And InStr(sMenuText, "today") Then
+      sMedlist = "<HR><small><B>Medications Prescribed Today</B><BR>"
+   End If
+   For Each medication In medications
+      If InStr(sMenuText, "today") Then
+         smedlist &= medication!generic & " " & medication!strength & " " & medication!form & " ("
+         smedlist &= medication!instruction & " for " & medication!prescribed_for
+         smedlist &= " (" & medication!brand & ") "
+         smedlist &= medication!prescribed!quantity & " R" & medication!prescribed!repeats 
+         If medication!med!start_date = medication!med!last_date Then
+            smedlist &= "<B><I> *new medication*</I></B>"
+         Endif
+      Else
+         smedlist &= medication!generic & " " & medication!strength & " " & medication!form & " ("
+         smedlist &= medication!instruction & " for " & medication!prescribed_for
+         smedlist &= " (" & medication!brand & ") "
+         smedlist &= medication!prescribed!quantity & " R" & medication!prescribed!repeats
+      End If
+      sMedlist &= "<br>"
+   Next
+   If InStr(sMenuText, "heading") And InStr(sMenuText, "today") Then
+      sMedlist &= "</small><HR>"
+   Endif
+   Return sMedlist
+   
+End
+
+Public Function medications_prescribed_today_list(currentconsult As CConsult, Optional cvw As Columnview = Null) As Collection
+   '---------------------------------------------------------------------------
+   'Returns a list of medications prescribed today, optionally in a columnview
+   'These could be on the inactive or active list e.g could have prescribed say
+   'a vaccine but immediately made it inactive
+   '---------------------------------------------------------------------------
+   
+   Dim fk_generic_product_keys As New String[]
+   Dim Prescribed_today As New Collection
+   Dim medication As Collection
+   Dim x As Integer
+   
+   Try cvw.Clear 'may be null
+   Currentconsult.Refresh("medications")
+   For Each medication In currentconsult!medications
+      If fk_generic_product_keys.Find(medication!prescribed!fk_medication) = True Then                   'true= not found
+         fk_generic_product_keys.Add(medication!prescribed!fk_medication, fk_generic_product_keys.count) 'add the key
+         If modUtil.IsSameDay(medication!med!last_date, Now()) Then
+            Prescribed_today.Add(medication, medication!pk_view)
+            If Not IsNull(cvw) Then
+               x = medication!pk_view
+               cvw.Add(x, 0)
+               cvw[x][0] = medication!generic
+               cvw[x][1] = medication!strength
+               cvw[x][2] = medication!instruction
+            Endif
+         End If
+      End If
+      Inc x
+   Next
+   Return Prescribed_today
+   
+End
+
 Public Function PBSRelease() As String 
    '--------------------------------------------------------------------
    'returns string of the pbs data release data from drugs.version table
@@ -457,9 +605,9 @@ End
 
 Public Function Notify_Script(script_no As Integer)
    ' informs the remote python process script is printed: to generate XML
-
-  modDBConnect.exec_query("NOTIFY script, &1", [Str$(script_no)]) 
-
+   
+   modDBConnect.exec_query("NOTIFY script, &1", [Str$(script_no)]) 
+   
 End
 
 Public Function Authority_Number_Get_Next(fk_staff As Integer) As Integer
@@ -512,6 +660,7 @@ Public Sub cvwMedications_Refresh(cvw As Columnview, currentconsult As CConsult,
    '        FIXME USE:modPrescribingDBI.Prescriptions_Fill_Columnview
    '        FIXME some dulicatation here in building the collection active_medications
    '------------------------------------------------------------------------------------------
+   
    Dim pic_script_authority As Picture = Picture["icons/12/authority_script_12x12.png"]
    Dim col_med As Integer = 0
    Dim col_strength As Integer = 1
@@ -526,7 +675,7 @@ Public Sub cvwMedications_Refresh(cvw As Columnview, currentconsult As CConsult,
    Dim medication As Collection
    Dim fk_generic_product_keys As New String[]
    Dim x As String
-
+   
    Dim bActive As Boolean
    
    If lblMedications.tag = "active" Then
@@ -536,7 +685,7 @@ Public Sub cvwMedications_Refresh(cvw As Columnview, currentconsult As CConsult,
       bActive = False
       lblMedications.text = "Inactive Medications"
    End If
-
+   
    cvw.Clear()
    cvw.Columns.count = 10
    cvw.Columns[col_med].width = 124
@@ -593,6 +742,7 @@ Public Sub cvwMedications_Refresh(cvw As Columnview, currentconsult As CConsult,
    End If
    
 End
+
 Public Function Medication_Delete(currentconsult As CConsult, fk_medication As Integer, fk_section As Integer, audit_action As String, audit_notes As String) As Boolean
    '--------------------------------------------------------------------------------------
    'Marks as deleted a current medication laying down audit trail, returns true if succeeds
@@ -619,6 +769,7 @@ Public Function Medication_UnDelete(currentconsult As CConsult, fk_medication As
    Return False
    
 End
+
 Public Function Medication_Prescribed_Before(fk_patient As Integer, fk_generic_product As String) As Result
    '-----------------------------------------------------------------------------
    'Checks if this generic medication has been prescribed before for this patient
@@ -740,7 +891,7 @@ Public Function Medications_History_Construct_HTML(items_prescribed As Collectio
 End
 
 Private Function Prescriptions_Written_Prepare(prescribeds As Collection) As Collection
-
+   
    Dim items_prescribed As New Collection
    Dim i As Collection
    Dim c As Collection
@@ -777,6 +928,7 @@ Private Function Prescriptions_Written_Prepare(prescribeds As Collection) As Col
       items_prescribed.Add(c, i!pk_view)
    Next
    Return items_prescribed
+   
 End
 
 Public Function Prescription_Written(fk_item_prescribed As Integer) As Collection
@@ -882,6 +1034,7 @@ Public Function active_medication_list(currentconsult As CConsult) As Collection
    '--------------------------------------------------------
    'Returns a collection of the patient's active medications
    '--------------------------------------------------------
+   
    Dim fk_generic_product_keys As New String[]
    Dim active_medications As New Collection
    Dim medication As Collection
@@ -898,6 +1051,7 @@ Public Function active_medication_list(currentconsult As CConsult) As Collection
    Return active_medications
    
 End
+
 Public Function Prescriptions_Written(fk_patient As Integer) As Collection
    '--------------------------------------------------------------
    'Returns collection of all the evey drug item ever prescribed for the patient
@@ -969,14 +1123,14 @@ Public Function Prescriptions_Written_This_Consult(fk_consult As Variant) As Col
    
    If IsNull(fk_consult) Then Return prescriptions
    sql = "Select * from clin_prescribing.vwprescribeditems where fk_consult =  &1 " 
-    sql &= " AND NOT prescribed_deleted "
-    sql &= " AND NOT medication_deleted "
+   sql &= " AND NOT prescribed_deleted "
+   sql &= " AND NOT medication_deleted "
    prescribeds = modDBConnect.exec_query_collection(sql, [fk_consult])
    For Each i In prescribeds
       c = New Collection
       c!prescribed = New CRow 
       For Each s In ["fk_consult", "fk_medication", "fk_brand", "date_on_script", "repeats", "quantity", "fk_instruction", "fk_prescribed_for", "pbscode", "restriction_code", "reg24", "authority_script_number", "authority_approval_number", "authority_post_to_patient", "script_number", "fk_code", "concession_details", "brand_substitution", "fk_lu_pbs_script_type", "fk_progress_note", "printed", "authority_reason", "print_reason", "latex", "medisecure_uuid", "medisecure_barcode", "escript_uploaded"] 
-          c!prescribed.put_unchanged(i[s], s)  
+         c!prescribed.put_unchanged(i[s], s)  
       Next 
       c!med = New CRow 
       For Each s In ["active", "start_date", "last_date", "fk_generic_product"] 
@@ -1031,10 +1185,34 @@ Public Function Brand_Equivalents_Make_HTML(active_medications As Collection, co
    Dim FI As Collection
    Dim sFoodInteraction As String
    Dim sDoseInstructionsFor As String
-    
+   Dim forms_for_food_interactions As New Collection
+  'fixme Ian make the next bit smarter ?add field to drugs.form 'display_food_interations'
+
+   forms_for_food_interactions.Add("capsule", "capsule")
+   forms_for_food_interactions.Add("dispersible tablet", "dispersible tablet")
+   forms_for_food_interactions.Add("effervescent granules", "effervescent granules")
+   forms_for_food_interactions.Add("granules", "granules")
+  ' forms_for_food_interactions.Add("injection", "injection")
+   forms_for_food_interactions.Add("lozenge", "lozenge")
+   forms_for_food_interactions.Add("oral gel", "oral gel")
+   forms_for_food_interactions.Add("oral liquid", "oral liqui")
+   forms_for_food_interactions.Add("oral powder", "oral powder")
+   forms_for_food_interactions.Add("oral solution", "oral solution")
+   forms_for_food_interactions.Add("oral spray", "oral spray")
+   forms_for_food_interactions.Add("slow-release capsule", "slow-release capsule")
+   forms_for_food_interactions.Add("slow-release tablet", "slow-release tablet")
+   forms_for_food_interactions.Add("sublingual spray", "sublingual spray")
+   forms_for_food_interactions.Add("sublingual tablet", "sublingual tablet")
+  ' forms_for_food_interactions.Add("syringe", syringe "")
+   forms_for_food_interactions.Add("tablet", "tablet")
+   forms_for_food_interactions.Add("wafer", "wafer")
+   forms_for_food_interactions.Add("granules", "granules")
+   forms_for_food_interactions.Add("chewable tablet", "chewable tablet")
+   forms_for_food_interactions.Add("sublingual wafer", "sublingual wafer")
+   
    sHtml = "<HTML>" & modHTML.Patient_Practice_Heading_Simple_HTML(consult)
    sHtml = Replace(sHtml, "%central_heading%", "MEDICATION LIST WITH FOOD INFORMATION AND BRAND EQUIVALENTS<BR>Printed on " & Format(Now(), "dd/mm/yyyy"))
-    For Each med In active_medications                                                               'loop through all the active meds
+   For Each med In active_medications                                                               'loop through all the active meds
       shtml &= "<P><B>" & med!generic & "</B><BR>"                                                 'put up bold heading on new line
       sDoseInstructionsFor = med!display_strength & " " & med!form & " " & med!instruction & " for " & med!prescribed_for 
       If med!generic <> "glucometer strip" Then                                                     'exclude glucometer strips
@@ -1045,9 +1223,10 @@ Public Function Brand_Equivalents_Make_HTML(active_medications As Collection, co
          shtml = Left(shtml, Len(shtml) - 2) & ".</I>"
          sHtml &= "<BR> - " & sDoseInstructionsFor & "<BR>"
          sFoodInteraction = ""
-         If med!form <> "ointment" And med!form <> "cream" And med!form <> "eye ointment" And med!form <> "eye drops" Then   
+      '   If med!form <> "ointment" And med!form <> "cream" And med!form <> "eye ointment" And med!form <> "eye drops" And Not InStr(med!form, "topical") Then   
+         If forms_for_food_interactions.Exist(med!form) Then   
             For Each FI In modPrescribingDBI.Drug_Have_ATC_Code_Get_FoodInteractions(med!atccode)
-               If Not IsNull(FI!food_interaction) Then
+               If Not IsNull(FI!food_interaction) Then   
                   sFoodInteraction &= FI!food_interaction & " "
                Endif
             Next
@@ -1059,7 +1238,6 @@ Public Function Brand_Equivalents_Make_HTML(active_medications As Collection, co
       End If   
    Next
    Return shtml & "</HTML>"
-  
    
 End
 
@@ -1344,9 +1522,8 @@ Public Function GenericPI(generic_name As String) As String
    
 End
 
-
 Public Function Get_CTG_Code(script_date As Date) As String
    
-  Return modDBConnect.exec_query_first("select clin_prescribing.ctg(&1) as ctg", [script_date])!ctg 
+   Return modDBConnect.exec_query_first("select clin_prescribing.ctg(&1) as ctg", [script_date])!ctg 
    
 End

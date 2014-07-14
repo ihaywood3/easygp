@@ -16,109 +16,63 @@
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ' ---------------------------------------------------------------------
 
+Public Function Allied_Health_types_Get() As Collection
+   
+   Return modDBConnect.exec_query_collection("Select * from clin_history.lu_allied_health_care_types") 
+   
+End
+
+Public Function GPMP_TCA_Documents_Get(fk_patient As Integer) As Collection
+  '--------------------------------------------------------------------------------------------- 
+  'returns a combined collection  of all documents tagged with
+  'const.Document_Display_As_GP_Management_Plan, const.Document_Display_As_Team_Care_Arrangement
+  'This can include returned or faxed back documents where staff use the popup menu to change
+  'a document type or scanning allocate the type on document allocation
+  '---------------------------------------------------------------------------------------------
+   Dim sql As String
+   
+   sql = "Select * from documents.Documents where fk_patient = " & fk_patient
+   sql &= " AND (fk_lu_display_as = " & const.Document_Display_As_GP_Management_Plan 
+   sql &= " OR fk_lu_display_as = " & const.Document_Display_As_Team_Care_Arrangement 
+   sql &= ") AND deleted = false " 
+   sql &= "ORDER BY date_created "
+   Return modDBConnect.exec_query_collection(sql)
+   
+End
+
 Public Function PastHistory_Get(pk_patient As Integer) As Collection
    '--------------------------------------------------------------
    'gets a list of the patients active/inactive past history items
    '--------------------------------------------------------------
    
    Dim sql As String
+   Dim PHistory As Collection
+   Dim PHItem As Collection
+   Dim All_PH_TCMembers As Collection   
+   Dim POC As Collection 
+   Dim last_fk_pasthistory As Collection
+   Dim POC_Members_For_PH_Item As Collection 
+   Dim POC_Member_For_PH_Item As Collection
    
    sql = "select * from clin_history.vwHealthIssues WHERE fk_patient = "
    sql &= pk_patient 
-   Return modDBConnect.exec_query_collection(sql)
-   
-End
-
-Public Function CarePlanComponent_Get_pk(cpc As String) As Integer
-   
-   Dim $Result As Result
-   Dim careplancomponent As New Collection 
-   
-   $Result = modDBConnect.exec_query("Select * from clin_history.lu_careplan_components where component ILIKE $$" & cpc & "$$")
-   If $Result.count Then Return $Result!pk
-   '---------------------
-   'Dosn't exist > insert
-   '---------------------
-   careplancomponent!component = cpc
-   Return modDBConnect.insert("clin_history.lu_careplan_components", careplancomponent)
-   
-End
-
-Public Sub Save_CarePlanComponents(old_data As Collection, careplancomponents As Collection, fk_pasthistory As Integer)
-   '--------------------------------------------------
-   'Saves the care plan components which will fall due
-   'this could be an entirely empty collection
-   '--------------------------------------------------
-   
-   Dim cpc As Collection 
-   
-   For Each cpc In careplancomponents
-      If IsNull(cpc!pk_careplan_components) Then
-         '----------------------------------------------------------------------------
-         'If the component does not exist in clin_history.care_plan_components, add it
-         '----------------------------------------------------------------------------
-         cpc!fk_pasthistory = fk_pasthistory
-         cpc!fk_care_plan_components = modDBConnect.insert("clin_history.care_plan_components", cpc)
-         
-      Else
-         '-----------------------------
-         'Else is an existing component
-         '-----------------------------
-         modDBConnect.update("clin_history.care_plan_components", old_data[cpc!pk_careplan_components], cpc, "pk_careplan_components")
-      End If   
-   Next  
-   
-End
-
-Public Function CarePlan_Component_Names_Get(name As String) As Collection
-   
-   Return modDBConnect.exec_query_collection("Select * from clin_history.lu_careplan_components where component ILIKE $$%" & name & "%$$ ORDER BY component")
-   
-End
-
-Public Function Get_CarePlan_Components(fk_pasthistory As Integer) As Collection
-   
-   Return modDBConnect.exec_query_collection("Select * from clin_history.vwCarePlanComponents where fk_pasthistory =" & fk_pasthistory) 
-   
-End
-
-Public Function Save_TeamCareMembers(old_data As Collection, TeamCareMembers As Collection, pk_pasthistory As Integer)
-   '----------------------------------
-   'Saves the team care members (keys) 
-   '----------------------------------
-   
-   Dim tcm As Collection 
-   
-   For Each tcm In TeamCareMembers
-      '-------------------------------
-      'Save or edit team care members
-      '-------------------------------
-      If IsNull(tcm!pk) Then
-         Try tcm.Remove("summary")
-         Try tcm.Remove("wholename")
-         tcm!fk_pasthistory = pk_pasthistory
-         modDBConnect.insert("clin_history.team_care_members", tcm)
-      Else
-         '--------------------------------------
-         'Update existing team care arrangements
-         '--------------------------------------
-         Try tcm.Remove("wholename")
-         Try tcm.Remove("summary")
-         modDBConnect.update("clin_history.team_care_members", old_data[tcm!pk], tcm, "pk")
-      End If 
+   sql &= " ORDER BY age_onset"
+   PHistory = modDBConnect.exec_query_collection(sql)                                     'get all the patient's past history
+   sql = "Select * from clin_history.vwProvidersOfCare where fk_patient=" & pk_patient    'anyone providing care/service, not necessary a 'team care member' as used in item numbers 
+   sql &= " AND provider_deleted is not true ORDER BY fk_pasthistory"
+   All_PH_TCMembers = modDBConnect.exec_query_collection(sql)                                    'get all the patients team care members
+   For Each PHItem In PHistory
+      If Not IsNull(PHItem!plan_contribution_others) Then                                'if there are team care members
+         POC_Members_For_PH_Item = New Collection                                          'will be a collection of team care members for a particular PH item
+         For Each POC In All_PH_TCMembers                                                       'loop through all the patients team care members
+            If PHItem!pk_pasthistory = POC!fk_pasthistory                                 'if there is a team member for this past history item
+               POC_Members_For_PH_Item.Add(POC, POC_Members_For_PH_Item.count)
+            End If  
+         Next
+         PHItem!providersofcare = POC_Members_For_PH_Item
+      End If  
    Next
-   
-End
-
-Public Function TeamCareMembers_UnDelete(pk As Integer)
-   
-   modDBConnect.exec_query("UPDATE clin_history.team_care_members SET deleted = False  WHERE pk = " & pk)
-   
-End
-
-Public Function TeamCareMembers_Delete(pk As Integer)
-   
-   modDBConnect.exec_query("UPDATE clin_history.team_care_members SET deleted = True  WHERE pk = " & pk)
+   Return PHistory
    
 End
 
@@ -316,9 +270,10 @@ Public Sub HealthIssue_Delete(currentconsult As Cconsult, pk_pasthistory As Inte
    '             if so, cannot delete, but change the html to make the
    '             text strike through, and add to the audit table
    '------------------------------------------------------------------
+   
    Dim sAuditAnnotation As String 'audit annotation to insert into progress notes
    Dim progressnote As Collection
-
+   
    If modUtil.IsSameDay(Now(), currentPastHistory!date_noted) Then                       ' If the consult this past history item was created = today, we can just reverse it
       modDBConnect.update("clin_consult.progressnotes", Null, ["pk": currentPastHistory!fk_progressnote, "deleted": True])
       modDBConnect.update("clin_history.past_history", Null, ["pk": pk_pasthistory, "deleted": True])
@@ -348,9 +303,204 @@ Public Sub HealthIssue_Delete(currentconsult As Cconsult, pk_pasthistory As Inte
    
 End
 
-Public Function TeamCareMembers_Get(fk_pasthistory As Integer) As Collection
+Public Function TCA_Get(fk_patient As Integer) As Collection
+   '--------------------------------------------------------
+   'get the last Team Care Arrangement
+   'the collection looks like this
+   'TCA!team_care_members
+   'each team_care_member in TCA!team_care_members has
+   '                                 health_issue_keys
+   '                                 family_history_keys etc
+   '--------------------------------------------------------
    
-   Return modDBConnect.exec_query_collection("Select * from clin_history.vwTeamCareMembers where fk_pasthistory = " & fk_pasthistory)
+   Dim TCA As New Collection
+   Dim sql As String
+   Dim team_care_member As Collection
+   Dim team_care_members As Collection  
+   Dim R As Result
+   
+   sql = "Select * from clin_history.vwTeamCareArrangements where fk_patient = " & fk_patient & " order by date_claimed DESC limit 1"           'get lastest TCA
+   TCA = modDBConnect.exec_query_first(sql) 
+   If IsNull(TCA) Then Return 
+   If TCA.count Then
+      sql = " SELECT  DISTINCT vwprovidersofcare.wholename, vwprovidersofcare.pk as pk_link_pasthistory_providers,  "                          
+      " team_care_members.fk_team_care_arrangement, vwprovidersofcare.fk_provider_of_care, "
+      " team_care_members.fk_person, team_care_members.fk_branch, team_care_members.fk_employee "
+      " FROM   clin_history.team_care_members, "
+      "   clin_history.vwprovidersofcare "
+      "   WHERE   team_care_members.fk_provider_of_care = vwprovidersofcare.fk_provider_of_care   "
+      sql &= " AND fk_team_care_arrangement = " & TCA!fk_team_care_arrangement
+      TCA!team_care_members = modDBConnect.exec_query_collection(sql)
+      For Each team_care_member In TCA!team_care_members
+        ' sql = "Select health_issue_keys, family_history_keys, num_epc_sessions, fk_lu_allied_health_care_type, fk_document_tca, "
+        ' sql &= "fk_document_allied_health_form, allied_health_care_type, fk_document_gp_management_plan" 
+        ' sql &= "filename From clin_history.vwTeamCareMembers where fk_provider_of_care = " & team_care_member!fk_provider_of_care
+         sql = "Select * from clin_history.vwTeamCareMembers where fk_provider_of_care = " & team_care_member!fk_provider_of_care 
+         R = modDBConnect.exec_query(sql)
+         If R.count Then
+            If Not IsNull(R!health_issue_keys) Then
+               team_care_member!health_issue_keys = R!health_issue_keys
+            End If
+            If Not IsNull(R!family_history_keys) Then
+               team_care_member!family_history_keys = R!family_history_keys
+            End If  
+            If Not IsNull(R!fk_lu_allied_health_care_type) Then
+               team_care_member!fk_lu_allied_health_care_type = R!fk_lu_allied_health_care_type
+            Endif
+            If Not IsNull(R!allied_health_care_type) Then
+               team_care_member!allied_health_care_type = R!allied_health_care_type
+            Endif
+            If Not IsNull(R!fk_document_tca) Then
+               team_care_member!fk_document_tca = R!fk_document_tca
+            Endif
+            If Not IsNull(R!fk_document_allied_health_form) Then
+               team_care_member!fk_document_allied_health_form = R!fk_document_allied_health_form
+            Endif
+              If Not IsNull(R!filename) Then
+               team_care_member!filename = R!filename
+            Endif
+            If Not IsNull(R!num_epc_sessions) Then
+               team_care_member!num_epc_sessions = R!num_epc_sessions
+            Endif
+              If Not IsNull(R!special_note) Then
+               team_care_member!special_note = R!special_note
+            Endif
+            If Not IsNull(R!fk_document_gp_management_plan) Then
+                team_care_member!fk_document_gp_management_plan = R!fk_document_gp_management_plan
+            Endif
+         End If   
+      Next
+   Endif
+   Return TCA
+   
+End
+
+Public Function TCA_Get_12July14(fk_patient As Integer) As Collection
+   '--------------------------------------------------------
+   'get the last Team Care Arrangement
+   'the collection looks like this
+   'TCA!team_care_members
+   'each team_care_member in TCA!team_care_members has
+   '                                 health_issue_keys
+   '                                 family_history_keys etc
+   '--------------------------------------------------------
+   
+   Dim TCA As New Collection
+   Dim sql As String
+   Dim team_care_member As Collection
+   Dim team_care_members As Collection  
+   Dim R As Result
+   
+   sql = "Select * from clin_history.vwTeamCareArrangements where fk_patient = " & fk_patient & " order by date_claimed DESC limit 1"           'get lastest TCA
+   TCA = modDBConnect.exec_query_first(sql) 
+   If IsNull(TCA) Then Return 
+   If TCA.count Then
+      sql = " SELECT  DISTINCT vwprovidersofcare.wholename, vwprovidersofcare.pk as pk_link_pasthistory_providers,  "                          
+      " team_care_members.fk_team_care_arrangement, vwprovidersofcare.fk_provider_of_care"
+      " FROM   clin_history.team_care_members, "
+      "   clin_history.vwprovidersofcare "
+      "   WHERE   team_care_members.fk_provider_of_care = vwprovidersofcare.fk_provider_of_care   "
+      sql &= " AND fk_team_care_arrangement = " & TCA!fk_team_care_arrangement
+      TCA!team_care_members = modDBConnect.exec_query_collection(sql)
+      For Each team_care_member In TCA!team_care_members
+        ' sql = "Select health_issue_keys, family_history_keys, num_epc_sessions, fk_lu_allied_health_care_type, fk_document_tca, "
+        ' sql &= "fk_document_allied_health_form, allied_health_care_type, fk_document_gp_management_plan" 
+        ' sql &= "filename From clin_history.vwTeamCareMembers where fk_provider_of_care = " & team_care_member!fk_provider_of_care
+         sql = "Select * from clin_history.vwTeamCareMembers where fk_provider_of_care = " & team_care_member!fk_provider_of_care 
+         R = modDBConnect.exec_query(sql)
+         If R.count Then
+            If Not IsNull(R!health_issue_keys) Then
+               team_care_member!health_issue_keys = R!health_issue_keys
+            End If
+            If Not IsNull(R!family_history_keys) Then
+               team_care_member!family_history_keys = R!family_history_keys
+            End If  
+            If Not IsNull(R!fk_lu_allied_health_care_type) Then
+               team_care_member!fk_lu_allied_health_care_type = R!fk_lu_allied_health_care_type
+            Endif
+            If Not IsNull(R!allied_health_care_type) Then
+               team_care_member!allied_health_care_type = R!allied_health_care_type
+            Endif
+            If Not IsNull(R!fk_document_tca) Then
+               team_care_member!fk_document_tca = R!fk_document_tca
+            Endif
+            If Not IsNull(R!fk_document_allied_health_form) Then
+               team_care_member!fk_document_allied_health_form = R!fk_document_allied_health_form
+            Endif
+              If Not IsNull(R!filename) Then
+               team_care_member!filename = R!filename
+            Endif
+            If Not IsNull(R!num_epc_sessions) Then
+               team_care_member!num_epc_sessions = R!num_epc_sessions
+            Endif
+            If Not IsNull(R!fk_document_gp_management_plan) Then
+                team_care_member!fk_document_gp_management_plan = R!fk_document_gp_management_plan
+            Endif
+         End If   
+      Next
+   Endif
+   Return TCA
+   
+End
+Public Function GP_Management_Plans_Get(fk_patient As Integer, Optional bLatest As Boolean = False) As Collection 
+   '---------------------------------------------------------------------------
+   'Gets all a patient's GP Management Plans, or Latest Plan if bLatest is true
+   'Called by  FGPMP.Reload()
+   '---------------------------------------------------------------------------
+   
+   Dim sql As String
+   
+   sql = "Select * from clin_history.vwGPManagementPlans where fk_patient = " & fk_patient & " and deleted is not true ORDER BY date_claimed DESC"
+   If bLatest Then 
+      sql &= " LIMIT 1"
+      Return modDBConnect.exec_query_first(sql)
+   Else
+      Return modDBConnect.exec_query_collection(sql)
+   End If 
+   
+End
+
+Public Function ProvidersOfCare_Get(fk_pasthistory As Integer) As Collection
+   
+   Return modDBConnect.exec_query_collection("Select * from clin_history.vwProvidersOfCare where fk_pasthistory = " & fk_pasthistory & " AND provider_deleted is not true")
+   
+End
+
+Public Function ProviderOfCare_Delete(fk_provider_of_care As Integer) As Boolean
+   '------------------------------------------------------------------------------------
+   ' Mark a provider of care deleted
+   ' -----------------------------------------------------------------------------------
+   ' Create TABLE clin_history.link_pasthistory_providers
+   ' (
+   '   pk serial Not Null,
+   '   fk_pasthistory integer Not Null,
+   '   fk_branch integer,
+   '   fk_employee integer,
+   '   fk_person integer,
+   '   deleted boolean Default False,
+   '   contribution_to_plan text,
+   '   CONSTRAINT link_pasthistory_providers_pkey PRIMARY KEY(pk),
+   '   CONSTRAINT link_pasthistory_providers_fk_branch_fkey FOREIGN KEY(fk_branch)
+   '       REFERENCES contacts.data_branches(pk) Match SIMPLE
+   '       On UPDATE NO ACTION On DELETE NO ACTION,
+   '   CONSTRAINT link_pasthistory_providers_fk_employee_fkey FOREIGN KEY(fk_employee)
+   '       REFERENCES contacts.data_employees(pk) Match SIMPLE
+   '       On UPDATE NO ACTION On DELETE NO ACTION,
+   '   CONSTRAINT link_pasthistory_providers_fk_pasthistory_fkey FOREIGN KEY(fk_pasthistory)
+   '       REFERENCES clin_history.past_history(pk) Match SIMPLE
+   '       On UPDATE NO ACTION On DELETE NO ACTION,
+   '   CONSTRAINT link_pasthistory_providers_fk_person_fkey FOREIGN KEY(fk_person)
+   '       REFERENCES contacts.data_persons(pk) Match SIMPLE
+   '       On UPDATE NO ACTION On DELETE NO ACTION
+   ' )
+   ' With (
+   '   OIDS = False
+   ' );
+   '----------------------------------------------------------------------------------------------
+   
+   If modDBConnect.update("clin_history.link_pasthistory_providers", Null, ["pk": fk_provider_of_care, "deleted": True]) Then
+      Return True
+   Endif
    
 End
 

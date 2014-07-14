@@ -17,12 +17,17 @@
 
 ' GLOBAL VARIABLES
 ' these will be eliminated over time
+
+Public Const cData_Type_HTML As Integer = 1
+Public Const cData_Type_Latex As Integer = 2
+Public Const cMedications_add_to_html As Integer = 2
 Public Const Rh_Group_Negative As Integer = 0 
 Public Const RH_Group_Postive As Integer = 1
 Public icpc2_immunization_code As String = "A44043"
 Public icpc2_pathology_test_code As String = "A38002"
 Public icpc2_radiology_test_code As String = "A41010"
 Public icpc2_test_results_blood_code As String = "B60001"
+Public icpc2_prescription_code As String = "A50004"
 Public globalstring As String
 Public pcehrconsent_consented As Integer = 0
 Public pcehrconsent_notconsented As Integer = 2
@@ -133,6 +138,9 @@ Public Const Document_Display_As_Letter As Integer = 1
 Public Const Document_Display_As_Result As Integer = 2
 Public Const Document_Display_As_Certificate As Integer = 3
 Public Const Document_Display_As_Image As Integer = 4
+Public Const Document_Display_As_Team_Care_Arrangement As Integer = 5
+Public Const Document_Display_As_GP_Management_Plan As Integer = 6
+Public Const Document_Display_As_Mental_Health_Plan As Integer = 7
 Public sDocumentType As String[]
 
 Public Const ScanType_pdf As Integer = 1
@@ -357,6 +365,7 @@ Public Const cAuditAction_DeleteSentInError As Integer = 33
 Public Const cAuditAction_MovedToLibrary As Integer = 34
 Public Const cAuditAction_ProgressNoteEdited As Integer = 35
 Public Const cAuditAction_PCEHR As Integer = 36
+Public Const cAuditAction_ClericalTranscription As Integer = 42
 
 Public sAuditAction As New String[]
 ' Public Const cAuditAction_MarkDeleted As Integer = 4
@@ -397,6 +406,7 @@ Public Const cSection_RecreationalDrugs As Integer = 25
 Public Const cSection_INR_Management As Integer = 26  
 Public Const cSection_Pregnancy As Integer = 27
 Public Const cSection_Food_Drug_List As Integer = 28
+
 'type of consultation
 Public Const Inbox_Pathology As Integer = 1
 Public Const Inbox_Imaging As Integer = 2
@@ -418,6 +428,8 @@ Public Const ConsultType_AuditNote As Integer = 11
 Public Const consult_type_audit As Integer = 11   'fix me this duplication
 Public Const ConsultType_Added_From_Inbox As Integer = 12
 Public Const ConsultType_ClericalNote As Integer = 13
+Public Const Consult_Type_Transcribed_Letter As Integer = 14
+Public Const ConsultType_Transcribed_Clinical_notes As Integer = 15
 
 'Reference table: common.lu_laterality
 Public Const LateralityNone As Integer = 0
@@ -757,18 +769,18 @@ Public Function Synonyms() As Collection
    'Loads synonyms for user terms/pathology terms from the backend
    'called by FInbox, FClinical, FSendRecalls
    '--------------------------------------------------------------
-
+   
    If IsNull(User_Synonyms) Then
       User_Synonyms = modInboxDBI.Sender_User_Synonyms_get()
    Endif
    Return User_Synonyms
-
+   
 End
 
 Public Sub init()
-
+   
    Dim collection_member As Collection
-
+   
    zoom.Add(20)
    zoom.Add(60)
    zoom.Add(70)
@@ -810,9 +822,9 @@ Public Sub init()
    smentalhealth_risk[const.mentalhealth_risk_high] = "High"
    smentalhealth_risk[const.mentalhealth_risk_undefined] = "Undefined"
    unitstext.resize(10) 'fix me most unused in the array, use .Add
-
+   
    'FIXME load these from backend.
-   sAuditAction.resize(36) 'one more than needed 0=not used
+   sAuditAction.Resize(43) 'one more than needed 0=not used
    sAuditAction[cAuditAction_Insert] = "insert"
    sAuditAction[cAuditAction_Edit] = "edit"
    sAuditAction[cAuditAction_Delete] = "delete"
@@ -848,7 +860,8 @@ Public Sub init()
    sAuditAction[cAuditAction_DeleteSentInError] = "delete - sent in error"
    sAuditAction[cAuditAction_MovedToLibrary] = "moved to library"
    sAuditAction[cAuditAction_ProgressNoteEdited] = "progress notes edited"
-
+   sAuditAction[cAuditAction_ClericalTranscription] = "clerical transcribing dictation"
+   
    pbs_script_types = New String[11]     'fixme get me from backend or cache 0 not used
    pbs_script_types[pbs_script_type_pbs] = "PBS"
    pbs_script_types[pbs_script_type_pbs_authority] = "PBS AUTHORITY"
@@ -860,13 +873,15 @@ Public Sub init()
    pbs_script_types[pbs_script_type_section100] = "SECTION 100"
    pbs_script_types[pbs_script_type_pbs_authority_increased_quantity] = "PBS AUTHORITY INCREASED QUANTITY"
    pbs_script_types[pbs_script_type_rpbs_authority_increased_quantity] = "RPBS AUTHORITY INCREASED QUANTITY"
-
-   sDocumentType = New String[5]
+   
+   sDocumentType = New String[8] '0 not used, these match the backend
    sDocumentType[const.Document_Display_As_Certificate] = "Certificate"
    sDocumentType[const.Document_Display_As_Image] = "Image"
    sDocumentType[const.Document_Display_As_Letter] = "Letter"
    sDocumentType[const.Document_Display_As_Result] = "Result"
-
+   sDocumentType[const.Document_Display_As_Team_Care_Arrangement] = "TCA"
+   sDocumentType[const.Document_Display_As_GP_Management_Plan] = "GPMP"
+   sDocumentType[const.Document_Display_As_Mental_Health_Plan] = "GPMP"
    'FIXME at some point just import these, but check how text in fields fits in first
    '------------------
    'init units as text
@@ -875,7 +890,7 @@ Public Sub init()
    UnitsText[Units_year] = "year"
    UnitsText[Units_day] = "day"
    UnitsText[Units_month] = "month"
-
+   
    File_Errors = New String[47]
    File_Errors[1] = "Out of Memory"
    File_Errors[37] = "Device Full"
@@ -884,7 +899,7 @@ Public Sub init()
    File_Errors[43] = "Access Forbidden"
    File_Errors[45] = "File Non Existant"
    File_Errors[46] = "File is a Directory"
-
+   
    units_text = modMeasurementsDBI.Units_Get_Text()
    Measurement_Types = modMeasurementsDBI.Get_Types()
    
@@ -894,11 +909,11 @@ Public Sub init()
       coding_system_in_use = const.coding_icd10
    Endif
    Clinical_Toolbuttons_Refresh()
-
+   
 End
 
 Public Sub Clinical_Toolbuttons_Refresh()
-
+   
    Clinical_Toolbuttons = modStartUp.Clinical_Modules_Get()
-
+   
 End

@@ -16,37 +16,72 @@
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '----------------------------------------------------------------------
 
+Public Function Allergies_Get_bad(fk_patient As Integer) As Collection
+   '-------------------------------------------------------------------------------
+   'Gets the patients allergies and sensitivites with allergies listed first
+   'includes collection member 'class codes' as a collection of allergy class codes
+   '-------------------------------------------------------------------------------
+   
+   Dim allergies As Collection
+   Dim allergy_class_codes As Collection 
+   
+   Dim A As Collection
+   
+   allergies = modDBConnect.exec_query_collection("select * from clin_allergies.vwallergies where fk_patient = &1" & " and deleted = False order by fk_lu_reaction_type", [fk_patient]) 
+   
+   allergy_class_codes = New Collection
+   For Each A In allergies
+      If Not IsNull(A!class_code) Then    
+         allergy_class_codes.Add(A, A!class_code)
+      End If   
+   Next
+   allergies!class_codes = allergy_class_codes
+   Return allergies
+   
+End
+
+Public Function Allergies_Get_Class_Codes(fk_patient As Integer) As Collection 
+   
+   Dim sql As String
+   
+   sql = "select distinct class_code as pk, class_code,fk_lu_reaction_type, class_name, product_atcname, term, details "
+   sql &= "From clin_allergies.vwallergies where fk_patient = &1  And deleted = False and class_code is not null order by fk_lu_reaction_type "
+   Return modDBConnect.exec_query_collection(sql, [fk_patient])
+   '
+   '   Return modDBConnect.exec_query_collection("select * from clin_allergies.vwallergies where fk_patient = &1" & " and deleted = False order by fk_lu_reaction_type", [fk_patient]) 
+   
+End
+
 Public Function Allergies_Get(fk_patient As Integer) As Collection
    '------------------------------------------------------------------------
    'Gets the patients allergies and sensitivites with allergies listed first
    '------------------------------------------------------------------------
-  Return modDBConnect.exec_query_collection("select * from clin_allergies.vwallergies where fk_patient = &1" & " and deleted = False order by fk_lu_reaction_type", [fk_patient]) 
+   
+   Return modDBConnect.exec_query_collection("select * from clin_allergies.vwallergies where fk_patient = &1" & " and deleted = False order by fk_lu_reaction_type", [fk_patient]) 
    
 End
-
 
 Public Function ATC_Get(atcname As String) As Collection
    
-  Dim sql As String
-  
-  sql = "Select distinct atccode as pk, atccode, atcname from drugs.atc where atcname ILIKE $$%" & atcname & "%$$  "
-  sql &= "AND atcname <> '' order by atcname limit 20 "
-  Return modDBConnect.exec_query_collection(sql)
-  
+   Dim sql As String
+   
+   sql = "Select distinct atccode as pk, atccode, atcname from drugs.atc where atcname ILIKE $$%" & atcname & "%$$  "
+   sql &= "AND atcname <> '' order by atcname limit 20 "
+   Return modDBConnect.exec_query_collection(sql)
+   
 End
 
 Public Function ATC_Code_Get_Class(code As String) As Result
- 
- 
-  Return modDBConnect.exec_query("Select distinct atccode as pk, * from drugs.atc where atccode ILIKE $$" & code & "$$")
-
-  
+   
+   Return modDBConnect.exec_query("Select distinct atccode as pk, * from drugs.atc where atccode ILIKE $$" & code & "$$")
+   
 End
 
 Public Function Reaction_save(the_reaction As String) As Integer
    '-----------------------------------------------------------
    'Saves the free text of a reaction if does not already exist
    '-----------------------------------------------------------
+   
    Dim R As Result
    Dim reaction As New CRow
    
@@ -56,6 +91,35 @@ Public Function Reaction_save(the_reaction As String) As Integer
    reaction.Save("clin_allergies.lu_reaction", "pk")
    Return reaction!pk
    
+End
+
+
+Public Sub Allergy_Warning(currentconsult As Cconsult, drug As Collection, Optional class_code As String) As String
+   '---------------------------------------------------------------------------------------------------------------------------------
+   'Checks if the class code of drug is in patients allergy list
+   'used e.g by FPrescription (drug!class_code) where drug = drug selected from popup's whilst prescribing
+   'FClinical.Allergies_Sensitivities_Refresh where  drug = currentconsult!prescriptions_written member - these have ony an atccode
+   'so this the class_code is derived from this and passed to this routine
+   '--------------------------------------------------------------------------------------------------------------------------------
    
+   Dim sMsg As String
+   Dim allergic_reaction As Collection
+   
+   If class_code = "" Then class_code = drug!class_code                         'called from FPrescriptions
+   allergic_reaction = currentconsult!allergy_class_codes[class_code] 
+   sMsg = "The patient has an "
+   If allergic_reaction!fk_lu_reaction_type = const.ReactionType_Allergy Then
+      Message.title = "DRUG ALLERGY DETECTED"
+      sMsg &= "allergy "
+   Else
+      Message.title = "DRUG SENSITIVITY DETECTED"
+      sMsg &= "sensitivity "
+   Endif
+   sMsg &= "recorded with these details:\n\nACT Class:" & allergic_reaction!class_name & "\n\nACT Name: " & allergic_reaction!product_atcname & "\nCoded Reaction:" & allergic_reaction!term & "\nReaction Detail:" & allergic_reaction!details
+   Return sMsg
+   ' If Message.Warning(sMsg & "\n\nAre you sure you want to continue?", "Yes", "No") = 2 Then
+   '    Drug_New()
+   '    Return
+   '    ' End If
    
 End

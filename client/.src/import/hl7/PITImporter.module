@@ -21,6 +21,27 @@
 ' disturbingly, this format is still in wide use at time of writing
 ' specs kindly provided by Dr. David Guest
 '-------------------------------------------------------------------
+' SendingEntity = Replace$(SendingEntity, "\\T\\", "&")
+' sql = "Select * from documents.vwsendingentities where msh_sending_entity ILIKE $$" & SendingEntity & "$$ and deleted = False"
+' r = modDBConnect.exec_query(sql)
+' If r.count Then
+'    sender!fk_sending_entity = r!pk_sending_entities
+'    sender!fk_lu_message_display_style = r!fk_lu_message_display_style
+' Else
+'    '-----------------------------------------------------------------------
+'    'No? then save this so it can be dealt with in inbox/message preferences
+'    'As probably path/radiology will be configured first, most unknown
+'    'files most likely letter-style
+'    '------------------------------------------------------------------------
+'    sender = New Collection
+'    sender!msh_sending_entity = SendingEntity
+'    sender!msh_transmitting_entity = SendingApplication
+'    sender!fk_lu_message_standard = 1 'fix me read the segment, save  version, also detect if pit
+'    sender!fk_lu_message_display_style = const.Document_Display_As_Letter 'FIXME: DETECT IF HL7 NEW IS A LETTER OR PATH
+'    sender!fk_sending_entity = modInboxDBI.Save_HL7_FileHandling_Defaults(senders, pk_view, sender)
+'    modDBConnect.CommitTrans()
+' End If
+' Return Sender
 Private pk_sending_entity As Integer
 Private doc As Collection
 Private lin As String
@@ -237,10 +258,9 @@ Private Sub Sender_Line()
    
    pk_sending_entity = -1
    originating_lab = Grab(5, 61)
-   q = "select * from documents.sending_entities "
-   q &= "where fk_lu_message_standard = " & const.document_message_standard_pit
-   q &= " and msh_sending_entity ILIKE $$"
-   q &= originating_lab & "$$ and deleted = False"
+   q = "select * from documents.vwsendingentities "
+   q &= " where msh_sending_entity ILIKE $$"
+   q &= originating_lab & "$$ and deleted is not true"
    r = modDBConnect.exec_query(q)
    If r.Count = 0 Then
       ' we don't have a matching sender, so create one
@@ -251,12 +271,10 @@ Private Sub Sender_Line()
       coll!fk_lu_message_display_style = const.Document_Display_As_Result
       pk_sending_entity = modDBConnect.insert("documents.sending_entities", coll)
    Else
-      pk_sending_entity = r!pk
+      pk_sending_entity = r!pk_sending_entities
    Endif
    
 End
-
-
 
 Private Sub Patient_Name()
    
@@ -308,6 +326,7 @@ Private Sub Load_Doc()
    '----------------------------------------------------------------------
    'Populates the document and observations collection and save to backend 
    '----------------------------------------------------------------------  
+
    Dim newdoc As New Collection
    Dim obs As New Collection
    
@@ -433,7 +452,7 @@ Private Sub Match_Staff()
    If Left$(s, 1) = "0" Then
       s = Right$(s, -1)
    Endif
-   s = Subst$("select fk_staff from admin.vwstaffinclinics where provider_number like $$&1$$ limit 1", s)
+   s = Subst$("select fk_staff from admin.vwstaffinclinics where provider_number ilike $$&1$$ limit 1", s)
    r = modDBConnect.exec_query(s)
    If r.Count = 1 Then
       doc!fk_staff = r!fk_staff
@@ -502,10 +521,9 @@ Private Function CheckRe(re As Regexp, err As String) As Boolean
    
 End
 
-
 ' removes strange Microsoft byte codes to make safe for import into Postgres
 Private Sub Make_ASCII_Safe(s As String) As String
-
+   
    Dim r As String
    Dim a As Integer
    Dim i As Integer
@@ -513,62 +531,61 @@ Private Sub Make_ASCII_Safe(s As String) As String
    For i = 1 To Len(s) 
       a = Asc(s, i)
       Select Case a
-        Case 147
-          r &= "\""
-        Case 148
-          r &= "\""
-        Case 145
-          r &= "'"
-        Case 146
-          r &= "'"
-        Case 150
-          r &= "-"
-        Case 151
-          r &= "-"
-        Case 133
-          r &= "..."
-        Case 137
-          r &= "/1000"
-        Case 140
-          r &= "OE"
-        Case 156
-          r &= "oe"
-        Case 198
-          r &= "AE"
-        Case 230
-          r &= "ae"
-        Case 153
-          r &= "TM"
-        Case 169
-          r &= "(C)"
-        Case 188
-          r &= "1/4"
-        Case 189
-          r &= "1/2"
-        Case 190
-          r &= "3/4"
-        Case 178
-          r &= "^2"
-        Case 179
-          r &= "^3"
-        Case 181
-          r &= "mc"
-        Case 247
-          r &= "/"
-        Case 194
-          ' noop
-      Case Else
-        If a < 127 Then
-          r &= Mid$(s, i, 1)
-        Else
-          r &= "?"
-        Endif
+         Case 147
+            r &= "\""
+         Case 148
+            r &= "\""
+         Case 145
+            r &= "'"
+         Case 146
+            r &= "'"
+         Case 150
+            r &= "-"
+         Case 151
+            r &= "-"
+         Case 133
+            r &= "..."
+         Case 137
+            r &= "/1000"
+         Case 140
+            r &= "OE"
+         Case 156
+            r &= "oe"
+         Case 198
+            r &= "AE"
+         Case 230
+            r &= "ae"
+         Case 153
+            r &= "TM"
+         Case 169
+            r &= "(C)"
+         Case 188
+            r &= "1/4"
+         Case 189
+            r &= "1/2"
+         Case 190
+            r &= "3/4"
+         Case 178
+            r &= "^2"
+         Case 179
+            r &= "^3"
+         Case 181
+            r &= "mc"
+         Case 247
+            r &= "/"
+         Case 194
+            ' noop
+         Case Else
+            If a < 127 Then
+               r &= Mid$(s, i, 1)
+            Else
+               r &= "?"
+            Endif
       End Select
    Next
    Return r
    
 End
-
 
 Public Sub UnitTest(f As FMain)
    

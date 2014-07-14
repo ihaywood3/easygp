@@ -5,7 +5,6 @@
 ' it under the terms of the GNU General Public License as published by
 ' the Free Software Foundation, either version 3 of the License, or
 ' (at your option) any later version.
-
 ' This program is distributed in the hope that it will be useful,
 ' but WITHOUT ANY WARRANTY; without even the implied warranty of
 ' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -14,15 +13,18 @@
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ' ---------------------------------------------------------------------------------------------------
 ' PURPOSE     - A module to allow entry of pa person's health issues or past history
-' FIXME:      - Look at implications if you allow the user to change an existing diagnosis wording
-'               this should be allowable eg (could have made a spelling mistake etc, but need
-'               to ripple this change through to other sections sharing the previous spelling
-'             - Implement speller properly
+'               along with care providers and management plan
 ' NOTES       - The rblaterality tags = const.laterality values, 0,1,2,3
 '             - The rbSignificance tags = const.HealthIssue_*name*, 0,1,2
-' BUGS        - When a new record is saved and reloaded, the status (major/active/significant)
-'               is not re-saved on edit. You can however change this in the popup menu over the lists
+'             - providers of care = persons/organisations/employees who are involved in care
+'             - the providers of care in the grid will be used to generate TCA + GPMP
+'             - TCA  = Team Care Arrangements
+'             - GPMP = General Practitioner Management Plan
 '----------------------------------------------------------------------------------------------------
+Private Persons As Collection
+Private PersonWritingTo As Collection
+Private ProvidersOfCare As Collection
+Private tvProvidersOfCare_Row As Integer
 Private ReferenceHboxForPopupControls As HBox
 Private currentconsult As CConsult
 Private bEmbedded As Boolean             'If true the form is embedded in a frmConsultNotes editor
@@ -41,6 +43,7 @@ Private fk_significance As Integer
 Private fk_code As String
 Private fk_coding_system As Integer
 Private fk_consult As Integer
+Private yesno As String[]
 '------------------------------
 'stuff for the components grid
 '-----------------------------
@@ -81,6 +84,7 @@ Static Public Sub Edit_PastHistory()
    
 Catch
    Return   'bug here there can be a null object form_pasthistory (fixme)
+   
 End
 
 Static Public Sub Delete_PastHistory()
@@ -182,7 +186,7 @@ Public Sub Update_Editarea_Plan(sText As String, progressnote_pk_pastHistory As 
    '---------------------------------------------------------------------------------
    
    If pk_pasthistory = progressnote_pk_pastHistory Then
-      txtManagementSummary.text = sText
+      txtPlanContributionGP.text = sText
    End If
    
 End
@@ -204,6 +208,25 @@ Public Sub Init(Cons As CConsult)
    chkCauseOfDeath.width = rbSignificantActive.Width
    rbConfidentialYes.width = rbSignificantActive.Width
    rbConfidentialno.width = rbSignificantActive.Width
+   vbox_Providers.width = lblPlan.Width
+   With tvProvidersOfCare
+      .Rows.count = 0
+      .Columns.count = 2
+      .Columns[0].text = "Name"
+      .Columns[1].text = "Contribution to Plan"
+   End With
+   yesno = New String[]
+   yesno.add("Yes")
+   yesno.add("No")
+   
+End
+
+Public Sub Form_Resize()
+   
+   tvProvidersOfCare.Columns[0].width = VBox_GridView.width / 4
+   '  tableview1.Columns[1].width = VBox_GridView.width / 8
+   '  tableview1.Columns[2].width = (VBox_GridView.width * 5) / 8
+   
 End
 
 Public Sub Form_Close()
@@ -272,7 +295,7 @@ Public Function EditArea_AgeOnset_CheckValid() As Boolean
          Return
       Else
          txtYearOnset.text = Year(currentconsult!patient!birthdate) + Val(txtAgeOnset.text)
-         txtAim.SetFocus()
+         txtHistoricalSummary.SetFocus()
          Return True
       End If
    End If
@@ -322,7 +345,9 @@ Public Sub EditArea_TxtBox_GotFocus()
    '-------------------------------------------
    
    Listview1.Visible = False
+   columnview1.Visible = False
    Form_Terms.Visible = False
+   tvProvidersOfCare.Visible = True
    Last.BackGround = Color.rgb(95, 255, 175)
    ReferenceHboxForPopupControls = Last.Parent.Parent
    Select Case Last.tag
@@ -409,6 +434,7 @@ Public Sub HealthIssue_Display()
    '--------------------------------------------------------------------------------
    
    Dim PH_From_View As Collection                            'for easy of readability = member of the view selected
+   Dim POC As New Collection                                 'single provider of care
    
    EditArea_Clear()                                          'clear boxes resets all keys
    bEditing = True
@@ -446,18 +472,33 @@ Public Sub HealthIssue_Display()
    End Select
    With txtHistoricalSummary    'This is also set in FProgressnote Page - need to ensure start of line is showing in that module, as the main split could be 50/50
       .text = PH_From_View!condition_summary
-      .pos = 1
+      .pos = 0
    End With
    txtAgeOnset.text = PH_From_View!age_onset
    txtYearOnset.text = PH_From_View!year_onset
    iAgeOnsetUnits = PH_From_View!age_onset_units
-   With txtManagementSummary
-      .text = PH_From_View!management_summary
-      .pos = 1
+   With txtPlanContributionGP
+      .text = PH_From_View!plan_contribution_gp
+      .pos = 0
+   End With
+   With txtPlanContributionPatient
+      .text = PH_From_View!plan_contribution_patient
+      .pos = 0
+   End With
+   'insert the team care members here
+   If Not IsNull(ph_from_view!providersofcare) Then
+      For Each POC In ph_from_view!providersofcare
+         ProvidersOfCare.Add(POC, ProvidersOfCare.count)
+      Next  
+      tvProvidersOfCare_Reload
+   End If   
+   With txtHealthNeed
+      .text = PH_From_View!health_need
+      .pos = 0
    End With
    With txtAim
       .text = PH_From_View!aim_of_plan
-      .pos = 1
+      .pos = 0
    End With
    rbSignificantActive.value = PH_From_View!active
    rbMajor.value = PH_From_View!major
@@ -474,6 +515,27 @@ Public Sub HealthIssue_Display()
    chkRiskFactor.Value = PH_From_View!risk_factor
    EditArea_Notify_DataChange(False)
    bexit = False  
+   
+End
+
+Public Sub tvProvidersOfCare_Reload()
+   '----------------------------------------------------------------
+   'Called either when first loading the providers of care tableview
+   'or if provider of care has been deleted
+   '-----------------------------------------------------------------  
+   
+   Dim POC As Collection
+   
+   tvProvidersOfCare.Clear
+   tvProvidersOfCare.rows.Count = 0
+   For Each POC In ProvidersOfCare
+      Inc tvProvidersOfCare.Rows.Count
+      tvProvidersOfCare[tvProvidersOfCare.Rows.count - 1, 0].Text = POC!wholename & " (" & POC!occupation & ")"
+      tvProvidersOfCare[tvProvidersOfCare.Rows.count - 1, 1].text = POC!contribution_to_plan
+      If tvProvidersOfCare.Rows.count > 3 Then
+         HBox_GridView_Providers.height += 28
+      Endif
+   Next
    
 End
 
@@ -511,32 +573,7 @@ Public Sub EditArea_Clear()
    'Clears the editing area - ie clears all txtboxes, checkboxes and
    'resets all variables, sets foreground of error message to white
    'to make them 'disappear'
-   'clin_history.data_past_history has these fields
-   ' removed me: kk=I checked this was set
-   '   pk serial
-   '   fk_consult          kk
-   '   age_onset           KK
-   '   age_onset_units
-   '   description         kk
-   '   notes               kk
-   '   fk_laterality       kk
-   '   year_onset          KK
-   '   active              kk
-   '   operation           kk
-   '   cause_of_death      kk
-   '   confidential        kk
-   '   major             Inc inbox_auto_process_counter
-   '   deleted             kk
-   '   year_onset_uncertain  kk
-   '   management_summary    kk
-   '   condition_summary     kk
-   '   team_care_members  ---------
-   '   risk_factor              kk
-   '   fk_coding_system integer kk
-   '   fk_code integer          kk
-   '
-   '   FIXME RICHARD remove hard code for coding system to config
-   'fixme richard to allow year or month units
+   
    '----------------------------------------------------------------
    
    bExit = True
@@ -560,6 +597,11 @@ Public Sub EditArea_Clear()
       .text = "Health Issue"
    End With
    Vbox_EditingArea.Enabled = False
+   ProvidersOfCare = New Collection 
+   With tvProvidersOfCare
+      .Rows.count = 0
+      .Clear
+   End With
    bExit = False
    
 End
@@ -678,19 +720,87 @@ Public Function ProgressNotes_Summary(PH As CRow) As String
          sText = Trim(sText) & "."
       End If
    End If
+   ' If PH!management_summary Then          'will always exist even if "" string
+   '    sText &= "<BR>- the management plan is to "
+   '    sText &= LCase(Left(PH!management_summary)) & Right(PH!management_summary, Len(PH!management_summary) - 1)
+   ' End If
+   sText &= "<BR>"
+   If Not IsNull(ph!plan_contribution_gp) Then
+      sText &= "GP will " & ph!plan_contribution_gp & ". "
+   Endif
+   If Not IsNull(PH!plan_contribution_patient) Then
+      sText &= "Patient will " & PH!plan_contribution_patient & ". "
+   Endif
+   If Not IsNull(Ph!plan_contribution_others) Then
+      sText &= Ph!plan_contribution_others & "."
+   End If
+   Return sText
+   
+End
+
+Public Function ProgressNotes_Summary_orig_pre_gpmp(PH As CRow) As String
+   '---------------------------------------------------------------------
+   'Note this is sort-of-duplicated in FClinical.Care_Plan_construct_html
+   'so probably should change design and combine
+   '---------------------------------------------------------------------
+   
+   '  Dim PH As Collection = currentPastHistory 'for ease of typing
+   Dim sText As String
+   ' Dim sResponsible_Table_start As String = ""
+   ' 
+   ' "<TABLE WIDTH=100%  BORDER=0 CELLPADDING=1 CELLSPACING=0>"
+   ' "<COL WIDTH=38%>"
+   ' "<COL WIDTH=54%>"
+   ' "<COL WIDTH=10%>"
+   ' Dim sResponsible_Table_row_template As String = ""
+   ' 
+   ' "<TR VALIGN=TOP>"
+   ' "<TD WIDTH=38%>"
+   ' "<P ALIGN=LEFT><small><B>%wholename</B></small><BR> %address</P>"
+   ' "</TD>"
+   ' "<TD WIDTH=54%>"
+   ' "<P ALIGN=LEFT>%responsibilities</P>"
+   ' "</TD>"
+   ' "<TD WIDTH=10%>"
+   ' "<P ALIGN=LEFT>%comms</P>"
+   ' "</TD>"
+   ' "</TR>"
+   
+   sText = "<BR><B>" & UCase(PH!description) & "</B><BR>"
+   sText &= "- noted at age " & PH!age_onset
+   If PH!operation = True Then                  'will always exist
+      sText &= " (operation)"
+   End If
+   If Ph.Exist("major") Then                    'may not exist
+      sText &= " considered to be a most significant problem"
+   Else If PH.Exist("active") Then              'may not exist
+      If ph!active = True Then sText &= " considered to be a significant problem"
+   Else If PH.Exists("inactive") Then           'may not exist
+      If PH!inactive Then sText &= " considered to be a inactive problem"
+   End If
+   If PH!risk_factor Then                  'will always exist
+      stext &= " and a risk factor "
+   End If
+   stext &= "."
+   If PH!condition_summary Then           'will always exist even if "" string
+      sText &= "<BR>- "
+      sText &= LCase(Left(PH!condition_summary)) & Right(PH!condition_summary, Len(PH!condition_summary) - 1)
+   End If
+   If PH!aim_of_plan Then                 'will always exist even if "" string
+      sText &= "<BR>- the aim of management is to "
+      '-------------------------------------------------------
+      'Ucase first letter, preserve internal caps in sentance.
+      '-------------------------------------------------------
+      sText &= LCase(Left(PH!aim_of_plan)) & Right(PH!aim_of_plan, Len(PH!aim_of_plan) - 1)
+      If Right(Trim(sText), 1) <> "." Then
+         sText = Trim(sText) & "."
+      End If
+   End If
    If PH!management_summary Then          'will always exist even if "" string
       sText &= "<BR>- the management plan is to "
       sText &= LCase(Left(PH!management_summary)) & Right(PH!management_summary, Len(PH!management_summary) - 1)
    End If
-   '---------------------
-   'Now team care members
-   '---------------------
-   ' If TeamCareMembers.count Then
-   '    sText &= "<BR>"
-   '    For Each Member In TeamCareMembers
-   '       sText &= " - " & Member!wholename & "'s responsbilities are: " & Member!responsibility & "<BR>"
-   '    Next
-   ' End If
+   
    Return sText
    
 End
@@ -701,6 +811,8 @@ Public Function Save() As Boolean 'called from FProgressNotesPage.Save also
    ' Returns True is successful (used in FInbox to auto-save new health issues if uses forgets)
    ' Minimally needed data validated
    ' The Audit information is collected here
+   ' CREATE TABLE clin_history.past_history
+   ' (
    '   pk serial NOT NULL,
    '   fk_consult integer NOT NULL,
    '   age_onset integer NOT NULL,
@@ -714,31 +826,30 @@ Public Function Save() As Boolean 'called from FProgressNotesPage.Save also
    '   confidential boolean DEFAULT false,
    '   major boolean DEFAULT false,
    '   deleted boolean DEFAULT false,
-   '   management_summary text DEFAULT ''::text,
+   '   year_onset_uncertain boolean DEFAULT false,
    '   condition_summary text DEFAULT ''::text,
    '   risk_factor boolean DEFAULT false,
    '   fk_coding_system integer NOT NULL, -- key to coding.lu_coding_system containing name of coding system ...
    '   fk_code text,
    '   aim_of_plan text,
-   '   fk_progressnote integer,
-   '   clin_consult.ProgressNote:
-   '   pk serial NOT NULL,
-   '   fk_consult integer,
-   '   notes text,
-   '   fk_section integer,
-   '   fk_code bigint,
-   '   problem text,
-   '   fk_problem integer,
-   '   fk_audit_action integer DEFAULT 1, fk_code
-   '   linked_table regclass,
-   '   fk_row integer,
-   '   fk_audit_reason integer,sString
-   '   deleted boolean DEFAULT false,
-   
+   '   health_need text,
+   '   fk_progressnote integer, -- foreign key to clin_consult.progressnotes table, used only during each consultation...
+   '   plan_contribution_gp text,
+   '   plan_contribution_patient text,
+   '   plan_contribution_others text,
+   '   CONSTRAINT past_history_pkey PRIMARY KEY (pk )
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );FClini
    '--------------------------------------------------
+   
    Dim sProgressNotes As String
    Dim PastHistory As CRow
    Dim ProgressNote As CRow
+   Dim ProviderOfCare As CRow 
+   Dim member As Collection  
+   Dim sString As String
    
    If Vbox_EditingArea.Padding = 0 Then
       Return  'the outer vbox if no padding = no change of data
@@ -746,6 +857,7 @@ Public Function Save() As Boolean 'called from FProgressNotesPage.Save also
    If Not Valid_EditArea_Contents() Then
       Return
    End If
+   
    PastHistory = New CRow
    If pk_pasthistory <> 0 Then
       PastHistory.put_unchanged(pk_pasthistory, "pk_pasthistory")
@@ -781,19 +893,81 @@ Public Function Save() As Boolean 'called from FProgressNotesPage.Save also
    Else
       PastHistory!confidential = False
    End If
-   PastHistory!management_summary = Trim(txtManagementSummary.text)
-   PastHistory!condition_summary = Trim(txtHistoricalSummary.text)
+   
+   PastHistory!health_need = modUtilGUI.Strip_Last_Character(Lower(txtHealthNeed.text), True)  'rips of last period or comma
+   PastHistory!plan_contribution_gp = modUtilGUI.Lcase_Word_First_Letter(modUtilGUI.Strip_Last_Character(txtPlanContributionGP.text, True))
+   PastHistory!plan_contribution_patient = modUtilGUI.Lcase_Word_First_Letter(modUtilGUI.Strip_Last_Character(txtPlanContributionPatient.text, True))
+   sstring = ""
+   For Each member In ProvidersOfCare
+      sString &= member!wholename & " (" & member!occupation & ") will "
+      sstring &= member!contribution_to_plan & ". "
+   Next
+   PastHistory!plan_contribution_others = modUtilGUI.Strip_Last_Character(sString, True)
+   PastHistory!condition_summary = modUtilGUI.Strip_Last_Character(txtHistoricalSummary.text, True)
    If chkRiskFactor.value = True Then
       PastHistory!risk_factor = True
    Else
       PastHistory!risk_factor = False
    End If
-   PastHistory!aim_of_plan = Trim(txtAim.text)
+   PastHistory!aim_of_plan = modUtilGUI.Strip_Last_Character(txtAim.text, True)
    PastHistory!fk_coding_system = fk_coding_system
    PastHistory!fk_code = fk_code
    sProgressNotes = ProgressNotes_Summary(PastHistory)
    modDBConnect.BeginTrans()
    PastHistory.Save("clin_history.past_history", "pk_pasthistory")
+   '----------------------------------------------------------------------------------
+   'Now link any providers of care to the past history item
+   ' CREATE TABLE clin_history.link_pasthistory_providers
+   ' (
+   '   pk serial NOT NULL,
+   '   fk_pasthistory integer NOT NULL,
+   '   fk_branch integer,
+   '   fk_employee integer,
+   '   fk_person integer,
+   '   deleted boolean DEFAULT false,
+   '   contribution_to_plan text,
+   '   CONSTRAINT link_pasthistory_providers_pkey PRIMARY KEY (pk ),
+   '   CONSTRAINT link_pasthistory_providers_fk_branch_fkey FOREIGN KEY (fk_branch)
+   '       REFERENCES contacts.data_branches (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT link_pasthistory_providers_fk_employee_fkey FOREIGN KEY (fk_employee)
+   '       REFERENCES contacts.data_employees (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT link_pasthistory_providers_fk_pasthistory_fkey FOREIGN KEY (fk_pasthistory)
+   '       REFERENCES clin_history.past_history (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT link_pasthistory_providers_fk_person_fkey FOREIGN KEY (fk_person)
+   '       REFERENCES contacts.data_persons (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   '------------------------------------------------------------------------------------
+   For Each member In ProvidersOfCare
+      ProviderOfCare = New CRow
+      If member!fk_provider_of_care Then
+         ProviderOfCare.put_unchanged(member!fk_provider_of_care, "fk_provider_of_care")
+      End If   
+      If member!fk_branch Then
+         ProviderOfCare!fk_branch = member!fk_branch
+      Else
+         member!fk_branch = Null
+      End If   
+      If member!fk_employee Then 
+         ProviderOfCare!fk_employee = member!fk_employee
+      Else
+         ProviderOfCare!fk_employee = Null
+      End If
+      If member!fk_person Then 
+         ProviderOfCare!fk_person = member!fk_person
+      Else
+         ProviderOfCare!fk_person = Null
+      End If   
+      ProviderOfCare!fk_pasthistory = PastHistory!pk_pasthistory
+      ProviderOfCare!contribution_to_plan = member!contribution_to_plan
+      ProviderOfCare.Save("clin_history.link_pasthistory_providers", "fk_provider_of_care")
+   Next
    '----------------------
    'Save the progress note
    '----------------------
@@ -820,11 +994,172 @@ Public Function Save() As Boolean 'called from FProgressNotesPage.Save also
       FClinical.Refresh_AllPreviousNotes()
       FClinical.Refresh_Section(const.cSection_HealthSummary)    'check if health summary showing, if so update it as it has occupations on it
    End If  
+   Try FGPMPTCA.TCM_Providers_Update_Problems_Static() 
+   Try FGPMPTCA.GPMP_Update()
+   
    If embedded_in_form = "FInbox" Then
       Try FInbox.Previous_Notes_Refresh() 'tab may not be open
    Endif
    Vbox_EditingArea.Padding = 0
    Reload()
+   
+End 
+
+
+Public Sub ColumnView1_KeyPress()
+   '--------------------------------------------------------------
+   'This is the popup list of persons selected to be a team member
+   '--------------------------------------------------------------   
+   
+   If Key.code = Key.return Then columnview1_DblClick 
+   
+End
+
+Public Sub columnview1_DblClick()
+   '--------------------------------------------------------------
+   'This is the popup list of persons selected to be a team member
+   '--------------------------------------------------------------  
+   
+   columnview1.MoveCurrent
+   columnview1.Visible = False   
+   tvProvidersOfCare.Visible = True  
+   Person_Select(Persons[columnview1.Item.key])  
+   'tvProvidersOfCare.SetFocus
+   ' tvProvidersOfCare.column = 2 
+  '  tvProvidersOfCare_Click()  
+   ' tvProvidersOfCare.Edit()
+Catch
+   Return 'still the same old columnview problem of null key
+   
+End
+
+Public Sub Person_Get()
+   '-------------------------------------------------------------
+   'Gets a list of persons who could be sole traders or employees
+   '-------------------------------------------------------------
+   
+   Dim address As String
+   Dim x As Integer
+   Dim person As Collection
+   
+   With columnview1
+      .Visible = False
+      .Columns.count = 4
+      .Clear
+   End With
+   If Trim(txtProvidersOfCare.text) = "" Then Return
+   lblMeasure.font = columnview1.Font
+   'get union of non patient persons and employees exclude records where person left the address
+   persons = modUtil.Copy_Collection_Keyed_Sequentially(modReferralsDBI.Person_Get_By_Surname(Trim(txtProvidersOfCare.text), True))
+   If persons.count <> 0 Then
+      For Each person In persons
+         If Not (person!retired = True Or person!fk_status = const.Employee_status_leftOrganisation) Then   'exlude retired or persons left this address
+            columnview1.Add(x, 0)
+            columnview1[x][0] = person!wholename
+            columnview1[x][1] = "(" & person!occupation & ") "
+            If Not IsNull(person!organisation) Then
+               columnview1[x][2] = person!organisation & " " & person!branch
+               If Not IsNull(person!street1) Then address = person!street1 
+               If Not IsNull(person!street2) Then address &= " " & person!street2
+               Try address &= person!town & " " & person!postcode
+               columnview1[x][3] = address
+            Else
+               Try columnview1[x][2] = Trim(person!street1 & " " & person!street2)
+               Try columnview1[x][3] = person!town & " " & person!postcode
+            Endif
+            Inc x
+         End If   
+         
+      Next
+      If columnview1.count Then 
+         modUtilGui.Columnview_Columns_Set_Size(columnview1, lblmeasure)
+         With columnview1
+            .tag = txtProvidersOfCare
+            .Visible = True
+            .Raise
+         End With
+         tvProvidersOfCare.Visible = False  
+      End If   
+   End If
+   
+End
+
+Public Sub tvProvidersOfCare_Save(Row As Integer, Column As Integer, Value As String) 
+   
+   If column <> 0 Then 
+      tvProvidersOfCare[Row, Column].text = Value 
+      ProvidersOfCare[row]!contribution_to_plan = value
+      EditArea_Notify_DataChange(True)
+      Print "saving....." & tvProvidersOfCare[Row, Column].text & Str(row)
+   End If 
+   
+End
+
+Public Sub tvProvidersOfCare_Click()
+   
+   'tvProvidersOfCare.Row = tvProvidersOfCare.Row
+   Select Case tvProvidersOfCare.Column
+         '  Case 1
+         
+         '  TableView1.Edit(yesno, True)
+      Case 1
+         tvProvidersOfCare.Edit()
+   End Select
+   
+End
+
+Public Sub Person_Select(person As Collection)
+   '-----------------------------------------------------------------------------------------
+   'User selects person to send letter to from popup list
+   'Remembering that the view contains person with addresses in organisations or sole traders
+   'Hence all the Try's. Also, an organisation or person can be in the database 'name only'
+   'without associated address. Bumma eh!
+   '------------------------------------------------------------------------------------------
+   
+   Dim TCM As New Collection
+   
+   If IsNull(ProvidersOfCare) Then ProvidersOfCare = New Collection
+   If person!occupation = "unknown" Then
+      Message.Info("You cannot add a provider when you have not entered their occupation in the contacts database.\n\nYou should rectify this before proceeding.")
+      Return
+   Else
+      TCM!wholename = person!wholename
+      If person!fk_person Then 
+         TCM!fk_person = person!fk_person  'these can be 0, removing the 0 fixme 
+      Else 
+         TCM!fk_person = Null
+      End If   
+      If person!fk_branch Then   '  tvProvidersOfCare_Click()  
+  '  tvProvidersOfCare_Click()  
+
+         TCM!fk_branch = person!fk_branch
+      Else
+         TCM!fk_branch = Null
+      End If
+      If person!fk_employee Then
+         TCM!fk_employee = person!fk_employee
+      Else
+         TCM!fk_employee = Null
+      End If   
+      TCM!occupation = person!occupation
+      ProvidersOfCare.Add(TCM, ProvidersOfCare.count)
+       txtProvidersOfCare.text = ""
+      Inc tvProvidersOfCare.Rows.Count
+      tvProvidersOfCare[tvProvidersOfCare.Rows.count - 1, 0].Text = person!title & " " & person!firstname & " " & person!surname & " (" & person!occupation & ")"
+      Wait
+      If tvProvidersOfCare.Rows.Count > 3 Then
+         HBox_GridView_Providers.Height += 28
+      Endif
+      EditArea_Notify_DataChange(True)
+      tvProvidersOfCare.SetFocus
+      tvProvidersOfCare.row = tvProvidersOfCare.Rows.count - 1
+      tvProvidersOfCare.column = 2 
+      tvProvidersOfCare.Edit()
+   End If   
+   ' With txtProvidersOfCare
+   '    .text = ""
+   '    .SetFocus
+   ' End With
    
 End
 
@@ -832,6 +1167,9 @@ Public Function Valid_EditArea_Contents() As Boolean
    '--------------------------------------------------------------------
    'validates the contents of edit area returns FALSE if invalid
    '-------------------------------------------------------------------
+   
+   Dim tablerow As Integer
+   Dim member As Collection
    
    If txtCondition.text = "" Then
       txtCondition.SetFocus()
@@ -849,12 +1187,26 @@ Public Function Valid_EditArea_Contents() As Boolean
       txtAgeOnset.SetFocus()
       Return
    End If
-   If Trim(txtManagementSummary.text) <> "" Then
+   If Trim(txtPlanContributionGP.text) <> "" Then
       If txtAim.text = "" Then
          txtAim.SetFocus()
          Return
       End If
    End If
+   '------------------------------------------------------------------------
+   'Now the team care members, I find the table view storing data erratic
+   'so using the guarrenteed Collection represented by col (0)=name
+   'and extracting the data from the second column (1) the task contribution
+   '------------------------------------------------------------------------
+   For Each member In ProvidersOfCare
+      If tvProvidersOfCare[tablerow, 1].Text = "" Then   
+         Message.Title = "Care Providers"
+         Message.Info("Missing care provider information, please check the providers grid and re-enter the data, making sure you press the enter key")
+         Return   
+      End If   
+      member!contribution_to_plan = tvProvidersOfCare[tablerow, 1].Text
+      Inc tablerow   
+   Next
    Return True
    
 End
@@ -864,6 +1216,8 @@ Public Sub EditArea_TxtBox_KeyRelease()
    If bExit Then Return
    
    Select Case Last.tag
+      Case "find provider"
+         Person_Get
       Case "problem"
          
       Case "coded term"
@@ -883,6 +1237,11 @@ Public Sub EditArea_TxtBox_Change()
    End If
    
    Select Case Last.tag
+      Case "find provider"
+         If Trim(Last.text) = "" Then
+            columnview1.Visible = False   
+            tvProvidersOfCare.Visible = True
+         Endif
       Case "problem"
          teForSpelling.Text = Last.text
          Print teForSpelling.Text
@@ -901,7 +1260,7 @@ Public Sub EditArea_TxtBox_Change()
          teForSpelling.Text = Last.text
          If InStr(Last.text, "\n\n") Then
             Last.text = Replace(Last.text, "\n\n", "")
-            txtManagementSummary.SetFocus()
+            txtPlanContributionGP.SetFocus()
          End If
       Case "age onset"
          '----------------------------------------
@@ -915,7 +1274,7 @@ Public Sub EditArea_TxtBox_Change()
          If Len(Trim(txtYearOnset.text)) = 0 Then
             txtAgeOnset.text = ""
          End If
-      Case "management plan"
+      Case "contribution cp", "contribution patient"
          teForSpelling.Text = Last.text
          If InStr(Last.text, "\n\n") Then
             Last.text = Replace(Last.text, "\n\n", "")
@@ -967,7 +1326,7 @@ Public Function EditArea_ExcludeKeys(keycode As Integer, tag As String) As Boole
    '-----------------------------------------------------------
    
    Select Case Tag
-      Case "problem", "coded term", "historical summary", "management plan", "responsibility", "aim of plan", "care plan component", "contribution", "member"
+      Case "problem", "coded term", "historical summary", "contribution gp", "contribution patient", "responsibility", "aim of plan", "find provider", "health need"
          bKeyValid = True
       Case "age onset"
          bKeyValid = modUtilGUI.AllowKeys(const.AllowKeys_NumbersOnly, keycode)
@@ -1035,17 +1394,26 @@ Public Sub EditArea_TxtBox_KeyPress()
                EditArea_YearOnset_CheckValid()
                txtHistoricalSummary.SetFocus
             Case "historical summary"
-               txtAim.SetFocus
+               txtHealthNeed.SetFocus
+            Case "health need"
+               txtAim.SetFocus 'the goals
             Case "aim of plan"
-               txtManagementSummary.SetFocus()
-            Case "management plan"
-               If Trim(txtManagementSummary.text) = "" Then
-                  txtManagementSummary.text = ""
+               txtPlanContributionGP.SetFocus
+            Case "contribution gp"
+               If Trim(txtPlanContributionGP.text) = "" Then
+                  txtPlanContributionGP.text = ""
                   Last.pos = 0
                Endif
-               txtManagementSummary.SetFocus() 'Stay where you are
+               Last.text = Replace(Last.text, "\n\n", "\n")
+               txtPlanContributionPatient.SetFocus 
+            Case "contribution patient"
+               If Trim(txtPlanContributionPatient.text) = "" Then
+                  txtPlanContributionGP.text = ""
+                  Last.pos = 0
+               Endif
+               Last.text = Replace(Last.text, "\n\n", "\n")
+               txtProvidersOfCare.SetFocus
          End Select
-         
       Case Key.Down
          If listview1.Visible Then
             listview1.SetFocus
@@ -1067,6 +1435,13 @@ Public Sub EditArea_TxtBox_KeyPress()
             listview2.Item.Selected = True
             Return
          End If
+         If columnview1.Visible Then
+            With columnview1
+               .SetFocus
+               .MoveFirst
+               .Item.Selected = True   
+            End With
+         Endif
    End Select
 Catch
    Return
@@ -1129,7 +1504,6 @@ Public Sub Settings_Save()
 End
 
 Private Sub Settings_Load()
-   '[317,530]'
    
    If bEmbedded Then
       VSplit_PastHistory.Layout = Settings["FPastHistory_Embedded_" & embedded_in_form & "/VSplit_PastHistory", modUtilGUI.VSplit([299, 548])]
@@ -1227,13 +1601,6 @@ Public Sub Spelling_Check()
    
 End
 
-Public Sub Form_Resize()
-   
-   Form_Terms.width = txtCodedTerm.width
-   VSplit_PastHistory_Resize
-   
-End
-
 Public Sub VSplit_PastHistory_Resize()
    
    If Form_Terms.Visible Then
@@ -1267,6 +1634,267 @@ Public Sub EditArea_Buttons_Click()
    
 End
 
-Public Sub Form_Open()
+Public Sub VBox_GridView_Leave()
+   
+   ColumnView1.Visible = False
+   tvProvidersOfCare.Visible = True  
    
 End
+
+Public Sub tvProvidersOfCare_Leave()
+   
+   tvProvidersOfCare.Refresh()
+
+End
+
+Public Sub tvProvidersOfCare_KeyPress()
+   
+   If Key.code = Key.Return Then
+      Print "pressed enter"
+   Endif
+   
+End
+
+Public Function Strip_Last_Period(txt As String) As String
+   'strip a fullstop off the end of a sentance   
+   
+   txt = Trim(txt)
+   If Right(txt, 1) = "." Then
+      txt = Left(txt, Len(txt) - 1)
+   Endif
+   Return txt 
+   
+End
+
+Public Sub Button1_Click()
+   
+   Print tvProvidersOfCare[0, 1].Text
+   Print tvProvidersOfCare[0, 2].Text
+Catch
+   Return   
+   
+End
+
+Public Sub tvProvidersOfCare_Menu()
+   
+   Print tvProvidersOfCare.Row
+   tvProvidersOfCare_Row = tvProvidersOfCare.Row
+   If Vbox_EditingArea.Enabled Then    
+      If tvProvidersOfCare.Rows.count Then
+         mnuProviders.Popup
+      Endif
+   End If   
+   
+End
+
+Public Sub mnuProviders_Click()
+   '  ProvidersOfCare
+   
+   Select Case Last.tag
+      Case "delete"
+         ProviderOfCare_Delete   
+      Case "font"
+         modUtilGUI.Columnview_SetFont(tvProvidersOfCare, "FPastHistory")
+      Case "help"
+         modUtilGUI.NotImplemented("Help for this section", "EasyGP")    
+   End Select
+   
+End
+
+Public Sub ProviderOfCare_Delete()
+   '------------------------------------------------------------------------- 
+   'Allow deletion of provider. If a previous GPMP printed then their details
+   'will always be retained in the copy of the plan in documents
+   're-order the provider of care collection 0-n
+   're-display members in the tableview
+   '------------------------------------------------------------------------- 
+   
+   Dim sMsg As String
+   
+   Print tvProvidersOfCare_Row
+   Print providersofcare[tvProvidersOfCare_Row]
+   Print tvProvidersOfCare.Row, '  FGPMPTCA.team_care_member_remove(me.Tag!fk_provider " is the row"
+   Message.Title = "Delete Care Provider"
+   sMsg = "You have decided to delete the following care provider\n\n"
+   sMsg &= providersofcare[tvProvidersOfCare.Row]!wholename & " (" & providersofcare[tvProvidersOfCare.Row]!occupation & ")"
+   sMsg &= "\n\nDo you wish to continue?"
+   If Message.Question(sMsg, "Yes - Delete Provider", "No") = 2 Then Return    
+   If Not IsNull(providersofcare[tvProvidersOfCare_Row]!pk) Then                                                'the row in the grid has not yet been deleted
+      If modPastHistoryDBI.ProviderOfCare_Delete(providersofcare[tvProvidersOfCare_Row]!pk) Then
+         modDBConnect.CommitTrans()   
+         '---------------------------------------------------------------------------                                               
+         'if this provider was in a team care arrangement being worked on remove them
+         'and optionally - the true flag, remove their tab if they in fact have one
+         'Next updates TCM's list of problems they are associated with  ?fixme ?still need   
+         '----------------------------------------------------------------------------
+         Try FGPMPTCA.Team_Care_Member_Remove(providersofcare[tvProvidersOfCare.Row]!wholename, True)  
+         Try FGPMPTCA.TCM_Providers_Update_Problems_Static()                                                              
+      End If   
+   End If   
+   providersofcare.Remove(tvProvidersOfCare_Row)                      'remove collection member
+   ProvidersOfCare = modUtil.Copy_Collection_Keyed_Sequentially(ProvidersOfCare)  'resequence rows 0-n
+   tvProvidersOfCare_Reload()                                         'reload the grid
+ 
+End
+
+Public Sub ProvidersOfCare_Refresh_Collection()
+   
+   ' Refreshes the provider of care collection
+   Dim POC As Collection
+   
+   ProvidersOfCare = modUtil.Copy_Collection_Keyed_Sequentially(POC)
+   
+End
+'the latest version of past history
+' CREATE TABLE clin_history.past_history
+' (
+'   pk serial NOT NULL,
+'   fk_consult integer NOT NULL,
+'   age_onset integer NOT NULL,
+'   age_onset_units integer NOT NULL,
+'   description text NOT NULL,
+'   fk_laterality integer DEFAULT 0,
+'   year_onset text NOT NULL,
+'   active boolean DEFAULT false,
+'   operation boolean DEFAULT false,
+'   cause_of_death boolean DEFAULT false,
+'   confidential boolean DEFAULT false,
+'   major boolean DEFAULT false,
+'   deleted boolean DEFAULT false,
+'   year_onset_uncertain boolean DEFAULT false,
+'   condition_summary text DEFAULT ''::text,
+'   risk_factor boolean DEFAULT false,
+'   fk_coding_system integer NOT NULL, -- key to coding.lu_coding_system containing name of coding system ...
+'   fk_code text,
+'   aim_of_plan text,
+'   fk_progressnote integer, -- foreign key to clin_consult.progressnotes table, used only during each consultation...
+'   plan_contribution_gp text,
+'   plan_contribution_patient text,
+'   plan_contribution_others text,
+'   health_need text,
+'   CONSTRAINT past_history_pkey PRIMARY KEY (pk )
+' )
+' WITH (
+'   OIDS=FALSE
+' );
+
+' version 270 past history table
+' Create TABLE past_history(
+'     pk integer Not Null,
+'     fk_consult integer Not Null,
+'     age_onset integer Not Null,
+'     age_onset_units integer Not Null,
+'     description text Not Null,
+'     fk_laterality integer Default 0,
+'     year_onset text Not Null,
+'     active boolean Default False,
+'     operation boolean Default False,
+'     cause_of_death boolean Default False,
+'     confidential boolean Default False,
+'     major boolean Default False,
+'     deleted boolean Default False,
+'     year_onset_uncertain boolean Default False,
+'     management_summary text Default ''::text,
+'     condition_summary text Default ''::text,
+'     risk_factor boolean Default False,
+'     fk_coding_system integer Not Null,
+'     fk_code text,
+'     aim_of_plan text,
+'     fk_progressnote integer
+' );
+' 
+'old
+' create table clin_history.gp_management_plans
+' (pk serial primary key,
+'   fk_consult integer not null,
+'   date_claimed timestamp without time zone NOT NULL,
+'   explained_steps_involved boolean default false,
+'   patient_agrees_to_plan_and_goals boolean default false,
+'   patient_has_carer boolean default false,
+'   copy_offered_to_patient boolean default false,
+'   patient_permits_carer_to_have_copy boolean default false,
+'   copy_offered_to_carer boolean default false,
+'   review_date date not null,
+'   fk_document integer not null,
+'   latex text not null,
+'   deleted boolean default false,
+'   exceptional_circumstances_reason text default null,
+'   CONSTRAINT    gp_management_plans_fk_consult_fkey FOREIGN KEY   (fk_consult)
+'   REFERENCES clin_consult.consult (pk) MATCH SIMPLE
+'       ON UPDATE NO ACTION ON DELETE NO ACTION,
+'   CONSTRAINT gp_management_plans_fk_document_fkey FOREIGN KEY (fk_document)
+'   REFERENCES documents.documents (pk) MATCH SIMPLE
+'       ON UPDATE NO ACTION ON DELETE NO ACTION   
+' )
+' ;
+' 
+' 
+' COMMENT ON COLUMN clin_history.gp_management_plans.date_claimed is 'the actual date the item number claimed';
+' 
+'   COMMENT ON TABLE clin_history.gp_management_plans is 
+' 'table containing details of AU GP Management Plans 
+'  These must conform to legislative requirements for item numbers eg 721 and 723';
+'  
+'   COMMENT ON COLUMN clin_history.gp_management_plans.exceptional_circumstances_reason is
+'   'if not null, then the reason the plan is being done within 12 months must be documented';
+'      
+'  COMMENT ON COLUMN clin_history.gp_management_plans.fk_document is
+'  'When a General Practitioner management plan is saved, a copy of the LaTeX is kept as
+'   a permanant copy in the documents table, i.e a GPMP ''frozen in time''';
+'   
+'  COMMENT ON COLUMN clin_history.gp_management_plans.fk_consult is
+'   ' key to cin_consult.consult points to the fk_patient and fk_staff who signed off
+'     the GPMP';
+'  COMMENT ON COLUMN clin_history.gp_management_plans.latex is
+'   ' copy of the LaTeX of the plan';
+'   
+' ALTER TABLE clin_history.gp_management_plans owner to easygp;
+' GRANT ALL ON clin_history.gp_management_plans_pk_seq to staff;
+' GRANT ALL on table clin_history.gp_management_plans to staff;
+' 
+
+'New
+' CREATE TABLE clin_history.gp_management_plans
+' (
+'   pk serial NOT NULL,
+'   fk_consult integer NOT NULL, -- key to cin_consult.consult points to the fk_patient and fk_staff who signed off...
+'   date_claimed timestamp without time zone NOT NULL, -- the actual date the item number claimed
+'   explained_steps_involved boolean DEFAULT false,
+'   patient_agrees_to_plan_and_goals boolean DEFAULT false,
+'   patient_has_carer boolean DEFAULT false,
+'   copy_offered_to_patient boolean DEFAULT false,
+'   patient_permits_carer_to_have_copy boolean DEFAULT false,
+'   copy_offered_to_carer boolean DEFAULT false,
+'   review_date date NOT NULL,
+'   fk_document integer NOT NULL, -- When a General Practitioner management plan is saved, a copy of the LaTeX is kept as...
+'   latex text NOT NULL, -- copy of the LaTeX of the plan
+'   deleted boolean DEFAULT false,
+'   exceptional_circumstances_reason text, -- if not null, then the reason the plan is being done within 12 months must be documented
+'   CONSTRAINT gp_management_plans_pkey PRIMARY KEY (pk ),
+'   CONSTRAINT gp_management_plans_fk_consult_fkey FOREIGN KEY (fk_consult)
+'       REFERENCES clin_consult.consult (pk) MATCH SIMPLE
+'       ON UPDATE NO ACTION ON DELETE NO ACTION,
+'   CONSTRAINT gp_management_plans_fk_document_fkey FOREIGN KEY (fk_document)
+'       REFERENCES documents.documents (pk) MATCH SIMPLE
+'       ON UPDATE NO ACTION ON DELETE NO ACTION
+' )
+' WITH (
+'   OIDS=FALSE
+' );
+' ALTER TABLE clin_history.gp_management_plans
+'   OWNER TO richard;
+' GRANT ALL ON TABLE clin_history.gp_management_plans TO richard;
+' GRANT ALL ON TABLE clin_history.gp_management_plans TO easygp;
+' GRANT ALL ON TABLE clin_history.gp_management_plans TO staff;
+' COMMENT ON TABLE clin_history.gp_management_plans
+'   IS 'table containing details of AU GP Management Plans 
+'  These must conform to legislative requirements for item numbers eg 721 and 723';
+' COMMENT ON COLUMN clin_history.gp_management_plans.fk_consult IS ' key to cin_consult.consult points to the fk_patient and fk_staff who signed off
+'     the GPMP';
+' COMMENT ON COLUMN clin_history.gp_management_plans.date_claimed IS 'the actual date the item number claimed';
+' COMMENT ON COLUMN clin_history.gp_management_plans.fk_document IS 'When a General Practitioner management plan is saved, a copy of the LaTeX is kept as
+'   a permanant copy in the documents table, i.e a GPMP ''frozen in time''';
+' COMMENT ON COLUMN clin_history.gp_management_plans.latex IS ' copy of the LaTeX of the plan';
+' COMMENT ON COLUMN clin_history.gp_management_plans.exceptional_circumstances_reason IS 'if not null, then the reason the plan is being done within 12 months must be documented';
+' 
+' 

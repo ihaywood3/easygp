@@ -1,0 +1,312 @@
+' Gambas class file
+
+Private form_referrals As FReferrals
+Private DictatingDoctors As Collection 
+Private Form_Help As FHtmlViewer
+Private form_progressnotes As FProgressNoteEditor
+Private Patients As Collection
+Private Patient As Collection
+Private bExit As Boolean
+Private currentconsult As CConsult
+
+Public Sub Init()
+   '---------------------------------------------------------------------------------------------------
+   ' Load defaults, Referral form embedded first, the progress notes only if rbProgressNotes is clicked
+   ' --------------------------------------------------------------------------------------------------   
+   '   modEditAreaHelpers.Resize_labels(Vbox_EditArea, lblmeasure)
+   
+   DictatingDoctors = modUtilGUI.LoadCombo(cmbSeenBy, modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.Staff_Get()), "wholename")
+   With form_referrals = New FReferrals(VBox_Referral_Or_Notes)
+      .Embedded_Form_Set(Me.name)
+      .Init(, Me.name)
+      .VBox_Include.Visible = False 
+      .VBox_Inclusions_Saved.visible = True
+      .settings_load  'explicit here needed
+   End With
+   With Form_Help = New FHtmlViewer(Vbox_Help)
+      .tbWebBrowserZoomIn.Visible = True
+      .tbWebBrowserZoomOut.Visible = True
+      '    .Section_Set("Preferences")
+      .Parent_Form_Set(Me.name)
+      Try .WebView1.Zoom = Settings[Me.Name & "/Help_Viewer_Zoom"]
+      .Visible = True 
+   End With
+   With columnview1
+      .Visible = False
+      .Columns.count = 3
+      .Clear
+   End With
+   Settings_Load
+   lblTreatingDoctor.width = form_referrals.Get_EditArea_Label_Width()
+   lblPatient.width = lblTreatingDoctor.Width
+   EditArea_Clear
+   
+End
+
+Public Sub Settings_Save()
+   
+   Settings["FTranscribeLetters/HSplit_Dictate_Letters.layout"] = HSplit_Dictate_Letters.Layout
+   Try form_referrals.Settings_Save
+   
+End
+
+Private Sub Settings_Load()
+   
+   HSplit_Dictate_Letters.layout = Settings["FTranscribeLetters/HSplit_Dictate_Letters.layout", modUtilGUI.HSplit([2, 3])]
+   
+End
+
+Public Sub EditAreaTextBox_GotFocus()
+   
+   columnview1.Visible = False
+   Last.BackGround = Color.rgb(95, 255, 175)
+   If Last.tag = "search" Then
+      With Columnview1
+         .top = Last.Parent.Parent.top + Last.Parent.height + 5 'the padding
+         .left = Last.Parent.left + VBox_Main.padding
+         .width = Last.width  
+         .Visible = False  
+      End With
+   Endif
+   
+End
+
+Public Sub EditAreaTextBox_KeyRelease()
+   
+   Patient_Get
+   
+End
+
+Public Sub Patient_Get()
+   '-------------------------------------------------------------
+   'Gets a list of Patients who could be sole traders or employees
+   '-------------------------------------------------------------
+   
+   Dim address As String
+   Dim x As Integer
+   
+   columnview1.Clear
+   patient = New Collection
+   
+   If Trim(txtFindPatient.text) = "" Then Return
+   lblMeasure.font = columnview1.Font
+   Patients = modContactsDBI.patients_get_firstname_surname(Trim(txtFindPatient.text))
+   Patients.Remove("sql_in_english")
+   Patients = modUtil.Copy_Collection_Keyed_Sequentially(Patients)
+   If Patients.count <> 0 Then
+      For Each patient In Patients
+         columnview1.Add(x, 0)
+         columnview1[x][0] = Patient!wholename
+         columnview1[x][1] = "(" & Patient!occupation & ") "
+         If Not IsNull(Patient!organisation) Then
+            columnview1[x][2] = Patient!organisation & " " & Patient!branch
+            Try address = Trim(Patient!street1 & " " & Patient!street2)
+            Try address &= Patient!town & " " & Patient!postcode
+            columnview1[x][3] = address
+         Else
+            Try columnview1[x][2] = Trim(Patient!street1 & " " & Patient!street2)
+            Try columnview1[x][2] &= Patient!town & " " & Patient!postcode
+         Endif
+         Inc x
+      Next
+      If columnview1.count Then 
+         If Patients.count = 1 Then                              'auto-select single patient
+            columnview1.Visible = False   
+            Patient_Select(patient)
+         Else                                                  'otherwise show a list with resized column widths
+            modUtilGui.Columnview_Columns_Set_Size(columnview1, lblmeasure)
+            With columnview1
+               .tag = txtFindPatient
+               .Visible = True
+               .Raise
+            End With
+         End If
+      End If   
+   End If
+   
+End
+
+Public Sub ColumnView1_KeyPress()
+   
+   If Key.Code = Key.RETURN Then
+      ColumnView1_DblClick()
+   End If
+   
+End
+
+Public Sub ColumnView1_DblClick()
+   '-----------------------------------------------------------
+   'The columnview tag is always a control, usually a textbox
+   'here we read the textbox tag to determine which textbox
+   'poppuped up the columnview
+   '---------------------------------------------------------
+   
+   columnview1.MoveCurrent()
+   Patient_Select(Patients[columnview1.Item.key])
+   columnview1.Visible = False
+   form_referrals.txtName.SetFocus
+Catch
+   Return
+   
+End
+
+Public Sub Patient_Select(patient As Collection)
+   '-----------------------------------------------------------------------------------------
+   'User selects person to send letter to from popup list
+   'Remembering that the view contains person with addresses in organisations or sole traders
+   'Hence all the Try's. Also, an organisation or person can be in the database 'name only'
+   'without associated address. Bumma eh!
+   '------------------------------------------------------------------------------------------
+   
+   bExit = True
+   txtFindPatient.Text = Patient!firstname & " " & Patient!surname & " [" & Format(Patient!birthdate, "dd/mm/yyyy") & "] "
+   txtFindPatient.text &= Trim(Patient!street1 & " " & Patient!street2) & " " & Patient!town & " " & Patient!postcode
+   bExit = False
+   Create_Consult()
+   form_referrals.Reload()
+   
+End
+
+Public Sub EditAreaTextBox_Change()
+   
+   If bexit Then Return 
+   If Last.tag = "search" Then
+      If Trim(txtFindPatient.text) = "" Then
+         EditArea_Clear
+      Endif
+   Endif
+   
+End
+
+Public Sub EditArea_Clear()
+   
+   'modEditAreaHelpers.EditArea_Clear(Vbox_EditArea) 
+   bexit = True
+   txtFindPatient.text = ""
+   cmbSeenBy.index = -1
+   currentconsult = Null
+   ' Vbox_EditArea.Enabled = True
+   form_referrals.Referral_new
+   txtFindPatient.Enabled = False    'don't allow access until have a doctor as need to create consult object using the doctors fk_staff
+   cmbSeenBy.SetFocus
+   
+End
+
+Public Sub EditAreaTextBox_KeyPress()
+   
+   If Key.code = Key.down Then
+      If columnview1.Visible = True Then
+         With columnview1
+            .MoveFirst
+            .SetFocus
+            .Item.selected = True
+         End With
+      Endif
+   Endif
+   
+End
+
+Public Sub editarea_buttons_Click()
+   
+   Select Case Last.tag
+      Case "new"
+         EditArea_Clear
+         
+      Case "print"
+         Print
+      Case "preview"
+         preview
+      Case "save"
+         Save
+   End Select
+   
+End
+
+Public Sub preview()
+   
+End
+
+Public Sub Print()
+   
+End
+
+Public Sub Save()
+   '----------------------------------------------------------------------------------------------
+   'Save the transcripted letter, using the doctors fk_staff to over-ride the fk_staff of the user
+   '----------------------------------------------------------------------------------------------
+   'check what happens to force new if editing.
+   
+   Print DictatingDoctors[cmbSeenBy.index]!fk_staff
+   'If IsNull(form_referrals.currentconsult) Then
+   ' Endif
+   If rbReferral.value = True Then 
+      form_referrals.Save(False)
+   Else
+      form_progressnotes.Save()
+   End If   
+   
+End
+
+Public Sub Create_Consult()
+   
+   currentconsult = New CConsult(patient, const.Consult_Type_Transcribed_Letter, True, DictatingDoctors[cmbSeenBy.index]!fk_staff)
+   form_referrals.Consult_Set(currentconsult)
+   
+End
+
+Public Sub cmbEditArea_KeyPress()
+   
+   If Key.code = Key.return Then
+      txtFindPatient.SetFocus
+   Endif
+   
+End
+
+Public Sub cmbEditArea_Click()
+   
+   form_referrals.Staff_Dictated_Letter = DictatingDoctors[cmbSeenBy.index]!title & " " & DictatingDoctors[cmbSeenBy.index]!wholename
+   With txtFindPatient
+      .Enabled = True   
+      .SetFocus
+   End With
+   
+End
+
+Public Sub rbEditArea_Click()
+   
+   Select Case Last.tag
+      Case "referrals"
+         Try form_progressnotes.Visible = False 
+         form_referrals.Visible = True 
+      Case "notes"
+         If IsNull(currentconsult) Then
+            Stop Event
+            rbReferral.value = True
+            Return
+         End If   
+         form_referrals.Visible = False
+         If IsNull(form_progressnotes) Then
+            With form_progressnotes = New FProgressNoteEditor(VBox_Referral_Or_Notes)
+               .Set_Embedded_In_Form(Me.name)
+               .Init(currentconsult, "")
+               .Hbox_BMICalc.Visible = False  
+               .HSplit_Reasons_For_encounter.Visible = False 
+               .Padding = 10
+               .cmbFonts.Visible = False  
+               .cmbTemplates.Visible = False
+               .tbLoadFile.Visible = False   
+               .tbSaveConsultAsPDF.Visible = False 
+               .tbWebCam.Visible = False
+               .tbDotPoints.Visible = False
+               .tbColours.Visible = False
+               
+            End With
+            With form_progressnotes.lblTemplates
+               .text = ""
+               .expand = True
+            End With
+         Endif
+         form_progressnotes.Visible = True   
+   End Select
+   
+End

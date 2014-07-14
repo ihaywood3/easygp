@@ -1,0 +1,139 @@
+' Gambas class file
+
+' Copyright (C) 2008-2014 Dr. Richard Terry
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'---------------------------------------------------------------------------------
+' PURPOSE   Allow user to add icons representing visual warnings about the patient
+'           e.g could be agressive, alcoholic, drug addict
+'---------------------------------------------------------------------------------
+
+Private TBOption As CToolBarConfig
+Private max_label_width As Integer
+Private obs As Observer
+Private parent_form As String
+Private Available_Warning_Icon As Collection
+Private Available_Warning_Icons As Collection 
+Private icon_path As String 
+Private fk_lu_warning As Integer 
+Private Patients_Warning_icons As Collection
+Private fk_patient As Integer
+' 
+
+Public Sub Init(pk_patient As Integer, icons As Collection) 
+
+   fk_patient = pk_patient
+   Patients_Warning_icons = icons                   'these are the icons already on the patient's warning panel in FClinical toolbar
+   Warning_Panel_Refresh()                 'show existing warnings for the patient
+   Reload()                                'reload available options of icons representing warnings
+   '    
+   
+End
+
+Public Sub Warning_Panel_Refresh()
+   '-------------------------------------------------------
+   'Remove all existing Patients_Warning_icons from the sample toolbar
+   'Reload from the Patients_Warning_icons collection
+   '-------------------------------------------------------
+   
+   Dim hCtrl As Control
+   Dim btn As Collection
+   
+   For Each hCtrl In pnlWarningIcons.Children                       'delete existing icons
+      hCtrl.Delete()
+   Next
+   For Each btn In Patients_Warning_icons                                    'show icons for all we have for this patient
+      modEditAreaHelpers.ToolButton_Create(pnlWarningIcons, btn!icon_path, btn!fk_patient_warning, 32, btn!name, Me)
+   Next
+   
+End
+
+Public Sub Reload()
+   
+   Dim hCtrl As Control
+   
+   For Each hCtrl In ScrollView1.Children 'seems no other way to clear a scrollview
+      hCtrl.Delete()
+   Next
+   Available_Warning_Icons = modPatientWarnings.Available_Warning_Icons_Get()
+   For Each Available_Warning_Icon In Available_Warning_Icons
+      lblMeasure.text = Available_Warning_Icon!name & "   "
+      max_label_width = Max(max_label_width, lblMeasure.Width)
+   Next
+   Me.Title = "Configure Warnings Panel"
+   For Each Available_Warning_Icon In Available_Warning_Icons
+      If parent_form = "Admin" Then icon_path = Available_Warning_Icon!icon_path
+      TBOption = New CToolBarConfig(ScrollView1, Available_Warning_Icon, max_label_width, Parent_Form) As "ToolButton"
+      obs = New Observer(TBOption.$hModuleAddButton) As "tbAdd_Warning"
+      obs = New Observer(TBOption.$hModuleRemoveButton) As "tbRemove_Warning"
+   Next
+   
+End
+
+Public Sub tbAdd_Warning_Click()
+   '--------------------------------------------------------------------------------------------
+   'Adds the icon representing the warning to the toolbar representing what the user already has
+   ' Create table admin.patient_warnings
+   ' (pk serial primary key,
+   '  fk_patient integer not null,
+   '  fk_lu_patient_warning integer not null,
+   '  deleted boolean default false,
+   '  CONSTRAINT patient_warnings_fk_patient FOREIGN KEY (fk_patient)
+   '    REFERENCES clerical.data_patients (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   ' CONSTRAINT patient_warnings_fk_lu_patient_warning FOREIGN KEY (fk_lu_patient_warning) 
+   '    REFERENCES admin.lu_patient_warnings (pk) MATCH SIMPLE
+   '     ON UPDATE NO ACTION ON DELETE NO ACTION
+   ' )
+   ' ;
+   '--------------------------------------------------------------------------------------------
+   
+   Dim newicon As Crow
+   Dim icon As Collection   
+   
+   Stop Event
+   For Each icon In Patients_Warning_icons
+      If icon!fk_lu_patient_warning = Last.Parent.tag Then
+         Message.Info("This icon already exists in your toolbar")
+         Return 
+      Endif
+   Next
+   '---------------------------------------
+   'Not yet on the toolbar, save to backend
+   '---------------------------------------
+   newicon = New CRow
+   newicon!fk_lu_patient_warning = Last.Parent.tag
+   newicon!fk_patient = fk_patient
+   newicon.Save("admin.patient_warnings", "fk_patient_warning")
+   modDBConnect.CommitTrans()
+   Patients_Warning_icons = modPatientWarnings.Warning_Icons_Get_For_Patient(fk_patient)  
+   Warning_Panel_Refresh()
+   FClinical.Warning_Panel_Reload
+
+End
+
+Public Sub tbRemove_Warning_Click()
+   '-----------------------------------
+   'User has clicked on a remove button
+   '-----------------------------------
+   
+   Stop Event
+   Print Last.Parent.tag
+   Print Available_Warning_Icons[Last.Parent.tag]!pk
+   Print Patients_Warning_icons
+   modPatientWarnings.Warning_Icon_Remove(Last.Parent.tag, fk_patient)
+   Patients_Warning_icons = modPatientWarnings.Warning_Icons_Get_For_Patient(fk_patient)  
+   Warning_Panel_Refresh()
+   FClinical.Warning_Panel_Reload()
+
+End
+
+

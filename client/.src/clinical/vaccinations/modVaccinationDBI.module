@@ -19,10 +19,102 @@
 Private $Result As Result
 Private sql As String
 
+Public Function List_Immunisations_As_RichText_String_With_Heading(currentconsult As CConsult) As String
+   '---------------------------------------------------------------------
+   'Used e.g to insert into progress notes - returns list of current imms
+   'with latest only for flu vaccine
+   'FIXME this code is sort-of-duplicated in modprogressnotes
+   '--------------------------------------------------------------------- 
+   
+   Dim vaccination As Collection
+   Dim x As Integer
+   Dim fluvax_year_most_recent As Integer
+   Dim tetanus_year_most_recent As Integer
+   Dim typhoid_year_most_recent As Integer
+   Dim fluvax As Collection
+   Dim tetanus_vax As Collection
+   Dim typhoid_vax As Collection
+   Dim sString As String
+   Dim the_rest As New Collection
+   
+   sSTring = "<B>Immunisations</B><BR>"
+   For Each vaccination In currentconsult!vaccinations_given
+      Select Case Lower(vaccination!schedule)      'date can be 2007, 04/2007 or 01/04/2007
+         Case "influenza"
+            x = 0
+            If IsDate(vaccination!date_given) Then
+               x = Year(Val(vaccination!date_given))
+            Else
+               If Len(vaccination!date_given) = 4 Then
+                  x = Val(vaccination!date_given)
+               Endif
+               If Len(vaccination!date_given) = 6 Then
+                  Try x = Val(Right(vaccination!date_given, 4))
+               Endif
+            End If
+            If x > fluvax_year_most_recent Then
+               fluvax_year_most_recent = x
+               fluvax = modUtil.Copy_Collection(vaccination)
+            Endif
+         Case "tetanus - every 10 years", "tetanus diphtheria pertussis", "tetanus diptheria pertussus polio"
+            x = 0
+            If IsDate(vaccination!date_given) Then
+               x = Year(Val(vaccination!date_given))
+            Else
+               If Len(vaccination!date_given) = 4 Then
+                  x = Val(vaccination!date_given)
+               Endif
+               If Len(vaccination!date_given) = 6 Then
+                  Try x = Val(Right(vaccination!date_given, 4))
+               Endif
+            End If
+            If x > tetanus_year_most_recent Then
+               tetanus_year_most_recent = x
+               tetanus_vax = modUtil.Copy_Collection(vaccination)
+            Endif
+         Case "typhoid"
+            x = 0
+            If IsDate(vaccination!date_given) Then
+               x = Year(Val(vaccination!date_given))
+            Else
+               If Len(vaccination!date_given) = 4 Then
+                  x = Val(vaccination!date_given)
+               Endif
+               If Len(vaccination!date_given) = 6 Then
+                  Try x = Val(Right(vaccination!date_given, 4))
+               Endif
+            End If
+            If x > typhoid_year_most_recent Then
+               typhoid_year_most_recent = x
+               typhoid_vax = modUtil.Copy_Collection(vaccination)
+            Endif
+         Case Else
+            
+            the_rest.Add(vaccination, the_rest.count)
+      End Select
+   Next 
+   Print the_rest
+   If Not IsNull(fluvax) Then
+      sstring &= fluvax!schedule & " " & fluvax!date_given & " " & fluvax!brand & "<BR>"
+   Endif
+   If Not IsNull(tetanus_vax) Then
+      sstring &= tetanus_vax!schedule & " " & tetanus_vax!date_given & " " & tetanus_vax!brand & "<BR>"
+   Endif
+   If Not IsNull(typhoid_vax) Then
+      sstring &= typhoid_vax!schedule & " " & typhoid_vax!date_given & " " & typhoid_vax!brand & "<BR>"
+   Endif
+   For Each vaccination In the_rest 
+      sstring &= vaccination!schedule & " " & vaccination!date_given & " " & vaccination!brand & "<BR>"
+   Next
+   Return sString 
+   
+End
+
 Public Function Vaccination_Type_Check_If_Duplicated(description As String) As Boolean
    '-------------------------------------------------------------------------------------------------
    ' Checks user isn't trying to add an identical type of vaccine in FAdminVaccineDescriptions module
    ' ------------------------------------------------------------------------------------------------
+   
    Dim R As Result
    Dim sql As String
    
@@ -30,15 +122,16 @@ Public Function Vaccination_Type_Check_If_Duplicated(description As String) As B
    sql &= " AND lower(description) LIKE $$" & Lower(description) & "$$"
    R = modDBConnect.exec_query(sql)
    If R.count Then Return True
+   
 End
- 
+
 Public Sub Vaccine_Formulations_Get() As Collection 
    '---------------------------------------------------------------------------------------------- 
    'Gets the formulations for vaccines
    'this is FIXME  a mixup: common has lu_form, ian's drugs have drugs.form, neither
    'are really suitable for loading a combo as only a couple of formulations apply to vaccinations
    '----------------------------------------------------------------------------------------------
-
+   
    Return modDBConnect.exec_query_collection("Select * from clin_vaccination.lu_formulation ") 'not ordered so that injection is at the top most common. 
    
 End
@@ -47,6 +140,7 @@ Public Sub Descriptions_Get(Optional description As String = "") As Collection
    '---------------------------------------------------------------------------- 
    'A Collection of descriptions for vaccines eg measles, mumps, rubella vaccine
    '----------------------------------------------------------------------------
+   
    Dim sql As String
    
    sql = "Select * From clin_vaccination.lu_descriptions where deleted = False "
@@ -95,7 +189,7 @@ Public Function Vaccines_Get_Routes_Administration() As Collection
    '--------------------------------------------------
    'Just get routes of administration for vaccines only
    '--------------------------------------------------
-
+   
    Return modDBConnect.exec_query_collection("Select * from clin_vaccination.vwVaccineRoutesAdministration") 
    
 End
@@ -106,7 +200,7 @@ Public Function Vaccines_Get_By_Brand_Name(vaccine As String, Optional descripti
    'filtered by brand and optionally by description e.g 'influenza'
    'Does not show deleted vaccines, does include inactive vaccines.
    '-------------------------------------------------------------------------------------------------------------------------------
-
+   
    Dim sql As String
    
    sql = "Select * from clin_vaccination.vwVaccines where brand ILIKE $$%" & vaccine & "%$$" 
@@ -134,7 +228,7 @@ Public Function Vaccines_In_Schedules_Get(fk_schedule As Integer) As Collection
    
    ' Return modDBConnect.exec_query_collection("select * from clin_vaccination.vwVaccinesInSchedule1 where fk_schedule = " & fk_schedule & " And date_vaccine_inactive Is Null")
    Return modDBConnect.exec_query_collection("select * from clin_vaccination.vwVaccinesInSchedule where fk_schedule = " & fk_schedule & " And date_vaccine_in_schedule_inactive Is Null")
-
+   
 End
 
 Public Sub Vaccine_In_Schedule_Save(old_data As Collection, pk_view As String, vaccine_in_schedule As Collection)
@@ -147,7 +241,7 @@ Public Sub Vaccines_In_Schedule_Save(vaccines_in_schedule As Collection, fk_sche
    '-------------------------------------------
    'Saves all vaccines in a particular schedule
    '-------------------------------------------  
-
+   
    Dim vaccine_in_schedule As Collection
    
    For Each vaccine_in_schedule In vaccines_in_schedule
@@ -170,7 +264,7 @@ Public Function Schedules_Save(old_data As Collection, pk_view As Integer, new_d
    '----------------------------------------------
    'Save (create or change) a vaccination schedule
    '----------------------------------------------
-
+   
    If IsNull(new_data!pk) Then
       new_data!fk_schedule = modDBConnect.insert("clin_vaccination.lu_schedules", new_data)
       Return new_data!fk_schedule
@@ -211,21 +305,21 @@ Public Sub Vaccine_Save(olddata As Collection, pk_view As Integer, vaccine As Co
    'Saves a vaccine to the lookup table, not a vaccine we have given to a patient
    'used by Admin to maintain vaccines
    '-----------------------------------------------------------------------------   
-
+   
    If IsNull(vaccine!pk) Then
       vaccine!pk = modDBConnect.insert("clin_vaccination.lu_vaccines", vaccine)
    Else
       modDBConnect.update("clin_vaccination.lu_vaccines", olddata[pk_view], vaccine) 
    Endif
    Return vaccine!pk
-
+   
 End
 
 Public Function Vaccinations_Get(fk_patient As Integer) As Collection 
    '------------------------------------------
    'Gets all vaccinations given for the patient
    '-------------------------------------------
-
+   
    Dim sql As String
    
    sql = "select * from  clin_vaccination.vwvaccinesgiven WHERE fk_patient = " & fk_patient
@@ -241,7 +335,7 @@ Public Function Vaccination_Episode_Save(old_data As Collection, episode As Coll
    'Saves a vaccination episode of one or more vaccines
    'updates batch numbers - crude at this point of time - just the last one
    '-----------------------------------------------------------------------
-
+   
    Dim Vaccine As Collection
    
    For Each vaccine In Episode
@@ -268,7 +362,7 @@ Public Function Vaccines_Serial_Numbers_Get(fk_vaccine As Integer) As Collection
    ' sql &= " ORDER BY date_used  DESC LIMIT 4"
    Return modDBConnect.exec_query_collection("Select * from clin_vaccination.vaccine_serial_numbers where fk_vaccine = " & fk_vaccine & " ORDER BY date_used  DESC LIMIT 3")
    ' Return modDBConnect.exec_query_collection(sql)
-
+   
 End
 ' Public Sub Vaccine_Serial_Number_Save(old_data As Collection, serial_number As Collection))
 '    '------------------------------------------
@@ -298,20 +392,20 @@ Public Sub Vaccine_Serial_Number_Save(sn As String, fk_vaccine As Integer)
    '------------------------------------------
    'Saves or updates serial number for vaccine
    '------------------------------------------
-
+   
    Dim sql As String
    Dim R As Result
    Dim data As New Collection
    'See if this vaccine has previously been used with this serial number
-    R = modDBConnect.exec_query("Select * from clin_vaccination.vaccine_serial_numbers where fk_vaccine = " & fk_vaccine & " AND serial_number =$$" & sn & "$$")
-    If R.count Then
-        sql = "Update clin_vaccination.vaccine_serial_numbers set date_used = Now() where pk = " & R!pk
-        modDBConnect.exec_query(sql)
-    Else
-        data!serial_number = sn
-        data!fk_vaccine = fk_vaccine
-        data!date_used = Now()
-        modDBConnect.insert("clin_vaccination.vaccine_serial_numbers", data)
-    Endif
-
+   R = modDBConnect.exec_query("Select * from clin_vaccination.vaccine_serial_numbers where fk_vaccine = " & fk_vaccine & " AND serial_number =$$" & sn & "$$")
+   If R.count Then
+      sql = "Update clin_vaccination.vaccine_serial_numbers set date_used = Now() where pk = " & R!pk
+      modDBConnect.exec_query(sql)
+   Else
+      data!serial_number = sn
+      data!fk_vaccine = fk_vaccine
+      data!date_used = Now()
+      modDBConnect.insert("clin_vaccination.vaccine_serial_numbers", data)
+   Endif
+   
 End

@@ -23,7 +23,7 @@
 'DATABASE      See Schema Documents
 '              Documents.Documents contains every single document - they end up here
 '                                  either by the HL7 parser automatically putting them there
-'                                  having matched patients (if fails > unmatched table)
+'                                  having matched FMainpatients (if fails > unmatched table)
 '                                  or by staff having allocated a document from another source
 '                                  eg scanning (see Clerical.Scanning.FArchiveDocuments)
 '              Documents.sending_entities contains defaults for anyone who sends stuff
@@ -50,7 +50,7 @@
 '               All documents must be actioned at least by viewing the meta - data of the document
 '               and the user clicking File implicity means they have approved the document as 'OK'
 '               The Form that does all the actioning, and indeed also contains the metadata form
-'               is FActionDocument - this is basically a tab control on form, and other forms
+'               is FActionDocument - this is basicFMainally a tab control on form, and other forms
 '               are embedded on each tab to enable document actioning:
 '                 FDocumentMetadata - Alter the metadata
 '                 FPrescriptions    - write a prescription (Not implemented)
@@ -100,7 +100,7 @@ Private Inbox As Collection                     'the main inbox collection each 
 Private RequestOrdered As Collection            'selected request which was ordered
 Private Selected_Inbox As Collection            'the collection of documents for selected row in inbox (ie INbox[key])
 Private SelectedDocument As Collection          'currently selected document
-Private synonyms As Collection                  'collection matching a senders terms with readable users terms
+Private synonyms As Collection                  'collection matching a senders editorterms with readable users terms
 Private Observations As Collection              'Any 'observations' ie measurement results, associated with a document
 Private Documents As Collection
 '--------------
@@ -124,6 +124,7 @@ Private Const cTab_HealthIssues As Integer = 2
 Private Const cTab_PreviousNotes As Integer = 3
 Private Const cTab_ProgressNotes As Integer = 4
 Private Const cTab_INR_Management As Integer = 5
+Private Const cTab_Prescriptions As Integer = 6
 '---------------
 'Embedded Forms
 '---------------
@@ -135,8 +136,10 @@ Private FMessage As FGenericHTMLMessage                  'popup message box
 Private Form_Recall As FRecalls
 Private Form_HealthIssues As FPastHistory
 Public Form_PreviousNotes As FProgressNotesViewer
-Private Form_ProgressNotes As FProgressNotePage
+Private Form_ProgressNotes As FProgressNoteEditor
 Private Form_INRs As FInr
+Private Form_Prescriptions As FPrescriptions
+Private form_medications As FMedicationsList
 
 Static Private Form_Inbox As FInbox                'allow access of this form globally
 
@@ -153,6 +156,15 @@ Static Public Sub Previous_Notes_Refresh()
    Try form_inbox.Previous_Notes_Reload  'invalid object bug here when closed the program
    
 End
+
+Static Public Sub Medications_Refresh()
+   '-----------------------------------------------------------------
+   'if User prescribes medications then refresh the list in the inbox
+   '-----------------------------------------------------------------
+   
+   form_inbox.Patient_Medications_Show
+   
+End 
 
 Public Sub Previous_Notes_Reload()
    
@@ -191,6 +203,8 @@ Public Sub Settings_Save()
    Settings["FInbox/HSplit_Inbox_Documents_Lists.Layout"] = HSplit_Inbox_Documents_Lists.Layout
    Settings["FInbox/VSplit_PatientsDocumentList.Layout"] = VSplit_PatientsDocumentList.Layout
    Settings["FInbox/Results_Zoom"] = FPreview_HtmlDocument.Webview1.Zoom
+   Settings["FInbox/VSplit_Prescriptions.Layout"] = VSplit_Prescriptions.Layout
+   Settings["FInbox/HSplit_Prescriptions.Layout"] = HSplit_Prescriptions.Layout
    Try Form_Recall.Settings_Save()
    
 End
@@ -203,6 +217,8 @@ Private Sub Settings_Load()
    Vsplit_left.Layout = Settings["FInbox/Vsplit_left", modUtilGUI.VSplit([480, 479])]
    HSplit_Requests_Meds.layout = Settings["FInbox/HSplit_Requests_Meds.Layout", modUtilGUI.HSplit([1, 1])]
    HSplit_Document.Layout = Settings["FInbox/HSplit_Document.Layout", modUtilGUI.HSplit([765, 954])]
+   HSplit_Prescriptions.Layout = Settings["FInbox/HSplit_Prescriptions.Layout", modUtilGUI.HSplit([1, 1])]
+   VSplit_Prescriptions.Layout = Settings["FInbox/VSplit_Prescriptions.Layout", modUtilGUI.VSplit([1, 4])]
    FPreview_HtmlDocument.Webview1.Zoom = Settings["FInbox/Results_Zoom", 1]
    gvwInboxDocuments.font = Font[Settings["Inbox/gvwInboxDocuments.font", "DejaVu Sans,9"]]
    cvwInbox.font = gvwInboxDocuments.font
@@ -244,6 +260,7 @@ Public Sub Init()
       .btRotate.Visible = True
       .btRotate.Enabled = True
    End With
+   
    With cvwPatientsRequests
       .Columns.count = 2
       .width = 80
@@ -304,8 +321,8 @@ Public Sub Init()
       .set_embedded(True, "FInbox")
       .HBox_Buttons.Visible = True  'need save/new buttons in FClinical these are not visible
    End With
-   With Form_ProgressNotes = New FProgressNotePage(Vbox_ProgressNotes)
-      .Set_Embedded_Form("FInbox")
+   With Form_ProgressNotes = New FProgressNoteEditor(Vbox_ProgressNotes)
+      .Set_Embedded_In_Form("FInbox")
       .HBox_Save.Visible = True
    End With
    With Form_INRs = New FInr(VBox_INR)
@@ -1135,7 +1152,8 @@ Public Sub cvwInbox_Select()
    '--------------------------------------------------------------------
    
    cvwPatientsRequests.Clear()
-   cvwPatientMedications.Clear()
+   ' cvwPatientMedications.Clear()
+   Try form_medications.cvwMedications.Clear()
    cvwInbox.MoveCurrent()                                    'sets internal cursor to match whats visible
    Selected_Inbox = Inbox[cvwInbox.Item.Key]                 'create SelectedPatient collection
    Form_ActionDocument.EmbeddedForms_Reset()                 'if exists, set all cons to null
@@ -1155,14 +1173,14 @@ Public Sub cvwInbox_Select()
          .HealthIssue_New()            'default to new health issue
       End With
       With Form_ProgressNotes
-         .Set_Embedded_Form("FInbox")
-         .Init(currentconsult, "Progress notes pertaining to this document") 'fixme for adding codes
+         .Set_Embedded_In_Form("FInbox")
+         .Init(currentconsult) 'fixme for adding codes
       End With
       With Form_INRs
          .Init(currentconsult)
       End With
       Patient_Outstanding_Requests_Show()                     'show requests for this category of provider
-      Patient_Medications_Show()
+      
       TabStrip1.Enabled = True                                'Tabstrip with documents
    Else
       TabStrip1.Enabled = False
@@ -1874,68 +1892,7 @@ Static Public Sub ReAllocate_Sender()
    
 End
 
-Public Sub Sender_ReAllocate()
-   '---------------------------------------------------------------------------
-   'Reallocate the sender, however I've disabled the menu item which calls this
-   'If this is re-used, please note the keys in this will be wrong
-   'since I used the grid instead of the columnview
-   '---------------------------------------------------------------------------
-   
-   '    Dim sMsg As String
-   '    Dim oldFilename As String = SelectedDocument!source_file
-   '    Dim newfilename As String 'new name of source file
-   '    Dim Document As New Collection
-   '    Dim NewTag As String
-   '    Dim s As String
-   '
-   '    Return
-   '    Select Case Form_ActionDocument.FMetaData.Contact_Type
-   '       Case const.contacttype_organisation
-   '          NewTag = Form_ActionDocument.FMetaData.Organisation!organisation
-   '          If Form_ActionDocument.FMetaData.Organisation!branch <> "HEAD OFFICE" Then
-   '             NewTag &= "." & Form_ActionDocument.FMetaData.Organisation!branch
-   '          Endif
-   '       Case const.contacttype_employee
-   '          NewTag = Trim(Form_ActionDocument.FMetaData.Organisation!organisation) & "."
-   '          NewTag &= Form_ActionDocument.FMetaData.Organisation!wholename
-   '       Case const.contacttype_patient, const.contacttype_person
-   '          NewTag = Trim(Form_ActionDocument.FMetaData.person!firstname) & " " & Trim(Form_ActionDocument.FMetaData.person!surname)
-   '    End Select
-   '
-   '    Message.Title = "Re-allocation of document"
-   '    sMsg = "You have selected to re-allocate the sender of this document from:\n\n"
-   '    sMsg &= Replace$(SelectedDocument!tag, " - scanned document", "")
-   '    sMsg &= "\n\nto\n\n" & NewTag
-   '
-   '    If Message.Warning(sMsg, "Yes", "No") = 2 Then Return
-   '
-   '    Document!pk_document = SelectedDocument!pk_document
-   '    'lEAVE IN FOR 1 WEEK   Document!fk_sending_entity = modInboxDBI.SendingEntity_GetPK(Form_ActionDocument.FMetaData.Get_Document_Type(), Form_ActionDocument.FMetaData.Get_Display_Style(), newtag, Form_ActionDocument.FMetaData.fk_branch, Form_ActionDocument.FMetaData.fk_employee, Form_ActionDocument.FMetaData.fk_person)
-   '    Document!fk_sending_entity = modInboxDBI.SendingEntity_GetPK(Form_ActionDocument.FMetaData.Get_Display_Style(), newtag, Form_ActionDocument.FMetaData.fk_branch, Form_ActionDocument.FMetaData.fk_employee, Form_ActionDocument.FMetaData.fk_person)
-   '    Document!originator = NewTag ' Form_ActionDocument.FMetaData.txtDocumentTag.text
-   '    Document!tag = Document!originator & " - scanned document" 'FIXME WHAT IF THIS IS A RESULT - SHOULD NEVER HAPPEN HOWEVER
-   '
-   '    If Trim(Form_ActionDocument.FMetaData.txtPatient.text) <> "" Then
-   '       newfilename &= Replace(Trim(Form_ActionDocument.FMetaData.txtPatient.text), " ", "_") & "." & modutil.DateString_Encode(Form_ActionDocument.FMetaData.lblbirthdate.text) & "." & Str(SelectedDocument!fk_patient) & "."
-   '    Else
-   '
-   '    End If
-   '    newfilename &= Replace(Document!originator, " ", "_") & "." & Str$(Document!pk_document) & "."
-   '    newfilename &= File.Ext(Form_ActionDocument.FMetaData.txtFilename.text)
-   '    Document!source_file = Lower(newfilename)
-   '    modArchiveDocumentsDBI.Save(document, Selected_Inbox!documents[iSelectedDocument])
-   '    s = modFiles.Get("document_archiving_directory", oldfilename)
-   '    modFiles.Put("document_archiving_directory", Lower(newfilename), s)
-   '    modUtil.Kill_If_Temp(s)
-   '    modDBConnect.CommitTrans()
-   '    Form_ActionDocument.FMetaData.Init("Allocated Documents")
-   '    Inbox_Reload()
-   ' Catch
-   '    Log.ErrorMsg("error moving document FInbox.Sender_Reallocate: " & Error.Text & Error.Backtrace)
-   '    Message.Error("Could not re-allocate, please see log")
-   '    modDBConnect.RollBack()
-   
-End
+
 
 Static Public Sub Disable_Filing()
    
@@ -2159,9 +2116,10 @@ Public Sub WebView_Menu()
    
 End
 
-Private Sub Patient_Medications_Show()
+Public Sub Patient_Medications_Show()  'must be public otherwise FPrescriptions can't access this
    
-   modPrescribingDBI.cvwMedications_Refresh(cvwPatientMedications, currentconsult, lblmedications) 
+   '  modPrescribingDBI.cvwMedications_Refresh(cvwPatientMedications, currentconsult, lblmedications) 
+   form_medications.Medications_Refresh()
    
 End
 
@@ -2258,7 +2216,7 @@ Public Sub mnuDocuments_Click()
    End Select
 Catch
    Return 
-
+   
 End
 
 Public Sub Document_Delete(audit_action As String)
@@ -2556,20 +2514,66 @@ Public Sub chkOnlyRecent_Click()
 End
 
 Public Sub tabStripInbox_Click()
-   'only use INR module if is an INR - crude, easily avoided if you try FIXME  
+   'User has clicked on the main tabstrip
    
    If IsNull(Selected_Inbox) Then
       Stop Event
       Return
    Endif  
-   If Selected_Inbox!fk_patient Then
+   TabStrip1.Visible = True  
+   If IsNull(Selected_Inbox!fk_patient) Then
+      tabStripInbox.index = 0
+   Else
       Select Case Last.Index
          Case cTab_INR_Management
             If Not InStr(Lower(Form_ActionDocument.FMetaData.txtUserObservationName.text), "inr") Then
                tabStripInbox.index = 0
-            End If  
+               Goto Reparent_Document
+            End If 
+         Case cTab_Prescriptions
+            If IsNull(Form_Prescriptions) Then
+               With Form_Prescriptions = New FPrescriptions(Vbox_Prescriptions) 
+                  .set_embedded("FInbox")
+                  .Init(currentconsult)
+               End With
+               
+            End If
+            If Vbox_PDf.Visible Then
+               PDForm.Reparent(Vbox_Result_On_Prescription_Tab)
+            Endif
+            If VSplit_Document.Visible Then
+               With FPreview_HtmlDocument
+                  .Reparent(Vbox_Result_On_Prescription_Tab)
+               End With
+            End If
+            If IsNull(form_medications) Then 
+               With form_medications = New FMedicationsList(VBox_Medications_2)
+                  .Set_Embedded_Form_Name("FInbox")
+               End With
+            End If
+            form_medications.Init(currentconsult)
+            TabStrip1.Visible = False 
+         Case cTab_Documents
+            Goto Reparent_Document
       End Select
    End If  
+   Return   
+Reparent_Document:
+   If VSplit_Document.Visible Then
+      With FPreview_HtmlDocument
+         .Reparent(HBox_HTML_Viewer)
+         .visible = True  
+         .Stacking = Window.Above
+      End With
+   Endif
+   If Vbox_PDf.Visible Then
+      With PDForm
+         .Reparent(Vbox_PDf)
+         .Stacking = Window.Above
+         .Visible = True   
+      End With
+   Endif
+   Wait
    
 End
 

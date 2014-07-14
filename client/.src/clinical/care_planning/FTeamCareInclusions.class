@@ -1,0 +1,244 @@
+' Gambas class file
+
+' Copyright (C) 2014 Dr. Richard Terry
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'---------------------------------------------------------------------------------------------
+'PURPOSE A Form to allow users to designate what clinical information will be
+'       provided to team care members
+'       Instances created in FGPMP.cmbProviders_Click() ie when new provider added to the team
+'NOTE   the terms 'Health Issue' and "Past History' are  used interchangeably
+'       sloppy I know but historically Horst/Ian didn't like the term heatlh issues
+'       saying that GP's though in terms of 'Past History' so the backend tables
+'       are named clin_history.past_history, whereas I tend to think in terms of
+'       health issues. Sorry............ for the confusion should you read the code
+'---------------------------------------------------------------------------------------------
+
+Private Active_Health_Issues As Collection                          'the patient's active health issues
+Private Health_Issue_Provider_Linked_To As Collection               'those health items associated with a particular providers
+Private Health_Issues_To_Add As Collection                          'additional problems to include in the TCA
+Private Family_History_To_Add As Collection                         'any family history user wants to add to the TCA
+Private Graphs_To_Add As Collection                                 'any graphs to add to the TCA
+Private Family_History As Collection                                'the family history collection (all) 
+Private currentconsult As CConsult
+
+Public Function Additional_Health_Issues_Get() As Collection 
+   
+   Return Health_Issues_To_Add
+   
+End
+
+Public Sub Init(cons As CConsult, prov As Collection)
+   '-------------------------------------------------------------------------------------------
+   'Load the combo of available health issues to include details of
+   'The default health issues the provider is already associated of will be shown automatically
+   '-------------------------------------------------------------------------------------------  
+   
+   Dim HI As Collection
+   
+   currentconsult = cons
+   lblMeasure.text = "Include Details For   "
+   modEditAreaHelpers.Resize_labels(Vbox_EditArea, lblMeasure)                   'make gui labels all same width as maximum one
+   Health_Issues_To_Add = New Collection 
+   Family_History_To_Add = New Collection
+   Graphs_To_Add = New Collection   
+   Active_Health_Issues = New Collection   
+   For Each HI In currentconsult!past_history                                          'look through all past history or health issues
+      If HI!active = True Then                                                   'and if an active problem
+         If HI!confidential = False Then                                         'and not confidential
+            Active_Health_Issues.Add(HI, cmbIncludeProblem.count)              'add it to collection of active health issues
+            If Not InStr(lblProblems.text, Lower(HI!description)) Then    
+               cmbIncludeProblem.Add(HI!description, cmbIncludeProblem.count)     'and display in the combo
+            End If   
+         End If   
+      End If  
+   Next
+   modUtilGUI.LoadCombo(cmbRemoveProblem, Active_Health_Issues, "description")
+   cmbIncludeProblem.index = -1
+   cmbRemoveProblem.Index = -1
+   FamilyHistory_Load_Combo()
+   
+End
+
+Public Sub FamilyHistory_Load_Combo()
+   '-----------------------------------------------------------------------------
+   'Called from this form and from FFamilyHistory > GPMPlan.Family_History_Update
+   'FIXME GPMPlan has become a misnomer should be GPMP_TCA.form/class
+   'As the family history can have been changed after the user has selected a FH
+   'item to put onto the Team Care Arrangement, have to re-order the underlying
+   'colleciton representing this
+   '-----------------------------------------------------------------------------
+   
+   Dim FH As Collection
+   Dim fk_relationship As Integer
+   Dim sstring As String
+   Dim temp_fh_to_add As Collection
+   Dim temp_fh As Collection
+   Dim x As Integer
+   
+   currentconsult.Refresh("family_history")   'update collection, user could have added more via FFamilyhistory
+   Family_History = modUtil.Copy_Collection_Keyed_Sequentially(currentconsult!family_history)
+   For Each FH In Family_History
+      If fk_relationship <> FH!fk_member Then
+         sstring = FH!relationship & " " & FH!condition
+         fk_relationship = FH!fk_relationship
+      Else
+         sstring = Space$(Len(Fh!relationship)) & " " & FH!condition
+      Endif
+      cmbIncludeFamilyHistory.Add(sString)
+      cmbRemoveFH.Add(sstring)
+   Next
+   If Family_History_To_Add.count Then                    'the existing collection of what user wants on TCA form
+      temp_fh_to_add = New Collection
+      For Each temp_fh In Family_History_To_Add           'for each already selected family history to print in TCA
+         For Each FH In Family_History                    'check the updated list and get the key to match the combo
+            If FH!pk_view = temp_fh!pk_view Then          'if new FH collection member = one of those user has selected
+               temp_fh_to_add.Add(temp_fh, x)             'copy into a new collection with the new index where it will sit in combo
+               Break
+            End If  
+         Next
+         Inc x
+      Next
+      Family_History_To_Add = modUtil.Copy_Collection_Keyed_Sequentially(temp_fh_to_add)
+   Endif
+   
+End
+
+Public Sub cmbRemoveProblem_Click()
+   '----------------------------------------------------------------------------- 
+   'removes a problem from the  Health_Issues_To_Add collection
+   '-----------------------------------------------------------------------------
+   
+   Dim health_issues_as_text As String[]
+   Dim hi As String
+   Dim x As Integer
+   
+   For Each hi In Split(Replace(lblAdditionalProblems.text, ", ", "|"), "|")                  'find the numerical sequence of the additonal problem
+      If hi = Lower(cmbRemoveProblem.text) Then
+         Health_Issues_To_Add.Remove(x)                                     'and remove from array
+         Break
+      Endif
+      Inc x   
+   Next
+   Health_Issues_To_Add = modUtil.Copy_Collection_Keyed_Sequentially(Health_Issues_To_Add)   're-zero the collection 1>n
+   lblAdditionalProblems.Text = Replace(lblAdditionalProblems.Text, Lower(cmbRemoveProblem.text), "")                            'remove from the lable
+   lblAdditionalProblems.Text = Replace(lblAdditionalProblems.Text, ", ,", ",")
+   If Left(lblAdditionalProblems.text) = "," Then
+      lblAdditionalProblems.text = Right(lblAdditionalProblems.text, Len(lblAdditionalProblems.text) - 2)
+   Endif
+   lblAdditionalProblems.text = modUtilGUI.Strip_Last_Character(lblAdditionalProblems.text, True)                               'remove eg any common on end eg hypertension, 
+   cmbRemoveProblem.index = -1
+   Me.Tag!additional_health_issues = Health_Issues_To_Add
+   Wait
+   FGPMPTCA.TCA_Update                                                                                       'update TCA Latex
+   
+End
+
+Public Sub cmbIncludeProblem_Click()
+   '------------------------------------------------------------------------------
+   'User wants to include clinical notes on some additional health issues/problems
+   'end up with label.text like hypertension, obesity, fatty liver
+   'at end of this gets FGPMPlan to update the tca latex
+   '------------------------------------------------------------------------------      
+   
+   Wait
+   If InStr(Lower(lblAdditionalProblems.text), Lower(cmbIncludeProblem.text)) Then
+      cmbIncludeProblem.Index = -1
+      Return
+   End If   
+   If Trim(lblAdditionalProblems.text) <> "" Then 
+      lblAdditionalProblems.text &= ", "
+   Endif
+   lblAdditionalProblems.text &= Lower(cmbIncludeProblem.text)
+   Health_Issues_To_Add.Add(Active_Health_Issues[cmbIncludeProblem.index], Health_Issues_To_Add.count)
+   Me.Tag!additional_health_issues = Health_Issues_To_Add
+   cmbIncludeProblem.Index = -1
+   FGPMPTCA.TCA_Update
+   
+End
+
+Public Sub txtNumberOfSessions_GotFocus()
+   
+   Last.BackGround = Color.rgb(95, 255, 175)
+   
+End
+
+Public Sub txtNumberOfSessions_LostFocus()
+   
+   Last.background = Color.White   
+   
+End
+
+Public Sub Form_Enter()
+   '-----------------------------------------------------------------------------------
+   'Don't remove this, the ListContainer1 in which this form is embedded
+   'for some reason turns the heading to white when the row it is clicked on gets focus
+   '-----------------------------------------------------------------------------------
+   
+   lblTeamCareMember.Foreground = Color.DarkBlue
+   txtNumberOfSessions.Foreground = Color.Black
+   lblProblems.Foreground = Color.Black
+   lblAdditionalProblems.Foreground = Color.Black
+   
+End
+
+Public Sub Form_leave()
+   
+   lblTeamCareMember.Foreground = Color.DarkBlue
+   
+End
+
+Public Sub cmbIncludeFamilyHistory_Click()
+   '------------------------------------------------------------
+   'User wants to include some family history problems on the TA
+   'Increment the height of the text label Parent.Parent to 
+   'ensure they are all visible on the screen
+   '------------------------------------------------------------
+   
+   Wait
+   If InStr(lblFamilyHistory.text, cmbIncludeFamilyHistory.text) Then
+      cmbIncludeFamilyHistory.Index = -1
+      Return
+   End If 
+   If Trim(lblFamilyHistory.text) <> "" Then   
+      lblFamilyHistory.text &= ", "
+   End If   
+   lblFamilyHistory.text &= cmbIncludeFamilyHistory.text
+   Family_History_To_Add.Add(family_history[cmbIncludeFamilyHistory.index], Family_History_To_Add.count)
+   Me.Tag!family_history = Family_History_To_Add
+   HBox_FamilyHistory.height = lblFamilyHistory.Height + 5
+   cmbIncludeFamilyHistory.Index = -1
+   FGPMPTCA.TCA_Update
+   
+End
+
+Public Sub cmbRemoveFH_click()
+   
+   Dim family_history_as_text As String[]
+   Dim FH As String
+   Dim x As Integer
+   
+   For Each FH In Split(Replace(lblFamilyHistory.text, ", ", "|"), "|")                  'find the numerical sequence of the additonal problem
+      If FH = Lower(cmbRemoveFH.text) Then
+         Family_History_To_Add.Remove(x)                                     'and remove from array
+         Break
+      Endif
+      Inc x   
+   Next
+   
+   lblFamilyHistory.text = Replace(lblFamilyHistory.text, cmbRemoveFH.text, "")
+   lblFamilyHistory.text = Replace(lblFamilyHistory.text, ", ,", ",")
+   If Left(lblFamilyHistory.text) = "," Then
+      lblFamilyHistory.text = Right(lblFamilyHistory.text, Len(lblFamilyHistory.text) - 2)
+   Endif
+   cmbRemoveFH.Index = -1
+   FGPMPTCA.TCA_Update 
+End

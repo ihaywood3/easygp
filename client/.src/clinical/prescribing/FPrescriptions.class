@@ -87,6 +87,7 @@ Private brand As Collection
 Private gridrow As Integer 'current row the grid is on
 Private fk_brand As String
 Private fk_medication As Integer
+'Private fk_medications_progressnote As Integer
 Public script_items As Collection
 Private script_item As Collection
 Public Drug_Search_Scope As String[]   'must be public
@@ -96,12 +97,12 @@ Private habit As Collection
 Private Authority_Increased_Quantity_Reasons As Collection
 Private SpellChecker As ClskSpell
 Public sDefault_Prescribing_Mode As String   'accessed from FStaffPreferencesPrescribing via static form
-Private allergy_class_codes As Collection
+'Private allergy_class_codes As Collection
 Private sPBS_RPBS As String
 Private iAuthority_Type As Integer
 Private iIncreased_quantity_type As Integer
 Private ReferenceHboxForTopColumnview As HBox               'Allows us to move the grids/columnview up as the form or split resizes
-Static Private form_prescriptions As FPrescriptions
+Static Public form_prescriptions As FPrescriptions
 
 Static Public Sub Script_Item_Re_Prescribe(item As Collection)
    '-------------------------------------------------
@@ -132,7 +133,9 @@ End
 
 Static Public Sub Allergies_Refresh()
    
-   form_prescriptions.allergy_class_codes_reload
+   Message.Info("FPrescriptions.Allergies_Refresh")
+   'form_prescriptions.allergy_class_codes_reload
+   Print
    
 End
 
@@ -147,7 +150,6 @@ End
 
 Public Sub Init(cons As CConsult)
    
-   Dim VB As VBox
    Dim cvw As ColumnView
    
    Try sDefault_Prescribing_Mode = modAdminDBI.Config_Get_Staff_Member("user_prescribing_mode", "brand", Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff)
@@ -208,7 +210,9 @@ Public Sub Init(cons As CConsult)
    End With
    script_items = New Collection 'all those prescribed this consultation
    Try Settings_Load()
-   allergy_class_codes_reload()
+   If embedded_in_form = "FInbox" Then Allergies_Show
+   'allergy_class_codes_reload()
+   currentconsult.Refresh("Allergies")
    MenuButton1.menu = "mnuHealthIssues"
    lblPBSRelease.text = "PBS drug data for " & modPrescribingDBI.PBSRelease()
    
@@ -216,20 +220,71 @@ Public Sub Init(cons As CConsult)
    
 End
 
-Public Sub allergy_class_codes_reload()
-   'do not make me private
-   'as an allergy can be 'no known allergies' then class_code can be null
+Public Sub Allergies_Show()
+   '----------------------------------------------------------------------------------------
+   'if the prescription writer is embedded in the inbox - show the allergies above edit area
+   'Construct a table of known allergies, possibilities are
+   'Unknown
+   'Nil allergies or sensitivities
+   'A heading of the table (class etc) + row(s) of allergy/sensitivity data
+   'fixme this code is duplicated modprogressnotes.Health_Summary_Construct_Latex (merge this)
+   '----------------------------------------------------------------------------------------  
    
-   Dim A As Collection
+   Dim templ As CTemplate
+   Dim sstring As String
+   Dim item As Collection
+   Dim x As Integer
+   Dim tempstring As String = Replace(Space$(40), " ", "z")  'fixme remove once Ian fixes cTemplate
    
-   allergy_class_codes = New Collection
-   For Each A In currentconsult!allergies
-      If Not IsNull(A!class_code) Then    
-         allergy_class_codes.Add(A, A!class_code)
+   tlAllergies.Visible = True  
+   Separator3.Visible = True  
+   sString = "<P><B>Allergies</B></P>" & tempstring & "%allergies"
+   templ = New CTemplate(sstring)
+   If Not currentconsult!allergies.count Then  
+      templ.Row("Unknown", "", "", "")
+   End If   
+   x = 0  'counter
+   For Each Item In currentconsult!allergies
+      If IsNull(item!nil_allergies_sensitivities) And x = 0 Then
+         If IsNull(item!allergen) Then  
+            templ.Row("Class", "Generic", "Reaction Type", "Details")
+            Inc x
+         End If 
+      Endif
+      ' class_name, generic, details, reaction_type
+      If item!nil_allergies_sensitivities = True Then
+         templ.Row("No known allergies or sensitivites")
+      Else
+         If Not IsNull(Item!allergen) Then 'non drug allergy
+            templ.Row("Non Drug Allergy:", item!allergen, "", "")
+         Else
+            templ.Row(Item!class_name, item!generic, item!reaction_type, item!details)
+         End If   
       End If   
    Next
+   templ.Table("allergies") 
+   sstring = "<table>" & templ.GetData() & "</table>"
+   sstring = Replace(sstring, tempstring, "")
+   tlAllergies.text = sstring
    
 End
+
+' Public Sub allergy_class_codes_reload()
+'    'do not make me private
+'    'as an allergy can be 'no known allergies' then class_code can be null
+'    
+'    Dim A As Collection
+'    
+'    Print embedded_in_form
+'    currentconsult.Refresh("allergies")
+'    allergy_class_codes = New Collection
+'    For Each A In currentconsult!allergies
+'       If Not IsNull(A!class_code) Then    
+'          allergy_class_codes.Add(A, A!class_code)
+'       End If   
+'    Next
+'    
+' End
 
 Public Sub cmbScriptTypes_Load()
    
@@ -278,53 +333,6 @@ Public Function Search_Scope_Set()
    '       drug_search_scope.Add(chapter!chapter, drug_search_scope.count)
    '    Endif
    ' Next
-   
-   Print drug_search_scope   
-   
-End
-
-Public Function Search_Scope_Set_old()
-   '-------------------------------------------------------------------------------------------------------------
-   ' Gets the search scope for the pbs drugs - not FStaffPreferencesPrescribing sets these on per-user basis
-   ' PBS chapters
-   ' "CS";"Section 100 (Chemotherapy Special Benefit)"
-   ' "CT";"Section 100 (Chemotherapy Scheme)"
-   ' "DB";"Doctor's Bag"
-   ' "DS";"Dental (Special Pharmaceutical Benefits)"
-   ' "DT";"Dental"
-   ' "GE";"General"
-   ' "GH";"Section 100 (Growth hormone)" Chapters_Create_Gui()
-   ' "HB";"Section 100 (Highly Specialised Drugs) - Public Hospitals"
-   ' "HS";"Section 100 (Highly specialised drugs)"
-   ' "IF";"Section 100 (IVF/GIFT Treatment)"
-   ' "MD";"Section 100 (Opiate Addiction Treatment)"
-   ' "MF";"Section 100 (Botulinum Toxin Program)"False
-   ' "OT";"Optometrist"
-   ' "PL";"Palliative care"
-   ' "PQ";"Paraplegic/Quadriplegic"
-   ' "R1";"Repatriation"
-   ' "SB";"Special Pharmaceutical Benefits"
-   ' "SY";"Section 100 (Special Authority Item  Chapters = modPrescribingDBI.Chapters_Get()s) - Private Hospitals"
-   ' "SZ";"Section 100 (Special Authority Items) - Public Hospitals"
-   ' --------------------------------------------------------------------------------------------------------------
-   
-   drug_search_scope = New String[]
-   '  Chapters = modPrescribingDBI.Chapters_Get()
-   ' For Each chapter In chapters
-   '    If modAdminDBI.Config_Get(chapter!chapter, True, False, modDBConnect.currentUser!fk_clinic) Then
-   '       drug_search_scope.Add(chapter!chapter, drug_search_scope.count)
-   '    Endif
-   ' Next
-   If drug_search_scope.count = 0 Then  'FIXME - USE ROLE TO DETEMINE CHAPTER.
-      drug_search_scope.add("GE")           'allow general  was 3,4,5
-      drug_search_scope.add("R1")           'repatriation
-      drug_search_scope.add("PL")           'palliative care
-      drug_search_scope.add("SB")           'special benefits
-   Else
-      If Not drug_search_scope.Exist("SB") Then 'always put in special benefits.
-         drug_search_scope.add("SB")
-      Endif
-   End If
    
 End
 
@@ -462,7 +470,11 @@ Public Sub Drug_Delete()
    Print
    cvwPrescriptions.UnselectAll()
    cvwPrescriptions_Refresh(script_items)
+   Medications_Add_Progress_Notes_Update_Prescribed_Today_list
    FClinical_Refresh()
+   If embedded_in_form = "FInbox" Then
+      FInbox.Medications_Refresh()
+   Endif
    
 End
 
@@ -1147,25 +1159,6 @@ Public Sub Instruction_Habits_Get()
    
 End
 
-Public Sub Instruction_Habits_Get_old()
-   '------------------------------------------------------------------------
-   'Gets a collection of the users instructions for this drug
-   'this is returned sorted descending, i.e the most common direction on top
-   'so just auto insert this highest ranking one into the textbox
-   '------------------------------------------------------------------------
-   
-   If IsNull(drug!fk_product) Then Return
-   Instruction_Habits = modPrescribingDBI.Instruction_Habits_Get(drug!fk_product)
-   For Each Habit In Instruction_Habits
-      bExit = True
-      txtInstructions.text = Habit!instruction
-      bExit = False
-      TxtReason.SetFocus()
-      Break
-   Next
-   
-End
-
 Public Sub Instruction_Habits_Select()
    '----------------------------------------------------------------------------------------
    'User is selecting a reason for the prescription form the Prescribed_For_Habits collection
@@ -1569,145 +1562,6 @@ Catch
    
 End
 
-Public Sub Generics_Get_old()
-   '-------------------------------------------------------------------
-   'User has typed in txtGenerics, i.e wishes to search by generic name
-   'Pop up the columnview with generic name + strength + form + repeats
-   'at the end of this routine a list of drugs may be showing, but the
-   'cursor remains on the txtGeneric textbox unless user then arrows
-   'down to this list, or clicks on it.
-   '-------------------------------------------------------------------
-   
-   Dim last_drug As String 'drug+quantity+repeats
-   Dim onrow As Integer
-   Dim iWidestGenericName As Integer
-   Dim iWidestFormName As Integer
-   Dim iWidestPBStype As Integer
-   Dim generics As String[]
-   Dim strengths As String[]
-   Dim sString As String
-   Dim sFontHeight As Integer = Gridview1.Font.Height
-   Dim x As Integer
-   
-   Timer1.Stop()                                                  'stop searching
-   pnlcolumnview.Visible = False                                'holds the drug grid gridview1
-   With gridview1                                               'clear the popup columnview
-      .Clear()
-      .Columns.count = 3
-      .Columns[0].Alignment = Align.TopLeft
-      .Columns[1].Alignment = Align.TopLeft
-      .Columns[2].Alignment = Align.TopLeft
-      .Rows.count = 1
-   End With
-   lblSearchResults.text = ""
-   If Len(Trim(txtGeneric.text)) < 3 Then Return
-   '-----------------------------------------------------------------------------------------------------------------------------------------------------
-   'find the generics, heaps more rows for these than for brands
-   ' Drugs_Search_By_Generic(generic As String, Optional chapters As String[], Optional limit As Variant = Null, Optional bInstrSearch As Boolean = True)
-   '-----------------------------------------------------------------------------------------------------------------------------------------------------
-   Inc Application.Busy
-   temp_drugs = modPrescribingDBI.Drugs_Search_By_Generic(Trim(txtGeneric.text), drug_search_scope)  ' limit ok, get all matching generics from vwDrugs
-   drugs = modUtil.Copy_Collection_Keyed_Sequentially(temp_drugs)
-   unique_drugs = New Collection
-   If drugs.count Then                                            'found some?
-      For Each drug In drugs                                 'then put into the columnview
-         If Not InStr(Lower(drug!restriction), " base-priced") Then
-            If drug!max_rpt <> 11 Then
-               If last_drug <> drug!generic & drug!form & drug!strength & Str(drug!quantity) & Str(drug!max_rpt) & drug!restrictionflag & CBool(drug!streamlined) Then
-                  last_drug = drug!generic & drug!form & drug!strength & " " & drug!display_packsize & " " & Str(drug!quantity) & Str(drug!max_rpt) & drug!restrictionflag & CBool(drug!streamlined)
-                  onrow = gridview1.Rows.count - 1
-                  unique_drugs.Add(drug, onrow)
-                  generics = Split(drug!generic, ";")                'get string array of generics 1>n, we will display these vertically in column 2
-                  '-----------------------------------------------------------------------------------------
-                  'Keep track of the width of the text we are displaying
-                  'later, gridview1 column1 width is set to the wider of the widest brand or the widest form
-                  '-----------------------------------------------------------------------------------------
-                  iWidestFormName = Max(gridview1.Font.TextWidth(drug!form) + 20, iWidestFormName)    'and the widest of all the forms eg 'tablet'
-                  '--------------------------------------------------------------------------------------------------------------
-                  'Now for column 2 which will contain one or more generics and/or their strength, stacked vertically for example
-                  'codeine phosphate 30mg
-                  'paracetamol 500mg
-                  'note that there is no one on one match between  generics[] and strengths[] can have generic & no strength
-                  'or 3 generics and 1 strength (because we display stuff like test strips etc
-                  'Here we also work out which generic is the widest and adjust the whole col 2 to that width
-                  'and we roughly work out how high this particular row must be given the generic count
-                  'If there is only 1 generic, brand will still need roughly two rows (see above)
-                  '--------------------------------------------------------------------------------------------------------------
-                  gridview1[onrow, 0].Alignment = Align.TopLeft 'don't know why its needed here, but otherwise dosn't align
-                  x = 0
-                  gridview1[onrow, 0].WordWrap = True
-                  If generics.count = 1 Then
-                     gridview1[onrow, 0].richtext &= "<B>" & modStrings.Capitalise_Words_In_String(generics[0]) & "</B>"
-                     gridview1[onrow, 0].richtext &= " " & drug!display_strength
-                     iWidestGenericName = Max(gridview1.Font.TextWidth(generics[0]) + gridview1.Font.TextWidth(drug!display_strength) + 40, iWidestGenericName)
-                  Else
-                     Try strengths = Split(drug!display_strength, "-", "", True)           'if strengths exist get string array of those,display in column 2 with the generic
-                     For Each sSTring In generics                                               'eg amoxycillin, clavulinate
-                        gridview1[onrow, 0].richtext &= "<B>" & modStrings.Capitalise_Words_In_String(sSTring) & "</B>"    'eg amoxycillin
-                        If x < strengths.count Then    'if count=1 and x now 2 > will crash
-                           gridview1[onrow, 0].richtext &= " " & strengths[x]               'row now amoxycillin 400mg/5ml
-                           iWidestGenericName = Max(gridview1.Font.TextWidth(sSTring & " ") + gridview1.Font.TextWidth(strengths[x]) + 40, iWidestGenericName)
-                           gridview1[onrow, 0].richtext &= "<BR>"                                 'start new row
-                        Else
-                           iWidestGenericName = Max(gridview1.Font.TextWidth(sSTring) + 10, iWidestGenericName)
-                        End If
-                        Inc x
-                     Next
-                  End If
-                  If Right(gridview1[onrow, 0].richtext) = "<BR>" Then
-                     gridview1[onrow, 0].richtext = Left(gridview1[onrow, 0].richtext, Len(gridview1[onrow, 0].richtext) - 4)
-                  End If
-                  'PLEASE DO NOT REMOVE THESE COMMENTED OUT ROWS
-                  If generics.Count = 1 Then                                  'generic needs only 1 row height but
-                     gridview1.Rows[onrow].Height = sFontHeight * 2.2         'brand = Brand <BR> (form) which needs two with bit of space to spare
-                  Else
-                     gridview1.Rows[onrow].Height = sFontHeight * (generics.Count + 0.5)   'if > 1 generic, use this height for the entire row
-                  Endif
-                  '    gridview1.Rows[onrow].Height = -1
-                  '--------------------------
-                  'Column 1 = strength + quantity and repeats
-                  '--------------------------
-                  gridview1[onrow, 1].Alignment = Align.TopLeft
-                  If Not IsNull(drug!pbscode) Then
-                     gridview1[onrow, 1].text = Str(drug!quantity) & " Rpt:" & drug!max_rpt
-                  Else
-                     'it is a private drug
-                     gridview1[onrow, 1].text = Str(drug!pack_size) & " Rpt:0"
-                  End If
-                  gridview1[onrow, 2].Alignment = Align.TopLeft
-                  gridview1[onrow, 2].Richtext = drug!pbs_type
-                  iWidestPBStype = Max(gridview1.Font.TextWidth(drug!pbs_type) + 20, iWidestPBStype)
-                  If drug!form <> "other" Then
-                     gridview1[onrow, 0].Richtext &= "<BR>(" & drug!form & ")"
-                  End If
-                  iWidestGenericName = Max(iWidestFormName, iWidestGenericName)
-                  Inc gridview1.Rows.Count
-               End If
-            End If
-         End If
-      Next
-      Dec Gridview1.Rows.Count
-      '--------------------------------------------------------------------------------
-      'Finally if we have drugs, set the column widths for the grid and make it visible
-      '--------------------------------------------------------------------------------
-      If gridview1.Rows.Count Then
-         pnlcolumnview.Visible = True
-         gridview1.Columns[0].width = iWidestGenericName  'the generic name
-         gridview1.Columns[1].width = 60                  'quantity and repeats
-         gridview1.Columns[2].width = iWidestPBStype      'pbs details
-         gridview1.tag = txtGeneric
-         lblSearchResults.text = Str(drugs.count) & " drugs were found"
-      End If
-   Endif
-   
-   lblSearchResults.text = Str(unique_drugs.count) & " drugs were found" 'ie grid rows
-   Dec Application.Busy
-Catch
-   modUtilGUI.ReportError(Error.text, Error.Backtrace)
-   Dec Application.Busy
-   
-End
-
 Public Sub Brands_Get()
    '--------------------------------------------------------------------------------------------------------
    'get all brands like search text
@@ -1929,19 +1783,9 @@ Public Sub Drug_Select()
    Else
       tbFullPi.Enabled = False
    End If
-   If allergy_class_codes.Exist(drug!class_code) Then
-      allergic_reaction = allergy_class_codes[drug!class_code] 'currentconsult!allergies[allergy_class_codes[drug!class_code]!pk]
-      sMsg = "The patient has an "
-      If allergic_reaction!fk_lu_reaction_type = const.ReactionType_Allergy Then
-         Message.title = "DRUG ALLERGY DETECTED"
-         sMsg &= "allergy "
-      Else
-         Message.title = "DRUG SENSITIVITY DETECTED"
-         sMsg &= "sensitivity "
-      Endif
-      sMsg &= "recorded with these details:\n\nACT Class:" & allergic_reaction!class_name & "\n\nACT Name: " & allergic_reaction!product_atcname & "\nCoded Reaction:" & allergic_reaction!term & "\nReaction Detail:" & allergic_reaction!details
-      
-      If Message.Warning(sMsg & "\n\nAre you sure you want to continue?", "Yes", "No") = 2 Then
+   If currentconsult!allergy_class_codes.Exist(drug!class_code) Then                                          'is patient allergic to this drug?
+      sMsg = modAllergyDBI.Allergy_Warning(currentconsult, drug) & "\n\nAre you sure you want to continue?"  
+      If Message.Warning(sMsg, "Yes", "No") = 2 Then
          Drug_New()
          Return
       End If
@@ -2017,7 +1861,6 @@ Public Sub EditArea_Buttons_Click()
       Case "scope"
          columnview1.Visible = True
          Return
-         
          With FPrescribingScope
             .Init()
             .ShowModal()
@@ -2066,6 +1909,12 @@ Public Sub Product_Information_Full_Show(filename As String, drug_name As String
    
 End
 
+Public Sub Medications_Add_Progress_Notes_Update_Prescribed_Today_list()
+   
+   modPrescribingDBI.Medication_update_Progress_notes(currentconsult)
+   
+End
+
 Public Sub Drug_Save_No_Print()
    
    If Not Drug_Add() Then Return
@@ -2074,7 +1923,11 @@ Public Sub Drug_Save_No_Print()
    script_items[cvwPrescriptions.Item.key]!printed = True
    cvwPrescriptions.UnselectAll()
    cvwPrescriptions_Refresh(script_items)                               'refresh list without reloading
+   Medications_Add_Progress_Notes_Update_Prescribed_Today_list
    FClinical_Refresh()
+   If embedded_in_form = "FInbox" Then
+      FInbox.Medications_Refresh()
+   Endif
    Drug_New()
    
 End
@@ -2115,10 +1968,19 @@ Public Sub Drug_Add(Optional bSaveItemNoPrint As Boolean = False) As Boolean
    ' bInteractionsExist was set in Interactions_Drug_Display
    '----------------------------------------------------------------------------------------
    'don't allow a 'double hit' on this button.
+
+   Dim sMsg As String
    
    If Not Drug_Valid() Then Return
    If Drug_Duplicated() Then Return
-   
+   ' If currentconsult!allergy_class_codes.Exist(drug!class_code) Then 'the user has already been warned about this and clicked ok
+   '    sMsg = "The user was presented with dialog box warning about the danger of prescribing "
+   '    sMsg &= drug!generic & " because of an existing allergy/sensitivity<BR><BR>Details of this reaction were displayed "
+   '    sMsg &= "and the user  viewed the messsage and clicked OK. They also then have added this medication to the list to be printed, ignoring the warning.<BR><BR>"
+   '    If modAudit.MakeAudit(currentconsult, "warning to user", Null, 0, const.cSection_Prescriptions, sMsg) Then
+   '       modDBConnect.CommitTrans()
+   '    Endif
+   ' End If   
    script_item = New Collection
    If fk_item_prescribed Then Script_item!fk_item_prescribed = fk_item_prescribed
    If fk_medication Then script_item!fk_medication = fk_medication
@@ -2134,6 +1996,7 @@ Public Sub Drug_Add(Optional bSaveItemNoPrint As Boolean = False) As Boolean
    script_item!generic = drug!generic ' for display
    script_item!strength = drug!strength ' for display only
    script_item!atccode = drug!atccode  ' for interaction checking
+   script_item!atccode = drug!class_code  ' for interaction checking of prescribed items today ** patient could subsequently be made allergic during consult
    script_item!form = drug!form
    script_item!fk_form = drug!fk_form
    script_item!display_packsize = drug!display_packsize
@@ -2145,9 +2008,9 @@ Public Sub Drug_Add(Optional bSaveItemNoPrint As Boolean = False) As Boolean
    script_item!instruction = modUtil.StripExtraBlanks(Trim(txtInstructions.text))
    script_item!prescribed_for = modUtil.StripExtraBlanks(Trim(txtReason.text))
    script_item!prescribed!print_reason = CBool(chkPrintReason.value)
-   If chkCTG.Value = chkCTG.True Then
-      script_item!prescribed!ctg = modPrescribingDBI.Get_CTG_Code(Val(txtDate.Text))
-   Endif
+   ' If chkActive.Value = chkActive.True Then
+   '    script_item!prescribed!ctg = modPrescribingDBI.Get_CTG_Code(Val(txtDate.Text))
+   ' Endif
    script_item!prescribed!fk_instruction = modPrescribingDBI.Instruction_Get_PK(script_item!instruction)
    modPrescribingDBI.Instructions_Save_Habit(script_item) 'save instruction habit and pull back the key
    modDBConnect.CommitTrans()
@@ -2199,7 +2062,11 @@ Public Sub Save()
       End If
    Next
    Print_Script_Items(script_items)
+   Medications_Add_Progress_Notes_Update_Prescribed_Today_list
    FClinical_Refresh()
+   If embedded_in_form = "FInbox" Then
+      FInbox.Medications_Refresh()
+   Endif
    Reload()
    
 End
@@ -2209,8 +2076,11 @@ Public Sub FClinical_Refresh()
    'refresh lists and progress notes on main screen FClinical
    '---------------------------------------------------------
    
-   FClinical.Refresh_Section(const.cSection_Prescriptions)
-   FClinical.Refresh_AllPreviousNotes()
+   If FClinical.IsSamePatient(currentconsult!patient!fk_patient) Then   
+      FClinical.Refresh_Section(const.cSection_Prescriptions)
+      FClinical.Refresh_AllPreviousNotes()
+      Try FGPMPTCA.GPMP_Update()
+   End If   
    
 End
 
@@ -2324,11 +2194,45 @@ Public Function cvwPrescriptions_Refresh(Script_Items_Written As Collection)
       lblScriptItemsPrescribed.text = "Script items prescribed this consultation" & "(" & Str(cvwPrescriptions.count) & ")"
    Else
       lblScriptItemsPrescribed.text = "Script items prescribed this consultation"
-      
    End If
    modUtilGUI.Columnview_Columns_Set_Size(cvwPrescriptions, lblMeasure)
    
 End
+
+' Public Function Medication_update_Progress_notes()
+'    '---------------------------------------------------------------------------------------
+'    'whenever medications are added or deleted 'today' update progress notes to reflect this
+'    '--------------------------------------------------------------------------------------- 
+'    
+'    Dim ProgressNote As CRow
+'    
+'    fk_medications_progressnote = modPrescribingDBI.ProgressNote_Written_Today_Get_Pk(currentconsult)
+'    If cvwPrescriptions.count = 0 Then             'nothing on the script pad
+'       If fk_medications_progressnote Then         'but have a progress note key, must have deleted the last one
+'          If modPrescribingDBI.Medication_Progressnote_Delete(fk_medications_progressnote) Then
+'             modDBConnect.CommitTrans
+'          Else
+'             modDBConnect.RollBack                                       
+'          Endif
+'       End If   
+'    Else
+'       ProgressNote = New CRow
+'       If fk_medications_progressnote Then
+'          ProgressNote.put_unchanged(fk_medications_progressnote, "fk_medications_progressnote")
+'          ProgressNote!fk_audit_action = const.cAuditAction_Edit
+'       Else     
+'          ProgressNote!fk_audit_action = const.cAuditAction_Insert                  'is an insert     
+'       End If   
+'       ProgressNote!fk_consult = currentconsult.GetPK()
+'       ProgressNote!notes = modPrescribingDBI.Medications_Prepare_List(currentconsult, "tinsert medication list today's medications with heading")
+'       ProgressNote!fk_section = const.cSection_Prescriptions
+'       ProgressNote!problem = "Prescription"
+'       ProgressNote.Save("clin_consult.progressnotes", "fk_medications_progressnote")
+'       modProgressNotesDBI.ProgressNote_Code(ProgressNote!fk_medications_progressnote, "prescription written")
+'       modDBConnect.CommitTrans()
+'    End If   
+'    
+' End
 
 Public Function Drug_Duplicated() As Boolean
    '--------------------------------------------------------------------------
@@ -2425,12 +2329,12 @@ Public Function Drug_Valid() As Boolean
    'Now authority stuff
    '-------------------
    If iPBS_Script_Type = const.pbs_script_type_pbs_authority_increased_quantity Then
-      If Not (Val(txtQuantity.text) > drug!quantity) Then
-         sMsg = "You have prescibed a non-authority drug as an authority\n\n"
-         "It would be usual to increase the supplied quantity and/or repeats for this drug."
-         Message.Info(smsg)
-         Return
-      Endif
+      ' If Not (Val(txtQuantity.text) > drug!quantity) Then
+      '    sMsg = "You have prescribed a non-authority drug as an authority\n\n"
+      '    "It would be usual to increase the supplied quantity and/or repeats for this drug."
+      '    Message.Info(smsg)
+      '    Return
+      ' Endif
       If Trim(txtAuthorityWording.text) = "" Then
          Message.Info("Please select an authority indication for this drug before saving")
          txtAuthorityWording.SetFocus()
@@ -2822,7 +2726,10 @@ Public Sub mnuPrescriptions_Click()
             item!printed = False         'force printing for all items.
          Next
          Print_Script_Items(script_items)
-         FClinical.Refresh()
+         FClinical_Refresh()
+         If embedded_in_form = "FInbox" Then
+            FInbox.Medications_Refresh()
+         Endif
          Reload()
       Case "print selected"
          '------------------------------------------------------------
@@ -2846,7 +2753,9 @@ Public Sub mnuPrescriptions_Click()
          cvwPrescriptions.UnselectAll()
          cvwPrescriptions_Refresh(script_items)
          FClinical_Refresh()
-         
+         If embedded_in_form = "FInbox" Then
+            FInbox.Medications_Refresh()
+         Endif
       Case "save selected no print", "save all no print"
          If Last.tag = "save all no print" Then cvwPrescriptions.SelectAll()
          '---------------------------------------------------------------------
@@ -2865,7 +2774,11 @@ Public Sub mnuPrescriptions_Click()
          Next
          cvwPrescriptions.UnselectAll()
          cvwPrescriptions_Refresh(script_items)                               'refresh list without reloading
+         Medications_Add_Progress_Notes_Update_Prescribed_Today_list
          FClinical_Refresh()
+         If embedded_in_form = "FInbox" Then
+            FInbox.Medications_Refresh()
+         Endif
       Case "brief pi"
          modUtilGUI.NotImplemented("Brief product information is not available")
       Case "full pi"
@@ -2882,7 +2795,7 @@ Public Sub mnuPrescriptions_Click()
    End Select
 Catch
    Return  
-
+   
 End
 
 Public Sub Authority_Increased_Quantity_Reason_Get()
@@ -3101,7 +3014,6 @@ Public Sub Interactions_Food_Display(DR As Collection, bSelectingDrug As Boolean
       lblfoodInteractionHeading.text = "Food & " & Dr!brand
       
    Endif
-   Print lblFoodInteractionHeading.Text
    
 End
 

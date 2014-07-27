@@ -118,7 +118,7 @@ CREATE TABLE clin_history.gp_management_plans
   CONSTRAINT gp_management_plans_fk_document_fkey FOREIGN KEY (fk_document)
       REFERENCES documents.documents (pk) MATCH SIMPLE
       ON UPDATE NO ACTION ON DELETE NO ACTION,
-  CONSTRAINT gp_management_plans_fk_progressnotes_fkey FORIGN KEY (fk_progressnote)
+  CONSTRAINT gp_management_plans_fk_progressnotes_fkey FOREIGN KEY (fk_progressnote)
       REFERENCES clin_consult.progressnotes (pk) MATCH SIMPLE
       ON UPDATE NO ACTION ON DELETE NO ACTION
 )

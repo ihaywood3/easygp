@@ -66,6 +66,7 @@ Private cvwReasonForEncounter_Key As Integer
 Private Form_Save_Template As FSaveNotesTemplate
 Private fk_section As Integer 'current default 0 = general notes
 Private cMedications_remove_from_html As Integer = 1
+Private last_todos As String                               'todo's saved last visit
 Static Private form_progress_note_editor As FProgressNoteEditor        
 
 Public Sub Set_Embedded_In_Form(form_name As String)
@@ -176,10 +177,12 @@ Public Sub Init(cons As CConsult, Optional bEditLastNotes As Boolean = False)
       .columns[2].text = "instructions"
    End With
    modPrescribingDBI.medications_prescribed_today_list(currentconsult, cvwMedicationsToday)
+   lblBMICalculator.width = lblToDoNextVisit.Width
    Todos_Next_Visit_Reload()
    DataChange_Update_Indicators(False)
    
 End
+
 Public Sub Todos_Save()
    '------------------------------------------------------------------
    ' save the todo's for next visit
@@ -198,9 +201,10 @@ Public Sub Todos_Save()
    '   OIDS=FALSE
    ' );
    '--------------------------------------------------------------------
-
-   Dim todo As CRow
    
+   Dim todo As CRow
+    
+   If last_todos = Trim(txtToDoNextVisit.text) Then Return 
    todo = New CRow
    If fk_todo Then
       todo.put_unchanged(fk_todo, "fk_todo")
@@ -210,8 +214,9 @@ Public Sub Todos_Save()
    todo.Save("clin_consult.next_visit", "fk_todo")
    fk_todo = todo!fk_todo
    modDBConnect.CommitTrans()
-
+   
 End
+
 Public Sub Todos_Next_Visit_Reload()
    '-------------------------------------------------   
    'Loads the to-do's next visit for a particular role
@@ -222,6 +227,7 @@ Public Sub Todos_Next_Visit_Reload()
    todo = modProgressNotesDBI.ToDo_Next_Visit_Get(currentconsult!patient!fk_patient)
    If Not IsNull(todo) Then 
       txtToDoNextVisit.text = todo!todo
+      last_todos = todo!todo
       fk_todo = todo!pk
    End If 
    
@@ -244,8 +250,6 @@ Public Sub Print_Content()
    modPrinting.Print_PDF(modProgressNotes.ProgressNotes_Add_Page_Header_Create_PDF_File(teNotes.RichText, currentConsult, "CONSULTATION"))
    
 End  
-
-
 
 Public Sub Save()
    '----------------------------------------------------------
@@ -278,9 +282,9 @@ Public Sub Save()
    'editor even when it is empty but only if th copy of what was in there is not "" ie don't
    'save just an empty editor. At moment I  just re-save but save an empty string
    '-----------------------------------------------------------------------------------------
-   If Trim(tenotes.text) <> "" Then
-      Todos_Save    'must be done separately as if user just put in todo, no notes, don't want empty progress notes
-   Endif
+   '  If Trim(tenotes.text) <> "" Then
+   Todos_Save    'must be done separately as if user just put in todo, no notes, don't want empty progress notes
+   ' Endif
    If (Trim(teNotes.text) = "" And copy_of_Editor_text = "") Or Not data_changed Then
       Return
    End If
@@ -885,7 +889,7 @@ Public Sub mnuNotes_Click()
          Insert_Picture("clipboard")
       Case "paste"
          If Clipboard.type = Clipboard.Text Then
-             tenotes.Insert(Clipboard.Text)
+            tenotes.Insert(Clipboard.Text)
          End If
       Case "insert medication list", "insert medication list with heading", "insert medication list today's medications", "insert medication list today's medications with heading"
          Medications_Insert_List(modPrescribingDBI.Medications_Prepare_List(currentconsult, Last.tag))
@@ -1130,8 +1134,6 @@ Public Function management_summary(PH As Collection) As String
    
 End
 
-
-
 Public Sub Medications_Insert_List(sMedsList As String)
    '-----------------------------------------
    'Inserts a medications list into the notes
@@ -1141,7 +1143,6 @@ Public Sub Medications_Insert_List(sMedsList As String)
    teNotes.richtext = Replace$(teNotes.richtext, ".medslist", sMedsList)
    
 End
-
 
 Public Sub Templates_ReLoad()
    
@@ -1226,7 +1227,6 @@ Public Sub EditorButtons_Click()
       Case "spell"
          SpellChecker.init()
          SpellChecker.StartSpelling()
-         '  ParentForm.Save()        'fixme null parent form
          teNotes.SetFocus()
       Case "list"
          teNotes.Insert(".!@.")
@@ -1337,8 +1337,8 @@ Public Sub Auto_Text(shortcut As Collection)
    
    tenotes.Select(curpos - Len(shortcut!abbrev), Len(shortcut!abbrev)) 
    tenotes.Cut()
-   bexit = True  'prevent entering needless processing in subroutines
-   Clipboard.Copy(shortcut!text, "text/plain")
+   bexit = True                                                             'prevent entering needless processing in subroutines
+   Clipboard.Copy(shortcut!text, "text/html")
    tenotes.Paste()
    bexit = False
    
@@ -1363,21 +1363,16 @@ Public Sub tbLoadFile_Click()
    'todo -the text
    '-----------------------------------------------------------
    
-   teNotes.Insert(".pic")
+   Dim I As Image
+   
    Dialog.Title = "Select Image File"
    Dialog.Filter = ["Pictures (*.png;*.jpg;*.jpeg)", "All files (*.*)"]
-   
    If Dialog.OpenFile() Then Return
-   '----------------------------------------------------
-   'Ok, check this is a valid image (e.g they could have
-   'changed the file selector to any file
-   '-----------------------------------------------------
-   Print Dialog.Path
+   Try FImageGet.Set_Image(Image.Load(Dialog.Path))  ' check this is a valid image
    
-   Try FImageGet.Set_Image(Image.Load(Dialog.Path))
    If Not Error Then
-      FImageGet.ShowModal()
-      Insert_Picture("clipboard")
+      FImageGet.ShowModal()                          'show in a popup dialog, user can resize etc
+      Insert_Picture("clipboard")                    'insert using "src=\'filename' etc for future parsing
    Else
       Try teNotes.Insert(File.Load(Dialog.Path))
       If Error Then
@@ -1588,7 +1583,7 @@ Public Sub Settings_Load() 'do not make this private
    cvwReasonForEncounter.font = Font[Settings["Notes_Editor/cvwReasonForEncounter.font", "DejaVu Sans,9"]]
    lvwFavourites.font = Font[Settings["Notes_Editor/lvwFavourites.font", "DejaVu Sans,9"]] 
    cvwMedicationsToday.font = Font[Settings["Notes_Editor/cvwMedicationsToday.font", "DejaVu Sans,9"]]
-
+   
 End
 
 Public Sub tbSaveConsultAsPDF_Click()
@@ -1712,7 +1707,7 @@ Public Sub EditArea_TxtBox_Change()
       Case "height", "weight"
          Try CalcBMI()
       Case "to do next visit"
-         '  DataChange_Update_Indicators(True)
+         
    End Select
    
 End
@@ -1844,18 +1839,18 @@ Public Sub tbSave_Click()
 End
 
 Public Sub cvwMedicationsToday_Menu()
-
+   
    If cvwMedicationsToday.count Then mnuMedicationsPrescribedToday.Popup
-
+   
 End
 
 Public Sub mnuMedicationsPrescribedToday_Click()
    
-  Select Case Last.tag
-  Case "font"
-     modUtilGUI.Columnview_SetFont(cvwMedicationsToday, "Notes_Editor")
-  Case "copy drug details"
-     Clipboard.Copy(cvwMedicationsToday.Item.Text, "text/html") 'fixme this does not work when go to paste
-  End Select 
+   Select Case Last.tag
+      Case "font"
+         modUtilGUI.Columnview_SetFont(cvwMedicationsToday, "Notes_Editor")
+      Case "copy drug details"
+         Clipboard.Copy(cvwMedicationsToday.Item.Text, "text/html") 'fixme this does not work when go to paste
+   End Select 
    
 End

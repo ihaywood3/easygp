@@ -42,6 +42,7 @@
 ' WHERE TO FIND CODE  1) To update previous notes:  don't database events will take care of
 '                     2) To update the health summary if showing: Health_Summary_Display()
 '--------------------------------------------------------------------------------------------------------
+Private GP_Management_Plan As Collection 
 Private form_gpmp_tca_list As FGPMPTCAList
 Private ProgressNotesPage As FProgressNoteEditor    'will always be re-initialised with new patient
 Private PrescriptionPage As FPrescriptions          'must be destroyed in Gui_Reset()
@@ -106,7 +107,8 @@ Private Form_Patient_Tasks As FPatientTasks       'all outstanding tasks for the
 Public Form_ExportClinical As New FExportClinical 'Allows user to export notes from FClinical as pdf
 Private Toolbuttons As Collection                 'buttons which user selects to have on the toolbar
 Private Warning_Icons As Collection               'icons used to warn user about patient e.g breast feeding, pregnant, anger issues, alcoholic
-Public Form_Decision_Support As FHtmlViewer
+'Public Form_Decision_Support As FHtmlViewer
+Public Form_Decision_Support As FDecisionSupport
 Public FCurrentHTMLViewer As FHtmlViewer           'dont remove just testing
 Public FGeneralNotesEditor As FProgressNoteEditor  ' dont remove just testing
 Static Private form_clinical As FClinical         'allows FClinical Access from anywhere  = Me -see Init()
@@ -396,12 +398,30 @@ End
 Public Sub FDecision_Support_tbClose_Click()
    
    Stop Event
-   Form_Decision_Support.Settings_Save
+   'Form_Decision_Support.Settings_Save
+   Layout_Right_Side_Screen
    DecisionSupport_Show("", False)
    
 End
 
-Static Public Sub DecisionSupport_Show(Optional Heading As String, flag As Boolean)
+Static Public Sub DecisionSupport_Show(Optional Heading As String, flag As Boolean, Optional help_section As String = "")
+   '----------------------------------------------------------------------------
+   'There is a texteditor contained in Vbox_Decision_Support, which is hidden on
+   'the right hand side of the screen. In any section of EasyGP needing simple
+   'decision support, this is shown, whilst what's usually on top is hidden
+   'for example of implementation see the Mental Health module
+   '-----------------------------------------------------------------------------
+   
+   form_clinical.VboxActiveProblemList.Visible = Not flag
+   form_clinical.Vbox_PatientTasks.Visible = Not flag
+   form_clinical.VSplit_TabbedListsGraph.Visible = Not flag
+   form_clinical.Vbox_Decision_Support.Visible = Flag
+   If heading <> "" Then form_clinical.Form_Decision_Support.lblDecisionSupport.text = Heading
+   If help_section <> "" Then form_clinical.Form_Decision_Support.Set_Help_Section(help_section)
+   
+End
+
+Static Public Sub DecisionSupport_Show_old(Optional Heading As String, flag As Boolean, Optional help_section As String = "")
    '----------------------------------------------------------------------------
    'There is a texteditor contained in Vbox_Decision_Support, which is hidden on
    'the right hand side of the screen. In any section of EasyGP needing simple
@@ -414,6 +434,7 @@ Static Public Sub DecisionSupport_Show(Optional Heading As String, flag As Boole
    form_clinical.VSplit_TabbedListsGraph.Visible = Not flag
    form_clinical.Vbox_Decision_Support.Visible = Flag
    If heading <> "" Then form_clinical.Form_Decision_Support.lblViewerCaption.text = Heading
+   If help_section <> "" Then form_clinical.Form_Decision_Support.Set_Help_Section(help_section)
    
 End
 
@@ -492,15 +513,17 @@ Public Sub Refresh_Warning_Panel()
    '-----------------------------------------------------------------------
    
    Dim warning_icon As Collection
-   Dim hCtrl As Control
    
-   For Each hctrl In pnlWarnings.Children
-      hCtrl.Delete
-   Next
+   lblwarnings.text = ""
+   modEditAreaHelpers.Warnings_Panel_Clear(pnlWarnings)
    warning_icons = modPatientWarnings.Warning_Icons_Get_For_Patient(currentconsult!patient!fk_patient) 'Get users warning icons
-   For Each warning_icon In warning_icons
-      modEditAreaHelpers.Warning_image_Create(pnlWarnings, warning_icon!icon_path, warning_icon!pk_module, 24, warning_icon!name, Me)
-   Next
+   If warning_icons.count Then  
+      For Each warning_icon In warning_icons
+         modEditAreaHelpers.Warning_image_Create(pnlWarnings, warning_icon!icon_path, warning_icon!pk_module, 24, warning_icon!name, Me)
+      Next
+   Else
+      lblwarnings.text = "Click to add warnings"  
+   End If
    
 End
 
@@ -555,13 +578,21 @@ Public Sub Init()
    form_clinical = Me                                        'allow access of FClinical from any other module
    Refresh_Toolbar
    Form_Patient_Tasks = New FPatientTasks(Vbox_PatientTasks)
-   With Form_Decision_Support = New FHtmlViewer(Vbox_Decision_Support)
-      .lblViewerCaption.Visible = True
-      .tbWebBrowserClose.Visible = True
-      .tbWebBrowserZoomIn.Visible = True
-      .tbWebBrowserZoomOut.Visible = True
-      .Parent_Form_Set("FClinical")
-      .Section_Set("Decision Support")
+   ' With Form_Decision_Support = New FHtmlViewer(Vbox_Decision_Support)
+   '    .lblViewerCaption.Visible = True
+   '    .tbWebBrowserClose.Visible = True
+   '    .tbWebBrowserZoomIn.Visible = True
+   '    .tbWebBrowserZoomOut.Visible = True
+   '    .Parent_Form_Set("FClinical")
+   '    .Section_Set("Decision Support")
+   ' End With
+   With Form_Decision_Support = New FDecisionSupport(Vbox_Decision_Support)
+      ' .lblViewerCaption.Visible = True
+      '  .tbWebBrowserClose.Visible = True
+      ' .tbWebBrowserZoomIn.Visible = True
+      ' .tbWebBrowserZoomOut.Visible = True
+      ' .Parent_Form_Set("FClinical")
+      ' .Section_Set("Decision Support")
    End With
    With form_medications = New FMedicationsList(Vbox_Medications)
       .Set_Embedded_Form_Name("FClinical")
@@ -581,7 +612,8 @@ Public Sub Init()
    obs = New Observer(FMetaData.tbSave) As "FMetaData_tbSave"    'Let FClinical handle the save event"
    obs = New Observer(FMetaData.txtUserObservationName) As "FMetaData_txtUserObservationName"
    obs = New Observer(FMetaData.tbClose) As "FMetaData_tbClose"    'Let FClinical handle the save event"
-   obs = New Observer(Form_Decision_Support.tbWebBrowserClose) As "FDecision_Support_tbClose"
+   '  obs = New Observer(Form_Decision_Support.tbWebBrowserClose) As "FDecision_Support_tbClose"
+   obs = New Observer(Form_Decision_Support.tbClose) As "FDecision_Support_tbClose"
    With SpellChecker = New ClskSpell
       .EditorControlToCheck = teForSpelling
       .TempFileForSpelling = User.home &/ "myspelltemp.txt"  'FIXME
@@ -650,6 +682,14 @@ Public Sub patient_load_record(patient As Collection, bPhotoConfirmed As Boolean
    '---------------------------------------------------------------------------
    currentconsult = New CConsult(patient, consultationtypes[cmbConsultationType.Index]!pk)
    Patient_Demographics_Display()            'display name address phone, pregnancy status
+   GP_Management_Plan = modPastHistoryDBI.GP_Management_Plans_Get(currentconsult!patient!fk_patient, True)
+   If Not IsNull(GP_Management_Plan) Then
+     With tbHealthSummary
+         .Caption = "View GPMP"
+         .tag = "GPMP"
+     End With
+   Endif
+
    Refresh_Warning_Panel                     'display patient specific warnings
    WorkspaceEditor.Lock()                    'DO NOT REMOVE THE LOCK/UNLOCK
    Editor_ShowPage("All Previous Notes")     'Always show all previous notes
@@ -692,7 +732,7 @@ Public Sub patient_load_record(patient As Collection, bPhotoConfirmed As Boolean
    mnuDecisionSupport_K10.Enabled = True
    mnuDecisionSupport_Dass.Enabled = True
    mnuDecisionSupport_Chads.Enabled = True
-   
+  
 End
 
 Static Public Function IsSamePatient(fk_patient As Integer) As Boolean
@@ -778,6 +818,7 @@ Public Sub Refresh_Section_Instance(section As Integer)
    Select Case section
       Case const.cSection_CarePlan
          Try form_gpmp_tca_list.Reload(True)        'reload any gpmp/tca, refreshing the collection  - this form can be null
+         tbHealthSummary.caption = "View GPMP"
       Case const.cSection_Inbox
          cvwResults_Refresh(True)
       Case const.cSection_PastHistory
@@ -945,10 +986,14 @@ Private Sub Settings_Load()
    HSplit_MeasurementLists.Layout = Settings["Clinical/HSplit_MeasurementLists.Layout", modUtilGUI.HSplit([1, 1])]
    HSplit_Comms_Birthdate.layout = Settings["FClinical/HSplit_Comms_Birthdate.Layout", modUtilGUI.HSplit([1, 1])]
    Layout_Right_Side_Screen
+   tlReminders.font = Font[Settings["FClinical/tlReminders.font", "Arial,7"]]
    cvwRecalls.Font = Font[Settings["FClinical/cvwRecalls.font", "Arial,9"]]
    cvwRequests.Font = Font[Settings["FClinical/cvwRequests.font", "Arial,9"]]
    cvwReferrals.Font = Font[Settings["FClinical/cvwReferrals.font", "Arial,9"]]
    cvwResults.Font = Font[Settings["FClinical/cvwResults.font", "Arial,9"]]
+   cvwProblemsMajor.Font = Font[Settings["FClinical/cvwProblemsMajor.font", "Arial,9"]]
+   cvwProblemsSignificant.Font = Font[Settings["FClinical/cvwProblemsSignificant.font", "Arial,9"]]
+   cvwProblemsInactive.Font = Font[Settings["FClinical/cvwProblemsInactive.font", "Arial,9"]]
    cvwLettersReceived.font = Font[Settings["FClinicals/cvwLettersReceived.font", "Arial,9"]]
    cvwCertificates.Font = Font[Settings["FClinical/cvwCertificates.font", "Arial,9"]]
    ' cvwMedications.Font = Font[Settings["FClinical/cvwMedications.font", "Arial,9"]]
@@ -995,9 +1040,9 @@ Public Sub Consult_Save()
    '------------------------------------------------------------------------------------------
    
    Dim i As Object
-   Dim s As New Integer[]
+   ' Dim s As New Integer[]
    
-   s.Add(const.cMedications_add_to_html)
+   '  s.Add(const.cMedications_add_to_html)
    If IsNull(currentconsult) Then Return  'do not remove this
    Inc Application.Busy
    TabStrip_Lists.Enabled = False
@@ -1556,6 +1601,10 @@ Public Sub Gui_Clear()
    bExit = True
    
    Inc application.busy
+   With tbHealthSummary
+      .text = "View Health Summary"
+      .tag = "Health Summary"
+   End With
    currentconsult = Null
    '----------------------------------------------------------
    'Clear patient related textboxes and labels on main toolbar
@@ -1636,6 +1685,7 @@ Public Sub Gui_Clear()
    iCertificatetype = const.certificate_type_medical
    Layout_Right_Side_Screen
    modEditAreaHelpers.Warnings_Panel_Clear(pnlWarnings)
+   lblwarnings.text = "Click to add warnings"
    
 End
 
@@ -1727,7 +1777,6 @@ Public Sub Health_Summary_Display()
    Dim templ As CTemplate
    
    Inc Application.Busy
-   ' FClinical.WebBrowser_Show(modProgressNotes.Health_Summary_Construct_html(currentconsult), "HEALTH SUMMARY")
    templ = modProgressNotes.Health_Summary_Construct_LaTex(currentconsult)
    If Not IsNull(templ) Then
       Editor_ShowPage("pdf file", "Health Summary", modPrinting.Latex_To_PDF(templ.GetData()))
@@ -1767,18 +1816,17 @@ Catch
    
 End
 
-Public Sub cvwLettersReceived_Select_old()
-   
-   cvwLettersReceived.MoveCurrent
-   cvwLettersReceived_Key = cvwLettersReceived.Item.key
-   If cvwLettersReceived.key = 0 Or cvwLettersReceived.key = "" Then Return
-   If WorkspaceEditor.ActiveWindow.Caption <> "Referrals" And WorkspaceEditor.ActiveWindow.Caption <> "Export Wizard" Then
-      Document_Display
-   End If   
-Catch
-   Log.WarningMsg("cvwLettersReceived_Select: " & Error.Text & " " & Error.Backtrace.Join(" "))
-   Return 
-   
+
+
+
+Public Sub VBox_Letters_Leave()
+   '---------------------------------------------------------------------------
+   'Put this in because if have single entry on the list and has been selected
+   'and user moves off to do something else, the line remains highlighted and 
+   'clicking on it again > no key for that row > won't display
+   '---------------------------------------------------------------------------
+    cvwLettersReceived.UnselectAll()
+
 End
 
 Public Sub cvwLettersReceived_dblClick()
@@ -1788,28 +1836,11 @@ Public Sub cvwLettersReceived_dblClick()
    'viewing letters per-se occurs via the dblclick event if the letter
    'writer is open otherwise the select event
    '-------------------------------------------------------------------  
-   
+   cvwLettersReceived.MoveCurrent
+   cvwLettersReceived_Key = cvwLettersReceived.Item.key
    If WorkspaceEditor.ActiveWindow.Caption <> "Referrals" Then Return
    If cvwLettersReceived.key = 0 Or cvwLettersReceived.key = "" Then Return
    Document_Display(currentconsult!letters_received[cvwLettersReceived_Key])
-Catch
-   Log.WarningMsg("cvwLettersReceived_dblClick: " & Error.Text & " " & Error.Backtrace)
-   Return 
-   
-End
-
-Public Sub cvwLettersReceived_dblClick_old()
-   '------------------------------------------------------------------
-   'As the letter writer needs the click or select event to allow
-   'user to drag and drop a document copy to the letter being written
-   'viewing letters per-se occurs via the dblclick event if the letter
-   'writer is open otherwise the select event
-   '-------------------------------------------------------------------  
-   
-   If WorkspaceEditor.ActiveWindow.Caption <> "Referrals" Then Return
-   If cvwLettersReceived.key = 0 Or cvwLettersReceived.key = "" Then Return
-   ' Document_Display()
-   ' Document_Display(documents[cvwLettersReceived_Key])
 Catch
    Log.WarningMsg("cvwLettersReceived_dblClick: " & Error.Text & " " & Error.Backtrace)
    Return 
@@ -3452,7 +3483,7 @@ Public Sub MainToolbar_Click()
          Editor_ShowPage(Last.tag)
       Case "tex summary"
          Health_Summary_Display
-      Case "health summary"
+      Case "health summary", "GPMP"
          Health_Summary_Display
       Case "export pdf"
          Export_Records()
@@ -4362,146 +4393,6 @@ Catch
    
 End
 
-Public Sub mnuLettersReceived_Click_old()
-   
-   Dim D As Collection
-   Dim x As Integer
-   Dim pdfs_to_merge As Collection  'if user decides to merge pdfs
-   Dim audit_notes As String
-   
-   Select Case Last.tag
-      Case "help"                          'show help for this section
-         modUtilGUI.NotImplemented("Help for Letters Recieved Menu")
-      Case "external viewer"
-         modutil.Show_in_external_pdf_viewer(modFiles.Get("document_archiving_directory"), currentconsult!letters_received[cvwLettersReceived_Key]!source_file) 'True = is an EasyGP document
-      Case "fonts"                         'adjust and save font"
-         modUtilGUI.Columnview_SetFont(cvwLettersReceived, "TabbedLists")
-      Case "transfer to pdfs to join list"                                                                    'joins selected documents into a single pdf
-         '-----------------------------------------------------------------------------------------
-         'joining pdf's difficult (not the actual joining)
-         'eg.user could want to or be stupid enough to join disparate pdf's
-         'so some decision needs to be made about the original collection's settings e.g originator
-         'for the moment (experimental) the last document sent to the list (i.e this one) will
-         'be attatched  as the tag of the lvFilesToJoin
-         '------------------------------------------------------------------------------------------
-         cvwLettersReceived.MoveFirst
-         pdfs_to_merge = New Collection
-         lvFilesToJoin.Clear()
-         txtTagUser.text = ""
-         For x = 0 To cvwLettersReceived.Selection.count - 1
-            If Lower(File.Ext(currentconsult!letters_received[cvwLettersReceived.Selection[x]]!source_file)) = "pdf" Then
-               Try lvFilesToJoin.Add(cvwLettersReceived.Selection[x], currentconsult!letters_received[cvwLettersReceived.Selection[x]]!source_file)
-               If Not Error Then
-                  pdfs_to_merge.Add(currentconsult!letters_received[cvwLettersReceived.Selection[x]], pdfs_to_merge.count) 'needed to delete these later
-               End If
-            Else
-               Message.info("Only pdf files can be joined together, sorry.....")
-               cvwResults.UnselectAll()
-               Return
-            End If
-         Next
-         lvFilesToJoin.tag = pdfs_to_merge
-         VBox_Files_To_Join.Visible = True
-         Vbox_MiniGraphs.Visible = False
-      Case "display"                    'show the letter
-         If cvwLettersReceived_key = 0 Then
-            Message.Info("key is zero")
-            Return
-         Endif
-         Document_Display()
-      Case "display in new tab"
-         Document_Display(True)
-      Case "display as result"                'change fk_lu_display as to const.Document_Display_As_Result
-         audit_notes = "Display mode changed from letter to result"
-         If modArchiveDocumentsDBI.Change_Display_Mode(currentconsult, currentconsult!letters_received[cvwLettersReceived_key], const.Document_Display_As_Result, const.cSection_Documents, audit_notes) Then
-            cvwLettersReceived_Refresh(True)
-         Endif
-      Case "delete"                        'mark this as deleted but enforce a reason
-         If currentconsult!letters_received[cvwLettersReceived_key]!protected Then
-            Message.Title = "Protected Document"
-            Message.Info("You may not delete this document.\n\n When it was created it was marked as 'protected' by EasyGP.")
-            Return
-         Endif
-         If modArchiveDocumentsDBI.Delete(currentconsult, currentconsult!letters_received[cvwLettersReceived_key], const.cSection_Documents, const.sAuditAction[const.cAuditAction_MarkDeleted]) Then
-            modDBConnect.CommitTrans()
-            Deleted_Documents.Add(currentconsult!letters_received[cvwLettersReceived_key], cvwLettersReceived_key)
-            cvwLettersReceived_Refresh(True) 'refresh the collection and reshow the list
-         Else
-            modDBConnect.RollBack
-         End If
-      Case "delete duplicate"             'Delete the letter, but don't enforce a reason
-         If currentconsult!letters_received[cvwLettersReceived_key]!protected Then
-            Message.Title = "Protected Document"
-            Message.Info("You may not delete this document.\n\n When it was created it was marked as 'protected' by EasyGP.")
-            Return
-         Endif
-         If Message.Question("Are you sure this is a duplicate? Sure you want to delete it?", "Yes", "No") = 2 Then Return
-         If modArchiveDocumentsDBI.Delete(currentconsult, currentconsult!letters_received[cvwLettersReceived_key], const.cSection_Documents, const.sAuditAction[const.cAuditAction_DeleteDuplicateDocument]) Then
-            modDBConnect.CommitTrans()
-            Deleted_Documents.Add(currentconsult!letters_received[cvwLettersReceived_key], cvwLettersReceived_key)
-            cvwLettersReceived_Refresh(True)
-         Else
-            modDBConnect.RollBack
-         End If
-      Case "email documents"
-         If Message.Warning("Unless you are Ian or Richard Cancel this immediately, it is developmental code and will not work, worse, if my crash or even eat your hamster", "Ignore warning - don't like my hamster", "Shit - I'm out of here") = 2 Then Return  
-         With form_email_documents = New FEmailDocument
-            .Init(currentconsult, [modFiles.Get("document_archiving_directory", currentconsult!letters_received[cvwLettersReceived_Key]!source_file)])
-            .ShowModal()
-         End With
-      Case "undo delete"
-         'find the last deleted letter
-         For Each D In Deleted_Documents
-            If D!fk_lu_display_as = const.Document_Display_As_Letter Then
-               If modArchiveDocumentsDBI.UnDelete(currentconsult, d, const.cSection_Documents) Then
-                  modDBConnect.CommitTrans()
-                  Deleted_Documents.Remove(d!pk_document)
-                  cvwLettersReceived_Refresh(True)
-                  Break
-               Endif
-            Endif
-         Next
-         
-      Case "edit"            'edit the metadata
-         If currentconsult!letters_received[cvwLettersReceived_key]!protected Then
-            Message.Title = "Protected Document"
-            Message.Info("You may not edit this document.\n\n When it was created it was marked as 'protected' by EasyGP.")
-            Return
-         Endif
-         Document_Edit_Metadata(currentconsult!letters_received, cvwLettersReceived_Key)
-      Case "link"                          'link to a health issue not yet implemented
-         modUtilGUI.NotImplemented("Link letter to health issue")
-      Case "print selected"
-         For x = 0 To cvwLettersReceived.Selection.count - 1
-            Document_Print(cvwLettersReceived.Selection[x])
-         Next
-         cvwLettersReceived.UnselectAll()
-      Case "print all"
-         For Each D In currentconsult!letters_received
-            Document_Print(D!pk_document)
-         Next
-      Case "select all"
-         cvwLettersReceived.SelectAll()
-      Case "unselect"
-         cvwLettersReceived.UnselectAll()
-      Case "audit trail"
-         Document_AuditTrail_Show(cvwLettersReceived_key)  'key to documents.documents
-      Case "refile document"
-         If currentconsult!letters_received[cvwLettersReceived_key]!protected Then
-            Message.Title = "Protected Document"
-            Message.Info("You may not re-file this document.\n\n When it was created it was marked as 'protected' by EasyGP.")
-            Return
-         Endif
-         If modArchiveDocumentsDBI.Document_SendBack_For_ReFiling(currentconsult, currentconsult!letters_received[cvwLettersReceived_key]) Then 'commit done in that routine
-            cvwLettersReceived_Refresh(True)
-         Endif
-   End Select
-Catch
-   Log.WarningMsg("FCLinical.mnuLettersReceived_Click: " & Error.Text & " " & Error.Backtrace)
-   Return 
-   
-End
-
 Public Sub mnuPatientPhoto_Click()
    
    Select Case Last.tag
@@ -4555,6 +4446,9 @@ Public Sub popupMnu_ProblemList_Click()
    
    temp_coll!pk_pasthistory = currentpasthistory!pk_pasthistory
    Select Case Last.tag
+      Case "font"
+         modUtilGUI.Columnview_SetFont(CurrentPastHistoryList, "FClinical")
+         
       Case "add"
          Editor_ShowPage("Health Issues")
       Case "edit"
@@ -5335,16 +5229,22 @@ Public Sub tbSections_Click()
    If Not currentconsult Then Return
    If const.Clinical_Toolbuttons.Exist(Last.tag) Then
       Editor_ShowPage(const.Clinical_Toolbuttons[Last.tag]!name)
-   Else
-      If Last.tag = "health summary" Then
+   Else If Last.tag = "GPMP" Then  
+         Templ = modProgressNotes.Health_Summary_Construct_LaTex(currentconsult, GP_Management_Plan)
+          Editor_ShowPage("pdf file", "GPMP", modPrinting.Latex_To_PDF(templ.GetData()))
+         lblSection.text = "GP Management Plan"
+   Else If Last.tag = "Health Summary" Then
          Templ = modProgressNotes.Health_Summary_Construct_LaTex(currentconsult)
          Editor_ShowPage("pdf file", "Health Summary", modPrinting.Latex_To_PDF(templ.GetData()))
          lblSection.text = "Health Summary"
-      Else If Last.tag = "Gp Management Plan" Then
-         Editor_ShowPage(Last.tag)
+    
+        ' Editor_ShowPage("pdf file", "Health Summary", modPrinting.Latex_To_PDF(templ.GetData()))
+         
+     'Else If Last.tag = "Gp Management Plan" Then
+     '    Editor_ShowPage(Last.tag)
       Else
          Try Editor_ShowPage(Last.tag, Last.tag)
-      End If
+    
       
    Endif
    Try Control_For_Focus.SetFocus()                 'DO NOT REMOVE THIS SEE DECLARATION SECTINO AT THE TOP
@@ -5559,6 +5459,7 @@ Private Sub WorkspaceEditor_Activate_Each(hctrl As Control)
          tbSave.Enabled = True
          tbNew.tooltip = "New Health Issue"
          tbNew.Enabled = True
+         tbDecisionSupport.Enabled = True 
          lblsection.text = " Health Issues "
       Case "FCarePlanning"
          lblSection.text = "Care Planning"
@@ -6077,6 +5978,12 @@ Public Sub pnlWarnings_Menu()
    
 End
 
+Public Sub lblwarnings_MouseDown()
+   
+   pnlWarnings_Menu
+   
+End
+
 Public Sub mnuView_Click()
    
    Select Case Last.tag
@@ -6457,6 +6364,7 @@ Public Sub Occupation_Save()
                   modOccupationalHistoryDBI.Patient_Occupation_Make_Current_And_Main(OH!fk_occupational_history)
                   modContactsDBI.Person_Set_occupation(currentconsult!patient!fk_person, fk_occupation)
                   modDBConnect.CommitTrans()
+                  Try FGPMPTCA.GPMP_Update                 'If care planning module loaded update the LaTex
                Case 2 'No, then reset the default occupation in the patients view.
                   If Not IsNull(currentconsult!patient!occupation) Then
                      txtOccupation.Text = UCase(Left(currentconsult!patient!occupation, 1)) & Right(currentconsult!patient!occupation, Len(currentconsult!patient!occupation) - 1)
@@ -6489,6 +6397,7 @@ Public Sub Occupation_Save()
       occupational_history!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sMsg, const.cSection_OccupationalHistory, -1, "occupations", 0, False)
       occupational_history.Save("clin_history.occupational_history", "fk_occupational_history")
       modDBConnect.CommitTrans()
+      Try FGPMPTCA.GPMP_Update                 'If care planning module loaded update the LaTex
       Refresh_Section(const.cSection_Allergies)                                     'if health summary showing then refresh that
       currentconsult!patient!fk_occupation = fk_occupation
       currentconsult!patient!occupation = modStrings.Capitalise_Words_In_String(txtOccupation.text)
@@ -6977,3 +6886,16 @@ Public Sub ListView1_Leave()
    Last.visible = False
    
 End
+
+Public Sub tlReminders_Menu()
+   
+   mnuToolbarRecallsDue.Popup()
+   
+End
+
+Public Sub mnuToolbarRecallsDue_Click()
+   
+   modUtilGUI.Columnview_SetFont(tlReminders, "FClinical")
+   
+End
+

@@ -1,0 +1,206 @@
+' Gambas class file
+
+Private fk_template As Integer
+Private fk_code As String
+Private bExit As Boolean
+Private Health_Issue_Templates As Collection
+Private Form_Terms As FCodedTermSelector
+Private obs As Observer
+Private Terms As Collection
+Private CurrentTerm As Collection
+
+Public Sub Run() As Boolean
+   
+   Return Not Me.ShowModal()
+   
+End
+
+Public Sub btnOK_Click()
+   
+   Save()
+   Me.Close(True)
+   
+End
+
+Public Sub btnCancel_Click()
+   
+   Me.Close
+   
+End
+
+Public Sub _new()
+   
+   lblMeasure.text = "  Health Issue Keywords  "
+   modEditAreaHelpers.Resize_labels(Vbox_EditArea, lblmeasure) 
+   Me.Title = "Health Issue Template For Care Planning"
+   With Form_Terms = New FCodedTermSelector(Vbox_EditArea)
+      .Ignore = True
+      .Visible = False
+      .Height = 200
+   End With 
+   obs = New Observer(Form_Terms.ColumnView1) As "cvwTerms"
+   
+End
+
+Public Sub Init(data As Collection)
+   
+   txtAim.text = data!aim_of_plan
+   txtKeywords.text = data!keywords
+   txtPlanContributionGP.text = data!plan_contribution_gp
+   txtPlanContributionPatient.text = data!plan_contribution_patient
+   chkRiskFactor.value = data!risk_factor
+   lvwTermCodes.Add(data!code, data!term_and_code)
+   txtFindTerm.SetFocus 'in case user wants to add equivalent terms
+   Terms = New Collection
+   Terms.Add(data, data!code) 
+   
+End
+
+Public Function Valid_Template() As Boolean
+   
+   If Trim(txtKeywords.text) = "" Then Return False
+   If Trim(txtAim.text) = "" Then Return False
+   If Trim(txtPlanContributionGP.text) = "" Then Return False
+   If Trim(txtPlanContributionPatient.text) = "" Then Return False
+   Return True   
+   
+End
+
+Public Sub cvwTerms_KeyPress()
+   '------------------------------------------------------------------
+   'Act only on the <ENTER> key display what is in list in the textbox
+   'This event occurs of Form_Terms and is over-ridden by this observer
+   '------------------------------------------------------------------
+   
+   If Key.code = Key.Return Then
+      ' Stop Event                    'stop event on Form_Terms
+      cvwTerms_DblClick()
+   End If
+   
+End
+
+Public Sub cvwTerms_DblClick()
+   '-----------------------------------------------------------------
+   'This is an observer event on  Form_Terms.ColumnView1 - see Init()
+   '----------------------------------------------------------------
+   
+   Stop Event
+   
+   Coded_Term_Select()
+   Form_Terms.Visible = False
+   With txtFindTerm
+      .text = ""
+      .SetFocus
+   End With
+   
+End
+
+Public Sub Coded_Term_Select()
+   '----------------------------------------------------------------
+   'User has chosen a term from popup lists Add this to the lvwTerms
+   '----------------------------------------------------------------
+   
+   CurrentTerm = Form_Terms.Get_Term()
+   CurrentTerm!term_and_code = CurrentTerm!term & " (" & CurrentTerm!code & ")"
+   If Terms.Exist(CurrentTerm!code) = False Then  
+      Terms.Add(CurrentTerm, CurrentTerm!code)
+      lvwTermCodes.Add(CurrentTerm!code, CurrentTerm!term_and_code)
+   End If   
+   
+End
+
+Public Sub save()
+   
+   Dim Health_issue_template As CRow 
+   Dim existing_template As Collection
+   Dim term As Collection
+   ' Create table clin_history.health_issue_templates
+   ' (pk serial primary key,
+   '  fk_staff integer not null,
+   '  shared boolean default false,   
+   '  keywords text not null,
+   '  risk_factor boolean default false
+   '  fk_code text not null,listbox
+   '   deleted boolean DEFAULT false,
+   '   aim_of_plan text,
+   '   plan_contribution_gp text,
+   '   plan_contribution_patient text,
+   '  CONSTRAINT health_issue_templates_fk_staff_fkey FOREIGN KEY(fk_staff)
+   '    REFERENCES admin.staff (pk)    MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION
+   '   --CONSTRAINT health_issue_templates_fk_code_exists FOREIGN KEY (fk_code)
+   '   --CHECK(fk_code = coding.generic_terms.code)
+   '   
+   ' );
+   '----------------------------------------------------------------------------------
+   If Not Valid_Template() Then Return 
+   For Each term In terms
+      Health_issue_template = New CRow
+      '----------------------------------------------------
+      'First does this template exist for this staff member
+      '----------------------------------------------------
+      existing_template = modPastHistoryDBI.health_care_template_Get(modDBConnect.currentUser!fk_staff, term!code)
+      If Not IsNull(existing_template) Then
+         Health_issue_template.put_unchanged(existing_template!pk, "fk_template")
+      Endif
+      Health_issue_template!fk_staff = modDBConnect.currentUser!fk_staff 
+      Health_issue_template!shared = CBool(chkShareTemplate.value)
+      Health_issue_template!keywords = Trim(txtKeywords.text)
+      Health_issue_template!fk_code = term!code
+      Health_issue_template!risk_factor = CBool(chkRiskFactor.value)
+      Health_issue_template!aim_of_plan = Trim(txtAim.text)
+      Health_issue_template!plan_contribution_gp = Trim(txtPlanContributionGP.text)
+      Health_issue_template!plan_contribution_patient = Trim(txtPlanContributionPatient.text)
+      Health_issue_template.Save("clin_history.health_issue_templates", "fk_template")
+   Next
+   modDBConnect.CommitTrans
+   
+End
+
+Public Sub EditArea_TxtBox_KeyRelease()
+   
+   If Last.tag = "find term" Then Form_Terms.Set_SearchText(Trim(Last.text))
+   
+End
+
+Public Sub EditArea_TxtBox_LostFocus()
+   
+   Last.BackGround = Color.White 
+   
+End
+
+Public Sub EditArea_TxtBox_GotFocus()
+   
+   Form_Terms.Visible = False
+   Last.BackGround = Color.rgb(95, 255, 175)
+   If Last.tag = "find term" Then
+      With Form_Terms
+         .top = Last.Parent.Parent.Top + Last.Parent.Height
+         .width = txtFindTerm.Width
+         .Left = Last.Parent.Left + Vbox_EditArea.Padding
+         .Raise
+         .Visible = False
+         If Trim(Last.text) <> "" Then
+            .Set_SearchText(Trim(Last.text))
+         End If
+      End With
+      
+   Endif
+   
+End
+
+Public Sub EditArea_TxtBox_KeyPress()
+   
+   If Key.code = Key.Down
+      If Form_Terms.visible Then
+         With Form_Terms.ColumnView1
+            .SetFocus
+            .MoveFirst
+            .Item.selected = True
+         End With
+      End If
+   End If  
+
+End
+
+

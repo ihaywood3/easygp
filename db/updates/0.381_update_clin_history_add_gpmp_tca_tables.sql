@@ -111,6 +111,7 @@ CREATE TABLE clin_history.gp_management_plans
   deleted boolean DEFAULT false,
   exceptional_circumstances_reason text, -- if not null, then the reason the plan is being done within 12 months must be documented
   fk_progressnote integer default null,
+  item_number integer default null,
   CONSTRAINT gp_management_plans_fk_consult_fkey FOREIGN KEY (fk_consult)
       REFERENCES clin_consult.consult (pk) MATCH SIMPLE
       ON UPDATE NO ACTION ON DELETE NO ACTION,
@@ -140,6 +141,9 @@ COMMENT ON COLUMN clin_history.gp_management_plans.fk_document IS 'When a Genera
 COMMENT ON COLUMN clin_history.gp_management_plans.latex IS ' copy of the LaTeX of the plan can be null if not claimed';
 COMMENT ON COLUMN clin_history.gp_management_plans.exceptional_circumstances_reason IS 'if not null, then the reason the plan is being done within 12 months must be documented';
 
+comment on column clin_history.gp_management_plans.item_number is 
+'the item number, either 721 as initial gpmp or 732 as a review';
+
 CREATE OR REPLACE VIEW clin_history.vwgpmanagementplans AS 
  SELECT consult.consult_date, consult.fk_patient, vwstaff.wholename AS staff_wholename, 
  gp_management_plans.pk, gp_management_plans.pk AS fk_gp_management_plan, gp_management_plans.fk_consult, 
@@ -148,7 +152,7 @@ CREATE OR REPLACE VIEW clin_history.vwgpmanagementplans AS
  gp_management_plans.copy_offered_to_patient, gp_management_plans.patient_permits_carer_to_have_copy, 
  gp_management_plans.copy_offered_to_carer, gp_management_plans.review_date, gp_management_plans.fk_document, 
  gp_management_plans.latex, gp_management_plans.deleted, gp_management_plans.exceptional_circumstances_reason,
- gp_management_plans.fk_progressnote,
+ gp_management_plans.fk_progressnote, gp_management_plans.item_number,
  consult.fk_staff
    FROM clin_history.gp_management_plans, clin_consult.consult, admin.vwstaff
   WHERE gp_management_plans.fk_consult = consult.pk 
@@ -174,6 +178,7 @@ CREATE TABLE clin_history.team_care_arrangements
   copy_sent_to_providers boolean DEFAULT false,
   review_date date,
   fk_progressnote integer NOT NULL,
+  item_number integer default null,
   CONSTRAINT team_care_arrangements_pkey PRIMARY KEY (pk ),
   CONSTRAINT team_care_arrangements_fk_consult_fkey FOREIGN KEY (fk_consult)
       REFERENCES clin_consult.consult (pk) MATCH SIMPLE
@@ -193,6 +198,9 @@ COMMENT ON TABLE clin_history.team_care_arrangements
  as well as  copies of the EPC referral form(s) used.
  Note that as a TCA can be a document in progress - nurses could help (heaven forbid) 
  then no field is manditory until the gui enforces a final claim.';
+ COMMENT ON COLUMN clin_history.team_care_arrangements.item_number is 
+ 'if not null is the item number claimed either 723 (new) or 732(review)';
+ 
 COMMENT ON COLUMN clin_history.team_care_arrangements.date_claimed IS 'if is null, then the team care arrangment is prepared but not claimed.';
 COMMENT ON COLUMN clin_history.team_care_arrangements.discussed_providers IS 'If True then the GP discussed with the patient who the providers on the team are and their responsibilities';
 COMMENT ON COLUMN clin_history.team_care_arrangements.patient_agrees IS 'If True the the patient agree''s to their team care arrangements';
@@ -220,6 +228,7 @@ CREATE TABLE clin_history.team_care_members
   latex_allied_health_form text, -- LaTex definition including overpic of the allied health form - kept as a backup as the important...
   fk_document_gp_management_plan integer default null,
   special_note text default null,
+  deleted boolean default false,
   CONSTRAINT team_care_members_pkey PRIMARY KEY (pk ),
   CONSTRAINT team_care_members_fk_document_tca_fkey FOREIGN KEY (fk_document_tca)
       REFERENCES documents.documents (pk) MATCH SIMPLE
@@ -278,7 +287,8 @@ CREATE OR REPLACE VIEW clin_history.vwteamcarearrangements AS
  team_care_arrangements.discussed_providers, team_care_arrangements.patient_agrees, team_care_arrangements.patient_has_carer, 
  team_care_arrangements.copy_offered_to_patient, team_care_arrangements.patient_permits_carer_to_have_copy, 
  team_care_arrangements.copy_offered_to_carer, team_care_arrangements.copy_sent_to_providers, 
- team_care_arrangements.review_date, team_care_arrangements.fk_progressnote, vwstaff.wholename, vwstaff.title
+ team_care_arrangements.review_date, team_care_arrangements.fk_progressnote, team_care_arrangements.item_number,
+ vwstaff.wholename, vwstaff.title
    FROM clin_history.team_care_arrangements
    JOIN clin_consult.consult ON consult.pk = team_care_arrangements.fk_consult
    JOIN admin.vwstaff ON vwstaff.fk_staff = consult.fk_staff;
@@ -292,12 +302,13 @@ GRANT SELECT ON TABLE clin_history.vwteamcarearrangements TO staff;
  
  
  CREATE OR REPLACE VIEW clin_history.vwteamcaremembers AS 
- SELECT team_care_members.fk_team_care_arrangement, team_care_members.pk, team_care_members.fk_branch, 
+ SELECT team_care_members.fk_team_care_arrangement, team_care_members.pk, team_care_members.pk AS fk_team_care_member,
+ team_care_members.fk_branch, 
  team_care_members.fk_employee, team_care_members.fk_person, team_care_members.fk_document_tca, team_care_members.health_issue_keys, 
  team_care_members.family_history_keys, team_care_members.fk_provider_of_care, team_care_members.num_epc_sessions, 
  team_care_members.fk_lu_allied_health_care_type, team_care_members.fk_document_allied_health_form, 
  team_care_members.latex_allied_health_form,team_care_members.fk_document_gp_management_plan, 
- team_care_members.special_note,
+ team_care_members.special_note, team_care_members.deleted,
  lu_allied_health_care_types.type AS allied_health_care_type, 
  documents.source_file AS filename
    FROM clin_history.team_care_members

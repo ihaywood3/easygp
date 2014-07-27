@@ -16,6 +16,12 @@
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ' ---------------------------------------------------------------------
 
+Public Function health_care_template_Get(fk_staff As Integer, fk_code As String) As Collection
+   
+   Return modDBConnect.exec_query_first("Select * from clin_history.health_issue_templates where fk_staff = " & fk_staff & "AND fk_code=$$" & fk_code & "$$")
+   
+End
+
 Public Function Allied_Health_types_Get() As Collection
    
    Return modDBConnect.exec_query_collection("Select * from clin_history.lu_allied_health_care_types") 
@@ -23,12 +29,13 @@ Public Function Allied_Health_types_Get() As Collection
 End
 
 Public Function GPMP_TCA_Documents_Get(fk_patient As Integer) As Collection
-  '--------------------------------------------------------------------------------------------- 
-  'returns a combined collection  of all documents tagged with
-  'const.Document_Display_As_GP_Management_Plan, const.Document_Display_As_Team_Care_Arrangement
-  'This can include returned or faxed back documents where staff use the popup menu to change
-  'a document type or scanning allocate the type on document allocation
-  '---------------------------------------------------------------------------------------------
+   '--------------------------------------------------------------------------------------------- 
+   'returns a combined collection  of all documents tagged with
+   'const.Document_Display_As_GP_Management_Plan, const.Document_Display_As_Team_Care_Arrangement
+   'This can include returned or faxed back documents where staff use the popup menu to change
+   'a document type or scanning allocate the type on document allocation
+   '---------------------------------------------------------------------------------------------
+   
    Dim sql As String
    
    sql = "Select * from documents.Documents where fk_patient = " & fk_patient
@@ -303,6 +310,48 @@ Public Sub HealthIssue_Delete(currentconsult As Cconsult, pk_pasthistory As Inte
    
 End
 
+Public Sub Team_Care_Members_Cleanup(TCA As Collection) As Boolean
+   '-----------------------------------------------------------------------------------------------
+   'cleanup the team care arrangements table after a save
+   'The user could have on the same day printed a TCA, then gone back and deleted team care members
+   'so, anyone not in the current team, mark them deleted from the table, and mark deleted from the
+   'documents
+   'delete the documents from the filesysytem
+   'returns true if success
+   '------------------------------------------------------------------------------------------------
+   
+   Dim TCM As Collection
+   Dim sql As String
+   Dim All_TCM As Collection
+   Dim source_file As String
+   Dim R As Result
+   
+   All_TCM = modDBConnect.exec_query_collection("Select * from clin_history.team_care_members where fk_team_care_arrangement = " & TCA!fk_team_care_arrangement)
+   For Each TCM In All_TCM
+      If Not TCA!team_care_members.Exist(TCM!fk_provider_of_care) Then
+         modDBConnect.update("documents.documents", Null, ["pk": TCM!fk_document_tca, "deleted": True])
+         If Not IsNull(TCM!fk_document_allied_health_form) Then    
+            R = modDBConnect.exec_query("Select source_file from documents.documents where pk=" & TCM!fk_document_allied_health_form & " AND deleted is false")
+            If R.count Then
+               Try Kill modAdminDBI.Config_Get("document_archiving_directory", "", Null, modDBConnect.currentUser!fk_clinic) &/ R!source_file
+               If Error Then
+                  Message.info("error trying to remove left over team care member file, the operation will be aborted")
+                  Return False  
+               Endif
+            End If   
+            modDBConnect.update("documents.documents", Null, ["pk": TCM!fk_document_allied_health_form, "deleted": True])
+         End If 
+         modDBConnect.update("clin_history.team_care_members", Null, ["pk": TCM!pk, "deleted": True])
+      Endif
+   Next
+   For Each TCM In TCA!team_care_members
+      Print TCM!fk_provider_of_care
+   Next
+   Return True
+Catch
+   Message.Info("An error occured whilst trying to cleanup the team care members documents")
+End
+
 Public Function TCA_Get(fk_patient As Integer) As Collection
    '--------------------------------------------------------
    'get the last Team Care Arrangement
@@ -332,9 +381,81 @@ Public Function TCA_Get(fk_patient As Integer) As Collection
       sql &= " AND fk_team_care_arrangement = " & TCA!fk_team_care_arrangement
       TCA!team_care_members = modDBConnect.exec_query_collection(sql)
       For Each team_care_member In TCA!team_care_members
-        ' sql = "Select health_issue_keys, family_history_keys, num_epc_sessions, fk_lu_allied_health_care_type, fk_document_tca, "
-        ' sql &= "fk_document_allied_health_form, allied_health_care_type, fk_document_gp_management_plan" 
-        ' sql &= "filename From clin_history.vwTeamCareMembers where fk_provider_of_care = " & team_care_member!fk_provider_of_care
+         ' sql = "Select health_issue_keys, family_history_keys, num_epc_sessions, fk_lu_allied_health_care_type, fk_document_tca, "
+         ' sql &= "fk_document_allied_health_form, allied_health_care_type, fk_document_gp_management_plan" 
+         ' sql &= "filename From clin_history.vwTeamCareMembers where fk_provider_of_care = " & team_care_member!fk_provider_of_care
+         sql = "Select * from clin_history.vwTeamCareMembers where fk_provider_of_care = " & team_care_member!fk_provider_of_care 
+         R = modDBConnect.exec_query(sql)
+         If R.count Then
+            team_care_member!fk_team_care_member = R!fk_team_care_member   
+            If Not IsNull(R!health_issue_keys) Then
+               team_care_member!health_issue_keys = R!health_issue_keys
+            End If
+            If Not IsNull(R!family_history_keys) Then
+               team_care_member!family_history_keys = R!family_history_keys
+            End If  
+            If Not IsNull(R!fk_lu_allied_health_care_type) Then
+               team_care_member!fk_lu_allied_health_care_type = R!fk_lu_allied_health_care_type
+            Endif
+            If Not IsNull(R!allied_health_care_type) Then
+               team_care_member!allied_health_care_type = R!allied_health_care_type
+            Endif
+            If Not IsNull(R!fk_document_tca) Then
+               team_care_member!fk_document_tca = R!fk_document_tca
+            Endif
+            If Not IsNull(R!fk_document_allied_health_form) Then
+               team_care_member!fk_document_allied_health_form = R!fk_document_allied_health_form
+            Endif
+            If Not IsNull(R!filename) Then
+               team_care_member!filename = R!filename
+            Endif
+            If Not IsNull(R!num_epc_sessions) Then
+               team_care_member!num_epc_sessions = R!num_epc_sessions
+            Endif
+            If Not IsNull(R!special_note) Then
+               team_care_member!special_note = R!special_note
+            Endif
+            If Not IsNull(R!fk_document_gp_management_plan) Then
+               team_care_member!fk_document_gp_management_plan = R!fk_document_gp_management_plan
+            Endif
+         End If   
+      Next
+   Endif
+   Return TCA
+   
+End
+Public Function TCA_Get_19july14(fk_patient As Integer) As Collection
+   '--------------------------------------------------------
+   'get the last Team Care Arrangement
+   'the collection looks like this
+   'TCA!team_care_members
+   'each team_care_member in TCA!team_care_members has
+   '                                 health_issue_keys
+   '                                 family_history_keys etc
+   '--------------------------------------------------------
+   
+   Dim TCA As New Collection
+   Dim sql As String
+   Dim team_care_member As Collection
+   Dim team_care_members As Collection  
+   Dim R As Result
+   
+   sql = "Select * from clin_history.vwTeamCareArrangements where fk_patient = " & fk_patient & " order by date_claimed DESC limit 1"           'get lastest TCA
+   TCA = modDBConnect.exec_query_first(sql) 
+   If IsNull(TCA) Then Return 
+   If TCA.count Then
+      sql = " SELECT  DISTINCT vwprovidersofcare.wholename, vwprovidersofcare.pk as pk_link_pasthistory_providers,  "                          
+      " team_care_members.fk_team_care_arrangement, vwprovidersofcare.fk_provider_of_care, "
+      " team_care_members.fk_person, team_care_members.fk_branch, team_care_members.fk_employee "
+      " FROM   clin_history.team_care_members, "
+      "   clin_history.vwprovidersofcare "
+      "   WHERE   team_care_members.fk_provider_of_care = vwprovidersofcare.fk_provider_of_care   "
+      sql &= " AND fk_team_care_arrangement = " & TCA!fk_team_care_arrangement
+      TCA!team_care_members = modDBConnect.exec_query_collection(sql)
+      For Each team_care_member In TCA!team_care_members
+         ' sql = "Select health_issue_keys, family_history_keys, num_epc_sessions, fk_lu_allied_health_care_type, fk_document_tca, "
+         ' sql &= "fk_document_allied_health_form, allied_health_care_type, fk_document_gp_management_plan" 
+         ' sql &= "filename From clin_history.vwTeamCareMembers where fk_provider_of_care = " & team_care_member!fk_provider_of_care
          sql = "Select * from clin_history.vwTeamCareMembers where fk_provider_of_care = " & team_care_member!fk_provider_of_care 
          R = modDBConnect.exec_query(sql)
          If R.count Then
@@ -356,17 +477,17 @@ Public Function TCA_Get(fk_patient As Integer) As Collection
             If Not IsNull(R!fk_document_allied_health_form) Then
                team_care_member!fk_document_allied_health_form = R!fk_document_allied_health_form
             Endif
-              If Not IsNull(R!filename) Then
+            If Not IsNull(R!filename) Then
                team_care_member!filename = R!filename
             Endif
             If Not IsNull(R!num_epc_sessions) Then
                team_care_member!num_epc_sessions = R!num_epc_sessions
             Endif
-              If Not IsNull(R!special_note) Then
+            If Not IsNull(R!special_note) Then
                team_care_member!special_note = R!special_note
             Endif
             If Not IsNull(R!fk_document_gp_management_plan) Then
-                team_care_member!fk_document_gp_management_plan = R!fk_document_gp_management_plan
+               team_care_member!fk_document_gp_management_plan = R!fk_document_gp_management_plan
             Endif
          End If   
       Next
@@ -374,7 +495,6 @@ Public Function TCA_Get(fk_patient As Integer) As Collection
    Return TCA
    
 End
-
 Public Function TCA_Get_12July14(fk_patient As Integer) As Collection
    '--------------------------------------------------------
    'get the last Team Care Arrangement
@@ -403,9 +523,9 @@ Public Function TCA_Get_12July14(fk_patient As Integer) As Collection
       sql &= " AND fk_team_care_arrangement = " & TCA!fk_team_care_arrangement
       TCA!team_care_members = modDBConnect.exec_query_collection(sql)
       For Each team_care_member In TCA!team_care_members
-        ' sql = "Select health_issue_keys, family_history_keys, num_epc_sessions, fk_lu_allied_health_care_type, fk_document_tca, "
-        ' sql &= "fk_document_allied_health_form, allied_health_care_type, fk_document_gp_management_plan" 
-        ' sql &= "filename From clin_history.vwTeamCareMembers where fk_provider_of_care = " & team_care_member!fk_provider_of_care
+         ' sql = "Select health_issue_keys, family_history_keys, num_epc_sessions, fk_lu_allied_health_care_type, fk_document_tca, "
+         ' sql &= "fk_document_allied_health_form, allied_health_care_type, fk_document_gp_management_plan" 
+         ' sql &= "filename From clin_history.vwTeamCareMembers where fk_provider_of_care = " & team_care_member!fk_provider_of_care
          sql = "Select * from clin_history.vwTeamCareMembers where fk_provider_of_care = " & team_care_member!fk_provider_of_care 
          R = modDBConnect.exec_query(sql)
          If R.count Then
@@ -427,14 +547,14 @@ Public Function TCA_Get_12July14(fk_patient As Integer) As Collection
             If Not IsNull(R!fk_document_allied_health_form) Then
                team_care_member!fk_document_allied_health_form = R!fk_document_allied_health_form
             Endif
-              If Not IsNull(R!filename) Then
+            If Not IsNull(R!filename) Then
                team_care_member!filename = R!filename
             Endif
             If Not IsNull(R!num_epc_sessions) Then
                team_care_member!num_epc_sessions = R!num_epc_sessions
             Endif
             If Not IsNull(R!fk_document_gp_management_plan) Then
-                team_care_member!fk_document_gp_management_plan = R!fk_document_gp_management_plan
+               team_care_member!fk_document_gp_management_plan = R!fk_document_gp_management_plan
             Endif
          End If   
       Next
@@ -442,6 +562,7 @@ Public Function TCA_Get_12July14(fk_patient As Integer) As Collection
    Return TCA
    
 End
+
 Public Function GP_Management_Plans_Get(fk_patient As Integer, Optional bLatest As Boolean = False) As Collection 
    '---------------------------------------------------------------------------
    'Gets all a patient's GP Management Plans, or Latest Plan if bLatest is true

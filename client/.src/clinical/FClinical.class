@@ -74,6 +74,7 @@ Private currentobservations As Collection
 Public currentTemporaryWebbrowserHTMLFilename As String 'temporary file being displayed in browser window
 Private CurrentPastHistoryList As Columnview     'three Past history lists on TabStripProblemLists, reference one in use
 Private bKeyValid As Boolean                     'used where textboxes need to validate key presses
+Private bEditing As Boolean                      'if true we are editing an entire consult on a different date
 Private bExit As Boolean                         'general flag used to prevent recursion into routine
 Private currentconsult As CConsult               'the 'master' class for the patient
 Private currentpasthistory As Collection         'the current health issue/past history item being manipulated
@@ -97,6 +98,7 @@ Private Const cTabQuickContacts As Integer = 8
 Private Const cMainDisplay_DataEntry As Integer = 1
 Private Const cMainDisplay_ProgressNotes As Integer = 2
 Private Const cMainDisplay_CarePlan As Integer = 3
+Public bShowEditLastConsultButton As Boolean
 Public bProgressNotesEnforceCoding As Boolean     'If True then user forced to code progress notes do not make this private
 Public active_medications As Collection
 Private obs As Observer                           'Observer used when FHelp is being shown, to detect the help close button
@@ -134,6 +136,16 @@ Static Public Sub ProgressNotesEnforceCoding_UpdateFlag(bflag As Boolean)
    '-------------------------------------------------------------------------  
    
    form_clinical.bProgressNotesEnforceCoding = bFlag   'bug here fix me 'how come at end there is a  illegal function in the IDE
+   
+End
+
+Static Public Sub EditLastConsultButton_Display(bflag As Boolean)
+   'User has changed visibility of the button to allow editing last consult
+   
+   With form_clinical
+      .bShowEditLastConsultButton = bFlag
+      .tbEditLastConsult.visible = bFlag
+   End With
    
 End
 
@@ -577,14 +589,6 @@ Public Sub Init()
    form_clinical = Me                                        'allow access of FClinical from any other module
    Refresh_Toolbar
    Form_Patient_Tasks = New FPatientTasks(Vbox_PatientTasks)
-   ' With Form_Decision_Support = New FHtmlViewer(Vbox_Decision_Support)
-   '    .lblViewerCaption.Visible = True
-   '    .tbWebBrowserClose.Visible = True
-   '    .tbWebBrowserZoomIn.Visible = True
-   '    .tbWebBrowserZoomOut.Visible = True
-   '    .Parent_Form_Set("FClinical")
-   '    .Section_Set("Decision Support")
-   ' End With
    With Form_Decision_Support = New FDecisionSupport(Vbox_Decision_Support)
       ' .lblViewerCaption.Visible = True
       '  .tbWebBrowserClose.Visible = True
@@ -633,6 +637,10 @@ Public Sub Init()
    mnuDecisionSupport_Chads.Visible = True
    lblMeasure.text = "  Cumulative   "
    cmbLineStyle.width = lblmeasure.Width
+   If modAdminDBI.Config_Get_Staff_Member("show-edit-last-consult-button", False, Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff) Then
+      bShowEditLastConsultButton = True
+   Endif
+   tbEditLastConsult.Visible = bShowEditLastConsultButton
    If modAdminDBI.Config_Get_Staff_Member("progress_notes_enforce_coding", False, Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff) Then
       bProgressNotesEnforceCoding = True 'defaults to false to keep Ian Sane
    Endif
@@ -683,10 +691,11 @@ Public Sub patient_load_record(patient As Collection, bPhotoConfirmed As Boolean
    Patient_Demographics_Display()            'display name address phone, pregnancy status
    GPMP_Reload                               'reload GPMP and change toolbutton headings/tag
    Refresh_Warning_Panel                     'display patient specific warnings
-   WorkspaceEditor.Lock()                    'DO NOT REMOVE THE LOCK/UNLOCK
-   Editor_ShowPage("All Previous Notes")     'Always show all previous notes
-   Editor_ShowPage("New General Notes")      'Default to general notes tab.
-   WorkspaceEditor.Unlock()                  'OR THE GUI WILL RE-SET ITSELF
+   Workspace_Load_Minimal_Panels             'all progress notes and general notes
+   ' WorkspaceEditor.Lock()                    'DO NOT REMOVE THE LOCK/UNLOCK
+   ' Editor_ShowPage("All Previous Notes")     'Always show all previous notes
+   ' Editor_ShowPage("New General Notes")      'Default to general notes tab.
+   ' WorkspaceEditor.Unlock()                  'OR THE GUI WILL RE-SET ITSELF
    Wait                                      'AND LOADING PATIENT IS IMPOSSIBLE
    If Not IsNull(currentconsult!recreationaldrugs) Then
       lblAlert.text &= " " & modRecreationalDrugs.SmokingStatus_string(currentconsult)
@@ -1015,6 +1024,8 @@ Private Sub Settings_Load()
    lblMajorProblems.width = Hsplit_ProblemLists.children[0].width
    lblSignificantProblems.width = Hsplit_ProblemLists.children[1].width
    gvAllergies.font = Font[Settings["FClinical/gvAllergies.font", "Arial,9"]]
+   ' mnuView_IncludeInactivePatients.value = Settings["FClinical/mnuView_IncludeInactivePatients.value", False]
+   ' mnuView_IncludeDeceasedPatients.value = Settings["FClinical/mnuView_IncludeDeceasedPatients.value", False]
    
 End Sub
 
@@ -1122,7 +1133,7 @@ Public Sub Patients_Find(Optional fk_patient As Integer)
    If fk_patient Then
       patient = modContactsDBI.Patient_Get_Using_PK(fk_patient)
    Else
-      AllPatients = modContactsDBI.patients_get_firstname_surname(cmbSearch.text, chkIncludeDeceased.value,, chkIncludeInactive.value)
+      AllPatients = modContactsDBI.patients_get_firstname_surname(cmbSearch.text, mnuView_IncludeDeceasedPatients.value,, mnuView_IncludeInactivePatients.value)
       sql_in_english = AllPatients!sql_in_english
       AllPatients.Remove("sql_in_english")
    End If
@@ -1603,7 +1614,7 @@ Public Sub Gui_Clear()
    '------------------------------------------------
    
    bExit = True
-   
+   bediting = False  
    Inc application.busy
    With tbHealthSummary
       .text = "View Health Summary"
@@ -1613,6 +1624,21 @@ Public Sub Gui_Clear()
    '----------------------------------------------------------
    'Clear patient related textboxes and labels on main toolbar
    '----------------------------------------------------------
+   With lblWarningEditingConsult
+      .Foreground = Color.Background 'hide the text, don't resize the label
+      .Background = Color.Background
+   End With
+   HBox_ConsultDetails.Background = Color.Background
+   With lblConsult
+      .Background = Color.Background
+      .Foreground = Color.Black
+      .text = " Consult Date "
+   End With
+   With txtConsultDate
+      .Background = Color.White
+      .Foreground = Color.Black
+      .text = Format(Now, "dd/mm/yyyy")
+   End With
    cmbSearch.text = ""
    lblCreatinineClearance.text = ""
    lblMedicareNumber.text = ""
@@ -1684,7 +1710,7 @@ Public Sub Gui_Clear()
    Deleted_Documents = New Collection
    Deleted_Medications = New Collection         'fixme unite these collections
    Deleted_Referral = New Collection
-   txtConsultDate.text = Format(Now, "dd/mm/yyyy")
+  
    application.busy = 0                        'ensure have no hourglass
    iCertificatetype = const.certificate_type_medical
    Layout_Right_Side_Screen
@@ -1753,6 +1779,15 @@ Public Sub Patient_Picture_Clear()
       .Picture = Picture.Load("icons/misc/no_photo.png")
    End With
    Wait        'otherwise, visually, picture won't disappear
+   
+End
+
+Public Sub Workspace_Load_Minimal_Panels()
+   
+   WorkspaceEditor.Lock()                    'DO NOT REMOVE THE LOCK/UNLOCK
+   Editor_ShowPage("All Previous Notes")     'Always show all previous notes
+   Editor_ShowPage("New General Notes")      'Default to general notes tab.
+   WorkspaceEditor.Unlock()                  'OR THE GUI WILL RE-SET ITSELF
    
 End
 
@@ -1828,9 +1863,11 @@ Public Sub VBox_Letters_Leave()
    'and user moves off to do something else, the line remains highlighted and 
    'clicking on it again > no key for that row > won't display
    '---------------------------------------------------------------------------
+   
    bexit = True                  'otherwise unselectall triggers _select. Go figure
    cvwLettersReceived.UnselectAll()
    bExit = False  
+   
 End
 
 Public Sub cvwLettersReceived_dblClick()
@@ -1978,7 +2015,7 @@ Public Sub cvwRecalls_Refresh()
    Next
    'FIXME this list is potentially invisible if user has re-sized it to nothing.
    If currentconsult!recalls_logged.count Then
-     tlReminders.Richtext = sTableStart & rows & "</TABLE>"
+      tlReminders.Richtext = sTableStart & rows & "</TABLE>"
    Else
       tlReminders.Richtext = "Recalls & Reminders - Nil"
    End If
@@ -2182,7 +2219,6 @@ Public Sub Editor_ShowPage(sPageName As String, Optional page_tag As String = ""
    Dim ExportPartial As FExportPartial
    Dim INRManager As FInr
    Dim Shortcuts As FStaffPreferencesShortCuts
-   ' Dim GP_Management_Plans As FGPMPlan
    Dim GP_Management_Plans As FGPMPTCA
    Dim Image_Viewer As FImageViewer
    Dim retform As Form ' the Form we are returning to the caller: very useful for scripting
@@ -2217,13 +2253,10 @@ Public Sub Editor_ShowPage(sPageName As String, Optional page_tag As String = ""
    Dim workcoverNSWPage As FWorkcoverNSW
    Dim DiabetesCycleOfCare As FDACC
    Dim TravelPage As FTravel
-   Dim GeneralCheckup As FCheckups
    Dim page As FLinkContainer
    Dim EditPastNotes As FEditNotes
    Dim PDF As FPDF
    Dim DrugBrowser As FPDF
-   'Dim CarePlans As FCarePlanning
-   Dim CarePlans As FCarePlanning_New
    Dim Form_Library As FLibrary
    Dim Pictures As FPictureViewer
    Dim sMsg As String
@@ -2483,7 +2516,6 @@ Public Sub Editor_ShowPage(sPageName As String, Optional page_tag As String = ""
                Page.title = page_tag
                retform = DrugBrowser
                EditorPages.Add(PDF, page_tag)
-               
             Case "pdf document"
                page = New FLinkContainer
                With PDF = New FPDF(page.VBoxEditor)
@@ -2538,7 +2570,7 @@ Public Sub Editor_ShowPage(sPageName As String, Optional page_tag As String = ""
                WorkspaceEditor.Add(page)
                page.tag = sPageName
                Page.title = sPageName
-               retform = CarePlans
+               retform = GP_Management_Plans
                EditorPages.Add(GP_Management_Plans, sPageName)
             Case "browser"
                page = New FLinkContainer
@@ -2656,15 +2688,6 @@ Public Sub Editor_ShowPage(sPageName As String, Optional page_tag As String = ""
                WorkspaceEditor.Add(page)
                retform = DiabetesCycleOfCare
                EditorPages.Add(DiabetesCycleOfCare, "Diabetes Cycle of Care")
-            Case "General Checkups"
-               page = New FLinkContainer
-               GeneralCheckup = New FCheckups(page.VBoxEditor)
-               GeneralCheckup.Init(Currentconsult)
-               page.tag = "General Checkup"
-               page.Title = "General Checkup"
-               WorkspaceEditor.Add(page)
-               retform = GeneralCheckup
-               EditorPages.Add(GeneralCheckup, "General Checkup")
             Case "Edit Last Consult"
                '----------------------------------------------------------------------
                'General notes page as the name implies is for notes not tied to a
@@ -2930,6 +2953,7 @@ Function Editor_SetActivePage(pagetitle As String, page_tag As String) As Boolea
    
    Dim page As FLinkContainer
    
+   If bediting Then Return    'force a reload of general notes even if tab is open
    For Each page In WorkspaceEditor.Windows
       If Page.tag = pagetitle Or page.tag = page_tag Then
          WorkspaceEditor.ActiveWindow = page
@@ -5248,6 +5272,8 @@ Public Sub tbSections_Click()
       Templ = modProgressNotes.Health_Summary_Construct_LaTex(currentconsult)
       Editor_ShowPage("pdf file", "Health Summary", modPrinting.Latex_To_PDF(templ.GetData()))
       lblSection.text = "Health Summary"
+   Else If Last.tag = "Edit Last Consult" Then
+      Consult_Edit(True) 'True = edit last consult date
    Else
       Try Editor_ShowPage(Last.tag, Last.tag)
    Endif
@@ -5465,10 +5491,6 @@ Private Sub WorkspaceEditor_Activate_Each(hctrl As Control)
          tbNew.Enabled = True
          tbDecisionSupport.Enabled = True 
          lblsection.text = " Health Issues "
-      Case "FCarePlanning"
-         lblSection.text = "Care Planning"
-         tbSave.ToolTip = "Save Care Plan Item"
-         tbSave.Enabled = True
       Case "FVaccinations"
          lblSection.text = "Vaccinations"
          tbSave.ToolTip = "Save Vaccination"
@@ -5997,6 +6019,18 @@ Public Sub mnuView_Click()
       Case "all previous notes"
          Editor_ShowPage("All Previous Notes")
       Case "view by problem"
+         '    Case "include deceased patients"
+         '       If mnuView_IncludeDeceasedPatients.value = True Then
+         '          Settings["FClinical/mnuView_IncludeDeceasedPatients.value"] = True
+         '       Else
+         '          Settings["FClinical/mnuView_IncludeDeceasedPatients.value"] = False
+         '       Endif
+         '    Case "include inactive patients"
+         '       If mnuView_IncludeInactivePatients.value = True Then
+         '          Settings["FClinical/mnuView_IncludeInactivePatients.value"] = True
+         '       Else
+         '          Settings["FClinical/mnuView_IncludeInactivePatients.value"] = False
+         '       Endif
    End Select
 Catch
    Return 
@@ -6520,12 +6554,113 @@ Public Sub cvwLettersReceived_MouseDrag()
    
 End
 
+Public Sub txtConsultDate_Activate()
+   
+   Consult_Edit
+   
+End
+
+Public Sub txtConsultDate_LostFocus()
+   
+End
+
 Public Sub txtConsultDate_KeyPress()
    
    If Not modUtilGUI.AllowKeys(const.AllowKeys_DateFormat, Key.code) Then
       Stop Event
    Endif
    
+End
+
+Public Sub Consult_Edit(Optional bEditLastConsult As Boolean = False)
+   '------------------------------------------------------------
+   'Allow editing of a consultation with full audit trail   
+   'if bLastConsult = true the pull in the last consultation
+   'called by tbSections_Click
+   'and whatever mechanism I set up to edit the others FIXME
+   'see also FuserPreferences where this preference is set up
+   '-------------------------------------------------------------
+   
+   Dim sMsg As String
+   Dim new_date As Date
+   Dim now_no_time As Date
+   Dim date_diff As Integer
+   Dim R As Result
+   Dim PN As Collection
+   Dim fk_consult As Integer
+   Dim last_consult As Collection '[fk_consult and consult_date]
+   
+   If bEditLastConsult Then                                                         'user editing last consult?
+      If Not modAdminDBI.Has_User_Seen_Tip("FClinical.EditLastConsult") Then        'give them the blurb if they've not banished it previously
+         sMsg = "<P><B>Very important things to understand</B></P>"
+         "<UL><LI>You can only ever edit your own consultations as your staff ID will be used to retrieve the data"
+         "<LI>The entire consultation content from that date will be re-loaded back into EasyGP"
+         "<LI>You may continue adding new notes today for that previous consultation"
+         "<LI>Those notes will of course be saved back to the previous consultation date." 
+         "</UL>"
+         "<P><B>Be aware that auditing will be conducted as follows:</B><P> "
+         "<UL>"
+         "<LI>The entire contents of your <U><I>previous consultation notes <B>before</B> you add new notes</U></I>  will be archived as part of an audit trail"
+         "<LI>These will always be available for medico-legal audit and will visibly show up in the 'All Progress Notes' section when the 'Include Audit Trail option is checked"
+         "<LI>Whatever you write today will entirely replace those notes archived to the audit trail"
+         "</UL>"
+         With FUsageTip
+            .Init("Editing the Last Consultation", "FClinical.EditLastConsult", sMsg)
+            If Not .ShowModal() Then Return
+         End With  
+      End If 
+   End If   
+   bEditing = True   
+   If bEditLastConsult Then
+      last_consult = modConsultDBI.fk_consult_get_for_date_and_staff_and_consult_type(currentconsult!patient!fk_patient, consultationtypes[cmbConsultationType.Index]!pk)
+   Else
+      last_consult = modConsultDBI.fk_consult_get_for_date_and_staff_and_consult_type(currentconsult!patient!fk_patient, consultationtypes[cmbConsultationType.Index]!pk, txtConsultDate.text)
+   Endif
+   If IsNull(last_consult) Then
+      Message.info("no consult found")
+      Return
+   Endif
+   If bEditLastConsult = False Then
+      new_date = modUtil.Make_Date_From_String(Trim(txtConsultDate.text))
+   Else
+      new_date = last_consult!consult_date   
+   End If   
+   now_no_time = modUtil.Make_Date_From_String(Format(Now(), "dd/mm/yyyy"))
+   date_diff = DateDiff(New_date, now_no_time, gb.day)
+   If date_diff < 0 Then
+      sMsg = "You cannot change the consultation date to a date in the future, sorry!"
+      Message.Info(smsg)
+      txtConsultDate.text = Format(Now(), "dd/mm/yyyy")
+      Return
+   End If  
+   
+   'If date_diff > 0 Then   
+   WorkspaceEditor_Clear()
+   'check if notes exist for that date
+   
+   If last_consult!fk_consult Then
+      With lblWarningEditingConsult
+         .Foreground = Color.Red
+         .Background = Color.Yellow
+      End With
+      HBox_ConsultDetails.Background = Color.Yellow
+      With lblConsult
+         .Background = Color.Yellow
+         .Foreground = Color.Red
+         .text = " from "
+      End With
+      With txtConsultDate
+         .Background = Color.Yellow
+         .Foreground = Color.Red
+         .text = Format(last_consult!consult_date)
+      End With
+      currentconsult.Set_pk(last_consult!fk_consult)
+      currentconsult.Set_date(last_consult!consult_date) 
+      Editor_ShowPage("All Previous Notes")
+      Editor_ShowPage("New General Notes")
+    
+   End If                                                            
+
 End
 
 Public Sub cvwResults_Select()

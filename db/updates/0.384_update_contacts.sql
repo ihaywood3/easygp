@@ -1,4 +1,4 @@
-	-- fixed inexplicable early developement errors where the calculated wholename field ends in ascii 32 (my stupidity)
+﻿	-- fixed inexplicable early developement errors where the calculated wholename field ends in ascii 32 (my stupidity)
 
  DROP VIEW contacts.vwemployees CASCADE ;
 
@@ -77,9 +77,7 @@ UNION
       LEFT JOIN contacts.vwbranchescomms ON vwbranchescomms.fk_branch = vwemployees.fk_branch AND vwbranchescomms.fk_type = 2
      WHERE vwemployees.employee_deleted = false AND vwemployees.person_deleted = false AND (vwemployees.organisation_address_deleted = false OR vwemployees.organisation_address_deleted IS NULL);
 
-ALTER TABLE contacts.vwpersonsemployeesbyoccupation
-  OWNER TO richard;
-GRANT ALL ON TABLE contacts.vwpersonsemployeesbyoccupation TO richard;
+ALTER TABLE contacts.vwpersonsemployeesbyoccupation   OWNER TO easygp;
 GRANT ALL ON TABLE contacts.vwpersonsemployeesbyoccupation TO easygp;
 GRANT ALL ON TABLE contacts.vwpersonsemployeesbyoccupation TO staff;
 

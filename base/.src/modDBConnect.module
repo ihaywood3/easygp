@@ -271,6 +271,36 @@ Public Sub Close_Listener()
    
 End
 
+' senda notification on our very basic messaging system
+Public Function Send_Notify(notify As String, param As String, Optional its_us As Boolean = False) As Variant
+  
+  Dim r As Variant
+  Dim r2 As Variant
+  Dim i As Object
+  
+  r2 = Null
+  If event_listeners.Exist(notify) Then
+    For Each i In event_listeners[notify]
+      Log.DebugMsg("calling " & Str$(i) & " with param: " & param)
+      r = Null
+      Try r = Object.Call(i, "Notify", [its_us, param])
+      If (Not IsNull(r)) And If IsNull(r2) Then
+        r2 = r
+      Endif
+      If Error Then
+        Log.ErrorMsg("Notify() call to " & Str$(i) & " failed with " & Error.Text & " at " & Error.Where)
+        Unregister_Listener(notify, i)
+        'modUtil.ReportError(Error.Text, Null, Error.Where)
+      Endif
+    Next
+  Endif
+  
+  Return r2
+End
+
+
+
+
 ' process asynchronous notifications
 Public Sub File_Read()
    
@@ -280,7 +310,6 @@ Public Sub File_Read()
    Dim notify_pid As Integer
    Dim notify_param As String
    Dim its_us As Boolean
-   Dim i As Object
 
  
    PQconsumeInput(Connection.Handle)
@@ -297,17 +326,7 @@ Public Sub File_Read()
       ' some listeners may wish to ignore in this case, some may not
       its_us = False
       If backend_pid = notify_pid Then its_us = True
-      If event_listeners.Exist(notify_string) Then
-         For Each i In event_listeners[notify_string]
-            Log.DebugMsg("calling " & Str$(i) & " with param: " & notify_param)
-            Try Object.Call(i, "Notify", [its_us, notify_param])
-            If Error Then
-               Log.ErrorMsg("Notify() call to " & Str$(i) & " failed with " & Error.Text & " at " & Error.Where)
-               Unregister_Listener(notify_string, i)
-               modUtil.ReportError(Error.Text, Null, Error.Where)
-            Endif
-         Next
-      Endif
+      Send_Notify(notify_string, notify_param, its_us)
       PQfreemem(notifies2) ' don't free until all handlers have run
       PQconsumeInput(Connection.Handle)
       notifies = PQnotifies(Connection.Handle)

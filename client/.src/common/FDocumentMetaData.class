@@ -28,6 +28,7 @@
 '                  to remove the metadata form. Its event is over-ridden by FClinical
 '                  and the button will never be visible in Scanning  or Inbox
 '------------------------------------------------------------------------------------------
+Private Document_Display_As_Types As Collection            'eg as result, letter, plan, certificate etc
 Private sSearchText As String
 Private ReferenceHboxForTopColumnview As Hbox               'used if form resizes to move columnview
 Public StaffTypes As Collection              'eg 'medical', 'nursing'
@@ -54,7 +55,7 @@ Private bHas_sending_entity_fk_lu_request_type As Boolean  'true if a sending en
 Public bExit As Boolean
 Private comms As Collection   'If not null these are the patients comms
 Private Allpatients As Collection
-Private document_types As Collection
+Private Request_Types As Collection
 Private pk_document As Integer
 Private fk_patient As Integer
 Public fk_staff_destination As Integer
@@ -151,19 +152,17 @@ Private Sub Force_To_PDF(fname As String) As String
    ext = Lower$(File.Ext(fname))
    If ext = "pdf" Then Return fname
    If ext = "jpg" Or ext = "png" Or ext = "jpeg" Then new_fname = modPrinting.Join_PDF([fname])
-      ' trick of pdfjam: if you 'join' one PNG or JPEG it will auto-convert to PDF for you
+   ' trick of pdfjam: if you 'join' one PNG or JPEG it will auto-convert to PDF for you
    If ext = "tif" Or ext = "tiff" Or ext = "gif" Then
-     new_fname = Temp$() & ".pdf"
-     Exec ["/usr/bin/convert", fname, new_fname] Wait
+      new_fname = Temp$() & ".pdf"
+      Exec ["/usr/bin/convert", fname, new_fname] Wait
    Endif
    If IsNull(new_fname) Then Error.Raise("File type " & ext & " not recognised")
    If Not Access(new_fname, gb.Read) Then Error.Raise("Image file conversion failed")
    Kill fname
    Return new_fname
-  
+   
 End
-
-
 
 Public Sub SetTxtFocus()
    
@@ -248,18 +247,22 @@ Private Function SaveInScanning() As Boolean
       Case const.contacttype_patient
          d!originator = PatientAsSender!firstname & " " & PatientAsSender!surname
    End Select
-   d!fk_sending_entity = modInboxDBI.SendingEntity_GetPK(Get_Display_Style(), d!originator, fk_branch, fk_employee, fk_person)
-   If rbDisplayAsLetter.value = True Then
-      d!tag = d!originator & " - scanned letter"
-   Else
-      d!tag = d!originator & " - scanned result"
-   End If
+   '  d!fk_sending_entity = modInboxDBI.SendingEntity_GetPK(Get_Display_Style(), d!originator, fk_branch, fk_employee, fk_person)
+   d!fk_sending_entity = modInboxDBI.SendingEntity_GetPK(Document_Display_As_Types[cmbDocumentDisplayAstypes.index]!pk, d!originator, fk_branch, fk_employee, fk_person)
+   
+   ' If rbDisplayAsLetter.value = True Then
+   '    d!tag = d!originator & " - scanned letter"
+   ' Else
+   '    d!tag = d!originator & " - scanned result"
+   ' End If
+   d!tag = d!originator & " - " & cmbDocumentDisplayAstypes.Text
    d!comment = Trim(txtComment.text)
    d!fk_lu_urgency = fk_urgency
    Exec ["/usr/bin/md5sum", txtFilename.text] To md5Output
    d!md5sum = Left(md5Output, InStr(md5Output, " ") - 1)
    d!fk_staff_destination = fk_staff_destination
-   d!fk_lu_display_as = Get_Display_Style()
+   '  d!fk_lu_display_as = Get_Display_Style()
+   d!fk_lu_display_as = Document_Display_As_Types[cmbDocumentDisplayAstypes.index]!pk
    If chkReferral.Value = chkReferral.True Then
       d!incoming_referral = True
    Else
@@ -312,29 +315,29 @@ Private Function SaveInScanning() As Boolean
       fname = Force_To_PDF(txtFilename.Text)
       pk_document = modArchiveDocumentsDBI.Document_New_Pk()
       d!pk = pk_document
-
+      
       ' FIXME: check uploading one-page jpegs
       ' richard: check this sub and make sure it still works 14july14
       fname = Force_To_PDF(txtFilename.Text)
       d!source_file = Document_Filename_Construct(d)
-    '  d!source_file = Document_Filename_Construct(d, fname) 'this was Ian's r1882 I commented out
-
+      '  d!source_file = Document_Filename_Construct(d, fname) 'this was Ian's r1882 I commented out
+      
       If modFiles.Dir_Status("document_archiving_directory") = modFiles.DirRemote Then
          upload = New CUploadFileTask(d)
          modFiles.Put("document_archiving_directory", d!source_file, fname, upload)
          upload.Send(Subst$("rm -f '&1'", fname)) 
          upload.Close()
       Else
-        modFiles.Put("document_archiving_directory", d!source_file, fname)
-        modArchiveDocumentsDBI.Save(d)
-        modDBConnect.CommitTrans()
-        Print fname  
-        Kill fname 
-        bSuccess = True 
+         modFiles.Put("document_archiving_directory", d!source_file, fname)
+         modArchiveDocumentsDBI.Save(d)
+         modDBConnect.CommitTrans()
+         Print fname  
+         Kill fname 
+         bSuccess = True 
       Endif
       bSuccess = True
    End If
-
+   
 Finally
    Dec Application.Busy
    Return bSuccess
@@ -342,6 +345,7 @@ Catch
    modDBConnect.RollBack()
    modUtilGUI.ReportError(Error.Text, Error.Backtrace)
    Return False
+   
 End
 
 Private Function SaveNotInScanning() As Boolean
@@ -371,6 +375,7 @@ Private Function SaveNotInScanning() As Boolean
    modDBConnect.BeginTrans()                                           'a noop to remind us we are starting data saving
    If Embedded_in_form_name = "FClinical"                                        'User has loaded metadata from FClinic
       If Document!concluded = True Then                                          'if editing from users notes, audit what's happening before/after
+         If IsNull(Document!date_created) Then Document!date_created = document!imported_time 'bug here somewhere this should never ever happen, if don't fix the audit crashes
          sProgressNotes = modArchiveDocumentsDBI.Audit_Trail_Make_Progress_notes("document metadata edited", document) & "<HR>"
          sProgressNotes &= document_prior_to_edit
          sProgressNotes &= "<HR><B>After being edited</B><BR>"
@@ -389,8 +394,7 @@ Private Function SaveNotInScanning() As Boolean
    End If   
    D!pk_document = Document!pk_document   
    D!concluded = True
-   D!fk_lu_display_as = Get_Display_Style()
-'   D!html = Document_HTML                                                       'not displayed in this form, but by parent see Document_HTML_Set()
+   D!fk_lu_display_as = Document_Display_As_Types[cmbDocumentDisplayAstypes.index]!pk
    D!data = Document_HTML 
    D!fk_lu_data_content_Type = const.cData_Type_HTML
    D!tag_user = Trim(txtUserObservationName.text)
@@ -403,7 +407,6 @@ Private Function SaveNotInScanning() As Boolean
    If get_laterality() > const.LateralityNone Then
       D!tag_user = Replace$(D!tag_user, ";", " (" & UCase(const.LateralityText[get_laterality()]) & ");") 'FIXME, NOT ACCURATE EG FOR xRAY PELVIS + xRAY hIP (RIGHT)
    End If
-   
    '-----------------------------------------
    'Is this document being sent to all staff? FIXME THIS SECTION SHOULD BE REMOVED,ONLY NEEDED IN SCANNING
    '-----------------------------------------
@@ -417,8 +420,8 @@ Private Function SaveNotInScanning() As Boolean
          End If
       Next
    Else
-      If bHas_sending_entity_fk_lu_request_type = False And rbDisplayAsResult.value = True Then
-         modInboxDBI.SendingEntity_Set_fk_lu_request_type(document_types[cmbDocumentTypes.index]!pk, fk_sending_entity)
+      If bHas_sending_entity_fk_lu_request_type = False And cmbDocumentDisplayAstypes.text = "result" Then
+         modInboxDBI.SendingEntity_Set_fk_lu_request_type(Request_Types[cmbRequestTypes.index]!pk, fk_sending_entity)
       End If
       Document_SignOff(D)            'see documents.signed_off table > he who signed off this document
       bSuccess = True
@@ -430,9 +433,10 @@ Private Function SaveNotInScanning() As Boolean
    
 End
 
-Public Sub Get_Document_Type() As Integer
+Public Sub Get_Request_Type_PK() As Integer
+   'returns key to 
    
-   Try Return document_types[cmbDocumentTypes.index]!pk
+   Try Return Request_Types[cmbRequestTypes.index]!pk
    If Error Then Return 0
    
 End
@@ -451,8 +455,9 @@ End
 
 Public Sub Get_Display_Style() As Integer
    
-   If rbDisplayAsResult.value = True Then Return 2
-   Return 1
+   Message.info("Richard Fdocumentmetdata.Get_display_stype() should not be in here")
+   '  If rbDisplayAsResult.value = True Then Return 2
+   '   Return 1
    
 End
 
@@ -518,7 +523,7 @@ Public Sub InitGui_Display_As_Letter()
    txtDocumentTag.ReadOnly = True
    lblUserTag.text = "Letter Summary"
    HBox_RequestTypes.Enabled = False
-   cmbDocumentTypes.index = -1
+   cmbRequestTypes.index = -1
    txtDocumentTag.ReadOnly = True
    iDisplay_As = const.Document_Display_As_Letter
    
@@ -597,9 +602,15 @@ Public Sub Init(functionality As String)
          Hbox_SenderType.visible = False
          HBox_SenderFind.Visible = False
          HBox_SenderDetails.Visible = False
-         Hbox_Patient.Visible = False
-         Hbox_Street.Visible = False   
-         HBox_Suburb.Visible = False   
+         If Embedded_in_form_name <> "FInbox" Then    
+            Hbox_Patient.Visible = False
+            Hbox_Street.Visible = False   
+            HBox_Suburb.Visible = False   
+         Else
+            Hbox_Patient.Visible = True
+            Hbox_Street.Visible = True   
+            HBox_Suburb.Visible = True   
+         End If
          Hbox_Requested.Visible = False   
          HBox_UserObservationName.visible = True
          HBox_Filename.Visible = False
@@ -615,8 +626,7 @@ Public Sub Init(functionality As String)
          cmbStaffType.index = -1
          chkLockStaffMember.Visible = False
          chkLockPatient.Visible = False
-         Set_Embedded_Form_Name("Inbox")
-         cmbDocumentTypes.index = -1
+         cmbRequestTypes.index = -1
          lbl200.Visible = True
          lbl201.Visible = True
          lblHomePhone.Visible = True
@@ -633,8 +643,10 @@ Public Sub Init(functionality As String)
 End
 
 Public Sub _new()
+   'Get collection of the types of requests e.g pathology, radiology, ophthalmology etc
    
-   document_types = modUtilGUI.LoadCombo(cmbDocumentTypes, modRequestsDBI.RequestTypes_Get(), "type")
+   Request_Types = modUtilGUI.LoadCombo(cmbRequestTypes, modRequestsDBI.RequestTypes_Get(), "type")
+   Document_Display_As_Types = modUtilGui.LoadCombo(cmbDocumentDisplayAstypes, modInboxDBI.Document_Display_As_Types_Get(), "display_as")
    
 End
 
@@ -648,7 +660,7 @@ Public Sub EditArea_Clear()
    Dim bSenderLocked As Boolean
    Dim bDisplayAsLocked As Boolean
    Dim iLastDisplayAs As Integer
-   Dim iDocumentType As Integer = cmbDocumentTypes.Index
+   Dim iDocumentType As Integer = cmbRequestTypes.Index
    Dim bDocumentTypeLocked As Boolean
    
    document_prior_to_edit = ""
@@ -678,12 +690,12 @@ Public Sub EditArea_Clear()
    columnview1.Clear
    columnview1.Visible = False
    bDocumentNotLinkedToPatient = False
-   If Embedded_in_form_name = "Inbox" Then
+   If Embedded_in_form_name = "FInbox" Then
       If bDocumentTypeLocked = True Then
-         cmbDocumentTypes.index = iDocumentType
+         cmbRequestTypes.index = iDocumentType
          chkLockDocumentType.value = True
       Else
-         cmbDocumentTypes.index = -1
+         cmbRequestTypes.index = -1
       End If
    Else
       txtDocumentTag.text = ""
@@ -693,7 +705,8 @@ Public Sub EditArea_Clear()
    chkReferral.Value = chkReferral.False
    fk_lu_urgency = const.UrgencyLevelRoutine
    rbUrgencyRoutine.value = True
-   rbDisplayAsLetter.value = True
+   ' rbDisplayAsLetter.value = True
+   cmbDocumentDisplayAstypes.index = cmbDocumentDisplayAstypes.Find("letter")
    If Embedded_in_form_name = "Scanning" Then
       Reset_Keys()
    Endif
@@ -729,9 +742,11 @@ Public Sub EditArea_Clear()
    If bDisplayAsLocked = True Then
       Select Case iLastDisplayAs
          Case const.Document_Display_As_Result
-            rbDisplayAsResult.value = True
+            ' rbDisplayAsResult.value = True
+            cmbDocumentDisplayAstypes.index = cmbDocumentDisplayAstypes.Find("result")
          Case const.Document_Display_As_Letter
-            rbDisplayAsLetter.Value = True
+            cmbDocumentDisplayAstypes.index = cmbDocumentDisplayAstypes.Find("letter")
+            ' rbDisplayAsLetter.Value = True 
       End Select
       iDisplay_As = iLastDisplayAs
       chkLockDisplayAs.value = True
@@ -832,7 +847,7 @@ Public Sub Edit(d As Collection)
    'E.g if it was 'Pathology company' or 'Pathology provider' or 'Pathology'
    'then the document_type 'Pathology' would find a match
    '---------------------------------------------------------------------------------
-   cmbDocumentTypes.index = cmbDocumentTypes.Find(document!sending_entity_request_type)
+   cmbRequestTypes.index = cmbRequestTypes.Find(document!sending_entity_request_type)
    '--------------------------------------------------------------------------------------------
    'Scanned sending entities:
    'These are mostly letters, but sometimes can be requests. Unless Admin has set a default
@@ -870,21 +885,35 @@ Public Sub Edit(d As Collection)
    Else
       chkReferral.Value = chkReferral.False
    Endif
-   If document!fk_lu_display_as = const.Document_Display_As_Letter Then  'allow editing of tag if it is a letter
-      rbDisplayAsLetter.value = True
-      If txtDocumentTag.text <> "" Then
-         txtDocumentTag.text = Replace(txtDocumentTag.text, "result", "letter")
-         txtDocumentTag.text = Replace(txtDocumentTag.text, "RESULT", "LETTER")
-      Endif
-      InitGui_Display_As_Letter()
-   Else
-      rbDisplayAsResult.value = True
+   If document!fk_lu_display_as = const.Document_Display_As_Result
+      Set_Display_As_Type("result") 'fixme add the others
+      InitGui_Display_As_Result()
       If txtDocumentTag.text <> "" Then
          txtDocumentTag.text = Replace(txtDocumentTag.text, "letter", "result")
          txtDocumentTag.text = Replace(txtDocumentTag.text, "LETTER", "RESULT")
       Endif
-      InitGui_Display_As_Result()
-   End If
+   Else
+      InitGui_Display_As_Letter()
+      Set_Display_As_Type("letter")
+   End If   
+   Select Case document!fk_lu_display_as
+      Case const.Document_Display_As_Letter
+         If txtDocumentTag.text <> "" Then
+            txtDocumentTag.text = Replace(txtDocumentTag.text, "result", "letter")
+            txtDocumentTag.text = Replace(txtDocumentTag.text, "RESULT", "LETTER")
+         Endif
+      Case Const.Document_Display_As_Certificate
+         Set_Display_As_Type("certificate")
+      Case Const.Document_Display_As_GP_Management_Plan 
+         Set_Display_As_Type("gp management plan")
+      Case const.Document_Display_As_Image
+         Set_Display_As_Type("image")
+      Case Const.Document_Display_As_Mental_Health_Plan
+         Set_Display_As_Type("mental health plan")
+      Case const.Document_Display_As_Team_Care_Arrangement
+         Set_Display_As_Type("team care arrangement")   
+   End Select
+   
    If Not IsNull(document!fk_patient)
       With txtPatient
          .Border = False
@@ -928,6 +957,12 @@ Public Sub Timer1_Timer()
    If iTimerCount > 3 Then
       Patient_Get()
    End If
+   
+End
+
+Public Sub Set_Display_As_Type(t As String)
+   
+   cmbDocumentDisplayAstypes.index = cmbDocumentDisplayAstypes.Find(t) 
    
 End
 
@@ -1083,7 +1118,7 @@ Public Sub Patient_Show(currentPatient As Collection)
       .Foreground = Color.Black
    End With
    
-   If Embedded_in_form_name = "Inbox" Then
+   If Embedded_in_form_name = "FInbox" Then
       
       FInbox.reload_patient(bReAllocating_Patient)
    Else
@@ -1150,7 +1185,7 @@ Public Sub Staff_Destination_Member_Show()
    '-----------------------------------------------------------------------
    'If in the inbox and staff re-allocated, may not belong now to this user
    '-----------------------------------------------------------------------
-   If Embedded_in_form_name = "Inbox" Then
+   If Embedded_in_form_name = "FInbox" Then
       FInbox.ReAllocate_Staff_Member(fk_staff_destination)
    Else
       txtPatient.SetFocus()
@@ -1195,7 +1230,7 @@ Public Sub RequestItem_Selection(action As String, txtbox As TextBox, Optional c
          If Trim(sSearchText) = "" Then
             Return
          End If
-         If cmbDocumentTypes.index = -1 Then
+         If cmbRequestTypes.index = -1 Then
             sMsg = "Before searching for a request name, you must select the type of request you wish to find.\n\n"
             "For example, if the document you are about to file was a bone density, you would select "
             "the category 'Radiology' from the combo box first, then type in a few letters of what  you want to find.\n\n"
@@ -1204,7 +1239,7 @@ Public Sub RequestItem_Selection(action As String, txtbox As TextBox, Optional c
             Message.Info(sMsg)
             Return
          Endif
-         The_Collection = modRequestsDBI.requests_get_items(sSearchText, document_types[cmbDocumentTypes.index]!pk)
+         The_Collection = modRequestsDBI.requests_get_items(sSearchText, Request_Types[cmbRequestTypes.index]!pk)
          With columnview1
             .Clear()
             If fk_lu_type Then
@@ -1320,8 +1355,9 @@ Public Sub EditArea_TextBox_Change()
          Endif
          If Left(Last.text, 2) = "wc" Then
             bexit = True
-            Last.text = "Workcover "
-            rbDisplayAsCertificate.value = True
+            '  Last.text = "Workcover "
+            ' rbDisplayAsCertificate.value = True
+            Set_Display_As_Type("certificate")
             bExit = False
          Endif
          If Left(Last.text, 3) = "pem" Then
@@ -1342,73 +1378,85 @@ Public Sub EditArea_TextBox_Change()
          If Left(Last.text, 3) = "clc" Then
             bexit = True
             Last.text = "CentreLink Certificate "
-            rbDisplayAsCertificate.value = True
+            ' rbDisplayAsCertificate.value = True
+            Set_Display_As_Type("certificate")
             bExit = False
          Endif
          If Left(Last.text, 3) = "cfp" Then
             bexit = True
             Last.text = "Consent for procedure "
-            rbDisplayAsCertificate.value = True
+            ' rbDisplayAsCertificate.value = True
+            Set_Display_As_Type("letter")
             bExit = False
          Endif
          If Left(Last.text, 3) = "rmr" Then
             bexit = True
             Last.text = "Request for medical records transfer "
-            rbDisplayAsCertificate.value = True
+            '  rbDisplayAsCertificate.value = True
+            Set_Display_As_Type("letter")
             bExit = False
          Endif
          If Left(Last.text, 3) = "anf" Then
             bexit = True
             Last.text = "Accident Notification Form "
-            rbDisplayAsCertificate.value = True
+            '  rbDisplayAsCertificate.value = True
+            Set_Display_As_Type("letter")
             bExit = False
          Endif
          If Left(Last.text, 4) = "dacc" Then
             bexit = True
             Last.text = "Diabetes Annual Cycle of Care "
-            rbDisplayAsCertificate.value = True
+            Set_Display_As_Type("letter")
+            '  rbDisplayAsCertificate.value = True
             bExit = False
          Endif
          If Left(Last.text, 3) = "o75" Then
             bexit = True
             Last.text = "Over 75 Health Care Assessment "
-            rbDisplayAsCertificate.value = True
+            Set_Display_As_Type("letter")
+            ' rbDisplayAsCertificate.value = True
             bExit = False
          Endif
          If Left(Last.text, 3) = "tca" Then
             bexit = True
             Last.text = "Team Care Arrangements "
-            rbDisplayAsCertificate.value = True
+            Set_Display_As_Type("team care arrangement")
+            ' rbDisplayAsCertificate.value = True
             bExit = False
          Endif
          If Left(Last.text, 3) = "icr" Then
             bexit = True
             Last.text = "Insurance Company Request for Information "
-            rbDisplayAsCertificate.value = True
+            'rbDisplayAsCertificate.value = True
+            Set_Display_As_Type("letter")
             bExit = False
          Endif
          If Left(Last.text, 3) = "ips" Or Left(Last.text, 3) = "ipr" Then
             bexit = True
             Last.text = "Imported Patient Summary/Records"
-            rbDisplayAsCertificate.value = True
+            Set_Display_As_Type("letter")
+            ' rbDisplayAsCertificate.value = True
             bExit = False
          Endif
          If Left(Last.text, 3) = "impl" Then
             bexit = True
             Last.text = "Injury Management Plan"
-            rbDisplayAsCertificate.value = True
+            Set_Display_As_Type("letter")
+            '  rbDisplayAsCertificate.value = True
             bExit = False
          Endif
          If Left(Last.text, 3) = "aeb" Then
             bexit = True
             Last.text = "Arranged excision BCC"
-            rbDisplayAsCertificate.value = True
+            Set_Display_As_Type("letter")
+            '  rbDisplayAsCertificate.value = True
             bExit = False
          Endif
          If Left(Last.text, 3) = "aes" Then
             bexit = True
             Last.text = "Arranged excision SCC"
-            rbDisplayAsCertificate.value = True
+            Set_Display_As_Type("letter")
+            ' rbDisplayAsCertificate.value = True
             bExit = False
          Endif
          If Embedded_In_Form_Name = "FInbox" Then
@@ -1920,15 +1968,17 @@ Public Sub Organisation_Display()
    Else
       txtDocumentTag.text = Organisation!organisation
    Endif
-   If rbDisplayAsResult.value = True Then
-      txtDocumentTag.text &= "- result"
-   Else
-      txtDocumentTag.text &= " - letter"
-   Endif
+   
+   ' If rbDisplayAsResult.value = True Then
+   '    txtDocumentTag.text &= "- result"
+   ' Else
+   '    txtDocumentTag.text &= " - letter"
+   ' Endif
+   txtDocumentTag.text &= " - " & cmbDocumentDisplayAstypes.text
    txtDocumentDate.SetFocus()
 Catch
    Return   
-
+   
 End
 
 Public Sub rbDegreeUrgency_Click()
@@ -1977,19 +2027,20 @@ Public Sub Guess_ResultType()
    'Attempts to guess the type of result it will be, given the category of provider/person
    '--------------------------------------------------------------------------------------
    
-   Try cmbDocumentTypes.index = cmbDocumentTypes.Find(document!request_type)
-   If Error Then cmbDocumentTypes.index = -1 'the document may have no designated provider type
+   Try cmbRequestTypes.index = cmbRequestTypes.Find(document!request_type)
+   If Error Then cmbRequestTypes.index = -1 'the document may have no designated provider type
    
 End
 
 Public Sub rbDisplayAs_Click()
    
+   Message.info("you should not be in rbdisplayas_click")
    If Bexit Then Return
    iDisplay_As = Last.tag
    sTypeDocument = const.sDocumentType[iDisplay_As]
    If Last.tag = const.Document_Display_As_Result Then
       InitGui_Display_As_Result()
-      If Embedded_in_form_name = "Inbox" Then HBox_DocumentType.Visible = True
+      If Embedded_in_form_name = "FInbox" Then HBox_DocumentType.Visible = True
       If txtDocumentTag.text <> "" Then
          txtDocumentTag.text = Replace(txtDocumentTag.text, "letter", "result")
          txtDocumentTag.text = Replace(txtDocumentTag.text, "LETTER", "RESULT")
@@ -1999,7 +2050,7 @@ Public Sub rbDisplayAs_Click()
          txtUserObservationName.text = Replace(txtUserObservationName.text, "LETTER", "RESULT")
       Endif
       'Attempt to match the combo
-      If Embedded_in_form_name = "Inbox" Then
+      If Embedded_in_form_name = "FInbox" Then
          Guess_ResultType()
          txtUserObservationName.SetFocus()
       End If
@@ -2089,8 +2140,8 @@ Public Function Valid_Document() As Boolean
       txtDocumentDate.SetFocus()
       Return False
    Endif
-   If cmbDocumentTypes.index = - 1 And rbDisplayAsResult.value = True And Embedded_in_form_name <> "Scanning" Then
-      
+   '  If cmbRequestTypes.index = - 1 And rbDisplayAsResult.value = True And Embedded_in_form_name <> "Scanning" Then
+   If cmbRequestTypes.index = - 1 And cmbDocumentDisplayAstypes.text = "result" And Embedded_in_form_name <> "Scanning" Then
       sMsg = "When the clerical staff allocate this document, they considered it to be a 'Result.\n\n"
       "Please select the type of result you wish to file from the drop down list "
       "and then allocate a request name before proceeeding.\n\n"
@@ -2098,7 +2149,7 @@ Public Function Valid_Document() As Boolean
       "click on the letter option button to change it's designation to that of a letter."
       Message.Title = "Document Filing"
       Message.Info(sMsg)
-      cmbDocumentTypes.SetFocus()
+      cmbRequestTypes.SetFocus()
       Return False
    Endif
    Return True
@@ -2154,4 +2205,36 @@ Public Sub Form_Resize()
    
 End
 
-
+Public Sub cmbDocumentDisplayAsTypes_Click()
+   
+   If Bexit Then Return
+   iDisplay_As = Document_Display_As_Types[cmbDocumentDisplayAstypes.index]!pk
+   If iDisplay_As = const.Document_Display_As_Result Then
+      InitGui_Display_As_Result()
+      If Embedded_in_form_name = "FInbox" Then HBox_DocumentType.Visible = True
+      If txtDocumentTag.text <> "" Then
+         txtDocumentTag.text = Replace(txtDocumentTag.text, "letter", "result")
+         txtDocumentTag.text = Replace(txtDocumentTag.text, "LETTER", "RESULT")
+      Endif
+      If txtUserObservationName.text <> "" Then
+         txtUserObservationName.text = Replace(txtUserObservationName.text, "letter", "result")
+         txtUserObservationName.text = Replace(txtUserObservationName.text, "LETTER", "RESULT")
+      Endif
+      'Attempt to match the combo
+      If Embedded_in_form_name = "FInbox" Then
+         Guess_ResultType()
+         txtUserObservationName.SetFocus()
+      End If
+   Else
+      InitGui_Display_As_Letter()
+      If txtDocumentTag.text <> "" Then
+         txtDocumentTag.text = Replace(txtDocumentTag.text, "result", "letter")
+         txtDocumentTag.text = Replace(txtDocumentTag.text, "RESULT", "LETTER")
+      Endif
+      If txtUserObservationName.text <> "" Then
+         txtUserObservationName.text = Replace(txtUserObservationName.text, "result", "letter")
+         txtUserObservationName.text = Replace(txtUserObservationName.text, "RESULT", "LETTER")
+      End If
+   Endif
+   
+End

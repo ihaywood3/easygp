@@ -25,6 +25,30 @@ Property Read Segment As String
 Public Sub _new(txt As String)
    
    Dim i As Integer
+   
+   If txt = "" Then Return
+   If Left$(txt, 1) = "/" Then ' it's a filename
+      txt = File.Load(txt)
+   Endif
+   segments = Split(txt, "\r")
+   If segments.Length = 1 Then
+      segments = Split(txt, "\n")
+   Endif
+   If segments.Length > 1 Then
+      If Left$(segments[1], 1) = "\n" Then ' naughty, naughty, someone's using MS-DOS style newlines
+         For i = 1 To segments.Length - 1
+            segments[i] = Right$(segments[i], -1)
+         Next
+      Endif
+   Endif
+   curr = 0
+   segment_parsed = Null
+   
+End Sub
+
+Public Sub _new_ian_14aug14(txt As String)
+   
+   Dim i As Integer
    Dim re As RegExp
    
    If txt = "" Then Return
@@ -58,6 +82,7 @@ Public Sub _new(txt As String)
        Endif
      Endif
    Wend
+   Print segments[8]
    curr = 0
    segment_parsed = Null
    
@@ -164,17 +189,36 @@ Public Function GetNameAsCollection(field As Integer) As Collection
    'firstname^surname, surname^firstname, surname^firstname^provider_no (pn sometimes wrong or extra digits)
    'or missing, sometimes titles stuck in there, sometimes incorrect number of hats!
    'Yes in theory you should just be able to pull in the provider number segment but its not that simple
-   'sometime even eg Dr J Smith 34522Y
+   'sometime even eg Dr J Smith 34522Y   
+   'e.g if parsing OBR-16 or ORC-12:
+   '
+   ' 4.5.1.16 Ordering provider (XCN) 00226
+   ' 
+   ' Components: <ID number (ST)> ^ <family name (ST)> ^ <given name (ST)> ^ <middle initial or name (ST)> ^ <suffix (e.g., JR or III) (ST)> ^ <prefix (e.g., DR) (ST)> ^ <degree (e.g., MD) (ST)> ^ <source table (IS)> ^ <assigning authority (HD)> ^ <name type code(ID)> ^ <identifier check digit (ST)> ^ <code identifying the check digit scheme employed (ID )> ^ <identifier type code (IS)> ^ <assigning facility (HD)>
+   ' 
+   ' Subcomponents of assigning authority: <namespace ID (IS)> & <universal ID (ST)> & <universal ID type (ID)
+   ' 
+   ' Subcomponents of assigning facility: <namespace ID (IS)> & <universal ID (ST)> & <universal ID type (ID)
+   ' 
+   ' Definition: This field identifies the provider who ordered the test. Either the ID code or the name, or both, may be present. This is the same as ORC-12-ordering provider. 
+   '
+   ' 08/2014: now more crap from HAPS |2960669J^DR S ADERA,|
    '-------------------------------------------------------------------------------------------------------
+
    Dim subfields As String[]
    Dim C As New Collection 
    Dim bits As String[]
    Dim r As Collection 
+   Dim tempstring As String
    
    If Me[field] = ""
       Return C
    Endif
-   subfields = Split(Me[field], "^")
+   tempstring = Me[field]
+   If InStr(tempstring, ",") Then 
+      tempstring = Trim(Replace(tempstring, ",", " ")) 'eg now  |2960669J^DR S ADERA,| could be |2960669J^DR S ADERA|
+   End If 
+   subfields = Split(tempstring, "^")
    Select Case subfields.Length
       Case 1
          c!surname = subfields[0]
@@ -196,16 +240,24 @@ Public Function GetNameAsCollection(field As Integer) As Collection
                c!surname = bits[2]
          End Select
          Return c
-      Case 3   ' only one case seen
-         If subfields[0] = "" Then
-           c!surname = subfields[1]
-           c!firstname = subfields[2]
-           Return c
-         Else
-            ' really guessing now
-            c!surname = subfields.Join(" ")
-            Return c
-         Endif
+      Case 3 'eg have received this |^surname^Mrs| (see above for what it should contain) Genie spits this stuff out
+         'this is essentiall unparsable
+         c!title = "Unknown"
+         c!provider_number = subfields[0]
+         c!firstname = subfields[2]
+         c!surname = subfields[1]
+         Return c
+        'ian reviewion 1899
+     ' Case 3   ' only one case seen
+     '    If subfields[0] = "" Then
+     '      c!surname = subfields[1]
+     '      c!firstname = subfields[2]
+     '      Return c
+     '    Else
+     '       ' really guessing now
+     '       c!surname = subfields.Join(" ")
+     '       Return c
+     '    Endif
       Case 4   'only ever seen one case of 4, the 3, 4th were empty anway
          bits = Split(subfields[modHL7Constants.RQ_Provider_Surname], " ")
          c!title = "Dr" ' at a guess
@@ -220,13 +272,17 @@ Public Function GetNameAsCollection(field As Integer) As Collection
          'this falls over
          'This also crashes this segment:
          'UUH^UNIFIED HEALTHCARE^^^^^^^LOCNATA2203|
-         'Haps has some like 458332T^DR R Terry ^^^^^^^^^^^^^^^(12 of these ^~458332T
+         'Haps has some like 458332T^DR R Terry ^^^^^^^^^^^^^^^(12 of these ^~458332T'
+         'even the health link test message is f*'d  eg. 0123456L^HEALTHLINK^HEALTH ^DR^AUSHICPR
          'I don't think there is  a good solution here
          '-----------------------------------------------------------------------
          c!provider_number = subfields[modHL7Constants.RQ_Provider_Provider_Number]
          c!firstname = subfields[modHL7Constants.RQ_Provider_Firstname]
          c!surname = subfields[modHL7Constants.RQ_Provider_Surname] 
-         c!title = subfields[modHL7Constants.RQ_Provider_Title]
+         Try c!title = subfields[modHL7Constants.RQ_Provider_Title]
+         If Error Then  'I give up this could be an ywhere amongst the myriad of f*ing hats
+            c!title = "Unknown"
+         Endif
          '----------------------------------------------------------------------------------------------------
          'ok, we could be fucked here  has some like 458332T^DR R Terry ^^^^^^^^^^^^^^^(12 of these ^~458332T
          'Last penultimate last ditch effort, look up by provider number
@@ -252,7 +308,6 @@ Public Function GetNameAsCollection(field As Integer) As Collection
          End If
          Return C
    End Select
-
    
 End
 

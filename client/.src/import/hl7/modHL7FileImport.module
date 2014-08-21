@@ -27,8 +27,8 @@ Public Sub Auto_Process()
    
    importdir = modAdminDBI.Config_Get("hl7_incoming_directory", "/var/lib/easygp/hl7/incoming")
    
-  ' Print importdir
- '  modAdminDBI.Config_Get(Param!config, Null, Null, fk_clinic)
+   ' Print importdir
+   '  modAdminDBI.Config_Get(Param!config, Null, Null, fk_clinic)
    ' ensure these subdirectories exist
    ' If Not Access(importdir &/ "processed", gb.Exec) Then
    If Access(importdir, gb.exec Or gb.Write) Then    
@@ -39,7 +39,7 @@ Public Sub Auto_Process()
          Mkdir importdir &/ "processed/errors"
       Endif
    Else
-        Goto NoAccessError
+      Goto NoAccessError
    End If   
    Process_Dir_Or_File(importdir)
    Return
@@ -99,36 +99,36 @@ Private Sub Process_Dir_Or_File(fname As String)
          i = Read #f, 3 ' "taste" the file to find type
          Seek #f, 0
          Select Case i
-           Case "001" 
-             Log.DataMsg(Subst$("decided &1 is PIT by header", fname))
-             typ = "pit"
-           Case "FHS", "BHS", "MSH"
-              Log.DataMsg(Subst$("decided &1 is HL7 by header", fname))
-        End Select
-        If typ = "unk" Then
-          Select Case Lower$(Right$(fname, 4))
-            Case ".pit"
-              Log.DataMsg(Subst$("decided &1 is PIT by suffix", fname))
-              typ = "pit"
-            Case ".hl7", ".oru"
-              Log.DataMsg(Subst$("decided &1 is HL7 by suffix", fname))
-              typ = "hl7"
-          End Select
-        Endif
-        If typ = "pit" Then
-          If IsNull(f) Then f = Open fname For Read
-          PITImporter.Import(f, File.Name(fname))
-          Close #f
-        Else  ' at the moment try to parse as HL7 if not clearly PIT
-          i = Read #f, Lof(f)
-          Close #f
-          hl7 = New CHL7(i)
-          Process_File(hl7, fname)
-        Endif
-      
-        Move fname To importdir &/ "processed" &/ modUtil.filepath_fix_Blanks(File.Name(fname))
-        modDBConnect.CommitTrans()
-     Endif ' Lof(f) > 4
+            Case "001" 
+               Log.DataMsg(Subst$("decided &1 is PIT by header", fname))
+               typ = "pit"
+            Case "FHS", "BHS", "MSH"
+               Log.DataMsg(Subst$("decided &1 is HL7 by header", fname))
+         End Select
+         If typ = "unk" Then
+            Select Case Lower$(Right$(fname, 4))
+               Case ".pit"
+                  Log.DataMsg(Subst$("decided &1 is PIT by suffix", fname))
+                  typ = "pit"
+               Case ".hl7", ".oru"
+                  Log.DataMsg(Subst$("decided &1 is HL7 by suffix", fname))
+                  typ = "hl7"
+            End Select
+         Endif
+         If typ = "pit" Then
+            If IsNull(f) Then f = Open fname For Read
+            PITImporter.Import(f, File.Name(fname))
+            Close #f
+         Else  ' at the moment try to parse as HL7 if not clearly PIT
+            i = Read #f, Lof(f)
+            Close #f
+            hl7 = New CHL7(i)
+            Process_File(hl7, fname)
+         Endif
+         
+         Move fname To importdir &/ "processed" &/ modUtil.filepath_fix_Blanks(File.Name(fname))
+         modDBConnect.CommitTrans()
+      Endif ' Lof(f) > 4
    End If ' IsDir(fname)
 Catch
    Let i = Error.Text & " " & Error.Backtrace.Join(" ") & " (" & fname & ")"
@@ -501,16 +501,25 @@ Private Sub Process_File(hl7 As CHL7, fname As String)
             document!fk_lu_display_as = sender!fk_lu_message_display_style 'defaults to 1 = letter different name = historical- fiXME SOMETIME in documents.sending_entities
             document!source_file = File.name(fname) 
             document!imported_time = Now()
-            document!date_requested = Val(Format(modUtil.DateString_Decode(hl7[modHL7Constants.OBR_Request_Date]), "dd/mm/yyyy"))
-            document!date_created = Val(Format(modUtil.DateString_Decode(hl7[modHL7Constants.OBR_Collect_Date]), "dd/mm/yyyy"))
+            document!date_requested = Val(Format(DateString_Decode(hl7[modHL7Constants.OBR_Request_Date]), "dd/mm/yyyy"))
+            If IsNull(DateString_Decode(hl7[modHL7Constants.OBR_Collect_Date])) Then
+               document!date_created = document!date_requested
+            Else
+               document!date_created = Val(Format(DateString_Decode(hl7[modHL7Constants.OBR_Collect_Date]), "dd/mm/yyyy"))
+            End If   
+            ' document!date_requested = Val(Format(modUtil.DateString_Decode(hl7[modHL7Constants.OBR_Request_Date]), "dd/mm/yyyy"))
+            ' document!date_created = Val(Format(modUtil.DateString_Decode(hl7[modHL7Constants.OBR_Collect_Date]), "dd/mm/yyyy"))
             If fk_patient <> 0 Then document!fk_patient = fk_patient
             If fk_unmatched_patient <> 0 Then document!fk_unmatched_patient = fk_unmatched_patient   
             If fk_staff <> 0 Then document!fk_staff_destination = fk_staff
             If fk_unmatched_staff <> 0 Then document!fk_unmatched_staff = fk_unmatched_staff
             
             requesting_dr = hl7.GetNameAsCollection(modHL7Constants.OBR_Requesting_Provider)  'same as referring dr in PV1 fix me
-            
-            document!originator = Trim(requesting_dr!title & " " & requesting_dr!firstname & " " & requesting_dr!surname)
+            If IsNull(requesting_dr) Then
+               document!originator = "Unknown Sending Provider"
+            Else
+               document!originator = Trim(requesting_dr!title & " " & requesting_dr!firstname & " " & requesting_dr!surname)
+            End If   
             '----------------------------------------------------------------------------------------------------------
             'I cannot find any consistant pattern to figure out who has written the letter. if in fact this is a letter
             'except to say that by and large path/radiology companies don't use the & in obr32
@@ -596,6 +605,7 @@ Private Sub Process_File(hl7 As CHL7, fname As String)
                   Endif
                Endif
                obx!sub_identifier = hl7[4]
+               Print hl7[5]
                sstring = Replace$(hl7[5], "\\T\\", " & ") 'FIXME, NEEDS ALSO SOME .BR AND OTHER \ \ FIXES
                obx!value = sstring
                obx!units = hl7[6, 1]
@@ -665,7 +675,7 @@ Private Sub Process_File(hl7 As CHL7, fname As String)
                '    '    temphtmlFile = modUtil.Write_HTML(shtml)
                '    '    Shell "wkhtmltopdf " & temphtmlFile & " /tmp/output.pdf" Wait
                ' End If  
-               
+               Print obx
                modDBConnect.insert("documents.observations", obx)
             Loop
          Loop 
@@ -674,6 +684,7 @@ Private Sub Process_File(hl7 As CHL7, fname As String)
    If Not any_msh Then
       Error.Raise("No valid MSH segments found")
    Endif
+   
 End
 
 Public Function Get_Staff_Member(staff_member As Collection, fname As String) As Collection 
@@ -808,5 +819,28 @@ Public Function Get_Sender(SendingEntity As String, SendingApplication As String
       modDBConnect.CommitTrans()
    End If
    Return Sender
+   
+End
+
+Public Function DateString_Decode(Datestring As String) As Date
+   'expects date in this format yyyymmdd, returns valid date with time 00:00
+   'sadly some hl7 contains eg |16/07/14    ??:?|
+   
+   Dim sTemp As String
+   Dim d1 As Date
+   Dim bits As String[]
+   
+   If InStr(Datestring, "/") Then
+      If InStr(Datestring, " ") Then
+         bits = Split(Split(Datestring, " ")[0], "/")
+      Else
+         bits = Split(Datestring, "/")
+      End If  
+      Return Date(Val(bits[2]), Val(bits[1]), Val(bits[0]))
+   Endif
+   d1 = Null
+   sTemp = Left(Datestring, 8)
+   Try d1 = Date(Val(Left(sTemp, 4)), Val(Mid(sTemp, 5, 2)), Val(Right(sTemp, 2)))
+   Return d1
    
 End

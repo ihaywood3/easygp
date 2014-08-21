@@ -44,6 +44,7 @@
 '--------------------------------------------------------------------------------------------------------
 Private GP_Management_Plan As Collection 
 Private form_gpmp_tca_list As FGPMPTCAList
+Private GP_Management_Plans As FGPMPTCA
 Private ProgressNotesPage As FProgressNoteEditor    'will always be re-initialised with new patient
 Private PrescriptionPage As FPrescriptions          'must be destroyed in Gui_Reset()
 Private form_email_documents As FEmailDocument
@@ -114,6 +115,13 @@ Public FCurrentHTMLViewer As FHtmlViewer           'dont remove just testing
 Public FGeneralNotesEditor As FProgressNoteEditor  ' dont remove just testing
 Static Private form_clinical As FClinical         'allows FClinical Access from anywhere  = Me -see Init()
 Private BMICalc As FBMICalc
+
+Static Public Sub Todays_Prescriptions_Reload()
+   'called from an instance of FMedicationsList
+   
+   form_clinical.PrescriptionPage.Prescriptions_Written_Today_Reload
+   
+End
 
 Static Public Function Help_Show(sPath As String, heading As String, flag As Boolean)
    '--------------------------------------------
@@ -572,6 +580,7 @@ Public Sub Init()
    form_clinical = Me                                        'allow access of FClinical from any other module
    Refresh_Toolbar
    Form_Patient_Tasks = New FPatientTasks(Vbox_PatientTasks)
+   
    With Form_Decision_Support = New FDecisionSupport(Vbox_Decision_Support)
       ' .lblViewerCaption.Visible = True
       '  .tbWebBrowserClose.Visible = True
@@ -729,9 +738,12 @@ Public Sub GPMP_Reload()
          .Caption = "View GPMP"
          .tag = "GPMP"
       End With
+      currentconsult!patient!gp_management_plan = GP_Management_Plan
    Endif
    
 End
+
+
 
 Static Public Function IsSamePatient(fk_patient As Integer) As Boolean
    '-------------------------------------------------------------------
@@ -974,7 +986,7 @@ Private Sub Settings_Load()
    
    Dim main_height As Integer
    
-   main_height = HBox_Consultation_Type.height + HBox_Sections.Height + HBox_Buttons1.height + HBox_Buttons2.Height + separator2.height + separator5.height + separator6.height
+   main_height = HBox_ConsultDetails.height + HBox_Sections.Height + HBox_Buttons1.height + HBox_Buttons2.Height + separator2.height + separator5.height + separator6.height
    Try VSplit_Main.Layout = Settings["FClinical/Vsplit_Main.Layout"]
    If Error Then    
       VSplit_Main.Layout = modUtilGUI.VSplit([main_height * 2, Me.height - main_height])
@@ -1040,10 +1052,9 @@ Public Sub Consult_Save()
    '------------------------------------------------------------------------------------------
    
    Dim i As Object
-   ' Dim s As New Integer[]
    
-   '  s.Add(const.cMedications_add_to_html)
    If IsNull(currentconsult) Then Return  'do not remove this
+   If Consult_Time_Check_Valid() = False Then Return  
    Inc Application.Busy
    TabStrip_Lists.Enabled = False
    For Each i In EditorPages
@@ -1307,7 +1318,8 @@ Public Sub Allergies_Sensitivities_Refresh()
             End If  
          Next
       End If   
-   End If      
+   End If   
+   
    ' Catch 
    '   Return
    
@@ -1844,14 +1856,12 @@ Catch
    
 End
 
-
 Public Sub cvwLettersReceived_Click()
    
-  ' trap clicked as well as some Qt versions don't generate Select on one-item lists
-  cvwLettersReceived_Select() 
+   ' trap clicked as well as some Qt versions don't generate Select on one-item lists
+   cvwLettersReceived_Select() 
    
 End
-
 
 Public Sub VBox_Letters_Leave()
    '---------------------------------------------------------------------------
@@ -1941,7 +1951,7 @@ Public Sub cvwLettersReceived_Menu()
          mnuLettersReceived_UndoDelete.Enabled = False                                     'assume there is no documents to undelete
          Print cvwLettersReceived.Selection[0]
       End If
-      If currentconsult!letters_received[cvwLettersReceived.Selection[0]]!msh_transmitting_entity = "snail_mail" Then 'can only send back non-hl7 e.g scanned FIXME, LATER ?IMAGES
+      If currentconsult!letters_received[cvwLettersReceived.Selection[0]]!msh_transmitting_entity = "snail mail" Then 'can only send back non-hl7 e.g scanned FIXME, LATER ?IMAGES
          mnuLettersReceived_ReFile.Enabled = True
       Else
          mnuLettersReceived_ReFile.Enabled = False
@@ -2173,7 +2183,11 @@ Public Sub cvwResults_Refresh(Optional bRefresh As Boolean = False)
       If result_received <> "" Then
          x = results_received!pk_document
          cvwResults.Add(x, 0)
-         cvwResults[x][0] = Format(results_received!date_created, "dd/mm/yyyy")
+         If Not IsNull(results_received!date_created) Then  
+            cvwResults[x][0] = Format(results_received!date_created, "dd/mm/yyyy")
+         Else
+            cvwResults[x][0] = "?date"   'import bug hl7 errors fixme this can be null - have put in a fix all new imports use date_ordered if date_created is null
+         End If 
          cvwResults[x][1] = result_received 'results_received!tag_user
          cvwResults[x][2] = results_received!originator
       End If
@@ -2213,7 +2227,6 @@ Public Sub Editor_ShowPage(sPageName As String, Optional page_tag As String = ""
    Dim ExportPartial As FExportPartial
    Dim INRManager As FInr
    Dim Shortcuts As FStaffPreferencesShortCuts
-   Dim GP_Management_Plans As FGPMPTCA
    Dim Image_Viewer As FImageViewer
    Dim retform As Form ' the Form we are returning to the caller: very useful for scripting
    Dim webpage As FBrowser
@@ -2282,7 +2295,7 @@ Public Sub Editor_ShowPage(sPageName As String, Optional page_tag As String = ""
    If sPageName = "result" Then                                             'generic tab for documents, re-used time after time after time
       bPagefound = False  
       For Each page In WorkspaceEditor.Windows                                    'search all tabs
-         If Page.title = "Result" Then                     'if result tab showing
+         If Page.title = "Result" Or Page.Title = "UNFILED RESULT" Then                     'if result tab showing
             WorkspaceEditor.ActiveWindow = page
             Result_Viewer = page.VBoxEditor.Children[0]
             bPagefound = True   
@@ -2548,6 +2561,10 @@ Public Sub Editor_ShowPage(sPageName As String, Optional page_tag As String = ""
                EditorPages.Add(RecreationalDrugs, sPageName)
                Control_For_Focus = RecreationalDrugs.lblMeasure
             Case "Care Planning"
+               'remove past history tab if showing (this is included also in care planning and they cannot exist together)
+               If Editor_PageExists("Past History", "Health Issues") Then
+                  Editor_RemovePage("Health Issues")  'yes this is all rather stupid code and mixed up strings (historical - too lazy/no time to fix)
+               Endif
                If Not modAdminDBI.Has_User_Seen_Tip("FGPMPTCA.FirstRun") Then 
                   With FUsageTip
                      .Init("Creating GPMP or TCA", "FGPMPTCA.FirstRun", modPastHistoryDBI.First_Run_Message())
@@ -2558,8 +2575,9 @@ Public Sub Editor_ShowPage(sPageName As String, Optional page_tag As String = ""
                   modPatientWarnings.Usual_Doctor_InForm_Missing(currentconsult)
                End If   
                page = New FLinkContainer
-               GP_Management_Plans = New FGPMPTCA(page.VBoxEditor)
-               GP_Management_Plans.Init(currentconsult)
+               With GP_Management_Plans = New FGPMPTCA(page.VBoxEditor)
+                  .Init(currentconsult)
+               End With
                WorkspaceEditor.Add(page)
                page.tag = sPageName
                Page.title = sPageName
@@ -2725,7 +2743,6 @@ Public Sub Editor_ShowPage(sPageName As String, Optional page_tag As String = ""
             Case "Occupational History"
                page = New FLinkContainer
                With OccupationalHistoryPage = New FOccupation(page.VBoxEditor)
-                  '.Init(currentconsult)
                   .Init(currentconsult)
                End With
                page.tag = "Occupational History"
@@ -2734,7 +2751,6 @@ Public Sub Editor_ShowPage(sPageName As String, Optional page_tag As String = ""
                retform = OccupationalHistoryPage
                EditorPages.Add(OccupationalHistoryPage, "Occupational History")
                Control_For_Focus = OccupationalHistoryPage.lbloccupation
-               
             Case "Health Assessment"
                page = New FLinkContainer
                HealthAssessmentPage = New FHealthAssessment(page.VBoxEditor)
@@ -2820,7 +2836,6 @@ Public Sub Editor_ShowPage(sPageName As String, Optional page_tag As String = ""
                EditorPages.Add(PrescriptionPage, "Scripts")
                PrescriptionPage.bexit = True
                PrescriptionPage.BExit = False
-               
             Case "Family History"
                page = New FLinkContainer
                FamilyHistoryPage = New FFamilyHistory(page.VBoxEditor)
@@ -2830,7 +2845,6 @@ Public Sub Editor_ShowPage(sPageName As String, Optional page_tag As String = ""
                WorkspaceEditor.Add(page)
                retform = FamilyHistoryPage
                EditorPages.Add(FamilyHistoryPage, "Family History")
-               
             Case "Psycho-Social History"
                page = New FLinkContainer
                PsychoSocialHistory = New FPsychoSocialHistory(page.VBoxEditor)
@@ -2842,6 +2856,10 @@ Public Sub Editor_ShowPage(sPageName As String, Optional page_tag As String = ""
                EditorPages.Add(PsychoSocialHistory, "Psycho-Social History")
                Control_For_Focus = PsychoSocialHistory.teSocialHistory
             Case "Health Issues"
+               If Editor_PageExists("Care Planning", "") Then  'First check that this is not open on the care planning tab
+                  GP_Management_Plans.TabStrip1.index = 0       'If does > switch to that instance
+                  Return                                        'and exit
+               Endif
                page = New FLinkContainer
                PastHistoryPage = New FPastHistory(page.VBoxEditor)
                PastHistoryPage.Init(currentconsult)
@@ -3206,7 +3224,7 @@ Public Sub cvwLettersReceived_Refresh(Optional bRefresh As Boolean = False)
       If bskip = False Then
          cvwLettersReceived.Add(x, 0)
          If IsNull(letters_received!date_created) Then   'fixme remove me when bug fixed in FMetadata
-            Message.info("This letter has no date - there is a bug in EasyGP as it should not have been possible to file this,\n\nPlease contact the developers with details")
+            cvwLettersReceived[x][0] = "?date"
          Else
             cvwLettersReceived[x][0] = Format(letters_received!date_created, "dd/mm/yyyy")
          End If
@@ -3455,6 +3473,19 @@ Public Sub WebCam_Get_Picture()
    
 End
 
+Public Function Consult_Time_Check_Valid() As Boolean
+   '-----------------------------------------------------------------------------------------------
+   'inserted because if creating a new consult in the past user may have forgotten the consult time
+   '-----------------------------------------------------------------------------------------------   
+   
+   If Right(Format(datebox1.Value, "dd/mm/yyyy hh:nn"), 5) = "00:00" Then
+      Message.Warning("Please ensure the consultation time exists before saving any cinical information")
+      Return 
+   Endif
+   Return True
+   
+End
+
 Public Sub MainToolbar_Click()
    
    Dim Vb As VBox
@@ -3471,6 +3502,7 @@ Public Sub MainToolbar_Click()
          'like these names it simply trips out
          'Edit only applies to forms without an editing area.
          '---------------------------------------------------------------------------------------------------
+         If Consult_Time_Check_Valid() = False Then Return
          Inc Application.Busy
          For Each page In WorkspaceEditor.Windows
             If page = WorkspaceEditor.ActiveWindow Then
@@ -3627,7 +3659,7 @@ Public Sub Notifications_Refresh()
       Else
          tlNotifications.Text &= Str(currentconsult!patient_tasks_outstanding.count) & " tasks "
       Endif
-      tlNotifications.Text &= " needing attention</B>"
+      tlNotifications.Text &= " need attention</B>"
       tlNotifications.Text &= "</TD></TR></TABLE>"
    Else
       tlNotifications.Text = ""
@@ -3779,7 +3811,6 @@ Public Sub mnuResultsReceived_Click()
             Message.Info("You may not edit this document.\n\n When it was created it was marked as 'protected' by EasyGP.")
             Return
          Endif
-         
          Document_Edit_Metadata(currentconsult!results_received, cvwResultsReceived_Key)
       Case "delete"                                              'deletes a document and enforces an audit trail
          If currentconsult!results_received[cvwResultsReceived_Key]!protected Then
@@ -3820,7 +3851,6 @@ Public Sub mnuResultsReceived_Click()
          Else
             modDBConnect.RollBack
          End If
-         
       Case "undo delete"
          For Each D In Deleted_Documents
             If D!fk_lu_display_as = const.Document_Display_As_Result Then
@@ -3840,7 +3870,6 @@ Public Sub mnuResultsReceived_Click()
             Message.Info("You may not move this document.\n\n When it was created it was marked as 'protected' by EasyGP.")
             Return
          Endif
-         
          If modArchiveDocumentsDBI.Document_SendBack_For_ReFiling(currentconsult, currentconsult!results_received[cvwResultsReceived_Key]) Then
             cvwResults_Refresh(True)
          Endif
@@ -3850,6 +3879,7 @@ Public Sub mnuResultsReceived_Click()
          audit_notes = "Display mode changed from result to letter"
          If modArchiveDocumentsDBI.Change_Display_Mode(currentconsult, currentconsult!results_received[cvwResultsReceived_Key], const.Document_Display_As_Letter, const.cSection_Documents, audit_notes) Then
             cvwResults_Refresh(True)
+            cvwLettersReceived_Refresh(True)
          Endif
       Case "audit trail"
          Document_AuditTrail_Show(cvwResultsReceived_Key)
@@ -4282,7 +4312,19 @@ Public Sub mnuLettersReceived_Click()
          audit_notes = "Display mode changed from letter to result"
          If modArchiveDocumentsDBI.Change_Display_Mode(currentconsult, currentconsult!letters_received[cvwLettersReceived_key], const.Document_Display_As_Result, const.cSection_Documents, audit_notes) Then
             cvwLettersReceived_Refresh(True)
+            cvwResults_Refresh(True)
          Endif
+      Case "file as plan"
+         If modArchiveDocumentsDBI.Change_Display_Mode(currentconsult, currentconsult!letters_received[cvwLettersReceived_key], const.Document_Display_As_GP_Management_Plan, const.cSection_Documents, audit_notes) Then
+            cvwLettersReceived_Refresh(True) 
+            form_gpmp_tca_list.Reload(True)  'refresh and reload the list
+         Endif
+      Case "file as tca"
+         If modArchiveDocumentsDBI.Change_Display_Mode(currentconsult, currentconsult!letters_received[cvwLettersReceived_key], const.Document_Display_As_Team_Care_Arrangement, const.cSection_Documents, audit_notes) Then
+            cvwLettersReceived_Refresh(True)
+            form_gpmp_tca_list.Reload(True)   'refresh and reload the list
+         Endif
+         
       Case "delete"                        'mark this as deleted but enforce a reason
          If currentconsult!letters_received[cvwLettersReceived_key]!protected Then
             Message.Title = "Protected Document"
@@ -4581,7 +4623,6 @@ Public Sub Document_Display(D As Collection, Optional bNewtab As Boolean)
    Dim charpos As Integer
    
    filename = D!source_file
-   '  Inc application.Busy
    Try UnFiled_Document_Metadata_Show(False)                               'remove this it could be showing if not completed from previous document
    '-----------------------------------------------------------------------------------------------------
    'If there is no tag_user, then this is an unfiled document - i.e document can't be filed without a tag
@@ -4647,17 +4688,10 @@ Public Sub Document_Display(D As Collection, Optional bNewtab As Boolean)
       '-------------------------------------------------------------------------------
       Select Case File.Ext(filename)
          Case "pdf"
-            Editor_ShowPage("pdf document", "UNFILED", filename)
+            '  Editor_ShowPage("pdf document", "UNFILED", filename, "Document")
+            Editor_ShowPage("document", "UNFILED", filename, "pdf")
             Document_Edit_Metadata(currentconsult!letters_received, cvwLettersReceived_Key)
          Case Else
-            ' If IsNull(documents[cvwLettersReceived_Key]!html) Then        'Null = unfiled, construct this from backend
-            '    CurrentObservations = modDBConnect.exec_query_collection("Select  * from documents.observations where fk_document =" & cvwLettersReceived_Key & " ORDER BY observations.observation_date, set_id")
-            '    shtml = modHL7Process.Construct_HTML(currentconsult!patient, documents[cvwLettersReceived_Key], currentobservations, True, True, documents[cvwLettersReceived_Key]!fk_lu_display_as)
-            ' Else
-            '    shtml = documents[cvwLettersReceived_Key]!html
-            ' End If
-            ' Editor_ShowPage("browser", "UNFILED", sHTML, documents[cvwLettersReceived_Key]!originator)
-            ' Document_Edit_Metadata(Documents, cvwLettersReceived_Key, sHtml)
             If IsNull(D!data) Then        'Null = unfiled, construct this from backend
                CurrentObservations = modDBConnect.exec_query_collection("Select  * from documents.observations where fk_document =" & cvwLettersReceived_Key & " ORDER BY observations.observation_date, set_id")
                shtml = modHL7Process.Construct_HTML(currentconsult!patient, D, currentobservations, True, True, D!fk_lu_display_as)
@@ -4697,11 +4731,12 @@ Public Sub Inbox_showResult(Optional bNewTab As Boolean = False)
    'If this document has been filed, show the pdf or the html
    '---------------------------------------------------------
    filename = currentconsult!results_received[cvwResultsReceived_Key]!source_file
+   Print filename
    file_extension = Lower(File.Ext(currentconsult!results_received[cvwResultsReceived_Key]!source_file))
    If Not IsNull(currentconsult!results_received[cvwResultsReceived_Key]!tag_user) Then
       Select Case file_extension
          Case "pdf"
-            If bNewTab Then  
+            If bNewTab Then 
                Editor_ShowPage("pdf document", currentconsult!results_received[cvwResultsReceived_Key]!tag_user & ":" & Str(currentconsult!results_received[cvwResultsReceived_Key]!pk_document), filename)
             Else
                Editor_ShowPage("result", currentconsult!results_received[cvwResultsReceived_Key]!tag_user & ":" & Str(currentconsult!results_received[cvwResultsReceived_Key]!pk_document), filename, "pdf")
@@ -4749,8 +4784,8 @@ Public Sub Inbox_showResult(Optional bNewTab As Boolean = False)
             shtml = modHL7Process.Construct_HTML(currentconsult!patient, SelectedDocument, currentobservations, bExcludePIT, bExcludeFTReport, display_style, fgc, bgc)
             sHtml = Replace(shtml, "%filingas%", "")
             sHtml = Replace(shtml, "** UNFILED **:", "")
-            page_tag = "UNFILED RESULT (" & currentconsult!results_received[cvwResultsReceived_Key]!date_created & ")"
-            Editor_ShowPage("browser", page_tag, sHtml)
+            page_tag = "UNFILED RESULT"
+            Editor_ShowPage("result", page_tag, sHtml, "html")
       End Select
       With FMetaData
          .Edit(currentconsult!results_received[cvwResultsReceived_Key])        'display metadata for this document
@@ -4774,7 +4809,9 @@ Public Sub FMetaData_tbClose_Click()
    
    UnFiled_Document_Metadata_Show(False)
    Wait
+   Print currentconsult!results_received[cvwResultsReceived_Key]
    cvwResults_Refresh()
+   
    cvwLettersReceived_Refresh(True)
    
 End
@@ -5041,6 +5078,7 @@ End
 
 Public Sub TabbedLists_Click()
    
+   cvwResults.UnselectAll()
    If IsNull(currentconsult) Then Return  'do nothing if no consult
    Last.MoveCurrent()
    Select Case Last.tag
@@ -6080,7 +6118,7 @@ Public Sub lcImages_Click()
    
 End
 
-Public Sub HBox_Consultation_Type_Enter()
+Public Sub HBox_ConsultDetails_Enter()
    '---------------------------------------------
    'If user's mouse over the type of consultation
    'replace the label with a combo box
@@ -6091,7 +6129,7 @@ Public Sub HBox_Consultation_Type_Enter()
    
 End
 
-Public Sub HBox_Consultation_Type_Leave()
+Public Sub HBox_ConsultDetails_Leave()
    '-------------------------------------------------
    'The consultation type combo is now made invisible
    'and its text shown on a label in its placee
@@ -6288,8 +6326,8 @@ Public Sub Occupation_Save()
       occupational_history!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sMsg, const.cSection_OccupationalHistory, -1, "occupations", 0, False)
       occupational_history.Save("clin_history.occupational_history", "fk_occupational_history")
       modDBConnect.CommitTrans()
-      Try FGPMPTCA.GPMP_Update                 'If care planning module loaded update the LaTex
-      Refresh_Section(const.cSection_Allergies)                                     'if health summary showing then refresh that
+      Try FGPMPTCA.GPMP_Update                                         'If care planning module loaded update the LaTex
+      Refresh_Section(const.cSection_HealthSummary)                    'if health summary showing then refresh that
       currentconsult!patient!fk_occupation = fk_occupation
       currentconsult!patient!occupation = modStrings.Capitalise_Words_In_String(txtOccupation.text)
       currentconsult.Refresh("occupational_history")                                
@@ -6501,19 +6539,21 @@ Public Sub Consult_Edit(consult_to_edit As Collection)
    With lblWarningEditingConsult       'vividlyi signal to user this what's happening
       .Foreground = Color.Red
       .Background = Color.Yellow
-       If IsNull(consult_to_edit!fk_consult) Then
-          .text = "Creating new consultation"
-       Endif
+      If IsNull(consult_to_edit!fk_consult) Then
+         .text = "NEW CONSULTATION"
+      Else
+         .texT = "EDIT LAST CONSULT"
+      Endif
    End With
    HBox_ConsultDetails.Background = Color.Yellow
    With lblConsult
       .Background = Color.Yellow
       .Foreground = Color.Red
-       If IsNull(consult_to_edit!fk_consult) Then
-          .text = " on "
-       Else
-          .text = " from "
-       Endif
+      If IsNull(consult_to_edit!fk_consult) Then
+         .text = " on "
+      Else
+         .text = " from "
+      Endif
    End With
    With datebox1
       .Background = Color.Yellow
@@ -6536,7 +6576,8 @@ Public Sub cvwResults_Select()
    '----------------------------
    'User has clicked on a result
    '---------------------------- 
-   
+
+   If bexit Then Return 
    cvwResults.MoveCurrent
    cvwResultsReceived_Key = cvwResults.item.key
    If WorkspaceEditor.ActiveWindow.Caption <> "Referrals" And WorkspaceEditor.ActiveWindow.Caption <> "Export Wizard" And WorkspaceEditor.ActiveWindow.Caption <> "Pregnancy" Then
@@ -6802,6 +6843,7 @@ Public Sub mnuToolbarAllergies_Click()
          Allergies_Sensitivities_Refresh                        'reload the allergies/grid
          Refresh_Section_Instance(const.cSection_HealthSummary) 'Refresh the health summary if showing
          Try FAllergy.Allergies_Reload_External                 'If the allergy module showing, reload the allergies list there
+         Try FGPMPTCA.GPMP_TCA_Reload_Latex                     'reload latex if working on care planning
    End Select
 Catch
    Return 'weird gambas bug where message box not yet displayed, user clicks on button again > bombs.
@@ -6924,6 +6966,7 @@ Public Sub DateBox1_Activate()
       smsg &= "As we all forget to write up consultations sometimes, or, may see a patient after hours or at weekends, "
       sMsg &= "EasyGP will allow you do create a new consultation but will  create an audit trail and annote the notes that the consultation was written up "
       sMsg &= "on today's date, not the date the consultation took place.\n\n"
+      sMsg &= "You will need to enter the time using 24hr time format into the consultation date box on the toolbar before saving this past consultation.\n\n"
       smsg &= "Would you like to insert a consultation into the notes for that date?\n\n"
       If Message.Question(smsg, "Yes - Insert a Consultation", "No") = 2 Then Return
       If DateDiff(modUtil.Make_Date_From_String(Format(DateBox1.value, "dd/mm/yyyy")), now_no_time, gb.day) < 0 Then
@@ -6932,6 +6975,7 @@ Public Sub DateBox1_Activate()
          Return
       Endif
       Consult_Edit(["consult_date": modUtil.Make_Date_From_String(Format(DateBox1.value, "dd/mm/yyyy")), "consult_type": cmbConsultationType.Text])
+      datebox1.SetFocus
    Else
       Consult_Edit(SC[Format(DateBox1.value, "dd/mm/yyyy")])
    Endif
@@ -6969,5 +7013,21 @@ Public Sub rbTabbedLists_Click()
          cvwReferrals_Fill()
          cvwReferrals.SetFocus()
    End Select
+   
+End
+
+Public Sub VBox_Requests_Leave()
+
+   bexit = True
+   cvwResults.UnselectAll()  'otherwise for some bizaare reason unselect triggers cvwResults_Select()
+   cvwRequests.UnselectAll()
+   bexit = False
+
+End
+
+Public Sub VBox_Letters_Referrals_Leave()
+   
+   cvwLettersReceived.UnselectAll()
+   cvwReferrals.UnselectAll()
    
 End

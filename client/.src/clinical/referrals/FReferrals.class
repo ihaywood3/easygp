@@ -109,7 +109,7 @@ End
 
 Public Function Get_EditArea_Label_Width() As Integer
    
-  Return lblReferralDate.Width 
+   Return lblReferralDate.Width 
    
 End
 
@@ -203,6 +203,11 @@ Public Sub Init(Optional cons As CConsult = Null, Optional bEmbedded_Param As Bo
       lblDocumentsPrinted.Visible = False
       Vbox_Referrals_This_Consult.visible = False
    Endif
+   If Not IsNull(currentconsult!patient!gp_management_plan) Then
+      chkIncludehealthSummary.text = "GP Management Plan"
+   Else
+      chkIncludehealthSummary.text = "Health Summary"
+   Endif
    lblReferralsThisConsultation.Width = HSplit_Letter_Include.children[0].width
    lblDocumentsPrinted.width = HSplit_Letter_Include.children[1].width
    EditArea_Notify_DataChange(False)
@@ -268,7 +273,7 @@ Public Sub Save(Optional bFinalised As Boolean = False, bSuppressSpellCheck As B
    '   body_html text,                     -- Contains the html of the body of the letter
    '   fk_pasthistory integer DEFAULT 0,   -- if not 0 = general notes, then is the key to clin_history.past_history table
    '   fk_progressnote integer,            -- key to clin_consult.progress notes table - points to the progress note of a letter during the...
-   '   include_careplan boolean DEFAULT false,
+   '   include_careplan boolean DEFAULT false, 'if True the patient has a GPMP
    '   include_healthsummary boolean DEFAULT false,
    '   fk_branch integer DEFAULT null,
    '   fk_employee integer default null,
@@ -306,16 +311,22 @@ Public Sub Save(Optional bFinalised As Boolean = False, bSuppressSpellCheck As B
    If fk_address <> 0 Then referral!fk_address = fk_address
    referral!date_referral = txtReferralDate.text
    referral!tag = Trim(txtTag.text)
-   If chkIncludeCarePlan.value = True Then
-      referral!include_careplan = True
-   Else
-      referral!include_careplan = False
-   End If
-   If chkIncludehealthSummary.value = True Then
-      referral!include_healthsummary = True
-   Else
+   If chkIncludehealthSummary.caption = "GP Management Plan" Then 'convulted duplication for historical reasons
+      If chkIncludehealthSummary.value = True Then
+         referral!include_careplan = True
+      Else
+         referral!include_careplan = False
+      End If
       referral!include_healthsummary = False
    End If
+   If chkIncludehealthSummary.caption = "Health Summary" Then
+      If chkIncludehealthSummary.value = True Then
+         referral!include_healthsummary = True
+      Else
+         referral!include_healthsummary = False
+      End If
+      referral!include_careplan = False
+   End If   
    referral!fk_lu_urgency = priority_types[cmbPriorityTypes.index]!pk
    referral!copyto = Form_Copy_To.Get_CopyTo_Data()!copyto 'FIXME, I'VE LEFT it as collection till I sort using this in FRequests
    referral!body_html = Referral_BodyHTML_Construct()
@@ -1262,7 +1273,7 @@ Public Sub EditArea_Clear()
    lvwInclusions_EditArea.Clear()
    columnview1.Visible = False
    txtHealthIssue.text = "General Notes"          'otherwise users will really get the shits
-  ' txtReferralDate.Text = Format$(Now, "dd/mm/yy")
+   ' txtReferralDate.Text = Format$(Now, "dd/mm/yy")
    Try txtReferralDate.Text = Format$(currentconsult.GetConsultDate(), "dd/mm/yy")  'fixme
    cProgressNote_Section = const.cSection_GeneralNotes
    fk_pasthistory = 0
@@ -1500,7 +1511,7 @@ Public Sub Referral_New()
    Endif
    EditArea_Clear()                          'clear input area and zero all keys
    modEditAreaHelpers.mnuHealthIssues_Refresh(currentconsult, mnuHealthIssues, Me) 'create the popup health issues menu but default to general notes
-   chkIncludeCarePlan.value = False          'Don't include care plan
+   ' chkIncludeCarePlan.value = False          'Don't include care plan
    chkIncludehealthSummary.Value = False     'Don't include summary
    lvwInclusions_EditArea.Clear()                     'clear inclusions list
    Inclusions_EditArea = New Collection
@@ -1523,8 +1534,8 @@ Public Sub Referral_New()
    fk_pasthistory = 0                        'default to general notes
    VBox_Letters.Enabled = True
    bExit = True
-  ' txtReferralDate.text = Format(Now, "dd/mm/yyyy")
-  ' txtReferralDate.text = Format(currentconsult.GetConsultDate(), "dd/mm/yyyy")
+   ' txtReferralDate.text = Format(Now, "dd/mm/yyyy")
+   ' txtReferralDate.text = Format(currentconsult.GetConsultDate(), "dd/mm/yyyy")
    bExit = False
    bEditing = False
    comms = Null
@@ -1763,7 +1774,7 @@ Public Sub ReferralsList_Print(print_type As String)
    
    Select Case print_type
       Case "re-print no inclusions"   're-prints including inclusions
-         modReferralsDBI.Referral_Print_Only(currentconsult, currentconsult!referrals_written_this_consult[pk_referral], False, False)
+         modReferralsDBI.Referral_Print_Only(currentconsult, currentconsult!referrals_written_this_consult[pk_referral], False, False, Null, True) 'True = don't reprint the GPMP/Health summary
          'FIXME change me back to referral_print once latex template ok
       Case "re-print with inclusions"
          modReferralsDBI.Referral_Print_Only(currentconsult, currentconsult!referrals_written_this_consult[pk_referral], False, True, Inclusions_Referral_This_Consult)
@@ -1876,12 +1887,8 @@ Public Sub Referral_Edit(Optional new_referral As Collection)
          End If
       Next
    End If
-   If Letter_from_View!include_careplan = True Then
-      chkIncludeCarePlan.value = True
-   Else
-      chkIncludeCarePlan.value = False
-   End If
-   If Letter_from_View!include_healthsummary = True Then
+   
+   If Letter_from_View!include_careplan = True Or Letter_from_View!include_healthsummary = True Then
       chkIncludehealthSummary.value = True
    End If
    If Not IsNull(Letter_from_View!fk_progressnote) Then
@@ -2167,6 +2174,7 @@ Public Sub Person_Comms_Get()
    Dim x As Integer
    
    comms = modContactsDBI.person_comms_get(fk_person)
+   If fk_branch = 0 Then lvwOrgContacts.clear
    cvwPersonContacts.Clear()
    For Each Comm In comms
       x = Comm!pk

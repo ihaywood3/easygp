@@ -290,10 +290,10 @@ def process_step2_line(drug,lineno,sct_done):
             print >>sys.stderr, "SCT %s already exists, skipping" % drug["sct"]
         else:
             if "duplicate" in drug:
-                r = query("select * from drugs.product where pk='%s'" % drug["duplicate"])
+                r = query("select * from drugs.product where pk='%s'" % drug["duplicate"])[0]
                 print >> sys.stderr, "duplicating %s %s" % (r["generic"],r["strength"])
-                cmd("insert into drugs.old_sct (fk_product,sct) values ('%s','%s')" % (r[0]['pk'],r[0]['sct']))
-                cmd("update drugs.product set sct='%s',original_pbs_name=$$%s$$ where pk='%s'" % (drug["sct"],drug["original_pbs_name"],r[0]["pk"]))
+                cmd("insert into drugs.old_sct (fk_product,sct) values ('%s','%s')" % (r['pk'],r['sct']))
+                cmd("update drugs.product set sct='%s',original_pbs_name=$$%s$$ where pk='%s'" % (drug["sct"],drug["original_pbs_name"],r["pk"]))
                 return
             if drug["free_comment"] == "":
                 drug["free_comment"] = "NULL"
@@ -301,9 +301,9 @@ def process_step2_line(drug,lineno,sct_done):
                 drug["free_comment"] = "$$%s$$" % drug["free_comment"]
             au = drug["amount_unit"]
             au = au.lower()
-            if au == 'g' or au == "gm": 
+            if au == 'g' or au == "gm" or au == '35': 
                 drug["amount_unit"] = 35
-            elif au == 'ml': 
+            elif au == 'ml' or au == '26': 
                 drug["amount_unit"] = 26
             elif au == "":
                 drug["amount_unit"] = "NULL"
@@ -318,7 +318,7 @@ def process_step2_line(drug,lineno,sct_done):
                 sys.exit(1)
             drug["fk_form"] = r[0]["pk"]
             r = query("""
-select * from drugs.product where generic=$$%s$$ and fk_form=%s and strength='%s'""" % (drug['generic'],drug['fk_form'],drug['strength']))
+            select * from drugs.product where generic=$$%s$$ and fk_form=%s and strength='%s' and pack_size=%s""" % (drug['generic'],drug['fk_form'],drug['strength'],drug['pack_size']))
             if len(r) > 0:
                 print >>sys.stderr, "WARNING: skipping %s %s %s SCT %s as looks pretty similar to existing SCT %s" % (drug['generic'],drug['form'],drug['strength'],drug['sct'],r[0]["sct"])
             drug["uuid"] = query("select uuid_generate_v4() as uuid")[0]["uuid"]
@@ -360,7 +360,7 @@ def verify_brands(t):
             fk_product = r[0]['pk']
             for brand in drug["brands"]:
                 code = ms[brand["manufacturer"]]["code"]
-                q = "select pk,price from drugs.brand where sct=%s or (brand=%s and fk_product=%s)" 
+                q = "select pk,price from drugs.brand where sct=%s or (brand ilike %s and fk_product=%s)" 
                 r = query(q,(brand["sct"],brand["brand"],fk_product))
                 if len(r) == 0:
                     r = query("select pk,brand,sct,price from drugs.brand where fk_product='%s' and fk_company='%s'" % (fk_product,code))
@@ -380,10 +380,11 @@ def verify_brands(t):
                 else:
                     r = r[0]
                     price = r["price"]
-                    price = price.replace(',','')
-                    pk = r["pk"]
-                    if price <> "$"+brand["price"]:
-                        cmd("update drugs.brand set price='%s'::money, fk_company='%s',brand=$$%s$$,sct='%s',current=true where pk='%s';" % (brand["price"],code,brand['brand'],brand['sct'],pk))
+                    if price is not None:
+                        price = price.replace(',','')
+                        pk = r["pk"]
+                        if price <> "$"+brand["price"]:
+                            cmd("update drugs.brand set price='%s'::money, fk_company='%s',brand=$$%s$$,sct='%s',current=true where pk='%s';" % (brand["price"],code,brand['brand'],brand['sct'],pk))
 
 
 def print_brands():

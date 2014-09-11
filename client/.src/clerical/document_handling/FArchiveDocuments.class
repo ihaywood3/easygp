@@ -149,11 +149,17 @@ End
 
 Public Sub ListBox1_Click()
    
+   Inc Application.Busy
    If IsNull(listbox1.Current) Then Return
    remote_fname = listbox1.Current.Text
    modUtil.Kill_If_Temp(local_fname)
    local_fname = modFiles.Get("document_scanning_directory", remote_fname)
    Common_Click()
+   Dec Application.Busy
+   
+Catch
+   Dec Application.Busy
+   Log.ErrorMsg("ListBox1_Click: " & Error.Text & " " & Error.Where)
    
 End
 
@@ -162,7 +168,7 @@ End
 Private Sub Common_Click()
    
    FMetaData.EditArea_Clear()
-   Inc Application.Busy
+   If Not Access(local_fname, gb.Read) Then Error.Raise("Cannot open file " & local_fname)
    If File.Ext(local_fname) <> "" Then
       Select Case LCase(File.Ext(local_fname))
          Case "pdf"
@@ -178,15 +184,10 @@ Private Sub Common_Click()
             pbox.Visible = True
             pbox.Picture = Picture.Load(local_fname)
          Case Else
-            'Message.Info("Unknown file type")
+            Error.Raise("Unknown file type")
       End Select
       FMetaData.SetFilename(local_fname)
    End If
-   Dec Application.Busy
-Catch
-   Message.info("EasyGP was unable to load the file:\n\n" & local_fname & ".\n\nIf the error persists please discuss with your System Administrator.")
-   Dec Application.Busy
-   Return 
    
 End
 
@@ -204,8 +205,21 @@ End
 
 Public Sub FileChooser1_Change()
    
+   Inc Application.Busy
+   File_Selected()
+   Dec Application.Busy
+   
+  Catch
+     Dec Application.Busy
+     Log.ErrorMsg("FileChooser1_Change: " & Error.Text & " " & Error.Where)
+     Wait
+     Message.Error("Unable to view file, please check log")
+End
+
+Private Sub File_Selected()
+
    If IsNull(FileChooser1.SelectedPath) Or If FileChooser1.SelectedPath = "" Then
-      PDForm.PBox.Visible = False   
+      Try PDForm.PBox.Visible = False   
       Return
    End If   
    local_fname = FileChooser1.SelectedPath
@@ -230,21 +244,28 @@ Public Sub tbFile_Click()
    '---------------------------------------------------------
    'file the document, reload files, set focus, show next doc
    '---------------------------------------------------------
+   Dim err As String
    
    tbFile.enabled = False
+   Inc Application.Busy
+   
    Wait  
    
-   If FMetaData.Save() Then                             'if successfully save, leave audit trail as to whole filed it
-      If Not IsNull(FMetaData.Get_Consult()) Then
-         modAudit.MakeAudit(FMetaData.Get_Consult(), "scanned document imported", "documents.documents", FMetaData.Get_fk_Document(), const.cSection_Documents, modArchiveDocumentsDBI.Audit_Trail_Make_Progress_notes("scanned document imported", FMetaData.Get_Document()))
-      End If 
-      modDBConnect.CommitTrans()
-      Reload()
-   Else
-      modDBConnect.RollBack()                          'roll back transaction FIXME does this work?
-   End If
-   Wait
+   FMetaData.Save()                             'if successfully save, leave audit trail as to whole filed it
+   If Not IsNull(FMetaData.Get_Consult()) Then
+     modAudit.MakeAudit(FMetaData.Get_Consult(), "scanned document imported", "documents.documents", FMetaData.Get_fk_Document(), const.cSection_Documents, modArchiveDocumentsDBI.Audit_Trail_Make_Progress_notes("scanned document imported", FMetaData.Get_Document()))
+   End If 
+   modDBConnect.CommitTrans()
+   Reload()
+   tbFile.Enabled = True
+   Dec Application.Busy
+Catch
+   err = Error.Text
+   Log.ErrorMsg("FArchiveDocuments.tbFile_Click: " & err & " " & Error.Where)
+   Message.Error(err)
+   modDBConnect.RollBack()                          'roll back transaction
    tbFile.enabled = True
+   Dec Application.Busy
    
 End
 
@@ -466,14 +487,16 @@ Catch
 End
 
 Public Sub Reload()
+   Dim old_name As String
    
    FMetaData.EditArea_Clear()
    PDForm.Visible = False
    pbox.Visible = False
    FMetaData.cmbStafftype.index = -1
+   old_name = local_fname
    local_fname = Null
    remote_fname = Null
-   Reload_FileList()
+   Reload_FileList(old_name)
    
 End
 
@@ -483,7 +506,7 @@ End
 '    
 ' End
 
-Private Sub Reload_FileList()
+Private Sub Reload_FileList(Optional old_name As String)
    
    Dim i As String
    Dim hCtrl As Control
@@ -502,8 +525,14 @@ Private Sub Reload_FileList()
             If Not cv.MoveFirst() Then  'could be empty
                cv.Item.Selected = True
                cv.SetFocus()
-               FileChooser1_Activate()
-               Break
+               If FileChooser1.SelectedPath <> old_name Then
+                 Try File_Selected()
+                 If Error Then 
+                   Log.InfoMsg("skipping file because " & Error.Text)
+                 Else
+                   Break
+                 End If
+               End If
             End If
          End If
       Next

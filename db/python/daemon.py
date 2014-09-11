@@ -221,7 +221,6 @@ Options
                 self.setup_drivers()
                 if self.overnight_mode: 
                     self.evts.overnight()
-                    pdb.set_trace()
                     if not self.mo is None: 
                         self.mo.prepare_bb_reports()
                         for i in self.db.get_claims_awaiting_transmission(): self.transmit_claim(i)
@@ -232,9 +231,9 @@ Options
                         #self.db.synth_event("script",12)
                         #self.mo.send_bb_report(fk_staff_only=4)
                         #self.mo.prepare_bb_reports(fk_staff_only=4)
-                        #self.mo.transmit_claims()
                         #self.mo.get_bb_processing_report(self.db.get_claim('B0006@'))
-                        self.mo.upload_private_invoice(1460) # Diana Kahn's 306
+                        #self.mo.transmit_claim(self.db.get_claim('B0006@'))
+                        self.mo.upload_private_invoice(1459) # Diana Kahn's 306
                     else:
                         self.db.wait_events()
             except: logging.exception("exception in child")

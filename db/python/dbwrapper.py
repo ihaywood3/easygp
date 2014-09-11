@@ -25,6 +25,8 @@ import select, time, socket, re
 import pdb
 import psycopg2
 
+
+
 CONSULT_TELEPHONE=2
 CONSULT_EMAIL=4
 CONSULT_TELECONFERENCE=7
@@ -54,6 +56,9 @@ import socket, logging, sys
 try:
     import soap
 except: pass
+
+class DBError(Exception):
+    pass
 
 class DBWrapper:
 
@@ -346,6 +351,8 @@ insert into clerical.task_components (fk_task,fk_consult,date_logged,fk_staff_al
     def get_private_invoice_to_upload(self,pk_invoice):
         c = self.cursor()
         inv = self.query("select * from billing.vwinvoices where pk_invoice=%s",(pk_invoice,),c)
+        if len(inv) == 0: raise DBError("No such invoice %s" % pk_invoice)
+        inv = inv[0]
         inv['items_billed'] = self.query("select * from billing.vwitemsbilled where fk_invoice = %s", (inv['fk_invoice'],),c)
         n = 1
         for i in inv['items_billed']:

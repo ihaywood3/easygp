@@ -24,7 +24,7 @@
 """A class for making Medicare Online billing submissions
 """
 
-import subprocess, os.path, pdb, time, logging, re, datetime, time
+import subprocess, os.path, pdb, time, logging, re, datetime, time, select
 
 medicare_flags = {
             'A':'Patient identification amended', 
@@ -54,7 +54,7 @@ class MedicareOnline:
 
     def _write(self,cmd,*params):
         try:
-            s = cmd+"|"+"|".join(params)+"\n"
+            s = cmd+"|"+"|".join((str(s) for s in params))+"\n"
             logging.debug("_write {}".format(repr(s)))
             self.pro.stdin.write(s)
             self.pro.poll()
@@ -69,17 +69,26 @@ class MedicareOnline:
             raise MedicareError(line)
 
     def _read(self,extra=None):
-        line = self.pro.stdout.readline()
-        self.pro.poll()
-        if not self.pro.returncode is None and self.pro.returncode <> 0:
-            logging.error(line)
-            self._setup()
-            raise MedicareError(line)
-        r = line.strip()
-        m = re.match("ERROR:.*",r)
-        if m:
-            raise MedicareError(line)
-        v = int(r)
+        cont = True
+        f = self.pro.stdout
+        while cont:
+            r, w, e = select.select([ f ], [], [], 60.0)
+            if not f in r: raise MedicareError("Java slave has hanged")
+            line = f.readline()
+            self.pro.poll()
+            if not self.pro.returncode is None and self.pro.returncode <> 0:
+                logging.error(line)
+                self._setup()
+                raise MedicareError(line)
+            r = line.strip()
+            m = re.match("ERROR:.*",r)
+            if m:
+                raise MedicareError(line)
+            try:
+                v = int(r)
+                cont = False
+            except ValueError:
+                logging.debug("extra data: {}".format(repr(r)))
         if extra:
             line = self.pro.stdout.readline()
             line = line.strip()

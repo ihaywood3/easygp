@@ -2,6 +2,9 @@
 set -e
 
 E_BADARGS=85
+DEBSIGN_KEYID=72D8815C ; export DEBSIGN_KEYID
+DEBEMAIL=ihaywood@ozdocit.org ; export DEBEMAIL
+DEBNAME='Ian Haywood'; export DEBNAME
 
 if [ ! -n "$1" ]
 then
@@ -18,7 +21,7 @@ else
    BASE=/home/ian
 fi
 
-if [ "$1" = "cron" ] ; then
+if [ "$1" == "cron" ] ; then
     cd $BASE
     rm -f *.changes
     cd $BASE/easygp
@@ -38,7 +41,9 @@ if [ "$1" = "cron" ] ; then
     echo new version is $NEWVERSION
     cd $BASE/easygp
     sed --in-place -e 1s/[0-9\\.]\*svn[0-9]\*/$NEWVERSION/ debian/changelog
-    debuild || true
+fi
+if [ "$1" == "cron" -o "$1" == "update" ] ; then
+    debuild -k72D8815C -I
     cd $BASE
     CHANGES=$BASE/`ls *.changes`
 else
@@ -47,4 +52,4 @@ fi
 
 cd $BASE/ftp
 reprepro --ignore=wrongdistribution include easygp $CHANGES
-rsync -ravz . ihaywood@ozdocit.org:/home/ftp/pub/
+rsync -e 'ssh -i /home/ian/.ssh/id_dsa_ozdocit' -razO --no-p . ihaywood@ozdocit.org:/home/ftp/pub/

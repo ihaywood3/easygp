@@ -349,11 +349,13 @@ Public Sub Save(Optional bFinalised As Boolean = False, bSuppressSpellCheck As B
    'Ok, save the referral
    'Inclusions are saved to clin_referrals.inclusions
    '-------------------------------------------------
-   modDBConnect.BeginTrans()
+   Print referral!letter_html 
    If bFinalised Then
       referral!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNote_Html, cProgressNote_Section, fk_progressnote, txtHealthIssue.text, fk_pasthistory, False)
       If chkSendAsHL7.Value = chkSendAsHL7.True Then
          referral!letter_hl7 = SendAsHL7()
+      Else
+         referral!letter_hl7 = Null
       Endif
    End If   
    
@@ -741,7 +743,6 @@ Private Function Referral_Letter_Construct_Common(textin As String, sSep As Stri
             If com!fk_type = const.CommModalityEmail Then
                ntext = Replace$(ntext, "%recipient-email%", "Email:" & com!value & sSep)
             Endif
-            
          Next
       End If   
    Else
@@ -963,6 +964,7 @@ Public Function Referral_LetterLaTeX_Construct(CopyTos As String) As String
 End
 
 Public Function Referral_BodyHTML_Construct() As String
+   
    '-------------------------------------------------------------------------------------------
    'extracts just the html for the body of the letter
    ' converts the widget's quite odd HTML to something a bit more standard
@@ -1920,6 +1922,9 @@ Public Sub Referral_Edit(Optional new_referral As Collection)
       fk_progressnote = Letter_from_View!fk_progressnote
    Else
       fk_progressnote = -1
+   Endif
+   If Not IsNull(Letter_from_View!letter_hl7) Then
+      chkSendAsHL7.value = True
    Endif
    txtTag.text = Letter_from_View!tag
    teLetter.richtext = Letter_from_View!body_html
@@ -2901,7 +2906,7 @@ Public Function SendAsHL7() As String
          
       Case "Imediate Treatment"
          ReferralReason = "S"
-         ReferralType = "GRF" 'General referral = ‘GRF’Discharge referral = ‘DRF’Shared care update = ‘SCU’Notification = ‘NOT’Shared EHR update = ‘SEU’Decision support system update =‘DSU’
+         ReferralType = "GRF" 'fnameGeneral referral = ‘GRF’Discharge referral = ‘DRF’Shared care update = ‘SCU’Notification = ‘NOT’Shared EHR update = ‘SEU’Decision support system update =‘DSU’
          ReferralStatus = "P" 'Accepted = 'A' Pending = 'P' Rejected = 'R' Expired = 'E'
          ReferralDisposition = "AM" 'Send written report = ‘WR’ Return patient after evaluation =‘RP’Assume management = ‘AM’Second opinion = ‘SO’ NOTE: ‘SO’ = Provide second, third Or other opinion. Additional Australian table values: Discharge summary = ‘DS’ Update care plan = ‘UCP’ Update health record = ‘UHR’ Case conference = ‘CC’ Notification – no further action =‘FI
          
@@ -2953,7 +2958,7 @@ Public Function SendAsHL7() As String
       ReferredtoProvider!surname = PersonWritingTo!surname
       ReferredtoProvider!title = PersonWritingTo!title
    Endif
-   AttachmentsArray.Add(GetLetterText(ReferredtoProvider))
+   AttachmentsArray.Add(Referral_letter_HL7_Construct(ReferredtoProvider))
    hl7.createHL7Message_REF_I12(ReferredtoProvider, currentconsult!patient, currentconsult!comms, AttachmentsArray, ReferralDisposition, ReferralReason, ReferralPriority, ReferralType, ReferralStatus)
    Log.DataMsg("HL7 generated in " & hl7.fpath)
    s = File.Load(hl7.fpath)
@@ -2963,11 +2968,163 @@ Public Function SendAsHL7() As String
    
 End
 
-Private Function GetLetterText(ReferredtoProvider As Collection) As String
+Private Function Referral_Letter_HL7_Construct(ReferredtoProvider As Collection) As String
+   '------------------------------------------------------------------------------
+   'Constructs the text to insert into the OBX|FT segment of the letter
+   'Make the letter  looking like this:
+   '
+   'Date
+   '
+   'Dr Shaun McGrath
+   'Princeton Medical Centre
+   '1 Whatever Street
+   'Hamilton 2290
+   '
+   'Dear Shaun,
+   '
+   'body of letter
+   '
+   'Yours Sincerly
+   '
+   'Dr Richard Terry 141 Dudley Rd Whitebridge 2290 Phone (phone) Fax (Fax) Email
+   '--------------------------------------------------------------------------------
+   'Not like a normal letter to make it easier to read on a screen without scrolling
+   '---------------------------------------------------------------------------------   
+   
+   Dim ProviderInformation As Collection
+   Dim sLetterText As String
+   Dim communications As Collection 
+   Dim com As Collection
+   
+   ProviderInformation = modDBConnect.currentUser ' reads the information of the current user out of the DB
+   sLetterText = txtReferralDate.text & "\n\n" 
+   sLetterText &= ReferredtoProvider!name & "\n" 
+   If Not IsNull(ReferredtoProvider!organisation) Then sLetterText &= ReferredtoProvider!organisation & "\n"
+   sLetterText &= ReferredtoProvider!street1 & "\n" 
+   If Not IsNull(ReferredtoProvider!street2) Then sLetterText &= ReferredtoProvider!street2 & "\n"
+   sLetterText &= ReferredtoProvider!town & " " & ReferredtoProvider!postcode & "\n"
+   If fk_branch Then 
+      communications = Branch_comms
+   Else
+      communications = comms 'persons comms  
+   End If   
+   For Each com In communications
+      If com!fk_type = const.CommModalityPhone Or com!fk_type = const.CommModalityWork Then
+         sLetterText &= "Phone: " & com!value & "\n"
+      Endif
+      If com!fk_type = const.CommModalityFax Then
+         sLetterText &= "Fax: " & com!value & "\n"
+      Endif
+   Next
+    sLetterText &= "\n"
+   sLetterText &= "Dear " & ReferredtoProvider!firstname & ",\n\n" 
+   sLetterText &= "Re:\t" & currentconsult!patient!wholename 
+   sLetterText &= " " & Trim(currentconsult!patient!street1 & " " & currentconsult!patient!street2)
+   sLetterTeXt &= " " & currentconsult!patient!town & " " & currentconsult!patient!postcode
+   sLetterText &= " DOB: " & Format(currentconsult!patient!birthdate, "dd/mm/yyyy") & "\n"
+   For Each comm In currentconsult!comms
+      sLetterText &= "\t" & const.CommModalityTextFull[comm!fk_type] & ":" & comm!value & "\n"
+   Next
+   sLetterText &= "\n" & "Type of referral: " & UCase(cmbReferralTypes.text) & "\n"
+   sLetterText &= "\n" & Replace(Replace(Referral_BodyHTML_Construct(), "<p>", ""), "</p>", "\n")
+   sLetterText &= "\n\n" & "Kind Regards " & "\n\n"
+   sLetterText &= ProviderInformation!title & " " & ProviderInformation!firstname & " " & ProviderInformation!surname
+   sLetterText &= " " & Trim(ProviderInformation!street1 & " " & ProviderInformation!street2) & " " & ProviderInformation!town & " " & ProviderInformation!postcode & " " 
+   For Each comm In modDBConnect.currentUser!comms
+      If comm!fk_type = const.CommModalityPhone Or comm!fk_type = const.CommModalityWork Then
+         sLetterText &= "Phone: " & comm!value & " "
+      Endif
+      If comm!fk_type = const.CommModalityFax Then
+         sLetterText &= "Fax: " & comm!value & " " 
+      Endif
+   Next
+    Print sLetterText
+   Return sLetterText
+End
+
+Private Function Referral_Letter_HL7_Construct_V2(ReferredtoProvider As Collection) As String
+   '-------------------------------------------------------------------
+   'Constructs the text to insert into the OBX|FT segment of the letter
+   '-------------------------------------------------------------------   
+   
+   Dim ProviderInformation As Collection
+   Dim sLetterText As String
+   
+   Dim sBody As String
+   Dim comm As Collection
+   
+   ProviderInformation = modDBConnect.currentUser ' reads the information of the current user out of the DB
+   
+   sBody = Replace(Replace(Referral_BodyHTML_Construct(), "<p>", ""), "</p>", "\n")
+   
+   Print sBody
+   '----------------------------------
+   'Make the letter  looking like this
+   'Dr Richard Terry
+   'General Practitioner
+   '141 Dudley Rd
+   'Whitebridge 2290
+   'Phone (phone) Fax (Fax)
+   'Email
+   '
+   'Dr Shaun McGrath
+   'Princeton Medical Centre
+   '1 Whatever Street
+   'Hamilton 2290
+   '
+   'Dear Shaun,
+   '
+   'body of letter
+   '
+   'Yours Sincerly
+   '----------------------------------
+   Print ReferredtoProvider
+   
+   sLetterText = ProviderInformation!title & " " & ProviderInformation!surname & " " & ProviderInformation!firstname & "\n" 
+   sLetterText &= ProviderInformation!occupation & "\n"
+   sLetterText &= ProviderInformation!street1 & "\n"
+   If Not IsNull(ProviderInformation!street2) Then
+      sLetterText &= ProviderInformation!street2 & "\n"
+   Endif
+   sLetterText &= ProviderInformation!town & " " & ProviderInformation!postcode & "\n"
+   For Each comm In modDBConnect.currentUser!comms
+      If comm!fk_type = const.CommModalityPhone Or comm!fk_type = const.CommModalityWork Then
+         sLetterText &= "Phone: " & comm!value & "\n"
+      Endif
+      If comm!fk_type = const.CommModalityFax Then
+         sLetterText &= "Fax: " & comm!value
+      Endif
+   Next
+   sLetterText &= "\n\n" 
+   sLetterText &= ReferredtoProvider!name & "\n" 
+   If Not IsNull(ReferredtoProvider!organisation) Then sLetterText &= ReferredtoProvider!organisation & "\n"
+   sLetterText &= ReferredtoProvider!street1 & "\n" 
+   If Not IsNull(ReferredtoProvider!street2) Then sLetterText &= ReferredtoProvider!street2 & "\n"
+   sLetterText &= ReferredtoProvider!town & " " & ReferredtoProvider!postcode & "\n\n"
+   sLetterText &= txtReferralDate.text & "\n\n" 
+   sLetterText &= "Dear " & ReferredtoProvider!firstname & ",\n\n" 
+   sLetterText &= "Re:\t" & currentconsult!patient!wholename 
+   sLetterText &= " " & Trim(currentconsult!patient!street1 & " " & currentconsult!patient!street2)
+   sLetterTeXt &= " " & currentconsult!patient!town & " " & currentconsult!patient!postcode
+   sLetterText &= " DOB: " & Format(currentconsult!patient!birthdate, "dd/mm/yyyy") & "\n"
+   For Each comm In currentconsult!comms
+      sLetterText &= "\t" & const.CommModalityTextFull[comm!fk_type] & ":" & comm!value & "\n"
+   Next
+   sLetterText &= "\n" & "Type of referral: " & UCase(cmbReferralTypes.text) & "\n"
+   sLetterText &= "\n" & sBody
+   sLetterText &= "\n\n" & "Kind Regards " & "\n\n"
+   sLetterText &= ProviderInformation!title & " " & ProviderInformation!firstname & " " & ProviderInformation!surname
+   Print sLetterText
+   Return sLetterText
+   
+End
+
+Private Function HL7_Construct_Letter_Text_orig(ReferredtoProvider As Collection) As String
    
    Dim ProviderInformation As Collection
    Dim TempLetter As String
    Dim StreetAddress As String
+   Dim sBody As String
    
    ProviderInformation = modDBConnect.currentUser ' reads the information of the current user out of the DB
    If ProviderInformation["street2"] <> "" Then
@@ -2976,14 +3133,16 @@ Private Function GetLetterText(ReferredtoProvider As Collection) As String
       StreetAddress = ProviderInformation["street1"]
    Endif
    ' Adressblock of the sending provider
-   TempLetter = ProviderInformation["surname"] & ProviderInformation["firstname"] & ProviderInformation["title"] & "\n" &
-      StreetAddress & "\n" & ProviderInformation["town"] & ProviderInformation["postcode"] & "\n" &
-      ProviderInformation["state"] & "\n\n" &
-      "__________________________________________________________________________________" & "\n\n" &
+   ' 
+   sBody = Replace(Fix_HTML(teLetter.RichText, []), "<p>", "")
+   sBody = Replace(sBody, "<\\p>", "\n\n")
+   Print Fix_HTML(teLetter.RichText, [])
+   TempLetter = ProviderInformation["title"] & " " & ProviderInformation["surname"] & " " & ProviderInformation["firstname"] & "\n" &
+      StreetAddress & "\n" & ProviderInformation["town"] & " " & ProviderInformation["postcode"] & "\n\n" &
       txtReferralDate.text & "\n\n" &
       "Dear " & ReferredtoProvider["title"] & " " & ReferredtoProvider["surname"] & "\n\n" &
-      teLetter.Text & "\n\n" & "Kind Regards " & ProviderInformation["surname"] & ProviderInformation["firstname"]
-   
+      teLetter.Text & "\n\n" & "Kind Regards " & "\n\n" & 
+      ProviderInformation["firstname"] & " " & ProviderInformation["surname"] 
    Return TempLetter
    
 End

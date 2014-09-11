@@ -822,7 +822,7 @@ Public Sub Refresh_Section_Instance(section As Integer)
    Dim Page As FLinkContainer
    Dim Container As FLinkContainer
    Dim HTMLViewer As FHtmlViewer
-   Dim Form_PDF As New FPDF
+   Dim Form_PDF As FPDF
    
    If IsNull(currentconsult) Then Return
    Select Case section
@@ -1360,6 +1360,7 @@ Public Sub cvwReferrals_Select()
    'takes precendence over cvwReferrals_click when referrals showing
    '----------------------------------------------------------------
    
+   Debug "referrals selected"
    cvwReferrals.MoveCurrent()
    cvwReferrals_key = cvwReferrals.Item.Key
    Referral_Letter_Display()
@@ -1378,6 +1379,7 @@ Public Sub cvwReferrals_Menu()
    
    Dim menuitem As Menu
    
+   Debug "referrals menu"
    If Not IsNull(deleted_referral!pk_referral) Then
       mnuTabbedListReferral.Children[6].Enabled = True
    Else
@@ -1840,39 +1842,21 @@ Public Sub Images_Refresh(Optional bRefresh As Boolean = False)
    
 End
 
-Public Sub cvwLettersReceived_Select()
-   
+Public Sub cvwLettersReceived_Display()
+
    If bexit Then Return
    cvwLettersReceived.MoveCurrent
-   If cvwLettersReceived.key = "" Then Return
-   If cvwLettersReceived_Key = cvwLettersReceived.Item.key Then Return
-   cvwLettersReceived_Key = cvwLettersReceived.Item.key
-   If WorkspaceEditor.ActiveWindow.Caption <> "Referrals" And WorkspaceEditor.ActiveWindow.Caption <> "Export Wizard" Then
-      Document_Display(currentconsult!letters_received[cvwLettersReceived_Key])
-   End If   
+   Log.DebugMsg("cvwLettersReceived.Key is " & cvwLettersReceived.Key)
+   Document_Display(currentconsult!letters_received[cvwLettersReceived.Key])  
 Catch
-   Log.WarningMsg("cvwLettersReceived_Select: " & Error.Text & " " & Error.Backtrace.Join(" "))
-   Return 
-   
+   Log.WarningMsg("cvwLettersReceived_Display: " & Error.Text & " " & Error.Backtrace.Join(" "))
+
 End
 
-Public Sub cvwLettersReceived_Click()
+Public Sub cvwLettersReceived_Select()
    
-   ' trap clicked as well as some Qt versions don't generate Select on one-item lists
-   cvwLettersReceived_Select() 
-   
-End
-
-Public Sub VBox_Letters_Leave()
-   '---------------------------------------------------------------------------
-   'Put this in because if have single entry on the list and has been selected
-   'and user moves off to do something else, the line remains highlighted and 
-   'clicking on it again > no key for that row > won't display
-   '---------------------------------------------------------------------------
-   
-   bexit = True                  'otherwise unselectall triggers _select. Go figure
-   cvwLettersReceived.UnselectAll()
-   bExit = False  
+   Log.DebugMsg("cvwLettersReceived_Select")
+   cvwLettersReceived_Display()
    
 End
 
@@ -1883,15 +1867,17 @@ Public Sub cvwLettersReceived_dblClick()
    'viewing letters per-se occurs via the dblclick event if the letter
    'writer is open otherwise the select event
    '-------------------------------------------------------------------  
-   
-   cvwLettersReceived.MoveCurrent
-   cvwLettersReceived_Key = cvwLettersReceived.Item.key
-   Document_Display(currentconsult!letters_received[cvwLettersReceived_Key])
-Catch
-   Log.WarningMsg("cvwLettersReceived_dblClick: " & Error.Text & " " & Error.Backtrace)
-   Return 
+   Log.DebugMsg("cvwLettersReceived_dblClick")
+   cvwLettersReceived_Display()
    
 End
+
+Public Sub cvwLettersReceived_Click()
+   Log.DebugMsg("cvwLettersReceived_Click")
+   cvwLettersReceived_Display()
+
+End
+
 
 Public Sub cvwLettersReceived_Menu()
    '--------------------------------------------------
@@ -2270,7 +2256,7 @@ Public Sub Editor_ShowPage(sPageName As String, Optional page_tag As String = ""
    Dim Result_Viewer As FDocumentViewer                   'view any resuilt  but on the same page as previous
    Dim Letters_Written_Viewer As FDocumentViewer          'view any previous letters written on same page as previous
    Dim bPagefound As Boolean
-   
+   Dim downloader As CFileDownloader
    '----------------------------------------------------------------------
    'With these pages, we want the appropriate list to be in the foreground
    'So this switches the list
@@ -2309,14 +2295,13 @@ Public Sub Editor_ShowPage(sPageName As String, Optional page_tag As String = ""
          Result_Viewer = New FDocumentViewer(page.VBoxEditor)  'and instance of document (never killed whilst program running)
          WorkspaceEditor.Add(page)
       Endif
-      Select Case additional_page_tag                            'show appropriate document
-         Case "pdf"
-            Result_Viewer.Load_PDF(modFiles.Get("document_archiving_directory", page_data))
-         Case "image"
-            Result_Viewer.Load_Picture(modFiles.Get("document_archiving_directory", page_data))
-         Case "html"
-            Result_Viewer.Load_Html(page_data)
-      End Select
+      If additional_page_tag = "html" Then
+         Document_Viewer.Load_Html(page_data)
+      Else
+         downloader = New CFileDownloader
+         downloader.Set_Viewer(Result_Viewer, additional_page_tag)
+         modFiles.Background_Get("document_archiving_directory", page_data, downloader)
+      Endif
    Else If sPageName = "audit trail" Then
       bPagefound = False  
       For Each page In WorkspaceEditor.Windows                  'search all tabs
@@ -2358,7 +2343,7 @@ Public Sub Editor_ShowPage(sPageName As String, Optional page_tag As String = ""
          .Load_PDF("clinical/vaccination" &/ page_data)
          .form_pdf.btNext_Click()
       End With
-   Else If sPagename = "document" Then
+   Else If sPagename = "document" Or If sPageName = "pdf document" Then
       bPagefound = False  
       For Each page In WorkspaceEditor.Windows                                    'search all tabs
          If Page.title = "Document" Then                     'if result tab showing
@@ -2374,15 +2359,14 @@ Public Sub Editor_ShowPage(sPageName As String, Optional page_tag As String = ""
          page.title = "Document"
          Document_Viewer = New FDocumentViewer(page.VBoxEditor)  'and instance of document (never killed whilst program running)
          WorkspaceEditor.Add(page)
-      End If   
-      Select Case additional_page_tag                            'show appropriate document
-         Case "pdf"
-            Document_Viewer.Load_PDF(modFiles.Get("document_archiving_directory", page_data))
-         Case "image"
-            Document_Viewer.Load_Picture(modFiles.Get("document_archiving_directory", page_data)) 
-         Case "html"
-            Document_Viewer.Load_Html(page_data)
-      End Select
+      End If
+      If additional_page_tag = "html" Then
+         Document_Viewer.Load_Html(page_data)
+      Else
+         downloader = New CFileDownloader
+         downloader.Set_Viewer(Document_Viewer, "pdf")
+         modFiles.Background_Get("document_archiving_directory", page_data, downloader)
+      Endif
    Else If sPagename = "letters written" Then
       bPagefound = False  
       For Each page In WorkspaceEditor.Windows                                    'search all tabs
@@ -2447,16 +2431,6 @@ Public Sub Editor_ShowPage(sPageName As String, Optional page_tag As String = ""
                page.tag = page_tag
                Page.title = page_tag
                retform = MultiMedia
-            Case "image"
-               page = New FLinkContainer
-               With Pictures = New FPictureViewer(page.VBoxEditor)
-                  .Init(modFiles.Get("document_archiving_directory", page_data))
-               End With
-               WorkspaceEditor.Add(page)
-               page.tag = sPageName
-               Page.title = Page_tag
-               retform = Pictures
-               EditorPages.Add(Pictures, sPageName)
             Case "Library"
                page = New FLinkContainer
                With Form_Library = New FLibrary(page.VBoxEditor)
@@ -2931,6 +2905,8 @@ Public Sub Editor_ShowPage(sPageName As String, Optional page_tag As String = ""
                retform = ExcisionPage
                EditorPages.Add(ExcisionPage, "Skin Excision")
                Control_For_Focus = ExcisionPage.cmbExcisionTypes
+            Case Else
+               Error.Raise("unknown editor page type " & sPageName)
          End Select
       End If
    End If   
@@ -4300,10 +4276,9 @@ Public Sub mnuLettersReceived_Click()
          VBox_Files_To_Join.Visible = True
          Vbox_MiniGraphs.Visible = False
       Case "display"                    'show the letter
-         If cvwLettersReceived_key = 0 Then
-            Message.Info("key is zero")
-            Return
-         Endif
+         cvwLettersReceived.MoveCurrent
+         Log.DebugMsg("trying to view letter via popup menu")
+         Log.DebugMsg("cvwLettersReceived.Key is " & cvwLettersReceived.Key)
          Document_Display(currentconsult!letters_received[cvwLettersReceived_Key])
       Case "display in new tab"
          Document_Display(currentconsult!letters_received[cvwLettersReceived_Key], True)
@@ -4405,10 +4380,11 @@ Public Sub mnuLettersReceived_Click()
          Endif
    End Select
 Catch
-   Log.WarningMsg("FCLinical.mnuLettersReceived_Click: " & Error.Text & " " & Error.Backtrace)
+   Log.WarningMsg("FCLinical.mnuLettersReceived_Click: " & Error.Text & " " & Error.Where)
    Return 
    
 End
+
 
 Public Sub mnuPatientPhoto_Click()
    
@@ -4607,6 +4583,7 @@ Catch
    Return 
    
 End
+
 
 Public Sub Document_Display(D As Collection, Optional bNewtab As Boolean)
    '---------------------------------------------------------------------------------
@@ -4866,10 +4843,9 @@ Public Sub FMetaData_tbSave_Click()
       End With
       Return
    Endif
-   If FMetaData.Save() Then                     'successful
-      modDBConnect.CommitTrans()                'save transaction
-      FMetaData_tbClose_Click()                 'remove the gui components
-   End If
+   FMetaData.Save()                    'successful
+   modDBConnect.CommitTrans()                'save transaction
+   FMetaData_tbClose_Click()                 'remove the gui components
    Select Case TabStrip_Lists.Index
       Case CTabLetters
          cvwLettersReceived_Refresh(True)       'refresh collection and re-display
@@ -6595,6 +6571,7 @@ Public Sub cvwResults_Select()
       '    Inbox_showResult
    Endif
 Catch
+   Log.WarningMsg("FClinical.cvwResult_Select: " & Error.Text & " " & Error.Where)
    Return 
    
 End

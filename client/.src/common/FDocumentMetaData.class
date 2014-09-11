@@ -195,17 +195,17 @@ Public Sub Show_comms()
    
 End
 
-Public Function Save() As Boolean
+Public Sub Save()
    
    If Embedded_in_form_name = "Scanning" Then
-      Return SaveInScanning()
+      SaveInScanning()
    Else
-      Return SaveNotInScanning()  'could be FInbox or FClinical
+      SaveNotInScanning()  'could be FInbox or FClinical
    Endif
    
 End
 
-Private Function SaveInScanning() As Boolean
+Private Sub SaveInScanning()
    '------------------------------------------------------------
    'Saves changes to the currently displayed document's metadata
    'Returns true if successful
@@ -219,16 +219,14 @@ Private Function SaveInScanning() As Boolean
    '------------------------------------------------------------
    
    Dim staff_members As Collection
-   Dim bSuccess As Boolean                'if true the save succeeded
    Dim md5Output As String
    Dim errtxt As String
    Dim errwhere As String
    Dim fname As String
    Dim upload As CUploadFileTask
    
-   If Not Valid_Document() Then Return False
+   Valid_Document()
    D = New Collection
-   Inc Application.Busy
    
    If cmbStaffType.index <> -1 Then              'If document sent to one or more staff members, get all staff
       Staff_Members = modContactsDBI.Staff_Get() 'refresh the staff list,could have just employed someone!!!!!
@@ -284,41 +282,17 @@ Private Function SaveInScanning() As Boolean
             d!fk_staff_destination = member!fk_staff
             pk_document = modArchiveDocumentsDBI.Save(d)
             d.Remove("pk_document") 'don't want this key to force new copies
-            Try modFiles.Put("document_archiving_directory", d!source_file, fname)
-            If Error Then
-               errtxt = Error.Text
-               errwhere = Error.Where
-               modDBConnect.RollBack()
-               bSuccess = False
-               If errtxt = "File or directory does not exist" Then
-                  Message.Error("The archiving directory was not available on the system. Please check network shares")
-               Else
-                  modUtilGUI.ReportError(errtxt, Null, errwhere)
-               Endif
-               Return False
-            Endif
+            modFiles.Put("document_archiving_directory", d!source_file, fname)
          End If
       Next
       Try Kill txtFilename.Text
-      Try Kill fname
-      If Not Error Then
-         bSuccess = True
-         modDBConnect.CommitTrans()
-      Else
-         errtxt = Error.Text
-         errwhere = Error.Where
-         modDBConnect.RollBack()
-         bSuccess = False
-         modUtilGUI.ReportError(errtxt, Null, errwhere)
-      End If
+      Kill fname
+
    Else
       fname = Force_To_PDF(txtFilename.Text)
       pk_document = modArchiveDocumentsDBI.Document_New_Pk()
       d!pk = pk_document
-      
       ' FIXME: check uploading one-page jpegs
-      ' richard: check this sub and make sure it still works 14july14
-      fname = Force_To_PDF(txtFilename.Text)
       d!source_file = Document_Filename_Construct(d)
       '  d!source_file = Document_Filename_Construct(d, fname) 'this was Ian's r1882 I commented out
       
@@ -328,27 +302,16 @@ Private Function SaveInScanning() As Boolean
          upload.Send(Subst$("rm -f '&1'", fname)) 
          upload.Close()
       Else
-         modFiles.Put("document_archiving_directory", d!source_file, fname)
-         modArchiveDocumentsDBI.Save(d)
-         modDBConnect.CommitTrans()
-         Print fname  
-         Kill fname 
-         bSuccess = True 
+        modFiles.Put("document_archiving_directory", d!source_file, fname)
+        modArchiveDocumentsDBI.Save(d)
+        modDBConnect.CommitTrans()
+        Kill fname 
       Endif
-      bSuccess = True
    End If
-   
-Finally
-   Dec Application.Busy
-   Return bSuccess
-Catch
-   modDBConnect.RollBack()
-   modUtilGUI.ReportError(Error.Text, Error.Backtrace)
-   Return False
    
 End
 
-Private Function SaveNotInScanning() As Boolean
+Private Sub SaveNotInScanning()
    '------------------------------------------------------------
    'Saves changes to the currently displayed document's metadata
    'documents = the old collection, set by form using this module
@@ -362,12 +325,10 @@ Private Function SaveNotInScanning() As Boolean
    '-------------------------------------------------------------------------------------
    
    Dim staff_members As Collection
-   Dim bSuccess As Boolean = True               'if true the save succeeded
    Dim sProgressNotes As String                 'audit notes for the progress notes
    Dim D As New Collection  
    
-   If Not Valid_Document() Then Return
-   Inc Application.Busy
+   Valid_Document()
    If cmbStaffType.index <> -1 Then                                    'fixme - remove?
       Message.Info("IF THIS IS SHOWING STOP AND CHECK WITH RICHARD")   'fixme - remove?
       Staff_Members = modContactsDBI.Staff_Get()                       'fixme - remove?'refresh the staff list,could have just employed someone!!!!!
@@ -424,12 +385,9 @@ Private Function SaveNotInScanning() As Boolean
          modInboxDBI.SendingEntity_Set_fk_lu_request_type(Request_Types[cmbRequestTypes.index]!pk, fk_sending_entity)
       End If
       Document_SignOff(D)            'see documents.signed_off table > he who signed off this document
-      bSuccess = True
       D!pk_document = modArchiveDocumentsDBI.Save(d)
    End If
-   modDBConnect.CommitTrans()
-   Dec Application.Busy
-   Return bSuccess
+
    
 End
 
@@ -2098,36 +2056,29 @@ Public Sub Document_SignOff(Doc As Collection)
    
 End
 
-Public Function Valid_Document() As Boolean
+Public Sub Valid_Document()
    '-----------------------------------------------
    'Check document has adequate information to file
    '-----------------------------------------------
    
    Dim sMsg As String
    
-   If txtFilename.text = "" Then
-      sMsg = "Please select a document to file"
-      Message.Info(sMsg)
-      Return False
-   Endif
-   If fk_patient = 0 Then
-      If Message.Question("No patient has been selected.\nDo you want to continue?", "Yes", "No") = 2 Then
-         txtPatient.SetFocus()
-         Return
-      End If
+   If txtFilename.text = "" Then Error.Raise("Please select a document to file")
+   If fk_patient = 0 Then 
+     txtPatient.SetFocus()
+     Error.Raise("No patient selected")
    Endif
    If fk_staff_destination = 0 And cmbStaffType.index = -1 Then
       txtRecipient.SetFocus()
-      Return False
+      Error.Raise("No staff selected")
    Endif
    If Embedded_in_form_name = "Scanning" Then
       If fk_organisation = 0 Then
          If fk_person = 0 Then
+            txtfindSender.SetFocus()
             sMsg = "Each scanned or faxed document will have been sent by someone, be they a person, organisation, or employee of an organisation "
             "or perhaps even a patient.\n\nYou must allocate documents before filing."
-            Message.Info(sMsg)
-            txtfindSender.SetFocus()
-            Return False
+            Error.Raise(sMsg)
          Endif
       Endif
    End If
@@ -2136,23 +2087,18 @@ Public Function Valid_Document() As Boolean
       sMsg = "Please enter the date the document was written.\n\n"
       "This should be in the format dd/mm/yyyy, e.g 01/10/2010.\n\n"
       "If you are filing this from the Inbox, you will have to return the document to clerical for re-allocation"
-      Message.Info(sMsg)
       txtDocumentDate.SetFocus()
-      Return False
+      Error.Raise(sMsg)
    Endif
-   '  If cmbRequestTypes.index = - 1 And rbDisplayAsResult.value = True And Embedded_in_form_name <> "Scanning" Then
-   If cmbRequestTypes.index = - 1 And cmbDocumentDisplayAstypes.text = "result" And Embedded_in_form_name <> "Scanning" Then
-      sMsg = "When the clerical staff allocate this document, they considered it to be a 'Result.\n\n"
-      "Please select the type of result you wish to file from the drop down list "
-      "and then allocate a request name before proceeeding.\n\n"
-      "If a mistake has been made and this is meant to be a letter you can "
-      "click on the letter option button to change it's designation to that of a letter."
-      Message.Title = "Document Filing"
-      Message.Info(sMsg)
-      cmbRequestTypes.SetFocus()
-      Return False
-   Endif
-   Return True
+  ' If cmbDocumentTypes.index = - 1 And rbDisplayAsResult.value = True And Embedded_in_form_name <> "Scanning" Then
+  '    sMsg = "When the clerical staff allocate this document, they considered it to be a 'Result.\n\n"
+  '    "Please select the type of result you wish to file from the drop down list "
+  '    "and then allocate a request name before proceeeding.\n\n"
+  '    "If a mistake has been made and this is meant to be a letter you can "
+  '    "click on the letter option button to change it's designation to that of a letter."
+  '    cmbRequestTypes.SetFocus()
+  '    Error.Raise(sMsg)
+  ' Endif
    
 End
 

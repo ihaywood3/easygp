@@ -26,7 +26,6 @@ if [ "$1" == "cron" ] ; then
     rm -f *.changes
     cd $BASE/easygp
     SVN=`svn update | grep 'revision' | sed -e 's/.*revision \([0-9]*\)./\1/'`
-    echo SVN version is $SVN
     OLDSVN=`cat $BASE/oldsvn`
     if [ "$OLDSVN" = "$SVN" ] ; then exit 0 ; fi
     echo $SVN > $BASE/oldsvn
@@ -36,7 +35,6 @@ if [ "$1" == "cron" ] ; then
     MINOR=`psql -tA -c "select lu_minor from db.lu_version" easygp -U easygp`
     DBVERSION=$MAJOR.$MINOR
     NEWVERSION=svn$SVN
-    echo new version is $NEWVERSION
     NEWVERSION=$DBVERSION$NEWVERSION
     echo new version is $NEWVERSION
     cd $BASE/easygp
@@ -52,4 +50,4 @@ fi
 
 cd $BASE/ftp
 reprepro --ignore=wrongdistribution include easygp $CHANGES
-rsync -e 'ssh -i /home/ian/.ssh/id_dsa_ozdocit' -razO --no-p . ihaywood@ozdocit.org:/home/ftp/pub/
+rsync -e 'ssh -i /home/ian/.ssh/id_dsa_ozdocit' -ravzO --no-p . ihaywood@ozdocit.org:/home/ftp/pub/

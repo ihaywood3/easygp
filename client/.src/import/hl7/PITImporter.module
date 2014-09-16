@@ -46,22 +46,49 @@ Private pk_sending_entity As Integer
 Private doc As Collection
 Private lin As String
 Private fk_lu_request_type As Integer = const.Request_Type_Pathology
+Private processing_log As String[]
 
-Public Sub Import(f As File, fname As String)
+Public Function Segments_Create(txt As String) As String[]
+   
+   Dim i As Integer
+   Dim segments As New String[]
+   
+   If txt = "" Then Return
+   If Left$(txt, 1) = "/" Then ' it's a filename
+      txt = File.Load(txt)
+   Endif
+   segments = Split(txt, "\r", "", True)
+   If segments.Length = 1 Then
+      segments = Split(txt, "\n")
+   Endif
+   If segments.Length > 1 Then
+      If Left$(segments[1], 1) = "\n" Then ' naughty, naughty, someone's using MS-DOS style newlines
+         For i = 1 To segments.Length - 1
+            segments[i] = Right$(segments[i], -1)
+         Next
+      Endif
+   Endif
+   Return segments
+   
+End 
+
+Public Function Import(f As File, fname As String) As String[]
    
    Dim code As String
    Dim re As Regexp
    Dim s As String
-   Dim hl7 As CHL7 'temporarily using this class
    Dim i As String
    Dim segments As String[]
    
+   processing_log = New String[]
+   processing_log.Add("Starting to read file - " & fname)
    doc = New Collection
    doc!source_file = fname
    i = Read #f, Lof(f)
-   i = Make_ASCII_Safe(i)
-   hl7 = New CHL7(i)
-   segments = hl7.Get_segments()
+   i = modHL7FileImport.Make_ASCII_Safe(i)
+   processing_log.Add("Processing PIT segments...")
+   segments = Segments_Create(i)
+   processing_log.Add("PIT segments have been processed...")
    For Each lin In segments
       code = Left$(lin, 3)
       Select Case code
@@ -123,7 +150,7 @@ Public Sub Import(f As File, fname As String)
             s = Grab(27, 45)
             re = New Regexp(s, "^[0-9]+/[0-9]+/[0-9]+ *([0-9]?[0-9]:[0-9][0-9])?")
             If Not CheckRe(re, "collection date") Then 
-              doc!collection_date = re.Text
+               doc!collection_date = re.Text
             Endif
          Case "205"                                           'name of the test
             doc!test_name = Grab(27, 100)
@@ -161,9 +188,11 @@ Public Sub Import(f As File, fname As String)
             Log.DataMsg("unknown PIT line type " & code)
       End Select  
    Next
+   processing_log.Add("Starting to analyse the segments.....")
    Load_Doc()
+   Return processing_log
    
-End Sub
+End 
 
 Private Function HTML_Convert(s As String) As String 
    
@@ -324,19 +353,21 @@ End
 
 Private Sub Load_Doc()
    '----------------------------------------------------------------------
-   'Populates the document and observations collection and save to backend 
+   'Populates the document and observations collection and save to backend
+   'If can't find message recipient allocates this to fallback staff member 
    '----------------------------------------------------------------------  
-
+   
    Dim newdoc As New Collection
    Dim obs As New Collection
    
    If Not doc.Exist("data") Then Return
    If Not doc.Exist("fk_patient") And If Not doc.Exist("fk_unmatched_patient") Then
-      Match_Patient()
+      Match_Patient
    Endif
    If Not doc.Exist("fk_staff") And If Not doc.Exist("fk_unmatched_staff") Then
-      Match_Staff()
+      Match_Staff         
    Endif
+   processing_log.Add("Creating document collection to save to backend....")
    newdoc!source_file = doc!source_file
    newdoc!fk_sending_entity = pk_sending_entity
    newdoc!imported_time = Now()
@@ -359,7 +390,10 @@ Private Sub Load_Doc()
    newdoc!fk_unmatched_patient = doc!fk_unmatched_patient
    newdoc!fk_lu_display_as = const.Document_Display_As_Result
    newdoc!fk_lu_request_type = fk_lu_request_type
+   '  newdoc!fk_lu_data_content_type = const.cData_Type_HTML
    obs!fk_document = modDBConnect.insert("documents.documents", newdoc)
+   processing_log.Add("Document saved to backend....")
+   processing_log.Add("Starting to save observations segments....")
    obs!pit = "t"
    obs!value = doc!data
    obs!abnormal = doc!abnormal             ' FIXME: I assume Y/N like PIT no actually not stacks of variations eg *
@@ -368,7 +402,10 @@ Private Sub Load_Doc()
    obs!observation_date = doc!report_date
    obs!result_status = doc!test_complete ' FIXME: convert to HL7's values
    modDBConnect.insert("documents.observations", obs)
+   processing_log.Add("Observations successfully saved")
    doc!data = Null
+Catch
+   processing_log.Add("An error occured whilst processing the documents/observations")
    
 End
 
@@ -377,48 +414,54 @@ Private Sub Match_Patient()
    Dim r As Result
    Dim s As String
    
-   s = "select fk_patient from contacts.vwpatients where firstname ilike $$&1%$$ and surname ilike $$&2$$ and birthdate = $$&3$$"
+   s = "select fk_patient, wholename from contacts.vwpatients where firstname ilike $$&1%$$ and surname ilike $$&2$$ and birthdate = $$&3$$"
    s = Subst$(s, doc!firstname, doc!surname, doc!birthdate) 
    r = modDBConnect.exec_query(s)
    If r.Count = 1 Then
       doc!fk_patient = r!fk_patient
+      processing_log.Add("Found patient - " & r!wholename)
       Return
    Endif
    ' try reversing firstname and surname, this is very common
-   s = "select fk_patient from contacts.vwpatients where surname ilike $$&1$$ and firstname ilike $$&2%$$ and birthdate = $$&3$$"
+   s = "select fk_patient, wholename from contacts.vwpatients where surname ilike $$&1$$ and firstname ilike $$&2%$$ and birthdate = $$&3$$"
    s = Subst$(s, doc!firstname, doc!surname, doc!birthdate) 
    r = modDBConnect.exec_query(s)
    If r.Count = 1 Then
       doc!fk_patient = r!fk_patient
+      processing_log.Add("Found patient - " & r!wholename)
       Return
    Endif
    If doc.Exist("postcode") Then
       ' try using postcode instead of DOB
-      s = "select fk_patient from contacts.vwpatients where surname ilike $$&1%$$ and firstname ilike $$&2$$ and postcode = $$&3$$"
+      s = "select fk_patient, wholename from contacts.vwpatients where surname ilike $$&1%$$ and firstname ilike $$&2$$ and postcode = $$&3$$"
       s = Subst$(s, doc!surname, doc!firstname, doc!postcode) 
       r = modDBConnect.exec_query(s)
       If r.Count = 1 Then
          doc!fk_patient = r!fk_patient
+         processing_log.Add("Found patient - " & r!wholename)
          Return
       Endif
       ' try without firstname at all, but using both DOB and postcode
-      s = "select fk_patient from contacts.vwpatients where surname ilike $$&1%$$ and birthdate = $$&2$$ and postcode = $$&3$$"
+      s = "select fk_patient,wholename from contacts.vwpatients where surname ilike $$&1%$$ and birthdate = $$&2$$ and postcode = $$&3$$"
       s = Subst$(s, doc!surname, doc!birthdate, doc!postcode) 
       r = modDBConnect.exec_query(s)
       If r.Count = 1 Then
          doc!fk_patient = r!fk_patient
+         processing_log.Add("Found patient but matched on birthdate and postcode - " & r!wholename)
          Return
       Endif
    Endif
    ' Look for previously unmatched patients
-   s = "select fk_real_patient, pk from documents.unmatched_patients where surname ilike $$&1$$ and firstname ilike $$&2$$ and birthdate = $$&3$$"
+   s = "select fk_real_patient, pk, surname, firstname from documents.unmatched_patients where surname ilike $$&1$$ and firstname ilike $$&2$$ and birthdate = $$&3$$"
    s = Subst(s, doc!surname, doc!firstname & "%", doc!birthdate) 
    r = modDBConnect.exec_query(s)
    If r.Count = 1 Then
       If Not IsNull(r!fk_real_patient) Then
          doc!fk_patient = r!fk_real_patient
+         processing_log.Add("Found patient - " & r!firstname & " " & r!surname)
       Else
          doc!fk_unmatched_patient = r!pk
+         processing_log.Add("Found unmatched patient  - " & r!firstname & " " & r!surname)
       Endif
       Return
    Endif
@@ -430,10 +473,95 @@ Private Sub Match_Patient()
       "sex": doc!sex, 
       "street": doc!address_line, 
       "postcode": doc!postcode])
+   processing_log.Add("Gave up ... inserted unmatched patient - " & doc!firstname & " " & doc!firstname)
    
 End
 
 Private Sub Match_Staff()
+   
+   Dim r As Result
+   Dim s As String
+   Dim re As Regexp
+   Dim firstname As String
+   Dim surname As String
+   
+   processing_log.Add("Looking for staff member using " & doc!addressee_provider)
+   s = Subst$("select fk_staff, wholename, title from admin.vwstaffinclinics where provider_number = $$&1$$ limit 1", doc!addressee_provider)
+   r = modDBConnect.exec_query(s)
+   If r.Count = 1 Then
+      doc!fk_staff = r!fk_staff
+      processing_log.Add("Document allocated to " & r!title & " " & r!wholename)
+      Return
+   Endif
+   ' lop off leading zero try again
+   If Left(doc!addressee_provider, 1) = "0" Then  
+      s = Right(doc!addressee_provider, Len(doc!addressee_provider) - 1)
+      s = Subst$("select fk_staff, title, wholename from admin.vwstaffinclinics where provider_number = $$&1$$ limit 1", s)
+      r = modDBConnect.exec_query(s)
+      If r.Count = 1 Then
+         doc!fk_staff = r!fk_staff
+         processing_log.Add("Document allocated to " & r!title & " " & r!wholename)
+         Return
+      Endif
+   Endif
+   ' lop off last 2 digits and leading zero try again
+   s = Left$(doc!addressee_provider, -2) & "%"
+   If Left$(s, 1) = "0" Then
+      s = Right$(s, -1)
+   Endif
+   
+   s = Subst$("select fk_staff, title, wholename from admin.vwstaffinclinics where provider_number ilike $$&1$$ limit 1", s)
+   r = modDBConnect.exec_query(s)
+   If r.Count = 1 Then
+      doc!fk_staff = r!fk_staff
+      processing_log.Add("Document allocated to " & r!title & " " & r!wholename)
+      Return
+   Endif
+   ' Look for unmatched staff by name
+   processing_log.Add("Gave up looking on the provider number... will just try the name in unmatched-staff")
+   doc!addressee = Replace(doc!addressee, ".", "")
+   re = New Regexp(doc!addressee, "^Dr ([A-Za-z]+) ([A-Za-z'\\- ]+)$", RegExp.Caseless)
+   If re.Offset = 0 Then
+      surname = re[2].Text
+      firstname = re[1].Text
+      r = modDBConnect.exec_query("select pk,fk_real_staff, firstname, surname from documents.unmatched_staff where surname = &1 and firstname = &2", [surname, firstname])
+      If r.Count >= 1 Then
+         If Not IsNull(r!fk_real_staff) Then
+            doc!fk_staff = r!fk_real_staff
+            processing_log.Add("Found staff member - " & r!firstname & " " & r!surname)
+         Else
+            doc!fk_unmatched_staff = r!pk
+            doc!fk_staff = modAdminDBI.Config_Get("fk_hl7_fallback_staff_member", -1, Null, modDBConnect.currentUser!fk_clinic)
+            processing_log.Add("Found unmatched staff member - " & r!firstname & " " & r!surname)
+            processing_log.Add("Allocated document to the default staff member set in Admin")
+         Endif
+         Return
+      Endif
+   Endif
+   ' look for unmatched staff by provider number
+   processing_log.Add("Looking for unmatched staff member by their provider....")
+   r = modDBConnect.exec_query("select pk,fk_real_staff, firstname, surname from documents.unmatched_staff where provider_number = &1", [doc!addressee_provider])
+   If r.Count > 0 Then
+      If Not IsNull(r!fk_real_staff) Then
+         doc!fk_staff = r!fk_real_staff
+         processing_log.Add("Found staff member - " & r!firstname & " " & r!surname)
+      Else
+         doc!fk_unmatched_staff = r!pk
+         processing_log.Add("Found unmatched staff member - " & r!firstname & " " & r!surname)
+         doc!fk_staff = modAdminDBI.Config_Get("fk_hl7_fallback_staff_member", -1, Null, modDBConnect.currentUser!fk_clinic)
+         processing_log.Add("Allocated document to the default staff member set in Admin")
+      Endif
+      Return
+   Endif
+   ' Ok, create unmatched_staff
+   doc!fk_unmatched_staff = modDBConnect.insert("documents.unmatched_staff", ["surname": surname, "firstname": firstname, "provider_number": doc!addressee_provider]) 
+   processing_log.Add("Could not find staff member - " & firstname & " " & surname & " created record in the unmatched_staff table")
+   doc!fk_staff = modAdminDBI.Config_Get("fk_hl7_fallback_staff_member", -1, Null, modDBConnect.currentUser!fk_clinic)
+   processing_log.Add("Allocated document to the default staff member set in Admin")
+
+End
+
+Private Sub Match_Staff_orig()
    
    Dim r As Result
    Dim s As String
@@ -476,12 +604,12 @@ Private Sub Match_Staff()
    ' look for unmatched staff by provider number
    r = modDBConnect.exec_query("select pk,fk_real_staff from documents.unmatched_staff where provider_number = &1", [doc!addressee_provider])
    If r.Count > 0 Then
-     If Not IsNull(r!fk_real_staff) Then
-       doc!fk_staff = r!fk_real_staff
-     Else
-       doc!fk_unmatched_staff = r!pk
-     Endif
-     Return
+      If Not IsNull(r!fk_real_staff) Then
+         doc!fk_staff = r!fk_real_staff
+      Else
+         doc!fk_unmatched_staff = r!pk
+      Endif
+      Return
    Endif
    ' Ok, create unmatched_staff
    doc!fk_unmatched_staff = modDBConnect.insert("documents.unmatched_staff", [
@@ -521,71 +649,7 @@ Private Function CheckRe(re As Regexp, err As String) As Boolean
    
 End
 
-' removes strange Microsoft byte codes to make safe for import into Postgres
-Private Sub Make_ASCII_Safe(s As String) As String
-   
-   Dim r As String
-   Dim a As Integer
-   Dim i As Integer
-   
-   For i = 1 To Len(s) 
-      a = Asc(s, i)
-      Select Case a
-         Case 147
-            r &= "\""
-         Case 148
-            r &= "\""
-         Case 145
-            r &= "'"
-         Case 146
-            r &= "'"
-         Case 150
-            r &= "-"
-         Case 151
-            r &= "-"
-         Case 133
-            r &= "..."
-         Case 137
-            r &= "/1000"
-         Case 140
-            r &= "OE"
-         Case 156
-            r &= "oe"
-         Case 198
-            r &= "AE"
-         Case 230
-            r &= "ae"
-         Case 153
-            r &= "TM"
-         Case 169
-            r &= "(C)"
-         Case 188
-            r &= "1/4"
-         Case 189
-            r &= "1/2"
-         Case 190
-            r &= "3/4"
-         Case 178
-            r &= "^2"
-         Case 179
-            r &= "^3"
-         Case 181
-            r &= "mc"
-         Case 247
-            r &= "/"
-         Case 194
-            ' noop
-         Case Else
-            If a < 127 Then
-               r &= Mid$(s, i, 1)
-            Else
-               r &= "?"
-            Endif
-      End Select
-   Next
-   Return r
-   
-End
+
 
 Public Sub UnitTest(f As FMain)
    

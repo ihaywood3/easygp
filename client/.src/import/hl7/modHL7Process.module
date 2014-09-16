@@ -236,32 +236,266 @@ Public Function Construct_HTML(pat As Collection, document As Collection, result
    
 End
 
-Public Function Make_Patient(hl7 As CHL7) As Collection 
-   '-------------------------------------------------------------------
-   'Create patient collection, if no birthdate put in an impossible one
-   '-------------------------------------------------------------------
+Public Function Field_Unpack(field As String, names As String[]) As Collection
    
-   Dim cc As Collection 
+   Dim subfields As String[]
+   Dim coll As New Collection
+   Dim i As Integer
+   
+   subfields = Split(field, "^")
+   For i = 0 To Min(subfields.Count - 1, names.Count - 1)
+      coll[names[i]] = subfields[i]
+   Next
+   Return coll
+   
+End
+
+' Public Function Make_Patient_new(field As String) As Collection 
+'    '--------------------------------------------------------------------------------------
+'    'Create patient collection - many problems and difficulties
+'    'e.g vendor may include name, no sex or DOB or title
+'    '    vendor may use inappropriate format eg Mr Barry Jones instead of Jones^Barry^^^^Mr
+'    '    (or however many hats there are meant to be, can't remember of fop of my head)
+'    '------------------------------------------------------------------------------------
+'    
+'    Dim pat As Collection 
+'    Dim names As String[]
+'    Dim subfields As String[] = Split(Field, "|")
+'    Dim fk_patient As Integer
+'    Dim fk_unmatched_patient As Integer
+'    Dim r As Collection
+'    Dim sql As String
+'    
+'    pat = Field_Unpack(subfields[modHL7Constants.PID_Name], ["surname", "firstname", "middle_name", "unknown", "title"])
+'    names = Split(pat!firstname, " ")
+'    If names.count = 2 Then  
+'       pat!firstname = names[0]
+'       pat!middle_name = names[1]
+'    End If
+'    pat!full_id = Trim(pat!title & " " & pat!firstname & " " & pat!surname)                              'title may not exist
+'    Try pat!birthdate = modUtil.DateString_Decode(subfields[modHL7Constants.PID_Birthdate])              'this field may not exist
+'    If IsNull(pat!birthdate) Then  
+'       pat!birthdate = Date(1900, 1, 1)
+'    Endif
+'    pat!full_id &= " " & pat!birthdate
+'    Try pat!sex = subfields[modHL7Constants.PID_Sex]                                                  'this field may not exist
+'    If Error Then                                                                                    'probably an out of bounds error, some hl7 patient data does not contain sex
+'       Try pat!sex = modContactsDBI.Sex_Get(pat!firstname)
+'    End If
+'    sql = "Select * from contacts.vwPatients where "
+'    sql &= "lower (firstname)=$$" & Lower(pat!firstname) & "$$ "
+'    sql &= " AND lower (surname)=$$" & Lower(pat!surname) & "$$"
+'    If Not InStr(pat!full_id, "00:00:00") Then sql &= " And birthdate = '" & Format(pat!birthdate, "dd/mm/yyyy") & "'"
+'    sql &= " limit 1"  'Limit 1 because single patient can have multiple addresses
+'    r = modDBConnect.exec_query_first(sql)
+'    If IsNull(r) Then
+'       'see if there is a middle name
+'       ' try again with reversed name
+'       sql = "Select * from contacts.vwPatients where "
+'       sql &= "lower (surname)=$$" & Lower(pat!firstname) & "$$ "
+'       sql &= " AND lower (firstname)=$$" & Lower(pat!surname) & "$$"
+'       If Not InStr(pat!full_id, "00:00:00") Then sql &= " And birthdate = '" & Format(pat!birthdate, "dd/mm/yyyy") & "'"
+'       sql &= " limit 1"
+'       r = modDBConnect.exec_query_first(sql)
+'       If IsNull(r) Then
+'          'perhaps they have sent example "Raymond Jones" and we have Raymond Bruce Jones" 'poor DB design on our part?
+'          sql = "Select * from contacts.vwPatients where "
+'          sql &= "lower (firstname) ILIKE $$%" & Lower(pat!firstname) & "%$$ "
+'          sql &= " AND lower (surname)= $$" & Lower(pat!surname) & "$$"
+'          If Not InStr(pat!full_id, "00:00:00") Then sql &= " And birthdate = '" & Format(pat!birthdate, "dd/mm/yyyy") & "'"
+'          sql &= " limit 1"
+'          r = modDBConnect.exec_query_first(sql)
+'          If IsNull(r) Then
+'             '-----------------------------------------------------------------------------------
+'             'ok, give in, time to create unmatched patient
+'             'Now see if this patient is already in the unmatched_patients table, if not add them
+'             '-----------------------------------------------------------------------------------
+'             sql = "Select * from documents.unmatched_patients where "
+'             sql &= "lower (firstname)=$$" & Lower(pat!firstname) & "$$ "
+'             sql &= " AND lower (surname)=$$" & Lower(pat!surname) & "$$"
+'             If Not InStr(pat!full_id, "00:00:00") Then 
+'                sql &= " And birthdate = '" & Format(pat!birthdate, "dd/mm/yyyy") & "'"
+'             Else
+'                pat.Remove("birthdate")
+'             End If  
+'             pat.Remove("full_id")
+'             Try pat.remove("middle_name")
+'             Try pat.remove("unknown")         'some idiot puts in segments like surname^^firstname^middlename
+'             r = modDBConnect.exec_query_first(sql)
+'             If IsNull(r) Then
+'                fk_unmatched_patient = modDBConnect.insert("documents.unmatched_patients", pat)
+'             Else
+'                If Not IsNull(r!fk_real_patient) Then
+'                   fk_patient = r!fk_real_patient
+'                   fk_unmatched_patient = 0
+'                Else
+'                   fk_patient = 0
+'                   fk_unmatched_patient = r!pk
+'                End If
+'             End If
+'          Else
+'             fk_patient = r!fk_patient
+'          End If   
+'       Else
+'          fk_patient = r!fk_patient
+'       Endif
+'    Else
+'       fk_patient = r!fk_patient
+'    Endif 
+'    pat!fk_patient = fk_patient
+'    pat!fk_unmatched_patient = fk_unmatched_patient
+'    Return pat
+'    
+' End 
+
+Public Function Make_Patient(hl7 As CHL7, processing_log As String[]) As Collection   '01/09/2014 - the latest
+   '--------------------------------------------------------------------------------------
+   'Attempt to match patient, if fails then save in documents.unmatched_patients
+   'e.g vendor may include name, no sex or DOB or title
+   '    vendor may use inappropriate format eg Mr Barry Jones instead of Jones^Barry^^^^Mr
+   '    (or however many hats there are meant to be, can't remember of fop of my head)
+   'Variations: surname firstname eg smith john
+   '                              eg smith john p
+   '                              eg smith john peter etc
+   '--------------------------------------------------------------------------------------
+   
+   Dim pat As Collection 
    Dim names As String[]
+   Dim fk_patient As Integer
+   Dim fk_unmatched_patient As Integer
+   Dim fk_usual_doctor As Integer
+   Dim r As Collection
+   Dim sql As String
    
-   cc = hl7.GetField(modHL7Constants.PID_Name, ["surname", "firstname", "middle_name", "unknown", "title"])
-   'Austin^^Michael^William^^^
-   names = Split(cc!firstname, " ")
-   If names.count = 2 Then  'IAN CHECK THIS
-      cc!firstname = names[0]
-      cc!middle_name = names[1]
+   processing_log.Add("Starting to decode patient information.....")
+   pat = hl7.GetField(modHL7Constants.PID_Name, ["surname", "firstname", "middle_name", "unknown", "title"])
+   names = Split(pat!firstname, " ")
+   If names.count = 2 Then  
+      pat!firstname = names[0]
+      pat!middle_name = names[1]
    End If
-   cc!full_id = Trim(cc!title & " " & cc!firstname & " " & cc!surname) 'title may not exist
-   cc!birthdate = modUtil.DateString_Decode(hl7[modHL7Constants.PID_Birthdate]) 'IAN WILL ALWAYS RETURN SOMETHING EVEN IF NO DATE EG 00.
-   If cc.Exist("birthdate") Then
-      If IsNull(cc!birthdate) Then  
-         cc!birthdate = Date(1900, 1, 1)
-      Endif
-      cc!full_id &= " " & cc!birthdate
+   If Lower(pat!surname) = "gambrill" Then
+      Print
    Endif
-   cc!sex = hl7[modHL7Constants.PID_Sex] 
-   Return cc
+   pat!full_id = Trim(pat!title & " " & pat!firstname & " " & pat!surname)                              'title may not exist
+   Try pat!birthdate = modUtil.DateString_Decode(hl7[modHL7Constants.PID_Birthdate])              'this field may not exist
+   If IsNull(pat!birthdate) Then  
+      pat!birthdate = Date(1900, 1, 1)
+   Endif
+   pat!full_id &= " " & pat!birthdate
+   Try pat!sex = hl7[modHL7Constants.PID_Sex]                                                  'this field may not exist
+   If Error Then                                                                                    'probably an out of bounds error, some hl7 patient data does not contain sex
+      Try pat!sex = modContactsDBI.Sex_Get(pat!firstname)
+   End If
+   sql = "Select * from contacts.vwPatients where "
+   sql &= "lower (firstname)=$$" & Lower(pat!firstname) & "$$ "
+   sql &= " AND lower (surname)=$$" & Lower(pat!surname) & "$$"
+   If Not InStr(pat!full_id, "00:00:00") Then sql &= " And birthdate = '" & Format(pat!birthdate, "dd/mm/yyyy") & "'"
+   sql &= " limit 1"  'Limit 1 because single patient can have multiple addresses
+   r = modDBConnect.exec_query_first(sql)
+   If IsNull(r) Then
+      'see if there is a middle name
+      ' try again with reversed name
+      sql = "Select * from contacts.vwPatients where "
+      sql &= "lower (surname)=$$" & Lower(pat!firstname) & "$$ "
+      sql &= " AND lower (firstname)=$$" & Lower(pat!surname) & "$$"
+      If Not InStr(pat!full_id, "00:00:00") Then sql &= " And birthdate = '" & Format(pat!birthdate, "dd/mm/yyyy") & "'"
+      sql &= " limit 1"
+      r = modDBConnect.exec_query_first(sql)
+      If IsNull(r) Then
+         'perhaps they have sent example "Raymond Jones" and we have Raymond Bruce Jones" 'poor DB design on our part?
+         sql = "Select * from contacts.vwPatients where "
+         sql &= "lower (firstname) ILIKE $$%" & Lower(pat!firstname) & "%$$ "
+         sql &= " AND lower (surname)= $$" & Lower(pat!surname) & "$$"
+         If Not InStr(pat!full_id, "00:00:00") Then sql &= " And birthdate = '" & Format(pat!birthdate, "dd/mm/yyyy") & "'"
+         sql &= " limit 1"
+         r = modDBConnect.exec_query_first(sql)
+         If IsNull(r) Then
+            '-----------------------------------------------------------------------------------
+            'ok, give in, time to create unmatched patient
+            'Now see if this patient is already in the unmatched_patients table, if not add them
+            '-----------------------------------------------------------------------------------
+            sql = "Select * from documents.unmatched_patients where "
+            sql &= "lower (firstname)=$$" & Lower(pat!firstname) & "$$ "
+            sql &= " AND lower (surname)=$$" & Lower(pat!surname) & "$$"
+            If Not InStr(pat!full_id, "00:00:00") Then 
+               sql &= " And birthdate = '" & Format(pat!birthdate, "dd/mm/yyyy") & "'"
+            Else
+               pat.Remove("birthdate")
+            End If  
+            pat.Remove("full_id")
+            Try pat.remove("middle_name")
+            Try pat.remove("unknown")         'some idiot puts in segments like surname^^firstname^middlename
+            r = modDBConnect.exec_query_first(sql)
+            If IsNull(r) Then
+               fk_unmatched_patient = modDBConnect.insert("documents.unmatched_patients", pat)
+               processing_log.Add("Couldn't find" & pat!full_id & " in our database, inserted as an unmatched patient")
+            Else
+               If Not IsNull(r!fk_real_patient) Then
+                  fk_patient = r!fk_real_patient
+                  fk_unmatched_patient = 0
+               Else
+                  fk_patient = 0
+                  fk_unmatched_patient = r!pk
+                  processing_log.Add("Found a match in the unmatched patient table")
+               End If
+            End If
+         Else
+            fk_patient = r!fk_patient
+            Try fk_usual_doctor = r!fk_doctor   
+         End If   
+      Else
+         fk_patient = r!fk_patient
+         Try fk_usual_doctor = r!fk_doctor  
+      Endif
+   Else
+      fk_patient = r!fk_patient
+      Try fk_usual_doctor = r!fk_doctor  
+   Endif 
+   If fk_patient Then
+      processing_log.Add("Success: matched patient to " & pat!full_id)
+      pat!fk_patient = fk_patient
+      pat!fk_unmatched_patient = fk_unmatched_patient
+      If fk_usual_doctor Then    
+         pat!fk_doctor = fk_usual_doctor
+      Else
+         pat!fk_doctor = Null
+      End If   
+   Endif
+   If fk_unmatched_patient Then
+      pat!fk_patient = 0
+      pat!fk_unmatched_patient = fk_unmatched_patient
+      pat!fk_doctor = Null
+   Endif
+   Return pat
    
+Catch
+   processing_log.Add("Fatal error, could not extract anything resembling a patient name")
+   processing_log.Add("This message will be allocated to a generic Uknown Patient with DOB 01/01/1900")
+   pat!surname = "Patient"
+   pat!firstname = "Unknown"
+   pat!birthdate = Date(1900, 1, 1)
+   sql = "Select * from documents.unmatched_patients where "
+   sql &= "lower (firstname)=$$unknown$$ "
+   sql &= " AND lower (surname)=$$patient$$"
+   sql &= " And birthdate = '01/01/1900'"
+   r = modDBConnect.exec_query_first(sql)
+   If IsNull(r) Then
+      processing_log.Add("Couldn't find 'Unknown Patient' in our database, inserted as an unmatched patient")
+      pat!fk_unmatched_patient = modDBConnect.insert("documents.unmatched_patients", pat)
+      pat!fk_patient = 0
+   Else
+      If Not IsNull(r!fk_real_patient) Then
+         pat!fk_patient = r!fk_real_patient
+         pat!fk_unmatched_patient = 0
+      Else
+         pat!fk_patient = 0
+         pat!k_unmatched_patient = r!pk
+         processing_log.Add("Found a match in the unmatched patient table")
+      End If
+   End If 
+   Return pat
+
 End 
 
 Private Function Replace_Coll(s As String, coll As Collection, field As String) As String
@@ -300,112 +534,140 @@ Public Function Get_EOL_Char(filepath As String) As Integer
    
 End
 
-Public Function Get_SendingEntity(msh_subseg_sender As String) As String
-   '------------------------------------------------------------------------------
-   'Extract the sender from MSH, should be able to use:
-   'hl7.Next("MSH", "PID") but this won't work as .Next increments at entry to 1
-   'so MSH segment is missed in files which start with MSH! ?IAN FIX
-   'some segments here are just |the name|  (incorrectly)
-   'others are |subseg^subseg^subseg|
-   'Also, many labs ID'd only by a NATA number or a text abbreviation
-   'Some samples:
+Public Function Get_Sending_Application(msh_subseg_application As String, processing_log As String[]) As String
+   '--------------------------------------------------------------------------------------------------------
+   'Get the sending application eg Apollo, SNP, Genie Vx.y, Medical Objects, etc, sometimes its non existant
+   '--------------------------------------------------------------------------------------------------------
+   
+   Dim sending_application As String
+   
+   If InStr(msh_subseg_application, "^") Then
+      sending_application = Split(msh_subseg_application, "^")[0]
+   Else
+      sending_application = msh_subseg_application
+   End If
+   If sending_application = "" Then
+      sending_application = "Unknown"
+   Endif
+   If Not IsNull(processing_log) Then
+      processing_log.Add("Sending application seems to be " & sending_application)
+   Endif
+   Return sending_application
+   
+End
+
+Public Function Nata_Labs_Get() As Collection
+   
+   Return modCache.Get("documents.lu_nata_laboratories") 
+   
+End
+
+Public Function Get_SendingEntity_WITH_RESULT(msh_subseg_sender As String, Optional processing_log As String[]) As Collection
+   '-------------------------------------------------------------------------------------------
+   'msh_subseg_sender has been extracted from MSH and contains!name
+   'Some samples of MSH are:
    '
-   'Douglas:                  MSH|^~\&|APOLLO|NATA^2178^N|  
+   'Douglas:                  MSH|^~\&|APOLLO|NATA^2178^N|||201009161340+1000||dhm1026.ORU||1026 
    'Hunter Imaging Group      MSH|^~\&|Sonic v2|HIG|  
    'Newcastle pathology       MSH|^~\&|LRS|Newcastle Pathology
-   'Newcastle radiology       MSH |^~\&|Your Software Program|Newcastle Radiology| (coverted from PIT by me)
    'Medical objects           MSH|^~\&|EQUATORDXTRAY^EQUATORDXTRAY:2.20.2 (Build 1491)^L|Dr Andrew Hedges^2EF632CD-F10D-46D4-BBF8-B68510F964A4^GUID|
    'Hunter Area pathology     MSH|^~\&|HAPSDLOAD|HAPS| 'this is Hunter Area Pathology Services
    'Symbion Laverty Pathology MSH |^~\&|ULTRA|Symbion Laverty Pathology|
-   '------------------------------------------------------------------------------
+   '
+   'If a nata lab - use the lookup table, otherwise included a couple for me to save db calls
+   '------------------------------------------------------------------------------------------------
    
-   Dim SendingEntity As String
+   Dim SendingEntity As New Collection
    Dim Sub_segs As String[]
+   Dim sql As String
+   Dim R As Collection
    
    If InStr(msh_subseg_sender, "^") Then
       sub_segs = Split(msh_subseg_sender, "^")
-      SendingEntity = sub_segs[0]
+      SendingEntity!name = Trim(sub_segs[0])
    Else
-      SendingEntity = msh_subseg_sender
+      SendingEntity!name = Trim(msh_subseg_sender)
    End If
    '------------------------------------------------------------------------
    'Now, as they further don't identify themselves correctly, some more work
    '-----------------------------------------------------f-------------------
-   Select Case SendingEntity
-         
+   Select Case SendingEntity!name
       Case "NATA"
-         Select Case sub_segs[1]
-            Case "2178"
-               SendingEntity = "Douglass Hanly Moir"
-            Case "1964"
-               SendingEntity = "Sullivan Nicolaides Pathology"
-            Case "LAUNCESTON AND NORTH WEST PATH"
-               SendingEntity = "LAUNCESTON PATHOLOGY"
-         End Select
+         sql = "Select distinct pk,labname from documents.lu_nata_laboratories WHERE accreditation_no = '" & sub_segs[1] & "' LIMIT 1"
+         R = modCache.Query("documents.lu_nata_laboratories", sql)
+         '    R = modDBConnect.exec_query(sql)
+         If R.count Then
+            SendingEntity!name = R!labname
+            SendingEntity!fk_lu_message_display_style = const.Document_Display_As_Result 'should be fk_lu_display_as but for historical reasons its not!
+         Endif
       Case "HIG"
-         SendingEntity = "Hunter Imaging Group"
+         SendingEntity!name = "Hunter Imaging Group"
+         SendingEntity!fk_lu_message_display_style = const.Document_Display_As_Result
       Case "HAPS"
-         SendingEntity = "Hunter Area Pathology Services"
+         SendingEntity!name = "Hunter Area Pathology Services"
+         SendingEntity!fk_lu_message_display_style = const.Document_Display_As_Result
+      Case Else
+         SendingEntity!fk_lu_message_display_style = const.Document_Display_As_Letter  
    End Select
    Return SendingEntity          
    
 End
 
-Public Function Get_SendingEntity_new(msh_subseg_sender As String, Optional fname As String) As String
-   '------------------------------------------------------------------------------
-   'Extract the sender from MSH, should be able to use:
-   'hl7.Next("MSH", "PID") but this won't work as .Next increments at entry to 1
-   'so MSH segment is missed in files which start with MSH! ?IAN FIX
-   'some segments here are just |the name|  (incorrectly)
-   'others are |subseg^subseg^subseg|
-   'Also, many labs ID'd only by a NATA number or a text abbreviation
-   'Some samples:
+Public Function Get_SendingEntity(msh_subseg_sender As String, Optional processing_log As String[]) As Collection
+   '-------------------------------------------------------------------------------------------------------------------
+   'msh_subseg_sender has been extracted from MSH and contains!name
+   'Some samples of MSH are:
    '
    'Douglas:                  MSH|^~\&|APOLLO|NATA^2178^N|||201009161340+1000||dhm1026.ORU||1026 
    'Hunter Imaging Group      MSH|^~\&|Sonic v2|HIG|  
    'Newcastle pathology       MSH|^~\&|LRS|Newcastle Pathology
-   'Newcastle radiology       MSH |^~\&|Your Software Program|Newcastle Radiology| (coverted from PIT by me)
    'Medical objects           MSH|^~\&|EQUATORDXTRAY^EQUATORDXTRAY:2.20.2 (Build 1491)^L|Dr Andrew Hedges^2EF632CD-F10D-46D4-BBF8-B68510F964A4^GUID|
    'Hunter Area pathology     MSH|^~\&|HAPSDLOAD|HAPS| 'this is Hunter Area Pathology Services
    'Symbion Laverty Pathology MSH |^~\&|ULTRA|Symbion Laverty Pathology|
-   '------------------------------------------------------------------------------
+   '
+   'If a nata lab - use the lookup table, otherwise included a couple for me to save db calls
+   'But.... sadly not all accredited pathology labs use their NATA number eg pathology north, pathology west etc (govt's)
+   '----------------------------------------------------------------------------------------------------------------------
    
-   Dim SendingEntity As String
+   Dim SendingEntity As New Collection
    Dim Sub_segs As String[]
    Dim sql As String
-   Dim R As Result
+   Dim all_labs As Collection
+   Dim lab As Collection
    
    If InStr(msh_subseg_sender, "^") Then
       sub_segs = Split(msh_subseg_sender, "^")
-      SendingEntity = sub_segs[0]
+      SendingEntity!name = Trim(sub_segs[0])
    Else
-      SendingEntity = msh_subseg_sender
+      SendingEntity!name = Trim(msh_subseg_sender)
    End If
    '------------------------------------------------------------------------
    'Now, as they further don't identify themselves correctly, some more work
    '-----------------------------------------------------f-------------------
-   Select Case SendingEntity
-         
+   Select Case SendingEntity!name
       Case "NATA"
-         sql = "Select distinct labname from documents.nata_laboritories WHERE accreditation_no = '" & sub_segs[1] & "'"
-         sql &= " AND labname ILIKE '" & Left(File.Name(fname), 1) & "%'"
-         
-         R = modDBConnect.exec_query(sql)
-         If R.count Then
-            SendingEntity = R!labname
-         Endif
-         ' Select Case sub_segs[1]
-         '    Case "2178"
-         '       SendingEntity = "Douglass Hanly Moir"
-         '    Case "1964"
-         '       SendingEntity = "Sullivan Nicolaides Pathology"
-         '    Case "LAUNCESTON AND NORTH WEST PATH"
-         '       SendingEntity = "LAUNCESTON PATHOLOGY"
-         ' End Select
+         If IsNumber(sub_segs[1]) Then    
+            lab = modCache.Get("documents.lu_nata_laboratories", sub_segs[1], "accreditation_no") 'first occurrence of nata number = company name (usally)
+            If Not IsNull(lab) Then  
+               SendingEntity!name = lab!labname
+               SendingEntity!fk_lu_message_display_style = const.Document_Display_As_Result 'should be fk_lu_display_as but for historical reasons its not!
+            Endif
+         Else 'something else masquerading as a nata lab e.g this: MSH|^~\&|DSP|NATA^HOBART,LAUNCESTON AND NORTH WEST PATH^N||, not using a nata number
+            SendingEntity!name = sub_segs[1]
+            SendingEntity!fk_lu_message_display_style = const.Document_Display_As_Result
+         End If   
       Case "HIG"
-         SendingEntity = "Hunter Imaging Group"
+         SendingEntity!name = "Hunter Imaging Group"
+         SendingEntity!fk_lu_message_display_style = const.Document_Display_As_Result
       Case "HAPS"
-         SendingEntity = "Hunter Area Pathology Services"
+         SendingEntity!name = "Hunter Area Pathology Services"
+         SendingEntity!fk_lu_message_display_style = const.Document_Display_As_Result
+      Case Else
+         If InStr(Lower(SendingEntity!name), "imaging") Or InStr(Lower(SendingEntity!name), "ultrasound") Or InStr(Lower(SendingEntity!name), "image") Or InStr(Lower(SendingEntity!name), "radiology") Or InStr(Lower(SendingEntity!name), "xray") Or InStr(Lower(SendingEntity!name), "x-ray") Or InStr(Lower(SendingEntity!name), "pathology") Or InStr(Lower(SendingEntity!name), "audiology") Then
+            SendingEntity!fk_lu_message_display_style = const.Document_Display_As_Result
+         Else
+            SendingEntity!fk_lu_message_display_style = const.Document_Display_As_Letter  
+         Endif
    End Select
    Return SendingEntity          
    

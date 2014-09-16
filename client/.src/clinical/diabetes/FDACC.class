@@ -72,6 +72,7 @@ Private NextTextBoxDetails As TextEdit
 Private NextTextBoxLast As TextEdit
 Private NextTextboxDue As TextEdit
 Private sDecisionSupportComments As String     'created on fly from analysing patients results
+Private bPreventSave As Boolean                'true if template is missing
 
 Public Sub Init(cons As CConsult)
    '------------------------------------------------------------------------
@@ -85,6 +86,16 @@ Public Sub Init(cons As CConsult)
    fk_patient = currentconsult!patient!fk_patient
    lblNextDue.width = TextLabel12.width
    Reload()    'loads any current DACCS and displays the most recent.
+   
+End
+
+Public Sub DACC_Template_Missing() 
+
+   Dim sMsg As String
+   sMsg = "The template necessary To generate the Diabetes Cycle Of Care Is missing.\n\n"
+   "You will not be able to save this cycle of care.\n\n"
+   "You should speak to the sysadmin to resolve this issue"
+   Message.Warning(sMsg) 
    
 End
 
@@ -312,6 +323,10 @@ Public Sub MedicationList_Insert()
    
 End
 
+Public Sub Form_Show()
+   
+End
+
 Public Sub Form_Close()
    'this causes a Sig11 ?why
    ' If Vbox_EditArea.Padding = 1 Then
@@ -381,8 +396,11 @@ Public Sub Save()
    If Vbox_EditArea.Padding = 0 Then Return        'no changes to main DACC
    
    If Not Valid_Data() Then Return
+   If bPreventSave Then  ' set in Init if main template is missing
+      DACC_Template_Missing
+      Return   
+   Endif
    DACC = New Collection
-   ' DACC!date_completed = Val(Format(Now(), "dd/mm/yyyy"))  'can only be completed today and edited today
    DACC!date_completed = Val(Format(currentconsult.GetConsultDate(), "dd/mm/yyyy"))  'can only be completed today and edited today
    DACC!fk_consult = currentconsult.GetPK()
    DACC!hba1c_date = Val(teNotesHBA1cLast.text)
@@ -985,6 +1003,11 @@ End
 
 Public Sub DACC_New()
    
+   If IsNull(modUtil.Find_File("diabetes_cycle_care.tex")) Then   
+      DACC_Template_Missing
+      bPreventSave = True  
+   Endif
+   
    EditArea_Clear()  'Clear entry area and refresh as many components as possible
    Reset_Keys()
    With lblLastClaimed
@@ -1378,10 +1401,15 @@ Public Sub DACC_LaTex_Construct(DACC As Collection) As CTemplate
    'FIXME: perhaps allow printing of partially completed DACC
    '---------------------------------------------------------
    
-   Dim templ As New CTemplate("diabetes_cycle_care", "tex")
+   Dim templ As CTemplate
    Dim iIncomplete As Integer
    Dim sMissing As String = "**missing**"
    
+   Try Templ = New CTemplate("diabetes_cycle_care", "tex")
+   If Error Then
+      modUtilGUI.Template_Missing("diabetes_cycle_care")
+      Return Null
+   Endif
    templ.Subst_common(currentconsult)
    If Not IsNull(DACC!date_completed) Then
       templ.Subst("due_on", Format(DateAdd(DACC!date_completed, gb.year, 1), "dd/mm/yyyy"))

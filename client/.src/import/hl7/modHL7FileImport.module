@@ -16,6 +16,17 @@
 'This is what gets called as a script on the server
 '--------------------------------------------------------------------------
 Private importdir As String
+Private processing_log As String[]
+Private pb As Progressbar
+Private notification_panel As Panel
+Private lblImport As Label
+Private global_filename_temp As String
+
+Public Sub Set_Notification_Panel(pnl As Panel)
+   
+   notification_panel = pnl
+   
+End
 
 Public Sub Auto_Process()
    '------------------------------------------------------
@@ -26,11 +37,6 @@ Public Sub Auto_Process()
    '--------------------------------------------------------------------
    
    importdir = modAdminDBI.Config_Get("hl7_incoming_directory", "/var/lib/easygp/hl7/incoming")
-   
-   ' Print importdir
-   '  modAdminDBI.Config_Get(Param!config, Null, Null, fk_clinic)
-   ' ensure these subdirectories exist
-   ' If Not Access(importdir &/ "processed", gb.Exec) Then
    If Access(importdir, gb.exec Or gb.Write) Then    
       If Not Access(importdir &/ "processed", gb.Exec Or gb.Write) Then
          Mkdir importdir &/ "processed"
@@ -40,8 +46,13 @@ Public Sub Auto_Process()
       Endif
    Else
       Goto NoAccessError
-   End If   
+   End If 
+   pb = notification_panel.Children[1] '                                   'reset the progress bar
+   lblImport = notification_panel.Children[0]
+   pb.value = 0.0 
+   pb.Refresh
    Process_Dir_Or_File(importdir)
+   notification_panel.Visible = False  
    Return
 NoAccessError:
    Message.Title = "Importing Documents or HL7"
@@ -67,11 +78,21 @@ Private Sub Process_Dir_Or_File(fname As String)
    Dim f As File
    Dim s As String
    Dim l As Integer
+   Dim processing_log_entry As String
+   Dim filecount As Integer
+   Dim x As Integer 
    
    If IsDir(fname) Then
       If (fname = "errors") Or (fname = "LOG") Or (fname = "send") Or (fname = "error") Then ' ignore healthlink crap
          Return
       Endif
+      For Each sFile In Dir(fname)
+         If File.Ext(sFile) <> "" Then
+            If Left(sfile) <> "." Then Inc Filecount
+         Endif
+      Next
+      notification_panel.Visible = filecount    
+      Wait  
       For Each sFile In Dir(fname)
          If Left$(sFile, 1) = "." Then  'ignore hidden files
             Continue
@@ -84,6 +105,11 @@ Private Sub Process_Dir_Or_File(fname As String)
          Endif
          i = Lower$(fname &/ sFile)                                        'List all files or subdirectories in the root
          If Not InStr(i, "errors") And If Not InStr(i, "processed") Then  'if not in error or processee
+            Inc x
+            pb.value = x / filecount
+            pb.Refresh()
+            lblImport.text = "Importing HL7 Files (" & Str(x) & " of " & Str(filecount) & ")  "
+            Wait
             Process_Dir_Or_File(fname &/ sFile)                            'try again, this time could be a file
          End If
       Next
@@ -117,50 +143,69 @@ Private Sub Process_Dir_Or_File(fname As String)
          Endif
          If typ = "pit" Then
             If IsNull(f) Then f = Open fname For Read
-            PITImporter.Import(f, File.Name(fname))
+            processing_log = PITImporter.Import(f, File.Name(fname))
             Close #f
          Else  ' at the moment try to parse as HL7 if not clearly PIT
             i = Read #f, Lof(f)
             Close #f
             hl7 = New CHL7(i)
+            Try Processing_Log.Clear()
             Process_File(hl7, fname)
          Endif
-         
          Move fname To importdir &/ "processed" &/ modUtil.filepath_fix_Blanks(File.Name(fname))
+         processing_log.Add("Executed: Move " & fname & " to " & "processed" &/ modUtil.filepath_fix_Blanks(File.Name(fname)))
          modDBConnect.CommitTrans()
-      Endif ' Lof(f) > 4
-   End If ' IsDir(fname)
+         processing_log.Add("Transaction committed")
+      Endif 
+   End If 
+   
 Catch
-   Let i = Error.Text & " " & Error.Backtrace.Join(" ") & " (" & fname & ")"
+   Message.Info("Richard - an error " & fname)
+   i = "HL7 File Processing Error: " & fname & "\n"
+   i &= "Error Message: " & Error.Text & "\n " & "Backtrace:\n" & Error.Backtrace.Join("\n") & " (" & fname & ")"
+   i &= "\n\nThe processing log was:\n\n"
+   For Each processing_log_entry In Processing_Log
+      i &= processing_log_entry & "\n"
+   Next
    Print #File.Err, i
    Log.ErrorMsg(i)
    s = modAdminDBI.Config_Get("admin_email", Null)
    If Not IsNull(s) Then
-      Message.Error("There was an error processing " & fname & "this will be reported to the Adminstrator")
-      cEmailTask.Send_Email_Easy(s, "file import error", i)
+      '   Message.Error("There was an error processing this file:\n\n" & fname & "\n\nthis will be reported to the Adminstrator at the following mail address:\n\n" & s)
+      cEmailTask.Send_Email_Easy(s, "EasyGP HL7file import error", i)
    Else
       Message.Error(i)
    Endif
    Try Move fname To importdir &/ "processed/errors" &/ modUtil.filepath_fix_Blanks(File.Name(fname))
    If Error Then
-      i = "Error of " & Error.Text & " moving " & fname & " to " & importdir &/ "/processedhl7/errors/ (" & Error.Text & ")"
+      i = "Error of " & Error.Text & " moving " & fname & " to " & importdir &/ "/processed/errors/ (" & Error.Text & ")"
       Print #File.Err, i
       Log.ErrorMsg(i)
+      i &= "\n\n" & "There was an error moving this file to the error directory:\n\n" & fname & "\n\nthis will be reported to the Adminstrator at the following mail address:\n\n" & s
+      If Not IsNull(s) Then
+         cEmailTask.Send_Email_Easy(s, "EasyGP HL7file import error", i)
+      Endif
    End If
+   
    modDBConnect.RollBack()
    
 End Sub
 
 Private Function Get_Originator(Originator As String) As String
-   '----------------------------------------------
-   'Again, fucked hl7, some vendors don't use hats
-   '----------------------------------------------
+   '-------------------------------------------------------------------------
+   'Again, fucked hl7, some vendors don't use hats, don't comply to standards
+   '-------------------------------------------------------------------------
    
    Dim bits As String[]
    
    If InStr(Originator, "&") Then
       bits = Split(Originator, "&", "", True)
-      Return bits[2] & " " & bits[1]
+      If bits.COUNT = 2 Then 'non compliant to hl7 standard eg PRP imaging
+         Return bits[1] & " " & bits[0]
+      Endif
+      If bits.COUNT > 2 Then    
+         Return bits[2] & " " & bits[1]
+      End If   
    Else
       bits = Split(Originator, " ", "", True)
       If bits.count = 3 Then
@@ -169,65 +214,292 @@ Private Function Get_Originator(Originator As String) As String
          Message.Info("originator parsing problem (" & originator & ")")
       End If
    End If
-   
+Catch
+   Message.info("Give richard copy of this file.... it crashed on the catch of the sub")
+   Return 
+
 End 
 
-Private Sub Process_File(hl7 As CHL7, fname As String)
-   '-----------------------------------------------------------
-   'Process a hl7  File
-   'the contents saved to the documents and observations table
-   'This whole sub is **crap++** works, but needs re-writing
-   'fixme
-   '-----------------------------------------------------------
+Private Function Document_Originator_Get_From_OBR(hl7 As Chl7, sender As Collection) As Collection
+   '----------------------------------------------------------------------------------------------------------------------------
+   'attempts to get the person who wrote the hl7 letter or ordered the test 'i.e could be specialist sending a letter back to GP
+   'or  the GP or doctor who ordered a test who hence indirectly caused the document to spring into existance
+   'This person/organisation/thing is saved in Documents.Documents.orginator and is displayed in the Gui in FClinical
+   'For example
+   '  01/01/2000   fbc;esr;uec;lfts        DR R Terry
+   '  19/12/1999   Renal Ultasound         Dr Nanra
+   '  OBR(16) = ordering provider in the standard
+   '  OBR(32) = Principal_Result_Interpreter in the standard
+   '  If OBR(32) is null then most likely we caused the document to come into being as the ordering provider (OBR 16)
+   '  Sample of OBR(32) |0481946T&NEUROLOGIST&FAMOUSE&&&Dr.&&&AUSHICPR", 1)'
+   '  Also if the hl7 is a request, then most likely OBR(16) is the appopriate segement
+   '  If the hl7 is  a letter, most likely the OBR(32) is best... but nothing is foolproof
+   '----------------------------------------------------------------------------------------------------------------------------- 
    
-   Dim audit As Collection 
-   Dim sender As Collection
-   Dim sString As String 
-   Dim msh_sender As String 
-   Dim intended_recipient As Collection 
-   Dim attending_dr As Collection 
-   Dim requesting_dr As Collection
-   Dim consulting_dr As Collection 
-   Dim sending_person As Collection
-   Dim Originator As String  ' the person on whose behalf the hl7 was sent
-   Dim usual_dr As Collection
-   Dim pat As Collection
-   Dim sql As String
-   Dim sql_prefix As String
-   Dim r As Collection
-   Dim fk_patient As Integer
-   Dim fk_unmatched_patient As Integer
-   Dim fk_staff As Integer
-   Dim fk_unmatched_staff As Integer
-   Dim fk_unmatched_sender As Integer
-   Dim obx As Collection
-   Dim document As Collection
-   Dim obx_type As String 
-   Dim bits As String[] 
+   Dim document_originator As New Collection
+   Dim seg_string As String 
+   
+   Select Case sender!fk_lu_message_display_style
+      Case const.Document_Display_As_Letter
+         If hl7[modHL7Constants.OBR_Principal_Result_Interpreter] Then  'OBR(32) may not exist
+            seg_string = hl7[modHL7Constants.OBR_Principal_Result_Interpreter] 
+            If InStr(seg_string, "&") Then                                       'try OBR(32) first - not present eg in any path, xrays etc
+               document_originator!wholename = Get_Originator(seg_string)
+               If document_originator.count Then Return document_originator
+            End If
+         End If   
+         document_originator = hl7.GetNameAsCollection("OBR", modHL7Constants.OBR_Requesting_Provider)  'OBR[16]
+         If document_originator.count Then Return document_originator    
+      Case const.Document_Display_As_Result
+         document_originator = hl7.GetNameAsCollection("OBR", modHL7Constants.OBR_Requesting_Provider)  'OBR[16]
+         If document_originator.count Then Return document_originator   
+         If hl7[modHL7Constants.OBR_Principal_Result_Interpreter] Then  'OBR(32) may not exist
+            seg_string = hl7[modHL7Constants.OBR_Principal_Result_Interpreter] 
+            If InStr(seg_string, "&") Then                                       'try OBR(32) first - not present eg in any path, xrays etc
+               document_originator!wholename = Get_Originator(seg_string)
+               If document_originator.count Then Return document_originator
+            End If
+         End If    
+   End Select
+   
+End
+
+Private Function intended_recipient_Search_OBR(hl7 As CHL7, processing_log As String[]) As Collection
+   '-----------------------------------------------------------------------------------------------
+   'Called if the recipient of a HL7 message has not been found in PRD or PV1 segments
+   'searches multiple segments in OBR 16, 20, 28 and returns valid staff member or empty collection
+   '-----------------------------------------------------------------------------------------------
+   
+   Dim intended_recipient As Collection
    Dim persons_in_obr28_copy_to As String[]
    Dim person_in_obr28_copy_to As String
    Dim copy_to_count As Integer
-   Dim Staff_IDs As Collection
-   Dim skipfile As Boolean
-   Dim sending_application As String
-   Dim embedded_picture As Picture
-   Dim Tempfile As String 
-   Dim file_ending As String 
-   Dim iRemoveThis As Integer
-   Dim any_msh As Boolean = False
+   Dim sSTring As String
    
+   intended_recipient = hl7.GetNameAsCollection("OBR", modHL7Constants.OBR_Requesting_Provider)    'try OBR16 (requesting provider)
+   If modAdminDBI.Is_Staff_Member(intended_recipient) Then
+      Return intended_recipient 
+   Else
+      intended_recipient = New Collection
+   Endif
+   If intended_recipient.count = 0 Then                                                     'healthscope have the this in OBR only and then ambiguous
+      processing_log.Add("Looking bizaare place  OBR(20).....")
+      intended_recipient = hl7.GetNameAsCollection("OBR", 20)                                      'occasionally can only pull it form obr(20) a so called 'Filler Field 1  Healthscope
+      If intended_recipient.count <> 0 Then 
+         If Not modAdminDBI.Is_Staff_Member(intended_recipient) Then
+            processing_log.Add("Found someone..." & Get_Name_As_String(intended_recipient) & " but they don't check out as a staff member")
+            intended_recipient = Null
+         Else
+            processing_log.Add("Found message recipient in OBR(20).. " & Get_Name_As_String(intended_recipient))
+         Endif
+      Else
+         intended_recipient = Null
+         processing_log.Add("Message recipient was not found in OBR(20) -Nor should it be!, sadley sometimes it is")
+      End If   
+   Else
+      processing_log.Add("Found the recipient in OBR(16) - " & Get_Name_As_String(intended_recipient))
+   End If 
+   If IsNull(intended_recipient) Then                                                      'healthscope may only have this in obr(28) - copy to
+      If hl7[modHL7Constants.OBR_CopyTo] Then                                              'If there are copy to seg's maybe staff name is in there?
+         persons_in_obr28_copy_to = Split(hl7[modHL7Constants.OBR_CopyTo], "~")
+         If persons_in_obr28_copy_to.count Then
+            processing_log.Add("Getting desperate, maybe the recipient's name is in OBR(28) in the copy-to's")
+            For Each person_in_obr28_copy_to In persons_in_obr28_copy_to
+               intended_recipient = hl7.GetNameAsCollection("OBR", modHL7Constants.OBR_CopyTo, copy_to_count)
+               If intended_recipient.count <> 0 Then 
+                  If modAdminDBI.Is_Staff_Member(intended_recipient) Then 
+                     processing_log.Add("Found a possible recipient who is a staff member: " & Get_Name_As_String(intended_recipient))
+                     Return intended_recipient
+                  End If   
+               End If   
+               Inc copy_to_count 
+            Next
+         End If
+      Else
+         processing_log.Add("Bumma, running out of options... not in the copy to segment either")
+         Return intended_recipient 'will be null   
+      End If   
+   End If      
+   If intended_recipient.count <> 0 Then                                                  'if now have a potential staff member
+      If modAdminDBI.Is_Staff_Member(intended_recipient) Then                                           'are they actuallyd one of our staff
+         processing_log.Add("Found destination staff member - " & Get_Name_As_String(intended_recipient))
+         Return intended_recipient
+      Else
+         processing_log.Add("Unable to identify destination staff member - " & Get_Name_As_String(intended_recipient))
+         intended_recipient = Null
+      Endif
+   End If   
+   Return Null
+   
+End
+
+Private Function intended_recipient_Search_OBR_orig(hl7 As CHL7, processing_log As String[]) As Collection
+   '-----------------------------------------------------------------------------------------------
+   'Called if the recipient of a HL7 message has not been found in PRD or PV1 segments
+   'searches multiple segments in OBR 16, 20, 28 and returns valid staff member or empty collection
+   '-----------------------------------------------------------------------------------------------
+   
+   Dim intended_recipient As Collection
+   Dim persons_in_obr28_copy_to As String[]
+   Dim person_in_obr28_copy_to As String
+   Dim copy_to_count As Integer
+   Dim sSTring As String
+   
+   intended_recipient = hl7.GetNameAsCollection(modHL7Constants.OBR_Requesting_Provider)    'try OBR16 (requesting provider)
+   If modAdminDBI.Is_Staff_Member(intended_recipient) Then
+      Return intended_recipient 
+   Else
+      intended_recipient = New Collection
+   Endif
+   If intended_recipient.count = 0 Then                                                     'healthscope have the this in OBR only and then ambiguous
+      processing_log.Add("Looking bizaare place  OBR(20).....")
+      intended_recipient = hl7.GetNameAsCollection(20)                                      'occasionally can only pull it form obr(20) a so called 'Filler Field 1  Healthscope
+      If intended_recipient.count <> 0 Then 
+         If Not modAdminDBI.Is_Staff_Member(intended_recipient) Then
+            processing_log.Add("Found someone..." & Get_Name_As_String(intended_recipient) & " but they don't check out as a staff member")
+            intended_recipient = Null
+         Else
+            processing_log.Add("Found message recipient in OBR(20).. " & Get_Name_As_String(intended_recipient))
+         Endif
+      Else
+         intended_recipient = Null
+         processing_log.Add("Message recipient was not found in OBR(20) -Nor should it be!, sadley sometimes it is")
+      End If   
+   Else
+      processing_log.Add("Found the recipient in OBR(16) - " & Get_Name_As_String(intended_recipient))
+   End If 
+   If IsNull(intended_recipient) Then                                                      'healthscope may only have this in obr(28) - copy to
+      If hl7[modHL7Constants.OBR_CopyTo] Then                                              'If there are copy to seg's maybe staff name is in there?
+         persons_in_obr28_copy_to = Split(hl7[modHL7Constants.OBR_CopyTo], "~")
+         If persons_in_obr28_copy_to.count Then
+            processing_log.Add("Getting desperate, maybe the recipient's name is in OBR(28) in the copy-to's")
+            For Each person_in_obr28_copy_to In persons_in_obr28_copy_to
+               intended_recipient = hl7.GetNameAsCollection(modHL7Constants.OBR_CopyTo, copy_to_count)
+               If intended_recipient.count <> 0 Then 
+                  If modAdminDBI.Is_Staff_Member(intended_recipient) Then 
+                     processing_log.Add("Found a possible recipient who is a staff member: " & Get_Name_As_String(intended_recipient))
+                     Return intended_recipient
+                  End If   
+               End If   
+               Inc copy_to_count 
+            Next
+         End If
+      Else
+         processing_log.Add("Bumma, running out of options... not in the copy to segment either")
+         Return intended_recipient 'will be null   
+      End If   
+   End If      
+   If intended_recipient.count <> 0 Then                                                  'if now have a potential staff member
+      If modAdminDBI.Is_Staff_Member(intended_recipient) Then                                           'are they actuallyd one of our staff
+         processing_log.Add("Found destination staff member - " & Get_Name_As_String(intended_recipient))
+         Return intended_recipient
+      Else
+         processing_log.Add("Unable to identify destination staff member - " & Get_Name_As_String(intended_recipient))
+         intended_recipient = Null
+      Endif
+   End If   
+   Return Null
+   
+End
+
+Private Sub Process_File(hl7 As CHL7, fname As String)
+   '----------------------------------------------------------------------------------------------------------------------------------------------------
+   'Process a hl7  File the contents saved to the documents and observations table
+   'This whole sub is **crap++** but works (sort of)
+   'The sender              - is pulled from MSH into msh_seg_sender
+   '                          This is a text string representing the proper name of the sender (usually)
+   '                          e.g Douglas Hanly Moir
+   '                              Symbion Laverty Patholgoy
+   '                              Dr Best Surgeon
+   'The patient             - is pulled from PID
+   'documents_originator    - is the person wheo generated  (e.g ordered) or wrote or took resonsiblity for signing off the document
+   '                        - this my/easygp terminology, not hl7 and meant to be either the author of the document (if a letter)
+   '                          or the person whose original actions generated the document (i.e ordered the test - pathology/radiology)
+   '                          I cannot find any consistant pattern to figure out who has written the letter. if in fact this is a letter
+   '                          except to say that by and large path/radiology companies don't use the & in obr32
+   '                          With Medical objects From specialists it seems To be the Principal_Result_Interpreter(seg OBR[32])
+   '                          This is included so that when the user of EasyGP scrolls through their results or document lists
+   '                          they can see who generated it. This <> the sender e.g patient in hospital JHH would be the sender
+   '                          but if Dr Best Nuerologist signed off on the document his name would be the document_originator
+   '                          
+   '                           This Is Found either very easily:
+   '                             PRD|CP^Consulting Provider^HL70286|Dr Jon Smith|P <<Note also here the lack of hats
+   '                          Sometimes it is found in ORC  common order segment
+   '                             ORC| 12 = ordering provider
+   '                          Failing that its up For grabs.Fro example obviously OBR(16) If I ordered a path test
+   '                          but if its a letter from some one it will be in OBR(32) as the person taking responsibility
+   '                             OBR|...............etc |0481946T&RAYMOND&STEVE&&&Dr.&&&AUSHICPR"
+   '                             
+   'The intended_recipient  - interpreted by us to be the GP or other staff member in the practice the hl7 message is aimed at
+   '                          if a name is found it is tested by the Is_Staff_Member() subroutine, if not set back to null
+   '                          There is no consistancy where this information is found (usually in PV1)
+   '                          segments are searched In the order they occur in the files and proceeds to next site if fails
+   '                          However some specialists regard themselves as primary care provider no good solution there
+   '                             PRD|RT^Referred to Provider^HL70286|Terry^Richard^^^Dr|
+   '                             PRD|PP^General provider/Primary provider^HL70286|TERRY^RICHARD^^^Dr.|
+   '                             PV1|1|O||||||0458332T^TERRY^RICHARD^^^DR|0458332T^TERRY^RICHARD^^^DR|||||||||||
+   '                          As some companies eg Healthscope dont have PV1 we look in OBR(16)= ordering provider
+   '                             OBR|1|5-00288|99248256-D-U-CTPCR^NATA^2178^N|D-U-CTPCR^U-CTPCR^2178||20081120|200811210000+1100|||||||200811210000+1100||0458332T^TERRY^RICHARD^^^DR|
+   '                          Sometimes this will fai2014l, and the only place you will find name of a staff member is in OBR(20) 'hl7 specs = Filler Field 1+
+   '                          Last fall back is to the copyto segment OBR(28) which may contain multiple providers
+   '                          however luckily usually the GP seems to be the first person in the copyto's
+   '                          Next if name not found we look and see who the patient's usual doctor is (if recorded)
+   '                          If it doesn't find a valid staff member nad no usual doctorif uses the fallback staff member see Admin.GlobalPreferences (in the Gui)
+   '----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+   Dim shtml As String
+   Dim tempfile As String
+   Dim embedded_picture As Picture
+   Dim audit As Collection 
+   Dim sender As Collection
+   Dim sString As String 
+   Dim msh_seg_sender As Collection              'the string = sender name in the msh segment
+   Dim intended_recipient As Collection          'person message is intended for - often hard to figure
+   Dim document_originator As Collection         'he/she/who/it who generated, sent, was responsible for generation of the message
+   Dim document_originator_ORC12 As Collection   '=ordering provider segment
+   Dim document_originator_ORC10 As Collection   ' backup - this is designated in HL7 'entered by', sometimes it contains valid name if ORC12 and OBR missing names
+   Dim document_originator_first_found As Collection 
+   Dim usual_doctor As Collection                'the patient's usual doctor if recorded - used as fallback position
+   Dim fallback_staff As Collection              'the staff member setup in Admin.Global preferences to allocate message to when all else fails
+   Dim patient As Collection
+   Dim obx As Collection
+   Dim document As Collection
+   Dim obx_type As String 
+   Dim bits As String[] 
+   Dim Staff_IDs As Collection
+   Dim sending_application As String
+   Dim sending_entity As Collection
+   Dim any_msh As Boolean = False
+   Dim bFirstAttemptAtFindingRecipient As Boolean = True 
+   Dim seg_name As String
+   Dim pdf_doc As Collection                     'document to save a pdf as
+
+   const.REMOVE_THIS_DO_NOT_USE = fname   
    Do While hl7.Next("MSH")           '
-      '---------------------------------------------------------------------------
-      'find out who the sender is and attempt to get a match from contacts database
-      '----------------------------------------------------------------------------
-      msh_sender = modHL7Process.Get_SendingEntity(hl7[modHL7Constants.MSH_Sending_Facility]) '      , fname)
-      sending_application = modHL7Process.Get_SendingEntity(hl7[modHL7Constants.MSH_Sending_Application])
-      any_msh = True
       '------------------------------------------------------------------------------------
-      'The sender collection is either matched to existing organisation/employee or person
+      'find out who the sender is and attempt to get a match from contacts database
+      'The sender collection is either matched to ex2014isting organisation/employee or person
       'or unmatched, with the unkown sender saved to documents.sending_entity
-      '----------------------------------------------------------------------------------
-      Sender = Get_Sender(msh_sender, sending_application)
+      '-------------------------------------------------------------------------------------
+      Processing_Log = New String[]
+      document_originator_ORC12 = Null
+      document_originator_ORC10 = Null
+      document_originator = Null
+      Patient = Null
+      intended_recipient = Null
+      processing_log.Add("Starting to decode file - filename=" & fname)
+      '-----------------------------------------------------------------------------------------------------------------------------
+      'get sender plus if had to look up documents.nata_laboratories if a new sender, returns fk_lu_message_display_style as display
+      'otherwise this defaults to letter
+      'i.e msh_seg_sender!name = "The Best Pathology Company"
+      '    msh_seg_sender!fk_lu_message_display_style = const.Document_Display_As_Result
+      '------------------------------------------------------------------------------------------------------------------------------
+      msh_seg_sender = modHL7Process.Get_SendingEntity(hl7[modHL7Constants.MSH_Sending_Facility], processing_log)
+      sending_application = modHL7Process.Get_Sending_Application(hl7[modHL7Constants.MSH_Sending_Application], processing_log)
+      Sender = Get_Sender(msh_seg_sender, sending_application)   'msh_seg_sender = !name and !!fk_lu_message_display_style
+      any_msh = True
+      processing_log.Add("Analysed the message header segment and have determined the sender - " & sender!msh_sending_entity)
+      
       '---------------------------------------------------------------------------------------
       'Some messages may be only for one patient, eg gpAccess discharge
       'and have PRD  segment(s) at the top  e.g one or more, often 3! 
@@ -240,136 +512,33 @@ Private Sub Process_File(hl7 As CHL7, fname As String)
       ' GP Access in their PRD fields sometimes as eg Dr Joe Blogs
       '---------------------------------------------------------------------------------------
       Do While hl7.Next("PRD", "PID", "MSH")
-         ' If hl7.Next("PRD", "PID", "MSH")
+         seg_name = hl7[0, 0]
          Select Case hl7[1, 0]
-            Case "CP", "RP" 'referring provider
-               'crap: Dr Access sets this as 'Dr Joe Blogs'
-               attending_dr = New Collection
-               requesting_dr = New Collection
-               
-               If InStr(hl7[2], "^") Then
-                  bits = Split(hl7[2], "^")
-                  attending_dr!title = bits[4]
-                  attending_dr!firstname = bits[1]
-                  attending_dr!surname = bits[0]       
+            Case "CP", "RP"                      
+               document_originator = hl7.GetNameAsCollection(seg_name, 2)
+               If document_originator.count Then
+                  processing_log.Add("Found document author/generator in PRD|" & hl7[1, 0] & ": " & Get_Name_As_String(document_originator))
+                  document_originator_first_found = document_originator
+               End If   
+            Case "RT", "PP" 
+               If bFirstAttemptAtFindingRecipient Then
+                  Processing_Log.Add("Will now attempt to find who the message is for, and if they are a staff member in our surgery")
+               Endif
+               bFirstAttemptAtFindingRecipient = False   
+               intended_recipient = hl7.GetNameAsCollection(seg_name, 2)
+               If intended_recipient.count Then
+                  processing_log.Add("Found the potiential intended recipient in PRD|" & hl7[1, 0] & ": " & Get_Name_As_String(intended_recipient)) 
+               Endif
+               If modAdminDBI.Is_Staff_Member(intended_recipient) Then  
+                  If intended_recipient.count Then processing_log.Add("Confirmed one of our staff") 
                Else
-                  attending_dr = New Collection
-                  requesting_dr = New Collection
-                  bits = Split(hl7[2], " ")
-                  If bits.count = 2 Then
-                     attending_dr!firstname = bits[0]
-                     attending_dr!surname = bits[1]                  
-                  Else
-                     attending_dr!title = bits[0]
-                     attending_dr!firstname = bits[1]
-                     attending_dr!surname = bits[2]                  
-                  End If
-                  requesting_dr = attending_dr 'temp patch for gpaccess
-               End If
-            Case "RT"  'referred to provider = PP in GPACcess but can be confusing where the specialists software
-               'decide that they are the primary provider! - all a matter of interpretation
-               'PRD|PP^General provider/Primary provider^HL70286|McGrath^Shaun^^^Dr|
-               'PRD|RP^Referring Provider^HL70286|McGrath^Shaun^^^Dr|
-               'PRD|RT^Referred to Provider^HL70286|Terry^Richard^^^Dr|
-               bits = Split(hl7[2], "^")
-               usual_dr = New Collection 
-               usual_dr!title = bits[4]
-               usual_dr!firstname = bits[1]
-               usual_dr!surname = bits[0]
-               staff_IDs = Get_Staff_Member(usual_dr, fname)
-               fk_staff = staff_IDs!fk_staff
-               fk_unmatched_staff = staff_IDs!fk_unmatched_staff
-               
-            Case "PP"    'this one does have hats all the time I think, PP= primary care provider
-               'However see above, some specialists regard themselves as primary care provider
-               'so not sure how to solve this, at moment RT will over-ride PP as it comes later in the file
-               requesting_dr = New Collection
-               '  attending_dr = New collection 
-               bits = Split(hl7[2], "^")
-               usual_dr = New Collection 
-               usual_dr!title = bits[4]
-               usual_dr!firstname = bits[1]
-               usual_dr!surname = bits[0]
-               staff_IDs = Get_Staff_Member(usual_dr, fname)
-               fk_staff = staff_IDs!fk_staff
-               fk_unmatched_staff = staff_IDs!fk_unmatched_staff
-               
+                  intended_recipient = Null
+                  processing_log.Add("Sadly, the person is not one of our staff")
+               End If   
          End Select
       Loop
-      
       Do While hl7.Next("PID", "MSH")
-         '-----------------------------------------------------------------------
-         'Attempt to match patient, if fail> save in documents.unmatched_patients
-         'Variations: surname firstname eg smith john
-         '                              eg smith john p
-         '                              eg smith john peter 
-         '-----------------------------------------------------------------------
-         fk_unmatched_patient = 0
-         fk_patient = 0
-         pat = modHL7Process.Make_Patient(hl7)
-         '----------------------------------------------------------
-         'Limit 1 because single patient can have multiple addresses
-         '----------------------------------------------------------
-         sql = "Select * from contacts.vwPatients where "
-         sql &= "lower (firstname)=$$" & Lower(pat!firstname) & "$$ "
-         sql &= " AND lower (surname)=$$" & Lower(pat!surname) & "$$"
-         If Not InStr(pat!full_id, "00:00:00") Then sql &= " And birthdate = '" & Format(pat!birthdate, "dd/mm/yyyy") & "'"
-         sql &= " limit 1"
-         r = modDBConnect.exec_query_first(sql)
-         If IsNull(r) Then
-            'see if there is a middle name
-            ' try again with reversed name
-            sql = "Select * from contacts.vwPatients where "
-            sql &= "lower (surname)=$$" & Lower(pat!firstname) & "$$ "
-            sql &= " AND lower (firstname)=$$" & Lower(pat!surname) & "$$"
-            If Not InStr(pat!full_id, "00:00:00") Then sql &= " And birthdate = '" & Format(pat!birthdate, "dd/mm/yyyy") & "'"
-            sql &= " limit 1"
-            r = modDBConnect.exec_query_first(sql)
-            If IsNull(r) Then
-               'perhaps they have sent example "Raymond Jones" and we have Raymond Bruce Jones" 'poor DB design on our part?
-               sql = "Select * from contacts.vwPatients where "
-               sql &= "lower (firstname) ILIKE $$%" & Lower(pat!firstname) & "%$$ "
-               sql &= " AND lower (surname)= $$" & Lower(pat!surname) & "$$"
-               If Not InStr(pat!full_id, "00:00:00") Then sql &= " And birthdate = '" & Format(pat!birthdate, "dd/mm/yyyy") & "'"
-               sql &= " limit 1"
-               r = modDBConnect.exec_query_first(sql)
-               If IsNull(r) Then
-                  '-----------------------------------------------------------------------------------
-                  'ok, give in, time to create unmatched patient
-                  'Now see if this patient is already in the unmatched_patients table, if not add them
-                  '-----------------------------------------------------------------------------------
-                  sql = "Select * from documents.unmatched_patients where "
-                  sql &= "lower (firstname)=$$" & Lower(pat!firstname) & "$$ "
-                  sql &= " AND lower (surname)=$$" & Lower(pat!surname) & "$$"
-                  If Not InStr(pat!full_id, "00:00:00") Then 
-                     sql &= " And birthdate = '" & Format(pat!birthdate, "dd/mm/yyyy") & "'"
-                  Else
-                     pat.Remove("birthdate")
-                  End If  
-                  pat.Remove("full_id")
-                  Try pat.remove("middle_name")
-                  Try pat.remove("unknown")         'some idiot puts in segments like surname^^firstname^middlename
-                  r = modDBConnect.exec_query_first(sql)
-                  If IsNull(r) Then
-                     fk_unmatched_patient = modDBConnect.insert("documents.unmatched_patients", pat)
-                  Else
-                     If Not IsNull(r!fk_real_patient) Then
-                        fk_patient = r!fk_real_patient
-                        fk_unmatched_patient = 0
-                     Else
-                        fk_patient = 0
-                        fk_unmatched_patient = r!pk
-                     End If
-                  End If
-               Else
-                  fk_patient = r!fk_patient
-               End If   
-            Else
-               fk_patient = r!fk_patient
-            Endif
-         Else
-            fk_patient = r!fk_patient
-         Endif
+         patient = modHL7Process.Make_Patient(hl7, processing_log)               'find existing or create new unmatched patient
          
          If hl7.Next("PV1", "OBR", "PID", "MSH") Then
             '-----------------------------------------------------------------------------------------------------------------------------------------------
@@ -393,9 +562,6 @@ Private Sub Process_File(hl7 As CHL7, fname As String)
             ' OBX|1|..........................
             ' BTS|1
             ' FTS|1|Powered by www.medical-objects.com
-            '
-            ' Hence If we just Do a a hl7.Next(here)we will Move onto the first OBR In the majority Of cases
-            ' so I've inserted above  If hl7.Next_Segment_Name() = "PV1" Then 
             '
             'A conforming PV1 segment such as Douglass Labs HL7 looks like this:
             '     PV1|1|O||||||0458332T^TERRY^RICHARD^^^DR|0458332T^TERRY^RICHARD^^^DR|||||||||||
@@ -447,35 +613,38 @@ Private Sub Process_File(hl7 As CHL7, fname As String)
             '            seg 8  requesting provider  yes  modHL7Constants.PV1_Requesting
             '            seg 9  consulting provider  yes  modHL7Constants.PV1_Consulting
             '                     ordering_provider is in OBR 16     
-            
             '-------------------------------------------------------------------------------------------------------------------------------------
-            intended_recipient = hl7.GetNameAsCollection(modHL7Constants.PV1_Consulting) 'this should be the GP or staff member the message is for
-            '------------------------------------------------------------------------------------
-            'HAPS sometimes dosn't put in the doctor's name, perhaps others are just as forgetful
-            '------------------------------------------------------------------------------------
-            If intended_recipient.count = 0 Or IsNull(intended_recipient) Then
-               fk_staff = modAdminDBI.Config_Get("fk_hl7_fallback_staff_member", 0)
-            Else
-               staff_IDs = Get_Staff_Member(intended_recipient, fname)
-               fk_staff = staff_IDs!fk_staff
-               fk_unmatched_staff = staff_IDs!fk_unmatched_staff
-            Endif
-            attending_dr = hl7.GetNameAsCollection(modHL7Constants.PV1_Attending)    'attending
-            usual_dr = hl7.GetNameAsCollection(modHL7Constants.PV1_Consulting)       'conisulting
-            requesting_dr = hl7.GetNameAsCollection(modHL7Constants.PV1_Requesting)  'same as referring dr in PV1 fix me
-            If requesting_dr.count = 0 Then
-               requesting_dr = attending_dr
+            seg_name = hl7[0, 0]
+            If IsNull(intended_recipient)                                                   'may have been pulled from Seg PRD|RT = Referred to Provider
+               If bFirstAttemptAtFindingRecipient Then
+                  Processing_Log.Add("Will now attempt to find who the message is for, and if they are a staff member in our surgery")
+               Endif
+               bFirstAttemptAtFindingRecipient = False   
+               processing_log.Add("Looking for intended recipient in the PV1 segment")
+               intended_recipient = hl7.GetNameAsCollection(seg_name, modHL7Constants.PV1_Consulting)   'this should be the GP or staff member the message is for
+               If Not modAdminDBI.Is_Staff_Member(intended_recipient) Then                                      'is this person on the staff
+                  processing_log.Add("Found a recipient in PV1 but not one of our staff - " & Get_Name_As_String(intended_recipient))                         
+                  intended_recipient = Null                                                    'however sometimes its not! can be the sender!!!! Fucked HL7
+               Else
+                  processing_log.Add("Found the message recipient in PV1 " & Get_Name_As_String(intended_recipient))
+               Endif
             End If 
          Endif
-         If hl7.Next("ORC", "OBR", "PID", "MSH")
-            If hl7[12] <> "" Then  'fixme, can't remember which files needed this
-               requesting_dr = hl7.GetNameAsCollection(modHL7Constants.ORC_Ordering_Provider)
-               attending_dr = hl7.GetNameAsCollection(modHL7Constants.ORC_Ordering_Provider)
+         If hl7.Next("ORC", "OBR", "PID", "MSH")                                    'if exists try for ordering provider
+            seg_name = hl7[0, 0]
+            If hl7[12] <> "" Then                                                   'can't remember which files needed this
+               processing_log.Add("Checking ORC segment for document originator before moving on to OBR segment")
+               document_originator_ORC12 = hl7.GetNameAsCollection(seg_name, 12)
+               If document_originator_ORC12.count Then
+                  processing_log.Add("May have found the person who either ordered the test or wrote the incoming letter in ORC Segment")
+                  processing_log.Add("This seems to be " & Get_Name_As_String(document_originator_ORC12) & " however will check against OBR(32) later")
+               Else 'try and get another backup from ORC (10) = entered by
+                  document_originator_ORC12 = hl7.GetNameAsCollection(seg_name, 10)
+               Endif
             End If
          End If
-         
          Do While hl7.Next("OBR", "PID", "MSH")
-            '---------------------------------------------------------------------------------------
+            '----------------------------------------------------------------------------------------------
             'Some notes on the document:
             'Remember the document concept is quite generic, examples of documents are:
             '  A Scanned 20 page file as a pdf
@@ -487,108 +656,123 @@ Private Sub Process_File(hl7 As CHL7, fname As String)
             '
             'Hence there can be some confusion around terms
             '     document!date_requested may only apply to pathology
-            '     document!date_enacted is named so because it reprents when the document was created
+            '     document!date_created is named so because it represents when the document was created
             '     e.g a pathology request is the start of the document chain
             '     a hospital discharge summary  is the creation or enactment of the document
-            '----------------------------------------------------------------------------------------
-            If IsNull(intended_recipient) Then    'healthscope have the this in OBR only and then ambiguous, they don' use PV1 like everyone else
-               intended_recipient = hl7.GetNameAsCollection(modHL7Constants.OBR_Requesting_Provider) 'this should be the GP or staff member the message is for
-               ' is the person in OBR16 (ordering provider) one of our staff?
-               staff_IDs = Get_Staff_Member(intended_recipient, fname)              'see if the person is one of our staff
-               If intended_recipient.count <> 0 Then                                'yes
-                  staff_IDs = Get_Staff_Member(intended_recipient, fname)           'this was the ordering provider
-                  If staff_IDs!fk_staff = 0 Then                                    'maybe not one of our staff
-                   'check if healthscope are sending a copy to one of use
-                   persons_in_obr28_copy_to = Split(hl7[modHL7Constants.OBR_CopyTo], "~")
-                   For Each person_in_obr28_copy_to In persons_in_obr28_copy_to
-                        intended_recipient = hl7.GetNameAsCollection(modHL7Constants.OBR_CopyTo, copy_to_count)
-                        staff_IDs = Get_Staff_Member(intended_recipient, fname)
-                        If staff_IDs!fk_staff = 0 Then
-                           
-                        Else
-                           fk_staff = staff_IDs!fk_staff
-                           Break
-                        Endif
-                         Inc copy_to_count  
-                   Next
-                  End If
-                End If  
-            Endif
+            '------------------------------------------------------------------------------------------------
+            processing_log.Add("Starting to analyse the OBR segment")
+            If IsNull(intended_recipient) Then
+               processing_log.Add("Not yet found a staff member who the message is intended for... will look through the OBR fields")
+               intended_recipient = intended_recipient_Search_OBR(HL7, Processing_Log)
+            End If   
+            If Not IsNull(intended_recipient) Then                                                   'if now have a potential staff member
+               If modAdminDBI.Is_Staff_Member(intended_recipient) Then                                           'are they actuallyd one of our staff
+                  processing_log.Add("Decided that " & Get_Name_As_String(intended_recipient) & " is the recipient and one of our staff")
+                  staff_IDs = Get_Staff_Member(intended_recipient, fname)                            'if so get the id's
+                  processing_log.Add("Verified staff ID's")
+               End If   
+            Else                                                                                     'we have no recipient
+               processing_log.Add("Giving up on finding the recipient/staff member")
+               staff_IDs = New Collection 
+               If Not IsNull(patient!fk_doctor) Then                                         'try and allocate to their usual doctor
+                  staff_IDs!fk_staff = patient!fk_doctor
+                  processing_log.Add("Allocating this mesage to the patient's ususal doctor " & modAdminDBI.Preferred_Doctor_Get(patient!fk_doctor)!wholename)
+               Else                                                                                  'have none? then fallback position
+                  staff_IDs!fk_staff = modAdminDBI.Config_Get("fk_hl7_fallback_staff_member", -1, Null, modDBConnect.currentUser!fk_clinic)
+                  fallback_staff = modAdminDBI.Preferred_Doctor_Get(staff_IDs!fk_staff)
+                  processing_log.Add("Have allocated document to  the fallback staff member " & fallback_staff!title & " " & fallback_staff!wholename)
+               End If   
+               staff_IDs!fk_unmatched_staff = 0
+            End If   
+            processing_log.Add("Creating a new document collection prior to saving to the back end")
             document = New Collection
+            document!fk_lu_urgency = const.UrgencyLevelRoutine
             document!fk_sending_entity = sender!fk_sending_entity
             document!fk_lu_display_as = sender!fk_lu_message_display_style 'defaults to 1 = letter different name = historical- fiXME SOMETIME in documents.sending_entities
             document!source_file = File.name(fname) 
             document!imported_time = Now()
+            processing_log.Add("inserting dates message was requested, collected or the message created")
             document!date_requested = Val(Format(DateString_Decode(hl7[modHL7Constants.OBR_Request_Date]), "dd/mm/yyyy"))
             If IsNull(DateString_Decode(hl7[modHL7Constants.OBR_Collect_Date])) Then
                document!date_created = document!date_requested
             Else
                document!date_created = Val(Format(DateString_Decode(hl7[modHL7Constants.OBR_Collect_Date]), "dd/mm/yyyy"))
             End If   
-            ' document!date_requested = Val(Format(modUtil.DateString_Decode(hl7[modHL7Constants.OBR_Request_Date]), "dd/mm/yyyy"))
-            ' document!date_created = Val(Format(modUtil.DateString_Decode(hl7[modHL7Constants.OBR_Collect_Date]), "dd/mm/yyyy"))
-            If fk_patient <> 0 Then document!fk_patient = fk_patient
-            If fk_unmatched_patient <> 0 Then document!fk_unmatched_patient = fk_unmatched_patient   
-            If fk_staff <> 0 Then document!fk_staff_destination = fk_staff
-            If fk_unmatched_staff <> 0 Then document!fk_unmatched_staff = fk_unmatched_staff
-            
-            requesting_dr = hl7.GetNameAsCollection(modHL7Constants.OBR_Requesting_Provider)  'same as referring dr in PV1 fix me
-            If IsNull(requesting_dr) Then
-               document!originator = "Unknown Sending Provider"
+            If patient!fk_patient <> 0 Then document!fk_patient = patient!fk_patient
+            If patient!fk_unmatched_patient <> 0 Then document!fk_unmatched_patient = patient!fk_unmatched_patient   
+            If staff_IDs!fk_staff <> 0 Then document!fk_staff_destination = staff_IDs!fk_staff
+            If staff_IDs!fk_unmatched_staff <> 0 Then document!fk_unmatched_staff = staff_IDs!fk_unmatched_staff
+            ' If IsNull(document_originator) Then ' Now if not yet collected from PRD|CP (consulting provider) or ORC(12) ordering provider get the document_originator
+            If IsNull(document_originator) Or sender!fk_lu_message_display_style = const.Document_Display_As_Letter Then ' Now if not yet collected from PRD|CP (consulting provider) or ORC(12) ordering provider get the document_originator
+               processing_log.Add("Not yet sure  who ordered/created/authored this message, will look in OBR segment")
+               document_originator = Document_Originator_Get_From_OBR(hl7, sender)  'the sender!fk_lu_message_display_style can help us guess
+               If IsNull(document_originator) Then
+                  If Not IsNull(document_originator_first_found) Then 
+                     document_originator = document_originator_first_found
+                  Else
+                     If Not IsNull(document_originator_ORC12) Then  'fallback to ORC(12)
+                        document_originator = document_originator_ORC12
+                     Endif
+                  End If   
+               Endif
+            Endif
+            If IsNull(document_originator) Then
+               processing_log.Add("Giving up.. god knows who ordered/created/authored this message")
+               processing_log.Add("Will use the MSH Segment sender:" & sender!msh_sending_entity)
+               document!originator = sender!msh_sending_entity
             Else
-               document!originator = Trim(requesting_dr!title & " " & requesting_dr!firstname & " " & requesting_dr!surname)
-            End If   
-            '----------------------------------------------------------------------------------------------------------
-            'I cannot find any consistant pattern to figure out who has written the letter. if in fact this is a letter
-            'except to say that by and large path/radiology companies don't use the & in obr32
-            'with MO from specialists it seems to be the Principal_Result_Interpreter (seg 32)
-            'Up to date the only company I can't intelligently work out it this one:
-            '----------------------------------------------------------------------------------------------------------
-            If msh_sender <> "Hunter Radiology" Then
-               If hl7[modHL7Constants.OBR_Principal_Result_Interpreter] Then
-                  If InStr(hl7[modHL7Constants.OBR_Principal_Result_Interpreter], "&") Then
-                     document!originator = Get_Originator(hl7[modHL7Constants.OBR_Principal_Result_Interpreter])
-                  End If
-               End If
-            End If
-            
-            If document!originator = "" Then  'xx FIXME: was missing a then but still running ?gambas bug
-               If attending_dr.count Then
-                  document!originator = attending_dr!title & " " & attending_dr!firstname & " " & attending_dr!surname
-               End If
-            End If   
-            document!fk_lu_urgency = const.UrgencyLevelRoutine
+               If IsNull(document_originator!wholename) Then   
+                  document!originator = Trim(document_originator!title & " " & document_originator!firstname & " " & document_originator!surname)
+               Else  
+                  document!originator = document_originator!wholename   
+               End If   
+               If sender!fk_lu_message_display_style = const.Document_Display_As_Letter Then
+                  Processing_Log.Add("The Document seems to be a letter and written by " & document!originator)
+               Else
+                  Processing_Log.Add("The Document seems to be a result which was ordered by " & document!originator)
+               Endif
+            End If 
+            processing_log.Add("Filtering out crap from within some text... eg tabs")
             sstring = Replace$(hl7[modHL7Constants.OBR_Request, modHL7Constants.OBR_Request_Name], "\\T\\", " & ")
             document!tag = sstring
+            processing_log.Add("The document tag supplied in the message was " & document!tag)
             'some clinical comments have cr imbedded for some reason - more haps crap
             document!comment_on_document = hl7[modHL7Constants.OBR_Clinical_Notes]
             document!comment_on_document = Replace(document!comment_on_document, "\\.br\\", " ")
             If Right(document!comment_on_document) = "," Then
                document!comment_on_document = Left(document!comment_on_document, Len(document!comment_on_document) - 1)
             Endif
-            'this works for douglas - check the others sample: OBR|1|3-00792|231231847-M-MSU^NATA^2178^N| we want:231231847
-            bits = New String[]
-            bits = Split(hl7[modHL7Constants.OBR_Episode], "-")
             '------------------------------------------------------------------------------------------------
             ' Reference from providers of the service structure is variable: 
+            ' douglas - OBR|1|3-00792|231231847-M-MSU^NATA^2178^N| we want:231231847
+            ' HIG     - ditto
+            ' laverty - OBR|1||11-1273373-FBE-0|F
+            ' helathscope - ditto
             ' Please don't switch this construct around as some vendors have both hats and - in the one segment
             '--------------------------------------------------------------------------------------------------
-            If InStr(hl7[modHL7Constants.OBR_Episode], "^") Then     'e.g GP Access   
-               document!provider_of_service_reference = Split(hl7[modHL7Constants.OBR_Episode], "^")[modHL7Constants.OBR_Episode_Number]
+            If InStr(hl7[modHL7Constants.OBR_Episode], "^") Then     
+               document!provider_of_service_reference = Split(hl7[modHL7Constants.OBR_Episode], "^")[0]
                If InStr(document!provider_of_service_reference, "-") Then
-                  document!provider_of_service_reference = Split(document!provider_of_service_reference, "-")[0]
+                  bits = Split(document!provider_of_service_reference, "-")
+                  If Len(bits[0]) < 3 Then
+                     document!provider_of_service_reference = bits[1] 
+                  Else
+                     document!provider_of_service_reference = bits[0] 
+                  Endif 
+                  ' document!provider_of_service_reference = Split(hl7[modHL7Constants.OBR_Episode], "-")[0]
                End If
-            Else If InStr(hl7[modHL7Constants.OBR_Episode], "-") Then    'e.g Douglas Hanly Moir and most pathology providers
-               document!provider_of_service_reference = Split(hl7[modHL7Constants.OBR_Episode], "-")[modHL7Constants.OBR_Episode_Number]
-            Else                                                         'f--ked if I know what the separator is, if any
-               document!provider_of_service_reference = hl7[modHL7Constants.OBR_Episode]
+            Else                                                       
+               If InStr(hl7[modHL7Constants.OBR_Episode], "-") Then   
+                  document!provider_of_service_reference = Split(hl7[modHL7Constants.OBR_Episode], "-")[1] 'eg laverty, healthscope
+               Else
+                  document!provider_of_service_reference = hl7[modHL7Constants.OBR_Episode]
+               Endif
+               
             End If
-            document!internal_reference = hl7[modHL7Constants.OBR_Our_Reference]  
-            document!pk = modDBConnect.insert("documents.documents", document)                                       'save to documents table
-            '    currentconsult = New CConsult(Selected_Inbox)           'Each patient has a new consult 
-            '   currentconsult.Set(const.ConstConsultType_AuditNote, "importing document")
-            
-            '  modAudit.MakeAudit(cConsult, "HL7 File Import", "documents.documents", document!pk, fk_section, "notes") 'audit trail
+            document!internal_reference = "" 'until the hl7 vendors fix their stuff hl7[modHL7Constants.OBR_Our_Reference]  
+            document!pk = modDBConnect.insert("documents.documents", document)  
+            processing_log.Add("New document was successfully inserted into the documents.documents table")
+            processing_log.Add("Now will analyse the OBX segments....")
             Do While hl7.Next("OBX", "OBR", "PID", "MSH")
                '-------------------------------------------------
                ' table documents.observations is the obx segment:
@@ -607,10 +791,11 @@ Private Sub Process_File(hl7 As CHL7, fname As String)
                '   result_status text,
                '   date_last_normal date,
                '   user_defined_access_checks text,
-               '   observation_date date,
+               '   observation_date date,hl7
                '   value_numeric double precision,
                '   loinc text
                '---------------------------------------------------
+               
                obx = New Collection
                obx!fk_document = document!pk
                obx!set_id = hl7[1]
@@ -623,8 +808,8 @@ Private Sub Process_File(hl7 As CHL7, fname As String)
                   Endif
                Endif
                obx!sub_identifier = hl7[4]
-               Print hl7[5]
                sstring = Replace$(hl7[5], "\\T\\", " & ") 'FIXME, NEEDS ALSO SOME .BR AND OTHER \ \ FIXES
+               obx!value = Replace$(hl7[5], "\\R\\", "")   'IAN CHECK THIS WHATIS \\R\\ it seems to litter some letter
                obx!value = sstring
                obx!units = hl7[6, 1]
                obx!reference_range = hl7[7]
@@ -653,7 +838,6 @@ Private Sub Process_File(hl7 As CHL7, fname As String)
                         sString = Replace$(sString, "<^", "")
                         Try obx!value_numeric = CFloat(sString)
                      End If
-                     
                      If InStr(sString, ">") And Not (InStr(sString, ">^")) Then 
                         obx!value_numeric_qualifier = ">"
                         sString = Replace$(sString, ">", "")
@@ -664,19 +848,19 @@ Private Sub Process_File(hl7 As CHL7, fname As String)
                         sString = Replace$(sString, ">^", "")
                         Try obx!value_numeric = CFloat(sString)
                      End If 
-                     
                   End If
                Endif     
-               
                If obx!value_type = "FT" Then
                   'need both segments,because if a free text field contained PIT which didn't designate PIT (I've encountered this) it would exclude data
                   If (InStr(hl7[2] & "|" & hl7[3], "FT|^^PIT") Or InStr(hl7[2] & "|" & hl7[3], "FT|PIT")) Then
                      obx!pit = True
                   End If
-               End If
-               If hl7[3, 2] = "LN" Then
-                  obx!loinc = hl7[3, 0]
-               Endif
+               End If 
+               If obx!value_type = "NM" Then
+                  If hl7[3, 2] = "LN" Then
+                     obx!loinc = hl7[3, 0]
+                  Endif
+               End If   
                'Not sure what the EN stands for as my internet is down
                
                ' If obx!value_type = "ED" Then '[5,2]=JPEG,PDF, [5,3]=base64 [5,4]=data
@@ -686,539 +870,37 @@ Private Sub Process_File(hl7 As CHL7, fname As String)
                ' 
                '    Tempfile = Temp() & ".jpeg"
                '    File.Save(Tempfile, ModBase64.FromB64(hl7[5, 4]))
+               '    Wait  
                '    Try embedded_picture = Picture.Load(Tempfile)
                '    If Not Error Then
                '    '  
-               '    '    sHtml = "<Html><body><img src='" & tempfile & "'></body></html>"
-               '    '    temphtmlFile = modUtil.Write_HTML(shtml)
-               '    '    Shell "wkhtmltopdf " & temphtmlFile & " /tmp/output.pdf" Wait
+               '       sHtml = "<Html><body><img src='" & tempfile & "'></body></html>"
+               '       sString = modUtil.Write_HTML(shtml)
+               '       Shell "wkhtmltopdf " & sString & " /tmp/output.pdf" Wait
+               '       PdfDocument = New Collection
+               '    End If   
                ' End If  
-               Print obx
                modDBConnect.insert("documents.observations", obx)
             Loop
+            processing_log.Add("The OBX segments have been successfully analysed and saved but not yet committed to the database")
          Loop 
-      Loop   
+      Loop 
    Loop
+   
    If Not any_msh Then
       Error.Raise("No valid MSH segments found")
    Endif
    
 End
 
-Private Sub Process_File_pre_24aug14(hl7 As CHL7, fname As String)
-   '-----------------------------------------------------------
-   'Process a hl7  File
-   'the contents saved to the documents and observations table
-   'This whole sub is **crap++** works, but needs re-writing
-   'fixme
-   '-----------------------------------------------------------
+
+
+Public Function Get_Name_As_String(name As Collection) As String
    
-   Dim audit As Collection 
-   Dim sender As Collection
-   Dim sString As String 
-   Dim msh_sender As String 
-   Dim intended_recipient As Collection 
-   Dim attending_dr As Collection 
-   Dim requesting_dr As Collection
-   Dim consulting_dr As Collection 
-   Dim sending_person As Collection
-   Dim Originator As String  ' the person on whose behalf the hl7 was sent
-   Dim usual_dr As Collection
-   Dim pat As Collection
-   Dim sql As String
-   Dim sql_prefix As String
-   Dim r As Collection
-   Dim fk_patient As Integer
-   Dim fk_unmatched_patient As Integer
-   Dim fk_staff As Integer
-   Dim fk_unmatched_staff As Integer
-   Dim fk_unmatched_sender As Integer
-   Dim obx As Collection
-   Dim document As Collection
-   Dim obx_type As String 
-   Dim bits As String[] 
-   Dim Staff_IDs As Collection
-   Dim skipfile As Boolean
-   Dim sending_application As String
-   Dim embedded_picture As Picture
-   Dim Tempfile As String 
-   Dim file_ending As String 
-   Dim iRemoveThis As Integer
-   Dim any_msh As Boolean = False
-   
-   Do While hl7.Next("MSH")           '
-      '---------------------------------------------------------------------------
-      'find out who the sender is and attempt to get a match from contacts database
-      '----------------------------------------------------------------------------
-      msh_sender = modHL7Process.Get_SendingEntity(hl7[modHL7Constants.MSH_Sending_Facility]) '      , fname)
-      sending_application = modHL7Process.Get_SendingEntity(hl7[modHL7Constants.MSH_Sending_Application])
-      any_msh = True
-      '------------------------------------------------------------------------------------
-      'The sender collection is either matched to existing organisation/employee or person
-      'or unmatched, with the unkown sender saved to documents.sending_entity
-      '----------------------------------------------------------------------------------
-      Sender = Get_Sender(msh_sender, sending_application)
-      '---------------------------------------------------------------------------------------
-      'Some messages may be only for one patient, eg gpAccess discharge
-      'and have PRD  segment(s) at the top  e.g one or more, often 3! 
-      ' PRD  = provider data segment
-      ' PRD|RP = referring provider
-      ' PRD|PP = primary care provider
-      ' PRD|CP = consulting provider
-      ' PRD|RT^Referred to Provider^HL70286|Terry^Richard^^^Dr|
-      ' Internally they don't conform eg mostly we have provider number ^surname^firstname etc
-      ' GP Access in their PRD fields sometimes as eg Dr Joe Blogs
-      '---------------------------------------------------------------------------------------
-      Do While hl7.Next("PRD", "PID", "MSH")
-         ' If hl7.Next("PRD", "PID", "MSH")
-         Select Case hl7[1, 0]
-            Case "CP", "RP" 'referring provider
-               'crap: Dr Access sets this as 'Dr Joe Blogs'
-               attending_dr = New Collection
-               requesting_dr = New Collection
-               
-               If InStr(hl7[2], "^") Then
-                  bits = Split(hl7[2], "^")
-                  attending_dr!title = bits[4]
-                  attending_dr!firstname = bits[1]
-                  attending_dr!surname = bits[0]       
-               Else
-                  attending_dr = New Collection
-                  requesting_dr = New Collection
-                  bits = Split(hl7[2], " ")
-                  If bits.count = 2 Then
-                     attending_dr!firstname = bits[0]
-                     attending_dr!surname = bits[1]                  
-                  Else
-                     attending_dr!title = bits[0]
-                     attending_dr!firstname = bits[1]
-                     attending_dr!surname = bits[2]                  
-                  End If
-                  requesting_dr = attending_dr 'temp patch for gpaccess
-               End If
-            Case "RT"  'referred to provider = PP in GPACcess but can be confusing where the specialists software
-               'decide that they are the primary provider! - all a matter of interpretation
-               'PRD|PP^General provider/Primary provider^HL70286|McGrath^Shaun^^^Dr|
-               'PRD|RP^Referring Provider^HL70286|McGrath^Shaun^^^Dr|
-               'PRD|RT^Referred to Provider^HL70286|Terry^Richard^^^Dr|
-               bits = Split(hl7[2], "^")
-               usual_dr = New Collection 
-               usual_dr!title = bits[4]
-               usual_dr!firstname = bits[1]
-               usual_dr!surname = bits[0]
-               staff_IDs = Get_Staff_Member(usual_dr, fname)
-               fk_staff = staff_IDs!fk_staff
-               fk_unmatched_staff = staff_IDs!fk_unmatched_staff
-               
-            Case "PP"    'this one does have hats all the time I think, PP= primary care provider
-               'However see above, some specialists regard themselves as primary care provider
-               'so not sure how to solve this, at moment RT will over-ride PP as it comes later in the file
-               requesting_dr = New Collection
-               '  attending_dr = New collection 
-               bits = Split(hl7[2], "^")
-               usual_dr = New Collection 
-               usual_dr!title = bits[4]
-               usual_dr!firstname = bits[1]
-               usual_dr!surname = bits[0]
-               staff_IDs = Get_Staff_Member(usual_dr, fname)
-               fk_staff = staff_IDs!fk_staff
-               fk_unmatched_staff = staff_IDs!fk_unmatched_staff
-               
-         End Select
-      Loop
-      
-      Do While hl7.Next("PID", "MSH")
-         '-----------------------------------------------------------------------
-         'Attempt to match patient, if fail> save in documents.unmatched_patients
-         'Variations: surname firstname eg smith john
-         '                              eg smith john p
-         '                              eg smith john peter 
-         '-----------------------------------------------------------------------
-         fk_unmatched_patient = 0
-         fk_patient = 0
-         pat = modHL7Process.Make_Patient(hl7)
-         '----------------------------------------------------------
-         'Limit 1 because single patient can have multiple addresses
-         '----------------------------------------------------------
-         sql = "Select * from contacts.vwPatients where "
-         sql &= "lower (firstname)=$$" & Lower(pat!firstname) & "$$ "
-         sql &= " AND lower (surname)=$$" & Lower(pat!surname) & "$$"
-         If Not InStr(pat!full_id, "00:00:00") Then sql &= " And birthdate = '" & Format(pat!birthdate, "dd/mm/yyyy") & "'"
-         sql &= " limit 1"
-         r = modDBConnect.exec_query_first(sql)
-         If IsNull(r) Then
-            'see if there is a middle name
-            ' try again with reversed name
-            sql = "Select * from contacts.vwPatients where "
-            sql &= "lower (surname)=$$" & Lower(pat!firstname) & "$$ "
-            sql &= " AND lower (firstname)=$$" & Lower(pat!surname) & "$$"
-            If Not InStr(pat!full_id, "00:00:00") Then sql &= " And birthdate = '" & Format(pat!birthdate, "dd/mm/yyyy") & "'"
-            sql &= " limit 1"
-            r = modDBConnect.exec_query_first(sql)
-            If IsNull(r) Then
-               'perhaps they have sent example "Raymond Jones" and we have Raymond Bruce Jones" 'poor DB design on our part?
-               sql = "Select * from contacts.vwPatients where "
-               sql &= "lower (firstname) ILIKE $$%" & Lower(pat!firstname) & "%$$ "
-               sql &= " AND lower (surname)= $$" & Lower(pat!surname) & "$$"
-               If Not InStr(pat!full_id, "00:00:00") Then sql &= " And birthdate = '" & Format(pat!birthdate, "dd/mm/yyyy") & "'"
-               sql &= " limit 1"
-               r = modDBConnect.exec_query_first(sql)
-               If IsNull(r) Then
-                  '-----------------------------------------------------------------------------------
-                  'ok, give in, time to create unmatched patient
-                  'Now see if this patient is already in the unmatched_patients table, if not add them
-                  '-----------------------------------------------------------------------------------
-                  sql = "Select * from documents.unmatched_patients where "
-                  sql &= "lower (firstname)=$$" & Lower(pat!firstname) & "$$ "
-                  sql &= " AND lower (surname)=$$" & Lower(pat!surname) & "$$"
-                  If Not InStr(pat!full_id, "00:00:00") Then 
-                     sql &= " And birthdate = '" & Format(pat!birthdate, "dd/mm/yyyy") & "'"
-                  Else
-                     pat.Remove("birthdate")
-                  End If  
-                  pat.Remove("full_id")
-                  Try pat.remove("middle_name")
-                  Try pat.remove("unknown")         'some idiot puts in segments like surname^^firstname^middlename
-                  r = modDBConnect.exec_query_first(sql)
-                  If IsNull(r) Then
-                     fk_unmatched_patient = modDBConnect.insert("documents.unmatched_patients", pat)
-                  Else
-                     If Not IsNull(r!fk_real_patient) Then
-                        fk_patient = r!fk_real_patient
-                        fk_unmatched_patient = 0
-                     Else
-                        fk_patient = 0
-                        fk_unmatched_patient = r!pk
-                     End If
-                  End If
-               Else
-                  fk_patient = r!fk_patient
-               End If   
-            Else
-               fk_patient = r!fk_patient
-            Endif
-         Else
-            fk_patient = r!fk_patient
-         Endif
-         
-         If hl7.Next("PV1", "OBR", "PID", "MSH") Then
-            '-----------------------------------------------------------------------------------------------------------------------------------------------
-            'Match the intended recipient to existing staff member, if fails creates entry in documents.unmatched_staff table
-            '
-            'More complicated than you might think. It may already have been extracted above from the PRD segment (GP Access for example)
-            '
-            'In most hl7 files, the segment after PID is in fact a PV1 to identify provider,
-            'however, in some, the provider is identified **PRIOR** to PID in one or more PRD segments
-            'for example this file:
-            '
-            ' FHS|^~\&|Medical-Objects|GP Access - HUDGP
-            ' BHS|^~\&|Medical-Objects|GP Access - HUDGP
-            ' MSH|^~\&|MedTech v6.3.1|GP Access - HUDGP^6FB0130D-5700-4EED-BEE7-BA1C92FB636E^GUID|HL7 v2.3.1|stub|20090303095117+1000|GP Access - HUDGP (Capricorn) <MO170909.Capricorn Two>|REF^I12|195193|P|2.3.1^AUS&&ISO^AS4700.6&&L
-            ' RF1|P^Pending^HL70283|R^Routine^HL70280|DRF^Discharge referral^HL70281|AM^Assume management^HL70282~DS^Discharge Summary^HL70282||MT090303095118^GP Access - HUDGP^6FB0130D-5700-4EED-BEE7-BA1C92FB636E^GUID|20090303095114+1100||20090303095117+1000|F^For your information^HL70336
-            ' PRD|CP^Consulting Provider^HL70286|Dr Joe Blow|PO Box 572^^NEWCASTLE^NSW^2300^^M
-            ' PRD|RT^Referred To Provider^HL70286|TERRY^RICHARD^^^Dr.|141 Dudley Road^Whitebridge Medical Centre^WHITEBRIDGE^NSW^2290^^M~141 Dudley Road^Whitebridge Medical Centre^WHITEBRIDGE^NSW^2290^^O||^WPN^PH^^61^02^49436511~^WPN^FX^^61^02^49435929||0458332T^AUSHICPR
-            ' PRD|PP^General provider/Primary provider^HL70286|TERRY^RICHARD^^^Dr.|141 Dudley Road^Whitebridge Medical Centre^WHITEBRIDGE^NSW^2290^^M~141 Dudley Road^Whitebridge Medical Centre^WHITEBRIDGE^NSW^2290^^O||^WPN^PH^^61^02^49436511~^WPN^FX^^61^02^49435929||0458332T^AUSHICPR
-            ' PID|1|...........................
-            ' OBR|1|...........................
-            ' OBX|1|..........................
-            ' BTS|1
-            ' FTS|1|Powered by www.medical-objects.com
-            '
-            ' Hence If we just Do a a hl7.Next(here)we will Move onto the first OBR In the majority Of cases
-            ' so I've inserted above  If hl7.Next_Segment_Name() = "PV1" Then 
-            '
-            'A conforming PV1 segment such as Douglass Labs HL7 looks like this:
-            '     PV1|1|O||||||0458332T^TERRY^RICHARD^^^DR|0458332T^TERRY^RICHARD^^^DR|||||||||||
-            '
-            'A non conforming PV1 segment eg the teaching hospital JHH, there may be no hats in the PV1 segment separating the recipient name
-            'so we can't split the recipient name properly by using the little hats
-            'PV1|1|O|||||0458332T^Dr R TERRY^^^^^^^^^^^^~0458332T^^^^^^^^^^^^||0458332T^Dr R TERRY^^^^^^^^^^^^~0458332T
-            '
-            'so I've doctored the  hl7.GetNameAsCollection to take this into account, however not that well it seems as this PV1
-            'brings it unstuck
-            '
-            'PV1|||BEL|||||UUUH^UNIFIED HEALTHCARE^^^^^^^LOCNATA2203|0458332T^TERRY^RICHARD^ ^^DR^^^AUSHICPR
-            '       
-            'Also note that they only using the doctors initial, instead of full firstname, so I'll search on provider first which is safest
-            'as there could be two doctors in the practice Dr John Smith Dr Justin Smith etc.
-            '
-            ' PV1 7, 8, 9 = attending Dr, Referring Dr, consulting Dr
-            ' Components: <ID number (ST)> ^ <family name (ST)> ^ <given name (ST)> ^ <middle initial or name (ST)>
-            ' ^ <suffix (e.g., JR or III) (ST)> ^ <prefix (e.g., DR) (ST)> ^ <degree (e.g., MD) (ST)>
-            ' ^ < source table( Is ) > ^ < assigning authority(HD) > ^ < name type code(ID) > 
-            '^ < identifier check digit(ST) > ^ < code identifying the check digit scheme employed(ID) >
-            '^ < identifier type code( Is ) > ^ < assigning facility(HD) >
-            'Subcomponents of assigning authority: <namespace ID (IS)> & <universal ID (ST)> & <universal ID type (ID)>
-            ' Subcomponents of assigning facility: <namespace ID (IS)> & <universal ID (ST)> & <universal ID type (ID)>
-            'PV1: Hunter radiology
-            '            seg 7  attending provider   no     modHL7Constants.PV1_Attending
-            '            seg 8  requesting provider  yes  modHL7Constants.PV1_Requesting
-            '            seg 9  consulting provider  yes  modHL7Constants.PV1_Consulting
-            '     Hunter Imaging Group
-            '            seg 7  attending provider   no     modHL7Constants.PV1_Attending
-            '            seg 8  requesting provider  yes  modHL7Constants.PV1_Requesting
-            '            seg 9  consulting provider  yes  modHL7Constants.PV1_Consulting
-            '    HAPS
-            '            seg 7  attending provider   yes     modHL7Constants.PV1_Attending ie attending = requesting
-            '            seg 8  requesting provider  no  modHL7Constants.PV1_Requesting
-            '            seg 9  consulting provider  yes  modHL7Constants.PV1_Consulting
-            '   DHM
-            '            seg 7  attending provider   no   modHL7Constants.PV1_Attending ie attending = requesting
-            '            seg 8  requesting provider  yes  modHL7Constants.PV1_Requesting
-            '            seg 9  consulting provider  yes  modHL7Constants.PV1_Consulting
-            
-            '   Newcastle Pathology
-            '           seg 7  attending provider   no   modHL7Constants.PV1_Attending ie attending = requesting
-            '            seg 8  requesting provider  yes  modHL7Constants.PV1_Requesting
-            '            seg 9  consulting provider  yes  modHL7Constants.PV1_Consulting
-            '                     ordering_provider is in OBR 16     
-            '   symbion
-            '       seg 7  attending provider   no   modHL7Constants.PV1_Attending ie attending = requesting
-            '            seg 8  requesting provider  yes  modHL7Constants.PV1_Requesting
-            '            seg 9  consulting provider  yes  modHL7Constants.PV1_Consulting
-            '                     ordering_provider is in OBR 16     
-            
-            '-------------------------------------------------------------------------------------------------------------------------------------
-            intended_recipient = hl7.GetNameAsCollection(modHL7Constants.PV1_Consulting) 'this should be the GP or staff member the message is for
-            '------------------------------------------------------------------------------------
-            'HAPS sometimes dosn't put in the doctor's name, perhaps others are just as forgetful
-            '------------------------------------------------------------------------------------
-            If intended_recipient.count = 0 Or IsNull(intended_recipient) Then
-               fk_staff = modAdminDBI.Config_Get("fk_hl7_fallback_staff_member", 0)
-            Else
-               staff_IDs = Get_Staff_Member(intended_recipient, fname)
-               fk_staff = staff_IDs!fk_staff
-               fk_unmatched_staff = staff_IDs!fk_unmatched_staff
-            Endif
-            attending_dr = hl7.GetNameAsCollection(modHL7Constants.PV1_Attending)    'attending
-            usual_dr = hl7.GetNameAsCollection(modHL7Constants.PV1_Consulting)       'conisulting
-            requesting_dr = hl7.GetNameAsCollection(modHL7Constants.PV1_Requesting)  'same as referring dr in PV1 fix me
-            If requesting_dr.count = 0 Then
-               requesting_dr = attending_dr
-            End If 
-         Endif
-         If hl7.Next("ORC", "OBR", "PID", "MSH")
-            If hl7[12] <> "" Then  'fixme, can't remember which files needed this
-               requesting_dr = hl7.GetNameAsCollection(modHL7Constants.ORC_Ordering_Provider)
-               attending_dr = hl7.GetNameAsCollection(modHL7Constants.ORC_Ordering_Provider)
-            End If
-         End If
-         
-         Do While hl7.Next("OBR", "PID", "MSH")
-            '---------------------------------------------------------------------------------------
-            'Some notes on the document:
-            'Remember the document concept is quite generic, examples of documents are:
-            '  A Scanned 20 page file as a pdf
-            '  An email to a staff member
-            '  A single pathology result for a FBC
-            '  A single page after hours consultation summary
-            '  A 5 page hospital discharge summary
-            '  An inter-practice staff memo
-            '
-            'Hence there can be some confusion around terms
-            '     document!date_requested may only apply to pathology
-            '     document!date_enacted is named so because it reprents when the document was created
-            '     e.g a pathology request is the start of the document chain
-            '     a hospital discharge summary  is the creation or enactment of the document
-            '----------------------------------------------------------------------------------------
-            If IsNull(intended_recipient) Then    'healthscope have the this in OBR only and then ambigous
-               intended_recipient = hl7.GetNameAsCollection(modHL7Constants.OBR_Requesting_Provider) 'this should be the GP or staff member the message is for
-               If intended_recipient.count <> 0 Then 
-                  staff_IDs = Get_Staff_Member(intended_recipient, fname)
-                  fk_staff = staff_IDs!fk_staff
-                  fk_unmatched_staff = staff_IDs!fk_unmatched_staff
-               End If   
-            Endif
-            document = New Collection
-            document!fk_sending_entity = sender!fk_sending_entity
-            document!fk_lu_display_as = sender!fk_lu_message_display_style 'defaults to 1 = letter different name = historical- fiXME SOMETIME in documents.sending_entities
-            document!source_file = File.name(fname) 
-            document!imported_time = Now()
-            document!date_requested = Val(Format(DateString_Decode(hl7[modHL7Constants.OBR_Request_Date]), "dd/mm/yyyy"))
-            If IsNull(DateString_Decode(hl7[modHL7Constants.OBR_Collect_Date])) Then
-               document!date_created = document!date_requested
-            Else
-               document!date_created = Val(Format(DateString_Decode(hl7[modHL7Constants.OBR_Collect_Date]), "dd/mm/yyyy"))
-            End If   
-            ' document!date_requested = Val(Format(modUtil.DateString_Decode(hl7[modHL7Constants.OBR_Request_Date]), "dd/mm/yyyy"))
-            ' document!date_created = Val(Format(modUtil.DateString_Decode(hl7[modHL7Constants.OBR_Collect_Date]), "dd/mm/yyyy"))
-            If fk_patient <> 0 Then document!fk_patient = fk_patient
-            If fk_unmatched_patient <> 0 Then document!fk_unmatched_patient = fk_unmatched_patient   
-            If fk_staff <> 0 Then document!fk_staff_destination = fk_staff
-            If fk_unmatched_staff <> 0 Then document!fk_unmatched_staff = fk_unmatched_staff
-            
-            requesting_dr = hl7.GetNameAsCollection(modHL7Constants.OBR_Requesting_Provider)  'same as referring dr in PV1 fix me
-            If IsNull(requesting_dr) Then
-               document!originator = "Unknown Sending Provider"
-            Else
-               document!originator = Trim(requesting_dr!title & " " & requesting_dr!firstname & " " & requesting_dr!surname)
-            End If   
-            '----------------------------------------------------------------------------------------------------------
-            'I cannot find any consistant pattern to figure out who has written the letter. if in fact this is a letter
-            'except to say that by and large path/radiology companies don't use the & in obr32
-            'with MO from specialists it seems to be the Principal_Result_Interpreter (seg 32)
-            'Up to date the only company I can't intelligently work out it this one:
-            '----------------------------------------------------------------------------------------------------------
-            If msh_sender <> "Hunter Radiology" Then
-               If hl7[modHL7Constants.OBR_Principal_Result_Interpreter] Then
-                  If InStr(hl7[modHL7Constants.OBR_Principal_Result_Interpreter], "&") Then
-                     document!originator = Get_Originator(hl7[modHL7Constants.OBR_Principal_Result_Interpreter])
-                  End If
-               End If
-            End If
-            
-            If document!originator = "" Then  'xx FIXME: was missing a then but still running ?gambas bug
-               If attending_dr.count Then
-                  document!originator = attending_dr!title & " " & attending_dr!firstname & " " & attending_dr!surname
-               End If
-            End If   
-            document!fk_lu_urgency = const.UrgencyLevelRoutine
-            sstring = Replace$(hl7[modHL7Constants.OBR_Request, modHL7Constants.OBR_Request_Name], "\\T\\", " & ")
-            document!tag = sstring
-            'some clinical comments have cr imbedded for some reason - more haps crap
-            document!comment_on_document = hl7[modHL7Constants.OBR_Clinical_Notes]
-            document!comment_on_document = Replace(document!comment_on_document, "\\.br\\", " ")
-            If Right(document!comment_on_document) = "," Then
-               document!comment_on_document = Left(document!comment_on_document, Len(document!comment_on_document) - 1)
-            Endif
-            'this works for douglas - check the others sample: OBR|1|3-00792|231231847-M-MSU^NATA^2178^N| we want:231231847
-            bits = New String[]
-            bits = Split(hl7[modHL7Constants.OBR_Episode], "-")
-            '------------------------------------------------------------------------------------------------
-            ' Reference from providers of the service structure is variable: 
-            ' Please don't switch this construct around as some vendors have both hats and - in the one segment
-            '--------------------------------------------------------------------------------------------------
-            If InStr(hl7[modHL7Constants.OBR_Episode], "^") Then     'e.g GP Access   
-               document!provider_of_service_reference = Split(hl7[modHL7Constants.OBR_Episode], "^")[modHL7Constants.OBR_Episode_Number]
-               If InStr(document!provider_of_service_reference, "-") Then
-                  document!provider_of_service_reference = Split(document!provider_of_service_reference, "-")[0]
-               End If
-            Else If InStr(hl7[modHL7Constants.OBR_Episode], "-") Then    'e.g Douglas Hanly Moir and most pathology providers
-               document!provider_of_service_reference = Split(hl7[modHL7Constants.OBR_Episode], "-")[modHL7Constants.OBR_Episode_Number]
-            Else                                                         'f--ked if I know what the separator is, if any
-               document!provider_of_service_reference = hl7[modHL7Constants.OBR_Episode]
-            End If
-            document!internal_reference = hl7[modHL7Constants.OBR_Our_Reference]  
-            document!pk = modDBConnect.insert("documents.documents", document)                                       'save to documents table
-            '    currentconsult = New CConsult(Selected_Inbox)           'Each patient has a new consult 
-            '   currentconsult.Set(const.ConstConsultType_AuditNote, "importing document")
-            
-            '  modAudit.MakeAudit(cConsult, "HL7 File Import", "documents.documents", document!pk, fk_section, "notes") 'audit trail
-            Do While hl7.Next("OBX", "OBR", "PID", "MSH")
-               '-------------------------------------------------
-               ' table documents.observations is the obx segment:
-               '   pk serial NOT NULL,
-               '   fk_document integer,
-               '   set_id integer,
-               '   value_type text,
-               '   identifier text,
-               '   sub_identifier text,
-               '   "value" text,
-               '   units text,
-               '   reference_range text,
-               '   abnormal text,
-               '   probability text,
-               '   nature_abnormality text,
-               '   result_status text,
-               '   date_last_normal date,
-               '   user_defined_access_checks text,
-               '   observation_date date,
-               '   value_numeric double precision,
-               '   loinc text
-               '---------------------------------------------------
-               obx = New Collection
-               obx!fk_document = document!pk
-               obx!set_id = hl7[1]
-               obx!value_type = hl7[2]
-               'temporary maybe patch for this situation: Douglas putting the name of urine drug screen in wrong field
-               obx!identifier = hl7[3, 1]  'actually not the whole segment
-               If IsNull(obx!identifier) Then        'this is quite common in correct hl7, this one was a lab mistake.
-                  If document!tag = "Urine Drug Screen" Then
-                     obx!identifier = hl7[3, 0]
-                  Endif
-               Endif
-               obx!sub_identifier = hl7[4]
-               Print hl7[5]
-               sstring = Replace$(hl7[5], "\\T\\", " & ") 'FIXME, NEEDS ALSO SOME .BR AND OTHER \ \ FIXES
-               obx!value = sstring
-               obx!units = hl7[6, 1]
-               obx!reference_range = hl7[7]
-               obx!abnormal = hl7[8]
-               obx!probability = hl7[9]
-               obx!nature_abnormality = hl7[10]
-               obx!result_status = hl7[11]
-               obx!observation_date = document!date_created 'most labs don't keep OBX 14!!!1 douglas does
-               '--------------------------------------------------------------------------------------
-               'Numeric is a little problematic - to my chagrin after many weeks work I found I was
-               'dropping data on closer examination, due to numeric qualifiers used eg in haematology
-               'and biochem eg egfr >90 basophils <0.1. Only noticed this when my graphing played up
-               'So, attempt a straight conversion, if fails, parse out the signs
-               '--------------------------------------------------------------------------------------
-               If obx!value_type = "NM" Or obx!value_type = "SN" Then 'NM = numeric SN= structured numeric.
-                  sString = hl7[5]
-                  Try obx!value_numeric = CFloat(sString)
-                  If Error Then
-                     If InStr(sString, "<") And Not (InStr(sString, "<^")) Then
-                        obx!value_numeric_qualifier = "<"
-                        sString = Replace$(sString, "<", "")
-                        Try obx!value_numeric = CFloat(sString)
-                     End If
-                     If InStr(sString, "<^") Then
-                        obx!value_numeric_qualifier = "<^"
-                        sString = Replace$(sString, "<^", "")
-                        Try obx!value_numeric = CFloat(sString)
-                     End If
-                     
-                     If InStr(sString, ">") And Not (InStr(sString, ">^")) Then 
-                        obx!value_numeric_qualifier = ">"
-                        sString = Replace$(sString, ">", "")
-                        Try obx!value_numeric = CFloat(sString)
-                     End If 
-                     If InStr(sString, ">^") Then
-                        obx!value_numeric_qualifier = ">^"
-                        sString = Replace$(sString, ">^", "")
-                        Try obx!value_numeric = CFloat(sString)
-                     End If 
-                     
-                  End If
-               Endif     
-               
-               If obx!value_type = "FT" Then
-                  'need both segments,because if a free text field contained PIT which didn't designate PIT (I've encountered this) it would exclude data
-                  If (InStr(hl7[2] & "|" & hl7[3], "FT|^^PIT") Or InStr(hl7[2] & "|" & hl7[3], "FT|PIT")) Then
-                     obx!pit = True
-                  End If
-               End If
-               If hl7[3, 2] = "LN" Then
-                  obx!loinc = hl7[3, 0]
-               Endif
-               'Not sure what the EN stands for as my internet is down
-               
-               ' If obx!value_type = "ED" Then '[5,2]=JPEG,PDF, [5,3]=base64 [5,4]=data
-               '    Print hl7[5, 2]
-               '    Print hl7[5, 3]
-               '    Print hl7[5, 4]
-               ' 
-               '    Tempfile = Temp() & ".jpeg"
-               '    File.Save(Tempfile, ModBase64.FromB64(hl7[5, 4]))
-               '    Try embedded_picture = Picture.Load(Tempfile)
-               '    If Not Error Then
-               '    '  
-               '    '    sHtml = "<Html><body><img src='" & tempfile & "'></body></html>"
-               '    '    temphtmlFile = modUtil.Write_HTML(shtml)
-               '    '    Shell "wkhtmltopdf " & temphtmlFile & " /tmp/output.pdf" Wait
-               ' End If  
-               Print obx
-               modDBConnect.insert("documents.observations", obx)
-            Loop
-         Loop 
-      Loop   
-   Loop
-   If Not any_msh Then
-      Error.Raise("No valid MSH segments found")
-   Endif
+   Return Trim(name!title & " " & name!firstname & " " & name!surname) 
    
 End
+
 Public Function Get_Staff_Member(staff_member As Collection, fname As String) As Collection 
    '--------------------------------------------------------------------
    'Return fk_staff and fk_unmatched_staff
@@ -1235,8 +917,8 @@ Public Function Get_Staff_Member(staff_member As Collection, fname As String) As
    'Now try and match this with a staff member, first via  a provider number
    '------------------------------------------------------------------------
    If staff_member.Exist("provider_number") Then
-     sql = "Select * from admin.vwStaffInclinics where provider_number = $$" & staff_member!provider_number & "$$"
-     unmatched_staff = modDBConnect.exec_query_first(sql)
+      sql = "Select * from admin.vwStaffInclinics where provider_number = $$" & staff_member!provider_number & "$$"
+      unmatched_staff = modDBConnect.exec_query_first(sql)
    Endif
    If IsNull(unmatched_staff) Then
       sql = "Select * from admin.vwStaffInclinics where firstname ILIKE $$" & staff_member!firstname & "$$ AND surname  ILIKE $$" & staff_member!surname & "$$"
@@ -1297,10 +979,11 @@ Public Function Get_Staff_Member(staff_member As Collection, fname As String) As
    
 End
 
-Public Function Get_Sender(SendingEntity As String, SendingApplication As String) As Collection 
+Public Function Get_Sender(msh_seg_sender As Collection, SendingApplication As String) As Collection 
    '------------------------------------------------------------------------------------
-   'using the sending_entity form the MSH segment, looks to see if this sending_entity
-   'has been encountered before.
+   'using the sending_entity from the MSH segment, looks to see if this sending_entity
+   'has been encountered before. If not if the sending entity was a NATA lab, use the msh_seg_sender!fk_lu_message_display_style
+   'otherwise, when new messages end up in the inbox they will look like letters and confuse the user
    'No: saves it to documents.sending_entities
    '   pk serial NOT NULL,
    '   fk_lu_request_type integer, -- The type of provider eg pathology provider, radiology provider
@@ -1330,12 +1013,13 @@ Public Function Get_Sender(SendingEntity As String, SendingApplication As String
    'We do this because the name of the sending entity, often is not a proper company, also
    'the same practice seems to change its sending entity name over time.
    '------------------------------------------------------------------------------------------------
-   SendingEntity = Replace$(SendingEntity, "\\T\\", "&")
-   sql = "Select * from documents.vwsendingentities where msh_sending_entity ILIKE $$" & SendingEntity & "$$ and deleted = False"
+   msh_seg_sender!name = Replace$(msh_seg_sender!name, "\\T\\", "&")
+   sql = "Select * from documents.vwsendingentities where msh_sending_entity ILIKE $$" & msh_seg_sender!name & "$$ and deleted = False"
    r = modDBConnect.exec_query(sql)
    If r.count Then
       sender!fk_sending_entity = r!pk_sending_entities
       sender!fk_lu_message_display_style = r!fk_lu_message_display_style
+      sender!msh_sending_entity = r!msh_sending_entity
    Else
       '-----------------------------------------------------------------------
       'No? then save this so it can be dealt with in inbox/message preferences
@@ -1343,10 +1027,11 @@ Public Function Get_Sender(SendingEntity As String, SendingApplication As String
       'files most likely letter-style
       '------------------------------------------------------------------------
       sender = New Collection
-      sender!msh_sending_entity = SendingEntity
+      sender!msh_sending_entity = msh_seg_sender!name
       sender!msh_transmitting_entity = SendingApplication
-      sender!fk_lu_message_standard = 1 'fix me read the segment, save  version, also detect if pit
-      sender!fk_lu_message_display_style = const.Document_Display_As_Letter 'FIXME: DETECT IF HL7 NEW IS A LETTER OR PATH
+      sender!fk_lu_message_standard = const.document_message_standard_hl7 
+      sender!fk_lu_message_display_style = msh_seg_sender!fk_lu_message_display_style 'fixme make detectioni of letter/result more sophisticated
+      sender!exclude_pit = True
       sender!fk_sending_entity = modInboxDBI.Save_HL7_FileHandling_Defaults(senders, pk_view, sender)
       modDBConnect.CommitTrans()
    End If
@@ -1354,6 +1039,7 @@ Public Function Get_Sender(SendingEntity As String, SendingApplication As String
    
 End
 
+'rename this DateString_YYYMMDD_to Date(DateSTring) as Date
 Public Function DateString_Decode(Datestring As String) As Date
    'expects date in this format yyyymmdd, returns valid date with time 00:00
    'sadly some hl7 contains eg |16/07/14    ??:?|
@@ -1374,5 +1060,71 @@ Public Function DateString_Decode(Datestring As String) As Date
    sTemp = Left(Datestring, 8)
    Try d1 = Date(Val(Left(sTemp, 4)), Val(Mid(sTemp, 5, 2)), Val(Right(sTemp, 2)))
    Return d1
+   
+End
+
+Public Sub Make_ASCII_Safe(s As String) As String
+   ' removes strange Microsoft byte codes to make safe for import into Postgres
+   
+   Dim r As String
+   Dim a As Integer
+   Dim i As Integer
+   
+   For i = 1 To Len(s) 
+      a = Asc(s, i)
+      Select Case a
+         Case 147
+            r &= "\""
+         Case 148
+            r &= "\""
+         Case 145
+            r &= "'"
+         Case 146
+            r &= "'"
+         Case 150
+            r &= "-"
+         Case 151
+            r &= "-"
+         Case 133
+            r &= "..."
+         Case 137
+            r &= "/1000"
+         Case 140
+            r &= "OE"
+         Case 156
+            r &= "oe"
+         Case 198
+            r &= "AE"
+         Case 230
+            r &= "ae"
+         Case 153
+            r &= "TM"
+         Case 169
+            r &= "(C)"
+         Case 188
+            r &= "1/4"
+         Case 189
+            r &= "1/2"
+         Case 190
+            r &= "3/4"
+         Case 178
+            r &= "^2"
+         Case 179
+            r &= "^3"
+         Case 181
+            r &= "mc"
+         Case 247
+            r &= "/"
+         Case 194
+            ' noop
+         Case Else
+            If a < 127 Then
+               r &= Mid$(s, i, 1)
+            Else
+               r &= "?"
+            Endif
+      End Select
+   Next
+   Return r
    
 End

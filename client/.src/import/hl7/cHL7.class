@@ -15,38 +15,16 @@
 ' You should have received a copy of the GNU General Public License
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-Private segments As String[]
+Public segments As String[]
 Private segment_parsed As String[]
 Private curr As Integer
 Private codeset As String = "ISO-8859-1" ' the Windows charset: sadly a safe assumption
 Property Read Number As Integer
 Property Read Segment As String
 
-Public Sub _new(txt As String)
-   
-   Dim i As Integer
-   
-   If txt = "" Then Return
-   If Left$(txt, 1) = "/" Then ' it's a filename
-      txt = File.Load(txt)
-   Endif
-   segments = Split(txt, "\r")
-   If segments.Length = 1 Then
-      segments = Split(txt, "\n")
-   Endif
-   If segments.Length > 1 Then
-      If Left$(segments[1], 1) = "\n" Then ' naughty, naughty, someone's using MS-DOS style newlines
-         For i = 1 To segments.Length - 1
-            segments[i] = Right$(segments[i], -1)
-         Next
-      Endif
-   Endif
-   curr = 0
-   segment_parsed = Null
-   
-End Sub
-
-Public Sub _new_ian_14aug14(txt As String)
+Public Sub _new(txt As String) 
+   'read an hl7 file and splits into segments
+   'takes into accound illegal internal \r (carriage return's) within a segment e.g in a letter
    
    Dim i As Integer
    Dim re As RegExp
@@ -55,12 +33,13 @@ Public Sub _new_ian_14aug14(txt As String)
    If Left$(txt, 1) = "/" Then ' it's a filename
       txt = File.Load(txt)
    Endif
+   txt = modHL7FileImport.Make_ASCII_Safe(txt)         'remove microsoft crap character's which upset postgres
    segments = Split(txt, "\r")
    If segments.Length = 1 Then
       segments = Split(txt, "\n")
    Endif
    If segments.Length > 1 Then
-      If Left$(segments[1], 1) = "\n" Then ' naughty, naughty, someone's using MS-DOS style newlines
+      If Left$(segments[1], 1) = "\n" Then            ' naughty, naughty, someone's using MS-DOS style newlines
          For i = 1 To segments.Length - 1
             segments[i] = Right$(segments[i], -1)
          Next
@@ -82,18 +61,10 @@ Public Sub _new_ian_14aug14(txt As String)
          Endif
       Endif
    Wend
-   Print segments[8]
    curr = 0
    segment_parsed = Null
    
 End Sub
-
-Public Function Get_segments() As String[]
-   
-   'please leave in just for a while
-   Return segments 
-   
-End
 
 Private Function Number_Read() As Integer
    
@@ -149,14 +120,12 @@ Public Function _get(field As Integer, Optional subfield As Integer = -1) As Str
    Else
       subfields = Split(segment_parsed[field], "^")
       Try Return subfields[subfield]
-      ' Try Return subfields[subfield]
       If Error Then Return ""
    Endif
    
 End
 
 ' this is quick convience function to unpack a complex field into a collection
-
 Public Function GetField(field As Integer, names As String[]) As Collection
    
    Dim subfields As String[]
@@ -183,15 +152,37 @@ Public Function GetFieldAsName(field As Integer) As String
    
 End
 
-Public Function GetNameAsCollection(field As Integer, Optional multiple_name_index As Integer = -1) As Collection 
-   '-------------------------------------------------------------------------------------------------------
-   'Getting the name should be simple however these sort of variations occur
-   'firstname^surname, surname^firstname, surname^firstname^provider_no (pn sometimes wrong or extra digits)
+Public Function No_Data_In_Fields(subfields As String[]) As Boolean
+   '---------------------------------------------------------------------------------- 
+   'returns True if no useful data in the subfields eg splits to empty fields contents
+   '---------------------------------------------------------------------------------- 
+   
+   Dim subfield As String
+   
+   For Each subfield In subfields
+      If Trim(subfield) <> "" Then
+         Return
+      End If
+   Next
+   Return True
+   
+End
+
+Public Function GetNameAsCollection(seg_name As String, field As Integer, Optional multiple_name_index As Integer = -1) As Collection 
+   '-------------------------------------------------------------------------------------------------------------------------------
+   'extracts name (person/doctor setc) From a segment, returns empty(Not Null)collection If fails
+   'Getting the name should be simple however these sort of variations occur: 
+   'firstname^surname,
+   'surname^firstname, 
+   'surname^firstname^provider_no (pn sometimes wrong or extra digits)
+   '|2960669J^DR S ADERA,|
+   '|^^| - just empty hats
    'or missing, sometimes titles stuck in there, sometimes incorrect number of hats!
+   'I could go on on on... every conceivable variation of stupidy exists
    'Yes in theory you should just be able to pull in the provider number segment but its not that simple
    'sometime even eg Dr J Smith 34522Y   
    'e.g if parsing OBR-16 or ORC-12:
-   '
+   'Select5
    ' 4.5.1.16 Ordering provider (XCN) 00226
    ' 
    ' Components: <ID number (ST)> ^ <family name (ST)> ^ <given name (ST)> ^ <middle initial or name (ST)> ^ <suffix (e.g., JR or III) (ST)> ^ <prefix (e.g., DR) (ST)> ^ <degree (e.g., MD) (ST)> ^ <source table (IS)> ^ <assigning authority (HD)> ^ <name type code(ID)> ^ <identifier check digit (ST)> ^ <code identifying the check digit scheme employed (ID )> ^ <identifier type code (IS)> ^ <assigning facility (HD)>
@@ -203,115 +194,142 @@ Public Function GetNameAsCollection(field As Integer, Optional multiple_name_ind
    ' Definition: This field identifies the provider who ordered the test. Either the ID code or the name, or both, may be present. This is the same as ORC-12-ordering provider. 
    '
    ' 08/2014: now more crap from HAPS |2960669J^DR S ADERA,|
-   '-------------------------------------------------------------------------------------------------------
+   '--------------------------------------------------------------------------------------------------------------------------------
    
    Dim subfields As String[]
    Dim C As New Collection 
    Dim bits As String[]
    Dim r As Collection 
    Dim tempstring As String
+   Dim substring As String
+   Dim icounter As Integer
+   Dim bHaveProviderNumber As Boolean
+   Dim subfields1 As String[]
+   Dim bReplacedcommas As Boolean
+   Dim bNoUsefulData As Boolean
    
-   If Me[field] = ""
+   If Me[field] = "" Then 
       Return C
    Endif
    If multiple_name_index <> -1 Then
-      tempstring = Split(Me[field], "~")[multiple_name_index]
+      tempstring = Split(Me[field], "~")[multiple_name_index] 'multiple copy to names fixme only looking at first one now
    Else
       tempstring = Me[field]
-   End If   
-   If InStr(tempstring, ",") Then 
-      tempstring = Trim(Replace(tempstring, ",", " ")) 'eg now  |2960669J^DR S ADERA,| could be |2960669J^DR S ADERA|
    End If 
+   If InStr(tempstring, ".") Then 
+      tempstring = Trim(Replace(tempstring, ".", "")) 'eg now  |2960669J^DR. S ADERA,| could be |2960669J^DR S ADERA| or any title with . e.g Dr. > Dr 
+   End If 
+   tempstring = Trim(tempstring)
+   tempstring = Trim(modUtilGUI.Strip_Last_Character(tempstring, True))  'strip any ending fullstops of comma's off eg 'Dr R Cervantes,' from HAPS
    subfields = Split(tempstring, "^")
-   Select Case subfields.Length
-      Case 1
-         c!surname = subfields[0]
-         Return c
-      Case 2
-         'assume idiocy eg HAPS (John Hunter), also interesting laverty
-         'This is HAPS crap - usually like this Dr J Smith, laverty sometimes doesn't put in all the hats
-         bits = Split(subfields[modHL7Constants.RQ_Provider_Surname], " ")
-         Select Case bits.Count
-            Case 2
-               c!title = "Dr" ' at a guess
-               c!provider_number = subfields[0]
-               c!firstname = Replace$(bits[0], ".", " ")
-               c!surname = bits[1]
-            Case 3
-               c!provider_number = subfields[0]
-               c!title = Replace$(bits[0], ".", " ")
-               c!firstname = Replace$(bits[1], ".", " ")
-               c!surname = bits[2]
-         End Select
-         Return c
-      Case 3 'eg have received this |^surname^Mrs| (see above for what it should contain) Genie spits this stuff out
-         'this is essentiall unparsable
-         c!title = "Unknown"
-         c!provider_number = subfields[0]
-         c!firstname = subfields[2]
-         c!surname = subfields[1]
-         Return c
-         'ian reviewion 1899
-         ' Case 3   ' only one case seen
-         '    If subfields[0] = "" Then
-         '      c!surname = subfields[1]
-         '      c!firstname = subfields[2]
-         '      Return c
-         '    Else
-         '       ' really guessing now
-         '       c!surname = subfields.Join(" ")
-         '       Return c
-         '    Endif
-      Case 4   'only ever seen one case of 4, the 3, 4th were empty anway
-         bits = Split(subfields[modHL7Constants.RQ_Provider_Surname], " ")
-         c!title = "Dr" ' at a guess
-         c!provider_number = subfields[0]
-         c!firstname = Replace$(bits[0], ".", " ")
-         c!surname = bits[1]
-         Return c 
-      Case Else
-         '----------------------------------------------------------------------
-         'Ian problem here: some hl7 has names like this Dr^PETER SMITH
-         'but others genuinely have a space in the surname eg De Lyall^Fred^^^Dr
-         'this falls over
-         'This also crashes this segment:
-         'UUH^UNIFIED HEALTHCARE^^^^^^^LOCNATA2203|
-         'Haps has some like 458332T^DR R Terry ^^^^^^^^^^^^^^^(12 of these ^~458332T'
-         'even the health link test message is f*'d  eg. 0123456L^HEALTHLINK^HEALTH ^DR^AUSHICPR
-         'I don't think there is  a good solution here
-         '-----------------------------------------------------------------------
-         c!provider_number = subfields[modHL7Constants.RQ_Provider_Provider_Number]
-         c!firstname = subfields[modHL7Constants.RQ_Provider_Firstname]
-         c!surname = subfields[modHL7Constants.RQ_Provider_Surname] 
-         Try c!title = subfields[modHL7Constants.RQ_Provider_Title]
-         If Error Then  'I give up this could be an ywhere amongst the myriad of f*ing hats
-            c!title = "Unknown"
-         Endif
-         '----------------------------------------------------------------------------------------------------
-         'ok, we could be fucked here  has some like 458332T^DR R Terry ^^^^^^^^^^^^^^^(12 of these ^~458332T
-         'Last penultimate last ditch effort, look up by provider number
-         '----------------------------------------------------------------------------------------------------
-         If c.count <> 4 Then
-            r = modDBConnect.exec_query_first("Select * from admin.vwstaffinclinics where provider_number= $$" & c!provider_number & "$$")
-            If IsNull(r) Then
-               'really last ditch, sometimes they stick a zero in front of a0 provider number which may not be needed
-               If Left(c!provider_number) = "0" Then
-                  c!provider_number = Right(c!provider_number, Len(c!provider_number) - 1)
-                  r = modDBConnect.exec_query_first("Select * from admin.vwstaffinclinics where provider_number= $$" & c!provider_number & "$$")
-               End If
-               If Not IsNull(r) Then
-                  c!firstname = r!firstname
-                  c!surname = r!surname
-                  c!title = r!title                        
-               End If
+   If No_Data_In_Fields(subfields) Then  'This is usually OBR(28) copy to where e.g HAPS put in |^ with no data
+      Return c
+   Endif
+   Select Case seg_name
+      Case "PRD"
+         '---------------------------------------------------------------------------------------------------------------------
+         ' Components: <family name (ST)> ^ <given name (ST)> ^ <middle initial or name (ST)> ^ <suffix (e.g., JR or III) (ST)> ^ <prefix (e.g., DR) (ST)> ^ <degree (e.g., MD) (ST)> ^ <name type code (ID) >
+         ' Definition: This field contains the name of the provider identified in this segment. Generally, this field will describe a physician associated with the referral.
+         ' However, it is not limited to physicians. This field may contain the name of any valid healthcare provider associated with this referral.
+         ' If this Provider Name is a physician’s name, you may refer to PRD-1-provider identifiers (Section 11.5.3.7) for the physician identifier.
+         ' Samples:
+         '       GPAcess |Dr Jon Kochanski| << i.e does not conform
+         '       Others |McGrath^Shaun^^^Dr^^^|
+         ' First does it conform - it, are there hats
+         ' -------------------------------------------------------------------------------------------------------------------------------------------
+         If subfields.Length = 1 And InStr(subfields[0], " ") Then
+            Subfields = Split(subfields[0], " ")
+         End If 
+         If subfields.max > 2 Then   
+            If InStr("mrs,dr,prof,ms,miss,mst,master", Lower(subfields[0])) Then
+               c!title = Replace(subfields[0], ".", "")  
+               c!firstname = subfields[1]
+               c!surname = subfields[2]
+               Return c
+            Endif
+         End If   
+         If Subfields.Max > 3 Then   
+            If InStr("mrs,dr,prof,ms,miss,mst,master", Lower(subfields[4])) Then
+               subfields[4] = Replace(subfields[4], ".", "")
+               c!title = subfields[4]
+               c!firstname = subfields[1]
+               c!surname = subfields[0] 
+               Return c
             Else
-               c!firstname = r!firstname
-               c!surname = r!surname
-               c!title = r!title
-            End If
-         End If
-         Return C
+               c!firstname = subfields[1]
+               c!surname = subfields[0] 
+               Return c
+            Endif
+         End If   
+         
+         If Subfields.Length = 3 Then
+            If InStr("mrs,dr,prof,ms,miss,mst,master", Lower(subfields[0])) Then
+               c!title = Replace(subfields[0], ".", "")
+            Endif
+            c!firstname = subfields[1]
+            c!surname = Subfields[2]
+            Return c 
+         Endif
+         If subfields.Length = 2 Then   'ok, sometimes not a doctor and no title eg Ellen Smith
+            If InStr("mrs,dr,prof,ms,miss,mst,master", Lower(subfields[0])) Then
+               c!title = Replace(subfields[0], ".", "")
+            Endif
+            If InStr("mrs,dr,prof,ms,miss,mst,master", Lower(subfields[1])) Then
+               c!title = Replace(subfields[1], ".", "")
+            Endif
+            If modContactsDBI.Is_Firstname(subfields[0]) Then
+               c!firstname = subfields[0]
+               c!surname = Subfields[1]
+               Return c 
+            Else
+               c!firstname = subfields[1]
+               c!surname = Subfields[0]
+               Return c
+            Endif
+         End If  
+         If subfields.Length = 1 Then 
+            c!surname = subfields[0]
+            Return c      
+         End If   
+      Case "PV1", "ORC", "OBR"
+         '----------------------------------------------------------------------------------------------------------------------
+         ' The PV1 segment is used by Registration/ADT applications to communicate information on a visit-specific basis. 
+         ' This segment can be used to send multiple-visit statistic records to the same patient account or single-visit records
+         ' to more than one account. Individual sites must determine the use for this segment. 
+         ' .eg 458332T^Terry^^Richard^^^Dr^^^L^^^UPIN^^
+         '         ' Sometimes the hats are not in the correct position
+         ' field(7) = Attending Doctor
+         ' field(8) = Referring Doctor
+         ' field(9) = Consulting Doctor .... but often this convention not adhered to
+         ' subfields (5) or (6) usually hold the title
+         ' The ORC segment = common order segment and ORC(12) should be the same as OBR(16) 'ordering provider'
+         ' ---------------------------------------------------------------------------------------------------------------------
+         If modUtil.Provider_Number_Check(subfields[0]) <> "*INVALID*" Then                                'if have a provider number, one of the above patterns will exist
+            c!provider_number = subfields[0]
+         Else          'won't try too hard eg may get this |^surname^title| < crap hl7
+            If subfields.max > 1 Then
+               c!surname = subfields[1]
+               c!firstname = subfields[2] 
+            Endif
+            '  Message.Info("Richard.. invalid or missing provider")
+            Print
+         End If   
+         
+         If subfields.max > 4 Then 
+            If InStr(Lower("Mrs,Dr,Prof,Ms,Miss,Mst,Master"), Lower(subfields[5])) Then 
+               c!title = Replace(subfields[5], ".", "")
+            End If      
+         End If   
+         If subfields.max > 5 Then
+            If InStr(Lower("Mrs,Dr,Prof,Ms,Miss,Mst,Master"), Lower(subfields[6])) Then 
+               c!title = Replace(subfields[6], ".", "")
+            End If   
+         End If   
+         c!surname = subfields[1]
+         c!firstname = subfields[2]
+         Return c
    End Select
+   Return   
    
 End
 

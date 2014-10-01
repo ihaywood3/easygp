@@ -90,7 +90,7 @@ class DBWrapper:
         self.__events = set()
         self.__retry_mode = False
 
-    def each_table(self,tbl,typs):
+    def each_table(self,tbl='.*',typs='r'):
         """set of table names matching the provided regular expression"""
         return set((i['tblnam'] for i in self.query("select nspname || '.' || relname as tblnam from pg_class, pg_namespace where relnamespace = pg_namespace.oid and (not relname ilike 'pg_%%') and nspname<>'information_schema' and nspname || '.' || relname ~ %s and position(relkind in %s) > 0",(tbl,typs))))
 
@@ -98,9 +98,29 @@ class DBWrapper:
         """Set of column names of the listed table"""
         return set((i['attname'] for i in self.query("select attname from pg_attribute, pg_class, pg_namespace where relnamespace = pg_namespace.oid and pg_class.oid = attrelid and nspname || '.' || relname = %s",(tbl,))))
 
+    def column_type(self,tbl,col):
+        """Type name of a particular column"""
+        return self.query("select typname from pg_type,pg_attribute, pg_class, pg_namespace where relnamespace = pg_namespace.oid and pg_class.oid = attrelid and pg_type.oid = atttypid and nspname || '.' || relname = %s and attname = %s",(tbl,col))[0]['typname']
+
     def each_foreign_constraint(self):
-        """list all foreign key constraints in the DB"""
-        return self.query("select nspname || '.' || relname as tblnam, conname from pg_constraint, pg_class, pg_namespace where relnamespace = pg_namespace.oid and pg_class.oid = conrelid and contype='f'")
+        """list all foreign key constraints in the DB, dict keyed by table, dict keyed by column"""
+        q = self.query("""
+select k.conname, n1.nspname || '.' || c1.relname as tbl, a1.attname as col, n2.nspname || '.' || c2.relname as tbl2, a2.attname as col2  from 
+pg_constraint k, 
+pg_class c1, pg_namespace n1, pg_attribute a1,
+pg_class c2, pg_namespace n2, pg_attribute a2
+ where 
+   c1.relnamespace = n1.oid and 
+   c1.oid = k.conrelid and contype='f' and
+   k.confrelid = c2.oid and n2.oid = c2.relnamespace and
+   k.conkey[1] = a1.attnum and a1.attrelid = c1.oid and
+   k.confkey[1] = a2.attnum and a2.attrelid = c2.oid
+   """)
+        r = {}
+        for i in q:
+            if not i['tbl'] in r: r[i['tbl']] = {}
+            r[i['tbl']][i['col']] = {'table':i['tbl2'],'col':i['col2'],'constraint':i['conname']}
+        return r
 
     def is_retry(self):
         """Return True if we are retrying an event after a network failure"""

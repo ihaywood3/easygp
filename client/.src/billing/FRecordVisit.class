@@ -182,12 +182,11 @@ Private Const cTab_Banking As Integer = 2
 Private Const cTab_Reports As Integer = 3
 Private Const cTab_ScheduleFees As Integer = 4
 Private form_batching As FBulkBillBatching
-Private cInvoiceDisplayMode_UnbilledAll As Integer = 0
-Private cInvoiceDisplayMode_UnbilledToday As Integer = 1
-Private cInvoiceDisplayMode_Overdue_1Month As Integer = 2
-Private cInvoiceDisplayMode_Overdue_2Month As Integer = 3
-Private cInvoiceDisplayMode_Overdue_Over3Months As Integer = 4
-Private cInvoiceDisplayMode_InstitutionalAccounts As Integer = 5
+Private cInvoiceDisplayMode_Overdue As Integer = 0
+Private cInvoiceDisplayMode_Overdue_1Month As Integer = 1
+Private cInvoiceDisplayMode_Overdue_2Month As Integer = 2
+Private cInvoiceDisplayMode_Overdue_Over3Months As Integer = 3
+'Private cInvoiceDisplayMode_InstitutionalAccounts As Integer = 5
 Private Reasons_not_billed As Collection
 Private gvwItemsBIlled_columnWidths As Integer
 Private bAreaOfNeed As Boolean 'see FAdminGlobalPreferences/billing help if true the area attracts 10991 item numbers
@@ -317,13 +316,12 @@ Public Sub Init()
       .Columns[11].text = "Owing  "
       .Columns[12].text = "Comment"
    End With
-   cmbInvoices.Add("All Unbilled Consultations", 0)
-   cmbInvoices.Add("Unbilled  Consultations Today", 1)
-   cmbInvoices.Add("Accounts Overdue 1 Month", 2)
-   cmbInvoices.Add("Accounts Overdue 2 Month", 3)
-   cmbInvoices.Add("Accounts Overdue > 3 Months", 4)
-   cmbInvoices.Add("Accounts - Institutional Payers", 5)
-   cmbInvoices.Add("Accounts - Patients", 5)
+   cmbInvoices.Add("Unpaid Accounts", 0)
+   cmbInvoices.Add("Accounts Overdue 1 Month", 1)
+   cmbInvoices.Add("Accounts Overdue 2 Month", 2)
+   cmbInvoices.Add("Accounts Overdue > 3 Months", 3)
+   'cmbInvoices.Add("Accounts - Institutional Payers", 5)
+   'cmbInvoices.Add("Accounts - Patients", 5)
    bAreaOfNeed = modAdminDBI.Config_Get("area_of_need", False)
    Settings_Load()         'load settings for this form
    GridRows = New Collection
@@ -1639,9 +1637,6 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True)
    'fixme only update  this on first pass
    'fime  misnomer invoice or reciept
    '-----------------------------------------
-   If Not IsNull(Unbilled_consultation) And If cmbInvoices.index = cInvoiceDisplayMode_UnbilledAll Or cmbInvoices.index = cInvoiceDisplayMode_UnbilledToday Then
-      modDBConnect.update("clerical.bookings", Null, ["pk": Unbilled_consultation!pk, "invoiced": True])  'may not have an appt.
-   End If
    'fixme won't always be printed, but need to always save latex
    invoice!latex = modBillingDBI.Print_Invoice(invoice!fk_invoice, bPrint, bBulkBill, Null, referrer)
    If Not IsNull(invoice!latex) Then
@@ -2874,8 +2869,6 @@ Public Sub Account_Patient_Display()
    VBox_EditArea_Outer.Enabled = True
    gvwItemsBIlled.Enabled = True
    iAccountDisplayMode = const.Billing_Accounts_Unpaid
-   Print fk_patient
-   Unbilled_refresh()
    cvwInvoices_Refresh()                                                         'show this patients unbilled consultations
    Invoice_New()
    bExit = False
@@ -3520,18 +3513,34 @@ Public Sub Accounts_Reload()
       .Header = False
    End With
    Select Case cmbInvoices.Index
-      Case cInvoiceDisplayMode_UnbilledAll
-         Unbilled_refresh(Null)
-      Case cInvoiceDisplayMode_UnbilledToday
-         txtFilterAccountDate.text = ""
-         Unbilled_refresh(Now())
+      Case cInvoiceDisplayMode_Overdue
+         Accounts_Overdue_Display("0 month", "6 month")
       Case cInvoiceDisplayMode_Overdue_1Month
+         Accounts_Overdue_Display("1 month", "6 month")
       Case cInvoiceDisplayMode_Overdue_2Month
+         Accounts_Overdue_Display("2 month", "6 month")
       Case cInvoiceDisplayMode_Overdue_Over3Months
-      Case cInvoiceDisplayMode_InstitutionalAccounts
+         Accounts_Overdue_Display("3 month", "12 month")
+      'Case cInvoiceDisplayMode_InstitutionalAccounts
    End Select
    
 End
+
+Private Sub Accounts_Overdue_Display(start_duration As String, end_duration As String)
+   
+   Dim p As Collection
+   
+   patients = modBillingDBI.Accounts_Overdue_Find(start_duration, end_duration)
+   cvwAccounts.Clear()
+   Debug start_duration
+   Debug end_duration
+   For Each p In patients
+     cvwAccounts.Add(p!pk_view, p!wholename)
+   Next
+   
+End
+
+
 
 Public Sub columnview2_KeyPress()
    '-----------------------------------------------------------
@@ -3568,40 +3577,22 @@ Public Sub cvwAccounts_Select()
    
    If bexit Then Return
    Inc Application.Busy
-   Select Case cmbInvoices.Index
-      Case cInvoiceDisplayMode_InstitutionalAccounts
-         Account_Institutional_Display()
-         LblEditAreaHeading.text = "Institutional Account:"
-      Case cInvoiceDisplayMode_UnbilledAll, cInvoiceDisplayMode_UnbilledToday
-         Patient_Unbilled_Consultation_Display()
-      Case Else
-         Account_Patient_Display()
-         LblEditAreaHeading.text = "Account Details for " & patient!Wholename
-   End Select
+   'Select Case cmbInvoices.Index
+     ' Case cInvoiceDisplayMode_InstitutionalAccounts
+      '   Account_Institutional_Display()
+      '   LblEditAreaHeading.text = "Institutional Account:"
+      'Case cInvoiceDisplayMode_UnbilledAll, cInvoiceDisplayMode_UnbilledToday
+      '   Patient_Unbilled_Consultation_Display()
+      'Case Else
+      cvwAccounts.MoveCurrent
+      sPatient_Collection_Key = cvwAccounts.Item.Key
+      Account_Patient_Display()
+      LblEditAreaHeading.text = "Account Details for " & patient!Wholename
+   'End Select
    Dec Application.Busy
    
 End
 
-Public Sub cvwAccounts_Menu()
-   
-   Dim mnu As Menu
-   Dim reason As Collection
-   
-   If cvwAccounts.count = 0 Then Return
-   cvwAccounts.MoveCurrent()
-   Select Case cmbInvoices.Index
-      Case cInvoiceDisplayMode_UnbilledAll, cInvoiceDisplayMode_UnbilledToday
-         mnuUnBIlled_Mark_Not_Billed.Children.Clear
-         For Each reason In Reasons_not_billed
-            With mnu = New Menu(mnuUnBIlled_Mark_Not_Billed) As "mnuUnbilled"
-               .Caption = reason!reason
-               .tag = reason!pk
-            End With
-         Next
-         mnuUnBIlled.Popup()
-   End Select
-   
-End
 
 Public Sub txtSearchInvoices_KeyRelease()
    

@@ -63,7 +63,7 @@ Catch
    
 End Sub
 
-Private Sub Process_Dir_Or_File(fname As String)
+Private Sub Process_Dir_Or_File_orig(fname As String)
    '------------------------------------------------------------------------
    'Read the files in each of the child directories with hl7 messages
    'If the dir is not error/ or processed/ then process the file is not a dir
@@ -191,6 +191,142 @@ Catch
    
 End Sub
 
+Private Sub Process_Dir_Or_File(fname As String)
+   '------------------------------------------------------------------------
+   'Read the files in each of the child directories with hl7 messages
+   'If the dir is not error/ or processed/ then process the file is not a dir
+   'Failure to read the file, or properly parse, or move to destination dir
+   'will cause bugging out and moving to error dir
+   '--------------------------------------------------------------------------
+   
+   Dim sFile As String
+   Dim hl7 As CHL7
+   Dim typ As String
+   Dim i As String
+   Dim f As File
+   Dim s As String
+   Dim l As Integer
+   Dim processing_log_entry As String
+   Dim filecount As Integer
+   Dim x As Integer 
+   Dim R As Result
+   Dim unique_filename_key As Integer 
+   Dim unique_filename As String
+
+   If IsDir(fname) Then
+      If (fname = "errors") Or (fname = "LOG") Or (fname = "send") Or (fname = "error") Then ' ignore healthlink crap
+         Return
+      Endif
+      For Each sFile In Dir(fname)
+         If File.Ext(sFile) <> "" Then
+            If Left(sfile) <> "." Then Inc Filecount
+         Endif
+      Next
+      notification_panel.Visible = filecount    
+      Wait  
+      For Each sFile In Dir(fname)
+         If Left$(sFile, 1) = "." Then  'ignore hidden files
+            Continue
+         Endif
+         If Left$(sFile, 3) = "DHM" Then  'ignore crap Fetch downloader puts into the incoming directory
+            Continue
+         Endif
+         If Right$(sFile, 4) = ".txt" Or Right$(sFile, 4) = ".htm" Or Right$(sFile, 4) = ".ico" Or Right$(sFile, 4) = ".xml" Or Right$(sFile, 4) = ".zip" Then ' ignore crap blasted healthlink/sonic dumps into hl7 directory
+            Continue
+         Endif
+         i = Lower$(fname &/ sFile)                                        'List all files or subdirectories in the root
+         If Not InStr(i, "errors") And If Not InStr(i, "processed") Then  'if not in error or processee
+            Inc x
+            pb.value = x / filecount
+            pb.Refresh()
+            lblImport.text = "Importing HL7 Files (" & Str(x) & " of " & Str(filecount) & ")  "
+            Wait
+            Process_Dir_Or_File(fname &/ sFile)                            'try again, this time could be a file
+         End If
+      Next
+   Else  'yes, its a file, try and load it
+      typ = "unk"
+      'rename the file to avoid future duplication issues some senders don't have unique identifiers in their filenames
+      unique_filename_key = modDBConnect.exec_query("select nextval('documents.hl7_messages_in') as pk")!pk     'gets the unique value
+      unique_filename = "hl7_in_" & Str(unique_filename_key) & "_" & modUtil.filepath_fix_Blanks(File.Name(fname)) 
+      Move fname To importdir &/ unique_filename    'change filename in the import dir
+      fname = importdir &/ unique_filename
+      f = Open fname For Read
+      l = Lof(f)
+      Log.DebugMsg("trying to read " & fname & " it is " & l & " bytes long")
+      If l < 4 Then
+         Log.WarningMsg("skipping " & fname & " as it is too short to contain anything useful")
+         Move fname To importdir &/ "processed/errors" &/ modUtil.filepath_fix_Blanks(File.Name(fname))
+      Else
+         i = Read #f, 3 ' "taste" the file to find type
+         Seek #f, 0
+         Select Case i
+            Case "001" 
+               Log.DataMsg(Subst$("decided &1 is PIT by header", fname))
+               typ = "pit"
+            Case "FHS", "BHS", "MSH"
+               Log.DataMsg(Subst$("decided &1 is HL7 by header", fname))
+         End Select
+         If typ = "unk" Then
+            Select Case Lower$(Right$(fname, 4))
+               Case ".pit"
+                  Log.DataMsg(Subst$("decided &1 is PIT by suffix", fname))
+                  typ = "pit"
+               Case ".hl7", ".oru"
+                  Log.DataMsg(Subst$("decided &1 is HL7 by suffix", fname))
+                  typ = "hl7"
+            End Select
+         Endif
+         If typ = "pit" Then
+            If IsNull(f) Then f = Open fname For Read
+            processing_log = PITImporter.Import(f, File.Name(fname))
+            Close #f
+         Else  ' at the moment try to parse as HL7 if not clearly PIT
+            i = Read #f, Lof(f)
+            Close #f
+            hl7 = New CHL7(i)
+            Try Processing_Log.Clear()
+            Process_File(hl7, fname)
+         Endif
+         Move fname To importdir &/ "processed" &/ modUtil.filepath_fix_Blanks(File.Name(fname))
+         processing_log.Add("Executed: Move " & fname & " to " & "processed" &/ modUtil.filepath_fix_Blanks(File.Name(fname)))
+         modDBConnect.CommitTrans()
+         processing_log.Add("Transaction committed")
+      Endif 
+   End If 
+   
+Catch
+   Message.Info("Richard - an error " & fname)
+   i = "HL7 File Processing Error: " & fname & "\n"
+   i &= "Error Message: " & Error.Text & "\n " & "Backtrace:\n" & Error.Backtrace.Join("\n") & " (" & fname & ")"
+   i &= "\n\nThe processing log was:\n\n"
+   For Each processing_log_entry In Processing_Log
+      i &= processing_log_entry & "\n"
+   Next
+   Print #File.Err, i
+   Log.ErrorMsg(i)
+   s = modAdminDBI.Config_Get("admin_email", Null)
+   If Not IsNull(s) Then
+      '   Message.Error("There was an error processing this file:\n\n" & fname & "\n\nthis will be reported to the Adminstrator at the following mail address:\n\n" & s)
+      cEmailTask.Send_Email_Easy(s, "EasyGP HL7file import error", i)
+   Else
+      Message.Error(i)
+   Endif
+   Try Move fname To importdir &/ "processed/errors" &/ modUtil.filepath_fix_Blanks(File.Name(fname))
+   If Error Then
+      i = "Error of " & Error.Text & " moving " & fname & " to " & importdir &/ "/processed/errors/ (" & Error.Text & ")"
+      Print #File.Err, i
+      Log.ErrorMsg(i)
+      i &= "\n\n" & "There was an error moving this file to the error directory:\n\n" & fname & "\n\nthis will be reported to the Adminstrator at the following mail address:\n\n" & s
+      If Not IsNull(s) Then
+         cEmailTask.Send_Email_Easy(s, "EasyGP HL7file import error", i)
+      Endif
+   End If
+   
+   modDBConnect.RollBack()
+   
+End Sub
+
 Private Function Get_Originator(Originator As String) As String
    '-------------------------------------------------------------------------
    'Again, fucked hl7, some vendors don't use hats, don't comply to standards
@@ -217,7 +353,7 @@ Private Function Get_Originator(Originator As String) As String
 Catch
    Message.info("Give richard copy of this file.... it crashed on the catch of the sub")
    Return 
-
+   
 End 
 
 Private Function Document_Originator_Get_From_OBR(hl7 As Chl7, sender As Collection) As Collection
@@ -446,7 +582,7 @@ Private Sub Process_File(hl7 As CHL7, fname As String)
    '                          Next if name not found we look and see who the patient's usual doctor is (if recorded)
    '                          If it doesn't find a valid staff member nad no usual doctorif uses the fallback staff member see Admin.GlobalPreferences (in the Gui)
    '----------------------------------------------------------------------------------------------------------------------------------------------------------------
-
+   
    Dim shtml As String
    Dim tempfile As String
    Dim embedded_picture As Picture
@@ -473,7 +609,7 @@ Private Sub Process_File(hl7 As CHL7, fname As String)
    Dim bFirstAttemptAtFindingRecipient As Boolean = True 
    Dim seg_name As String
    Dim pdf_doc As Collection                     'document to save a pdf as
-
+   
    const.REMOVE_THIS_DO_NOT_USE = fname   
    Do While hl7.Next("MSH")           '
       '------------------------------------------------------------------------------------
@@ -892,8 +1028,6 @@ Private Sub Process_File(hl7 As CHL7, fname As String)
    Endif
    
 End
-
-
 
 Public Function Get_Name_As_String(name As Collection) As String
    

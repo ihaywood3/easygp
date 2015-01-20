@@ -105,7 +105,7 @@ def get_xml_etree():
     if f is None:
         print >>sys.stderr, "can't find file"
         sys.exit(0)
-    m = re.match('pbs-([0-9]+-[0-9]+-[0-9]+)-.*\.xml',f)
+    m = re.match('pbs-([0-9]+-[0-9]+-[0-9]+).*\.xml',f)
     release_date = m.group(1)
     return parse(f)
 

@@ -409,7 +409,7 @@ insert into clerical.task_components (fk_task,fk_consult,date_logged,fk_staff_al
 
     def create_claim(self,fk_branch,invoices_to_link):
         c = self.cursor()
-        c.execute("insert into billing.claims(fk_branch,provider_number,result_code) values (%s,%s,-1) returning (pk)",(fk_branch,invoices_to_link[0]['staff_provided_service_provider_number']))
+        c.execute("insert into billing.claims(fk_branch,provider_number,result_code) values (%s,%s,4008) returning (pk)",(fk_branch,invoices_to_link[0]['staff_provided_service_provider_number']))
         pk = c.fetchone()[0]
         claim_id = "{0}{1:04d}@".format(chr(ord('B')+(pk/9999)),pk % 9999)
         c.execute("update billing.claims set claim_id=%s where pk=%s",(claim_id,pk))
@@ -421,7 +421,7 @@ insert into clerical.task_components (fk_task,fk_consult,date_logged,fk_staff_al
                 s = '0'+str(voucher)
             else:
                 s = str(voucher)
-            c.execute("update billing.invoices set fk_claim=%s,voucher_id=%s where pk=%s",(pk,s,i['fk_invoice']))
+            c.execute("update billing.invoices set fk_claim=%s,voucher_id=%s,result_code=4007 where pk=%s",(pk,s,i['fk_invoice']))
             i['voucher_id'] = s
             logging.debug("joining invoice PK {} to claim {} as voucher {}".format(i['fk_invoice'],claim_id,s))
             voucher += 1
@@ -447,23 +447,25 @@ insert into clerical.task_components (fk_task,fk_consult,date_logged,fk_staff_al
         c.close()
         self.commit()
 
-    def set_invoice_return(self,fk_invoice,return_code,return_text):
+    def set_invoice_return(self,fk_invoice,return_code,return_text,pms_claim_id=None,error_level=None):
         c = self.cursor()
-        c.execute("update billing.invoices set return_code=%s,return_text=%s where pk=%s",(return_code,return_text,fk_invoice))
+        c.execute("update billing.invoices set return_code=%s,return_text=%s,pms_claim_id=%s,error_level=%s where pk=%s",(return_code,return_text,pms_claim_id,error_level,fk_invoice))
         c.close()
         logging.debug("invoice PK {} set to {} {}".format(fk_invoice,return_code,repr(return_text)))
         self.commit()  
 
-    def set_item_code(self,pk_invoice,service_id,reason_code,comment):
+    def set_item_code(self,pk_invoice,service_id,reason_code,comment,error_level=None):
         c = self.cursor()
-        c.execute("update billing.items_billed set reason_code=%s,comment=%s where fk_invoice=%s and service_id=%s", (reason_code,comment,pk_invoice,service_id))
+        c.execute("update billing.items_billed set reason_code=%s,comment=%s,error_level=%s where fk_invoice=%s and service_id=%s", (reason_code,comment,error_level,pk_invoice,service_id))
         logging.debug("item service id {} set to {} {}".format(service_id,reason_code,repr(comment)))
         c.close()
 
 
-    def set_payment_report(self,pk_claim,report):
+    def set_payment_report(self,pk_claim,report,pms_claim_id=None):
         c = self.cursor()
         c.execute("update billing.claims set payment_report=%s, payment_report_run_date=now() where pk=%s",(report,pk_claim))
+        if pms_claim_id:
+            c.execute("update billing.invoices set pms_claim_id=%s where fk_claim=%s", (pms_claim_id, pk_claim))
         c.close()
         logging.debug("setting payment report for claim PK {} to {}".format(pk_claim,repr(report)))
         self.commit()
@@ -479,13 +481,10 @@ where i.fk_claim=%s and b.service_id=%s""",(pk_claim,r['service_id']),c)
             if len(inv) != 1:
                 raise MedicareError("couldn't find invoice for claim {} service id {}".format(claim_id,r['service_id']))
             inv = inv[0]
-            c.execute("update billing.items_billed set reason_code=%s where pk=%s", (r['reason_code'],inv['pk_item']))
+            c.execute("update billing.items_billed set reason_code=%s,comment=%s,error_level=%s where pk=%s", (r['reason_code'],r['comment'],r.get('error_level',None),inv['pk_item']))
             if r['amount'] > 0:
-                c.execute("insert into billing.payments_received (fk_invoice,fk_lu_payment_method,referent,amount) values (%s,5,%s,%s*'$0.01'::money)", (inv['pk_invoice'],"claim q{} service id {}".format(claim_id,r['service_id']),r['amount']))
-            if (inv['result_text'] is None or inv['result_text'] == "") and not r['comment'] is None:
-                c.execute("update billing.invoices set result_code=0,result_text=%s where pk=%s",(r['comment'],inv['pk_invoice']))
-            else:
-                c.execute("update billing.invoices set result_code=0 where pk=%s",(inv['pk_invoice'],))
+                c.execute("insert into billing.payments_received (fk_invoice,fk_lu_payment_method,referent,amount) values (%s,5,%s,%s*'$0.01'::money)", (inv['pk_invoice'],"claim {} service id {}".format(claim_id,r['service_id']),r['amount']))
+            c.execute("update billing.invoices set result_code=4006 where pk=%s",(inv['pk_invoice'],))
         c.close()
         self.commit()
 

@@ -175,18 +175,19 @@ class MedicareOnline:
 
     def prepare_bb_reports(self,fk_staff_only=None):
         bb = self.db.get_bb_invoices_to_upload()
-        pts = {}
+        claims = []
         for k in bb:
             fk_branch, fk_staff = k
             if fk_staff is not None and fk_staff != fk_staff_only: continue
             invoices = bb[k]
             invoices = sorted(invoices,key=lambda x: x['visit_date'])
-            if len(invoices) > 50:
-                invoices = invoices[:50]
-            elif len(invoices) < 30:
+            if len(invoices) < 10:
                 if datetime.date.today().toordinal() - invoices[0]['visit_date'].toordinal() < 14: continue
-            claim = self.db.create_claim(fk_branch,invoices)
-
+            while len(invoices) > 0:
+                claims.add(self.db.create_claim(fk_branch,invoices[:50]))
+                invoices = invoices[50:]
+        return claims
+    
     def transmit_claim(self,claim, invoices=None):
         claim_id = claim["claim_id"]
         try:

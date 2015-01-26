@@ -6,6 +6,17 @@ comment on column billing.invoices.pms_claim_id is 'Medicare Online returns a cl
 comment on column billing.invoices.error_level is 'Medicare Online''s one-char error level code, A=acceptable, U=aunacceptable, not very useful compared to the error numeric code';
 comment on column billing.items_billed.error_level is 'Medicare Online''s one-char error level code, A=acceptable, U=unacceptable, not very useful compared to the error numeric code';
 
+CREATE OR REPLACE FUNCTION billing.invoice_notify()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+	EXECUTE 'NOTIFY invoice, '''|| NEW.pk || '''';
+	RETURN NEW;
+END;
+$function$;
+
+create trigger update_invoice BEFORE UPDATE OR INSERT ON billing.invoices FOR EACH ROW EXECUTE PROCEDURE billing.invoice_notify();
 
 create table billing.codes (code integer unique, description text);
 grant select on billing.codes to staff;

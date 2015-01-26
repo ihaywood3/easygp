@@ -395,7 +395,7 @@ insert into clerical.task_components (fk_task,fk_consult,date_logged,fk_staff_al
 
     def get_claims_awaiting_transmission(self):
         """claims saved but needing transmission"""
-        return self.query("select * from billing.claims where result_code=-1")
+        return self.query("select * from billing.claims where result_code=4008")
 
     def get_claim(self,claim_id):
         """get a claim by its ID, really only for testing"""

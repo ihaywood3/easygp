@@ -49,7 +49,7 @@ class Event:
     def translate_gender(self,sex):
         # translate EasyGP gender codes
         if sex == "H": sex = "I" # EasyGP uses the older term hermaphrodite = Intersex
-        if sex == "T": sex = "F" # bit cheeky, Medicare has no transgender code: 90% of "transgender" are phenotypically female.
+        if sex == "T": sex = "F" # bit cheeky, Medicare has no transgender code: most "transgender" are phenotypically female.
         if sex == "U": sex = "N"
         return sex
 

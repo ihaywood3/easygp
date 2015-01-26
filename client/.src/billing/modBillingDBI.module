@@ -768,9 +768,7 @@ Public Function Get_Billed_Items(invoice As Crow) As Collection
 
    Dim sql As String
    ' " left(coalesce(descriptor_brief,descriptor),400) as descriptor_display, "
-   sql = "select coalesce(mbs_item,ama_item,user_item) as common_item, "
-   "  descriptor_brief As descriptor_display, "
-   " * from billing.items_billed i,billing.fee_schedule s where i.fk_fee_schedule = s.pk and i.fk_invoice = &1"
+   sql = "select * From billing.vwitemsbilled where fk_invoice = &1 "
    Return modDBConnect.exec_query_collection(sql, [invoice!fk_invoice])
 
 End
@@ -1091,6 +1089,20 @@ Private Sub Load_FDF_GP(fdf As String, items As Collection) As String
 
 End
 
+Public Sub Get_Invoice_PK(fk_invoice As Integer) As CRow
+   Dim invoice As CRow
+   Dim v As CRow
+   
+   
+   For Each v In modDBConnect.exec_query_row("select * from billing.vwinvoices where fk_invoice = &1", [fk_invoice])   
+      invoice = v
+   Next 
+   Return invoice
+   
+End
+
+
+
 ' takes a CRow from billing.invoices, from either from Make_Invoice or Invoices_Get, and prints it
 ' also updates the row on the DB as appropriate
 ' ' cc is the current consult object. If not provided a new one will be loaded using th invoices's fk_patient.
@@ -1113,9 +1125,7 @@ Public Sub Print_Invoice(invoice_in As Variant, bPrint As Boolean, Optional bBul
    Dim v As Variant
    
    If TypeOf(invoice_in) = gb.Integer Then
-       For Each v In modDBConnect.exec_query_row("select * from billing.vwinvoices where fk_invoice = &1", [invoice_in])   
-          invoice = v
-       Next 
+      invoice = Get_Invoice_PK(invoice_in)
    Else
       invoice = invoice_in
    Endif
@@ -1127,45 +1137,118 @@ Public Sub Print_Invoice(invoice_in As Variant, bPrint As Boolean, Optional bBul
    "where o.pk = s.fk_occupation and s.fk_staff = &1 limit 1"
    doctor = modDBConnect.exec_query_first(sql, [invoice!fk_staff_provided_service])
    referrer_type = doctor!referrer_type
-   If bBulkBIll Then
-      ' cue scary music: patient is being bulk-billed
-      If True Then
-         pdfname = "db2-ot"
+   If invoice!online Then
+      If bBulkBill Then
+         If referrer_type = "s" Then
+            templ = New CTemplate("templates/invoice-online-bb-specialist.tex")
+            Load_Template_Specialist(templ, invoice, referrer)
+         Else
+            templ = New CTemplate("templates/invoice-online-bb-gp.tex")
+         Endif
+         Load_Template_GP(invoice, templ, doctor, items, payments, cc, False)
+         latex = templ.GetData()
+         If bPrint Then modPrinting.Print_latex(latex, const.Paper_Plain, 1)
+         Return latex
       Else
-         pdfname = "db2-gp"
+         If IsNull(invoice!result_code) Or If invoice!result_code = 4005 Then
+            Return Null ' private invoices get generated later
+         Else
+            If referrer_type = "s" Then
+              templ = New CTemplate("templates/invoice-online-specialist.tex")
+              Load_Template_Specialist(templ, invoice, referrer)
+            Else
+              templ = New CTemplate("templates/invoice-online-gp.tex")
+           Endif
+           Load_Template_GP(invoice, templ, doctor, items, payments, cc, True)
+           latex = templ.GetData()
+           If bPrint Then modPrinting.Print_latex(latex, const.Paper_Plain, 1)
+           Return latex
+         Endif
       Endif
-      fdf = File.Load(modUtil.Find_File("templates" &/ pdfname & ".fdf"))
-      If True Then
-         fdf = Load_FDF_Specialist(fdf, items, doctor, cc, invoice, referrer)
-      Else
-         fdf = Load_FDF_GP(fdf, items)
-      Endif
-      fdf = Load_FDF_Common(fdf, doctor, cc, invoice)
-      tmpfile = Temp$("bulkbill")
-      File.Save(tmpfile & ".fdf", fdf)
-      pdftk_path = modUtil.FindProgram("pdftk", "pdftk")
-      If IsNull(pdftk_path) Then Return
-      Print modUtil.Find_File("templates" &/ pdfname & ".pdf"), "fill_form", tmpfile & ".fdf", "output", tmpfile & ".pdf", "flatten"
-      Exec [pdftk_path, modUtil.Find_File("templates" &/ pdfname & ".pdf"), "fill_form", tmpfile & ".fdf", "output", tmpfile & ".pdf", "flatten"] Wait
-      If bPrint Then modPrinting.Print_PDF(tmpfile & ".pdf", const.Paper_Plain, 1)
-      Try Kill tmpfile & ".pdf"
-      Try Kill tmpfile & ".fdf"
-      Return Null
    Else
-      If referrer_type = "s" Then
-         ' specialist's account: need to grab referrer's details first
-         templ = New CTemplate("templates/invoice-specialist.tex", "tex")
-         Load_Template_Specialist(templ, invoice, referrer)
+      ' the old manual printing code
+      If bBulkBIll Then
+         ' cue scary music: patient is being bulk-billed
+         If True Then  'FIXME: reliable way of determinging specialist status
+            pdfname = "db2-ot"
+         Else
+            pdfname = "db2-gp"
+         Endif
+         fdf = File.Load(modUtil.Find_File("templates" &/ pdfname & ".fdf"))
+         If True Then
+            fdf = Load_FDF_Specialist(fdf, items, doctor, cc, invoice, referrer)
+         Else
+            fdf = Load_FDF_GP(fdf, items)
+         Endif
+         fdf = Load_FDF_Common(fdf, doctor, cc, invoice)
+         tmpfile = Temp$("bulkbill")
+         File.Save(tmpfile & ".fdf", fdf)
+         pdftk_path = modUtil.FindProgram("pdftk", "pdftk")
+         If IsNull(pdftk_path) Then Return
+         Print modUtil.Find_File("templates" &/ pdfname & ".pdf"), "fill_form", tmpfile & ".fdf", "output", tmpfile & ".pdf", "flatten"
+         Exec [pdftk_path, modUtil.Find_File("templates" &/ pdfname & ".pdf"), "fill_form", tmpfile & ".fdf", "output", tmpfile & ".pdf", "flatten"] Wait
+         If bPrint Then modPrinting.Print_PDF(tmpfile & ".pdf", const.Paper_Plain, 1)
+         Try Kill tmpfile & ".pdf"
+         Try Kill tmpfile & ".fdf"
+         Return Null
       Else
-         templ = New CTemplate("templates/invoice-gp.tex", "tex")
-      End If
-      Load_Template_GP(invoice, templ, doctor, items, payments, cc)
-      latex = templ.GetData()
-      If bPrint Then modPrinting.Print_latex(latex, const.Paper_Plain, 1)
-      Return latex
+         If referrer_type = "s" Then
+            ' specialist's account: need to grab referrer's details first
+            templ = New CTemplate("templates/invoice-specialist.tex", "tex")
+            Load_Template_Specialist(templ, invoice, referrer)
+         Else
+            templ = New CTemplate("templates/invoice-gp.tex", "tex")
+         End If
+         Load_Template_GP(invoice, templ, doctor, items, payments, cc)
+         latex = templ.GetData()
+         If bPrint Then modPrinting.Print_latex(latex, const.Paper_Plain, 1)
+         Return latex
+      Endif
    Endif
+End
+
+
+' private invoices Medicare Online are not generated on-the-spot but at some later time as we need 
+' a response form the Medicare server
+Public Function Generate_Online_Latex(fk_invoice As Integer) As String
+   Dim latex As String
+   Dim invoice As CRow
+   Dim cc As CConsult
+   Dim items As Collection
+   Dim payments As Collection
+   Dim templ As CTemplate
+   Dim doctor As Collection
+   Dim sql As String
+   Dim referrer_type As String
+   Dim referrer As Collection 
+
+   invoice = Get_Invoice_PK(fk_invoice)
+   cc = New CConsult(modContactsDBI.Patient_Get_Using_PK(invoice!fk_patient))
+   items = Get_Billed_Items(invoice)
+   payments = Get_Payments(invoice)
+   sql = "select referrer_type, s.* from common.lu_occupations o, admin.vwstaffinclinics s "
+   "where o.pk = s.fk_occupation and s.fk_staff = &1 limit 1"
+   doctor = modDBConnect.exec_query_first(sql, [invoice!fk_staff_provided_service])
+   referrer_type = doctor!referrer_type
+   referrer = Find_Referrer(invoice!fk_patient, invoice!visit_date)
+   If referrer_type = "s" Then
+      templ = New CTemplate("templates/invoice-online-specialist.tex")
+      Load_Template_Specialist(templ, invoice, referrer)
+   Else
+      templ = New CTemplate("templates/invoice-online-gp.tex")
+   Endif
+   If invoice!result_code <> 0 Then
+      templ.Subst("title", "LODGEMENT ADVICE")
+   Else
+      templ.Subst("title", "STATEMENT OF CLAIM AND BENEFIT PAYMENT")
+   Endif
+   Load_Template_GP(invoice, templ, doctor, items, payments, cc, True)
+   latex = templ.GetData()
+   modDBConnect.update("billing.invoices", Null, ["pk": invoice!fk_invoice, "latex": latex])
+   Return latex
 
 End
+
 
 ' loads info about specialist rinvoices (i.e. info about the referral)
 Private Sub Load_Template_Specialist(templ As Ctemplate, invoice As Crow, referrer As Collection)
@@ -1198,7 +1281,7 @@ Private Sub Load_Template_Specialist(templ As Ctemplate, invoice As Crow, referr
 End
 
 ' prepares the template with stuff for GP-type invoices (actually common to specialists too)
-Private Function Load_Template_GP(invoice As Crow, templ As CTemplate, doctor As Collection, items As Collection, payments As Collection, cc As CConsult)
+Private Function Load_Template_GP(invoice As Crow, templ As CTemplate, doctor As Collection, items As Collection, payments As Collection, cc As CConsult, Optional mo_result As Boolean = False)
 
    Dim i As Collection
    Dim s As String
@@ -1216,6 +1299,7 @@ Private Function Load_Template_GP(invoice As Crow, templ As CTemplate, doctor As
    templ.Subst("doctor-provider-number", doctor!provider_number)
    templ.Subst("current-time", Format$(Now, "dd/mm/yy hh:nn"))
    templ.Subst("abn", doctor!australian_business_number)
+   templ.Subst("hic-location-id", doctor!hic_location_id)
    
    If IsNull(invoice!account_to_name) Then
       templ.Subst("account-to-name", "\\relax")
@@ -1249,7 +1333,15 @@ Private Function Load_Template_GP(invoice As Crow, templ As CTemplate, doctor As
    Endif
    ' now do the actual items
    For Each i In items
-      templ.Row(Format$(invoice!visit_date, "dd/mm/yy"), i!common_item, "\\multicolumn{2}{p{6cm}}{" & i!descriptor_display & "}", i!amount, "")
+      s = ""
+      If mo_result And If Not IsNull(i!description) Then
+         s = i!reason_code & ": " & i!description
+         If Not IsNull(i!comment) Then
+            s &= " " & i!comment
+         Endif
+         s = "\\parbox{50mm}{" & s & "}"
+      Endif
+      templ.Row(Format$(invoice!visit_date, "dd/mm/yy"), i!common_item, "\\multicolumn{2}{p{6cm}}{" & i!descriptor_brief & "}", i!amount, s)
    Next
    If Not IsNull(payments) Then
       For Each i In payments
@@ -1258,17 +1350,25 @@ Private Function Load_Template_GP(invoice As Crow, templ As CTemplate, doctor As
    Endif
 
    templ.Table("accounts-table")
+   
+   If mo_result And If invoice!result_code <> 0 Then
+      s &= "This claim has been referred to the Department of Human Services because: (" & templ.Subst("result-code", invoice!result_code) & ") "
+      s &= invoice!description
+      If Not IsNull(invoice!result_text) Then
+         s &= " " & invoice!result_text
+      Endif
+      templ.Subst("online-result", s)
+   Else
+      templ.Subst("online-result", "")
+   Endif
    templ.Subst("due", invoice!due)
    templ.Subst("gst", invoice!total_gst)
    If invoice!due <> "$0.00" Then
-      s = User.Home &/ "payment-info.tex"
-      If Access(s, gb.Read) Then
-         templ.Subst("payment-info", File.Load(s))
-      Else
-         templ.Subst("payment-info", "")
-      Endif
+      templ.Subst("fully-paid", "NO")
+      templ.Subst("mo-payment-info", "The cheque benefit will be directed to the: ADDRESS HELD BY THE DEPARTMENT OF HUMAN SERVICES")
    Else
-      templ.Subst("payment-info", "")
+      templ.Subst("fully-paid", "YES")
+      templ.Subst("mo-payment-info", "The Medicare benefit will be paid: if your bank account details are stored with the Department of Human Services your payment, via EFT, if not, a cheque will be issued") 
    Endif
    templ.Subst("total", invoice!total_bill)
    If invoice!total_gst = invoice!total_bill Or invoice!total_gst = "$0.00" Then

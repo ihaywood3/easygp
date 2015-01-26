@@ -158,7 +158,7 @@ Private descriptor_brief As Collection
 Private Report_Titles As Collection
 Private Report_title As Collection
 Private Items_Billed As Collection
-Private Item_Billed As Collection
+Private invoice As Crow
 Private ScheduledFeeItems As Collection
 Private FeeItem As Collection
 Private iTimer_Search_Mode As Integer
@@ -334,8 +334,23 @@ Public Sub Init()
    bHSplit_Resized = False
    bComplainedAboutNoItem = False
    Accounts_Reload()
+   modDBConnect.Register_Listener("invoice-reload", Me)
    
 End
+
+Public Sub Notify(its_us As Boolean, param As String)
+  
+  Dim pk_invoice As Integer
+   
+  If its_us Then Return
+  pk_invoice = CInt(Param)
+  If fk_invoice = pk_invoice Then
+     invoice = modBillingDBI.Get_Invoice_PK(fk_invoice)
+     Reload_Invoice_Data()
+  Endif
+   
+End
+
 
 Public Sub Reload()
    
@@ -369,7 +384,6 @@ Public Sub EditArea_Clear()
    fk_appointment = 0
    cvwInvoices.Clear()
    Items_Billed = New Collection
-   Item_Billed = New Collection
    Payer = Null
    Patient = Null
    Unbilled_consultation = Null
@@ -1480,7 +1494,6 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True)
    ' );
    ' CREATE TABLE billing.items_billed
    
-   Dim invoice As New CRow
    Dim item As CRow
    Dim payment As CRow
    Dim payment_method As Collection
@@ -1548,6 +1561,21 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True)
       If bBulkBill Then
          If rbInvoiceToMedicare.value = True Then invoice!fk_lu_bulk_billing_type = const.BulkBilling_Type_Medicare
          If rbInvoiceToVeterans.value = True Then invoice!fk_lu_bulk_billing_type = const.BulkBilling_Type_Veteran
+      Endif
+      If rbOnline_Yes.Value Then
+         invoice!online = True
+         If bBulkBill Then
+            invoice!result_code = 4003
+         Else
+            invoice!result_code = 4005
+         Endif
+      Else
+         invoice!online = False
+         If bBulkBill Then
+            invoice!result_code = 4002
+         Else
+            invoice!result_code = 4001
+         Endif
       Endif
       If cmbSeenBy.Index <> -1 Then
          invoice!fk_staff_provided_service = staff[cmbSeenBy.index]!fk_staff
@@ -2111,6 +2139,8 @@ Public Sub mnuInvoices_Click()
    '--------------------------------------------------------------------------------------
    'this is the popup menu over the the invoices for the account holder, usually a patient
    '--------------------------------------------------------------------------------------
+   Dim item_billed As Collection
+   Dim latex As String
    
    cvwInvoices.MoveCurrent()
    Item_Billed = Items_Billed[cvwInvoices.Item.key]
@@ -2129,7 +2159,12 @@ Public Sub mnuInvoices_Click()
             cvwInvoices.Item.Selected = True  'should trigger loading the edit area
          Endif
       Case "reprint invoice"
-         modPrinting.Print_latex(Item_Billed!latex)
+         If IsNull(item_billed!latex) And If item_billed!online Then
+            latex = modBillingDBI.Generate_Online_Latex(item_billed!fk_invoice)
+         Else
+            latex = item_billed!latex
+         Endif
+         modPrinting.Print_latex(latex)
       Case "font"
          modUtilGUI.Columnview_SetFont(cvwInvoices, "FRecordVisit")
       Case "print account statement"
@@ -2456,6 +2491,7 @@ Public Sub Invoice_New()
    lblEditAreaHeading.text = "New Invoice"
    bPayingInvoice = False
    fk_invoice = 0
+   invoice = New Crow
    gvwPayments.clear
    lblInvoiceOwing.text = ""
    lblPaymentTotal.text = ""
@@ -2467,6 +2503,9 @@ Public Sub Invoice_New()
    End With
    VBox_EditArea_Inner.Enabled = True
    VBox5.Enabled = True
+   rbOnline_Yes.Visible = True
+   rbOnline_No.Visible = True
+   lblOnlineStatus.Visible = False
    bExit = False
    
 End
@@ -2487,6 +2526,7 @@ Public Sub cvwInvoices_Refresh()
    Dim invoice_total As Float
    Dim invoice_amount_paid As Float
    Dim x As Integer
+   Dim item_billed As Collection
    
    cvwInvoices.Clear
    Items_Billed = modUtil.Copy_Collection_Keyed_Sequentially(modBillingDBI.Items_Invoices_Get(fk_patient, iAccountDisplayMode)) 'was items_Billed_get
@@ -2562,9 +2602,27 @@ Public Sub cvwInvoices_Select()
       Loop
    Endif
    cvwInvoices.MoveCurrent()
-   Item_Billed = Items_Billed[cvwInvoices.Item.key]       'get the curren item billed collection (first of 1 or more on an invoice)
-   fk_invoice = Item_Billed!fk_invoice                    'gives us the key to billing.invoices table
-   If Not Item_Billed!paid Then                           'if this invoice is not paid
+   fk_invoice = Items_Billed[cvwInvoices.Item.key]!fk_invoice                    'gives us the key to billing.invoices table
+   invoice = modBillingDBI.Get_Invoice_PK(fk_invoice)
+   Reload_Invoice_Data()
+   bExit = False
+End
+
+Private Sub Reload_Invoice_Data()
+   Dim item_billed As Collection
+
+   ' set online data
+   rbOnline_No.Visible = False
+   rbOnline_Yes.Visible = False
+   lblOnlineStatus.Visible = True
+   If invoice!result_code = 4006 Then
+      lblOnlineStatus.Text = "(" & invoice!reason_code & ") " & invoice!item_description & " " & invoice!item_comment
+   Else If invoice!result_code = 4007 Then
+      lblOnlineStatus.Text = "(" & invoice!claim_result_code & ") " & invoice!claim_description & " " & invoice!claim_result_text
+   Else 
+      lblOnlineStatus.Text = "(" & invoice!result_code & ") " & invoice!description & " " & invoice!result_text
+   Endif
+   If Not invoice!paid Then                           'if this invoice is not paid
       tbSaveNoPrint.Enabled = False                       'as are paying disable the save no print button
       lblEditAreaHeading.text = "Pay Invoice"
       VBox5.Enabled = True                                'contains the edit area (disabled) items grid and payement grid '   fixme
@@ -2572,35 +2630,34 @@ Public Sub cvwInvoices_Select()
       lblEditAreaHeading.text = "Paid Invoice"
       VBox5.Enabled = False
    Endif
-   txtDate.text = Format(Item_Billed!visit_date, "dd/mm/yyyy")                    'now fill the edit area with the invoice data
-   txtReferenceDetails.text = Item_Billed!reference
-   cmbSeenBy.index = cmbSeenBy.Find(Item_Billed!staff_provided_service_wholename)
-   cmbLocation.index = cmbLocation.Find(Item_Billed!branch)
-   rbInvoiceToNotUsed.value = True
-   If Not IsNull(Item_Billed!fk_payer_branch) Then
-      fk_payer_branch = Item_Billed!fk_payer_branch
+   txtDate.text = Format(invoice!visit_date, "dd/mm/yyyy")                    'now fill the edit area with the invoice data
+   txtReferenceDetails.text = invoice!reference
+   cmbSeenBy.index = cmbSeenBy.Find(invoice!staff_provided_service_wholename)
+   cmbLocation.index = cmbLocation.Find(invoice!branch)
+   rbInvoiceToPatient.Value = True ' cheating a little bit: medicare/DVA invoices won't get printed again
+   If Not IsNull(invoice!fk_payer_branch) Then
+      fk_payer_branch = invoice!fk_payer_branch
       rbInvoiceOrganisation.Value = True
+      rbInvoiceToOther.Value = True
    Endif
-   If Not IsNull(Item_Billed!fk_payer_person) Then
-      fk_payer_person = Item_Billed!fk_payer_person
+   If Not IsNull(invoice!fk_payer_person) Then
+      fk_payer_person = invoice!fk_payer_person
       rbInvoicePerson.Value = True
+      rbInvoiceToOther.Value = True
    Endif
-   If Not IsNull(Item_Billed!account_to_name) Then
-      textlabelPayer.text = Item_Billed!account_to_name
-      If Not IsNull(Item_Billed!account_to_branch) Then
-         textlabelPayer.text &= "<BR>" & Item_Billed!account_to_branch
+   If Not IsNull(invoice!account_to_name) Then
+      textlabelPayer.text = invoice!account_to_name
+      If Not IsNull(invoice!account_to_branch) Then
+         textlabelPayer.text &= "<BR>" & invoice!account_to_branch
       End If
-      If Not IsNull(Item_Billed!account_to_street) Then
-         textlabelPayer.text &= "<BR>" & Item_Billed!account_to_street
+      If Not IsNull(invoice!account_to_street) Then
+         textlabelPayer.text &= "<BR>" & invoice!account_to_street
       Endif
-      If Not IsNull(Item_Billed!account_to_town_postcode) Then
-         textlabelPayer.text &= " " & Item_Billed!account_to_town_postcode
+      If Not IsNull(invoice!account_to_town_postcode) Then
+         textlabelPayer.text &= " " & invoice!account_to_town_postcode
       Endif
    Endif
-   If Item_Billed!fk_lu_billing_type = const.Billingtype_Private Then
-      rbInvoiceToPatient.value = True
-   Endif
-   cmbInvoiceComments.text = Item_Billed!notes
+   cmbInvoiceComments.text = invoice!notes
    '---------------------------------------------------------
    'now create an items collection to load back into the grid
    '---------------------------------------------------------
@@ -2631,11 +2688,8 @@ Public Sub cvwInvoices_Select()
    gvwPayments.Clear()                                                        'clear the payments grid
    EditArea_Notify_Data_Change(False)                                         'don't allow access to the invoice items grid
    Hbox_InvoiceGrid.Enabled = False
-   Print HBox_PaymentGrid.Enabled
-   Print VBox_PaymentGrid.Enabled
    gvwPayments.Enabled = True
-   bexit = False
-   
+
 End
 
 Public Sub Batching_Show_Vouchers_In_Claim()
@@ -3506,9 +3560,7 @@ Public Sub Accounts_Print_Statement()
    'Prints out all the patients invoice transactions
    '------------------------------------------------
    
-   For Each item_billed In Items_Billed
-      
-   Next
+
    
 End
 

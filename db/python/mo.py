@@ -355,7 +355,7 @@ class MedicareOnline:
                 # success
                 self.reset()
                 has_row = self.is_report_available()
-                result = ""
+                result = None
                 if not has_row:
                     result = "No report available, contact Medicare "
                 else:
@@ -366,14 +366,14 @@ class MedicareOnline:
                         reason_code = self.get("ExplanationCode")
                         self.db.set_item_code(inv['pk_invoice'],service_id,reason_code,"benefit $"+amount/100.0)
                         has_row = self.next()
-                self.db.set_invoice_return(inv['pk_invoice'],send_code,result,claim_id)
+                self.db.set_invoice_return(inv['pk_invoice'],0,result,claim_id)
             elif send_code == 9501:
                 # failure
                 self.reset()
                 has_row = self.is_report_available()
                 result = ""
                 if not has_row:
-                    error_code = 4011.
+                    error_code = 4011
                 else:
                     claim_id = self.get("PmsClaimId")
                     error_code = self.get("ClaimErrorCode")

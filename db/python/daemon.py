@@ -163,6 +163,7 @@ Options
             else:
                 mox = mo.MedicareOnline(self.config["drivers"],self.config["mo_passphrase"],self.config["mo_sender"],self.config["mo_location_id"])
                 self.mo = mox
+                self.evts.mo = mox
                 self.mo.db = self.db
                 self.db.listen("invoice",self.evts.invoice)
         else:
@@ -233,7 +234,7 @@ Options
                         #self.mo.prepare_bb_reports(fk_staff_only=4)
                         #self.mo.get_bb_processing_report(self.db.get_claim('B0006@'))
                         #self.mo.transmit_claim(self.db.get_claim('B0006@'))
-                        self.mo.upload_private_invoice(1459) # Diana Kahn's 306
+                        self.mo.upload_private_invoice(1462) # Diana Kahn's 306
                     else:
                         self.db.wait_events()
             except: logging.exception("exception in child")

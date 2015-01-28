@@ -215,7 +215,7 @@ CREATE or replace VIEW billing.vwitemsandinvoices AS
 truncate billing.codes;
 
 COPY billing.codes (code, description) FROM stdin;
-0    Success
+0	Success
 1001	Unable to load /connect to Java Virtual Machine.
 1002	Unable to unload Medicare Online Claiming.
 1003	Medicare Online Claiming is not operational.

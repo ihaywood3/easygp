@@ -323,7 +323,7 @@ class MedicareOnline:
 
     def upload_private_invoice(self, fk_invoice):
         try:
-            inv = self.db.get_private_invoice_to_upload(inv)
+            inv = self.db.get_private_invoice_to_upload(fk_invoice)
             pt = self.db.get_patient(inv['fk_patient'])
             logic_pack = self.get_logic_pack("HIC/HolClassic")
             content_type = "HIC/HolClassic/InteractivePatientClaim@"+logic_pack
@@ -366,7 +366,6 @@ class MedicareOnline:
             send_code = self.send_content(content_type)
             if send_code == 0:
                 # success
-                self.reset()
                 has_row = self.is_report_available()
                 result = None
                 if not has_row:
@@ -380,13 +379,16 @@ class MedicareOnline:
                         self.db.set_item_code(inv['pk_invoice'],service_id,reason_code,"benefit $"+amount/100.0)
                         has_row = self.next()
                 self.db.set_invoice_return(inv['pk_invoice'],0,result,claim_id)
+                self.reset()
             elif send_code == 9501:
                 # failure
-                self.reset()
+                #self.reset()
                 has_row = self.is_report_available()
                 result = ""
                 if not has_row:
                     error_code = 4011
+                    claim_id = None
+                    error_level = 'U'
                 else:
                     claim_id = self.get("PmsClaimId")
                     error_code = self.get("ClaimErrorCode")
@@ -403,9 +405,10 @@ class MedicareOnline:
                         service_id = self.get("ServiceId")
                         reason_code = self.get("ServiceErrorCode")
                         service_error_level = self.get("ServiceErrorLevel")
-                        self.db.set_item_code(fk_invoice,service_id,reason_code,None.service_error_level)
+                        self.db.set_item_code(fk_invoice,service_id,reason_code,None,service_error_level)
                         has_row = self.next()
-                self.db.set_invoice_return(fk_invoice,error_code,result,claim_id,error_level) 
+                self.db.set_invoice_return(fk_invoice,error_code,result,claim_id,error_level)
+                self.reset()
             else: # something else
                 self.db.set_invoice_return(inv['fk_invoice'],send_code,None)
         except MedicareError as e:

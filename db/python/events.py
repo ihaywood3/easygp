@@ -241,3 +241,8 @@ class Event:
         else:
             self.db.log_simple_entry(items[0]['fk_patient'],'MediSecure submitted. Request ID %s Response ID %s' % (request_code,receipt_code),linked_table='clin_prescribing.prescribed',fk_row=script_no)
             
+    def invoice(self,pid,payload):
+        pdb.set_trace()
+        if pid == self.db.pid: return # don't do anything with events we have caused
+        for pk in self.db.get_all_private_invoices_to_upload():
+            self.mo.upload_private_invoice(pk)

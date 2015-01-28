@@ -323,7 +323,7 @@ class MedicareOnline:
 
     def upload_private_invoice(self, fk_invoice):
         try:
-            inv = self.db.get_private_invoice_to_upload(fk_invoice)
+            inv = self.db.get_private_invoice_to_upload(inv)
             pt = self.db.get_patient(inv['fk_patient'])
             logic_pack = self.get_logic_pack("HIC/HolClassic")
             content_type = "HIC/HolClassic/InteractivePatientClaim@"+logic_pack

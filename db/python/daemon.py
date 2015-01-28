@@ -94,7 +94,7 @@ Options
 
      
     def setup_log(self):
-        if True:  # FIXME: if self.debug_mode:
+        if self.debug_mode:
             logging.basicConfig(stream=sys.stderr,level=logging.DEBUG)
         else:
             if self.config['syslog'] != 'false':
@@ -164,7 +164,7 @@ Options
                 mox = mo.MedicareOnline(self.config["drivers"],self.config["mo_passphrase"],self.config["mo_sender"],self.config["mo_location_id"])
                 self.mo = mox
                 self.mo.db = self.db
-                # self.db.listen("invoice",self.evts.invoice)
+                self.db.listen("invoice",self.evts.invoice)
         else:
             logging.warn('Medicare Online JAR not found in %s so MO module not loaded' % self.config['drivers'])
         # Personally Controlled Electronic Record

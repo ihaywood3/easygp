@@ -88,6 +88,7 @@ class DBWrapper:
                 self.conn.rollback()
         self.listeners = {}
         self.__events = set()
+        self.pid = self.conn.get_backend_pid()
         self.__retry_mode = False
 
     def each_table(self,tbl='.*',typs='r'):
@@ -359,7 +360,7 @@ insert into clerical.task_components (fk_task,fk_consult,date_logged,fk_staff_al
 
     def get_bb_invoices_to_upload(self):
         """return bulk-billing invoices that haven't been grouped into claims yet. As a dictionary of lists of invoices keyed on (fk_branch,f_staff)"""
-        inv =  self.query("select * from billing.vwinvoices where not online and fk_claim is null and fk_lu_bulk_billing_type = 1") # FIXME: should be where online when this flag is usable.
+        inv =  self.query("select * from billing.vwinvoices where online and fk_claim is null and fk_lu_bulk_billing_type = 1")
         ret = {}
         for i in inv:
             i['items_billed'] = self.query("select * from billing.vwitemsbilled where fk_invoice = %s", (i['fk_invoice'],))
@@ -367,6 +368,9 @@ insert into clerical.task_components (fk_task,fk_consult,date_logged,fk_staff_al
             if not k in ret: ret[k] = []
             ret[k].append(i)
         return ret
+
+    def get_all_private_invoices_to_upload(self):
+        return [i["pk"] for i in self.query("select pk from billing.invoices where result_code=4005")]
 
     def get_private_invoice_to_upload(self,pk_invoice):
         c = self.cursor()

@@ -44,8 +44,19 @@ class MedicareOnline:
         self.java_path = java_path
         self.sender = sender
         self.location_id = location_id
+        self.start_process()
+
+    def start_process(self):
         self.pro = subprocess.Popen(["/usr/bin/java","-classpath","lib:lib/*:build","-Djava.library.path=lib","-Dhiconline.sender={}".format(self.sender),"-Dhiconline.passphrase={}".format(self.passphrase),"-Dhiconline.location_id={}".format(self.location_id),"HICOnline"],cwd=self.java_path,stdin=subprocess.PIPE,stderr=subprocess.STDOUT,stdout=subprocess.PIPE,close_fds=True)
         self.logic_packs = {}
+
+    def cycle_process(self):
+        try:
+            self.pro.kill()
+        except:
+            logging.exception("problem killing process")
+        self.pro = None
+        self.start_process()
 
     def clean(self,s,maxlen=40):
         s = ''.join(c for c in s if ord(c) >= 32)
@@ -72,7 +83,7 @@ class MedicareOnline:
         cont = True
         f = self.pro.stdout
         while cont:
-            r, w, e = select.select([ f ], [], [], 60.0)
+            r, w, e = select.select([ f ], [], [], 120.0)
             if not f in r: raise MedicareError("Java slave has hanged")
             line = f.readline()
             self.pro.poll()
@@ -120,7 +131,7 @@ class MedicareOnline:
             return self.logic_packs[pack]
         self._write("GLPV", pack)
         code, s = self._read(True)
-        if code != 0: raise MedicareError("GLP returned "+v)
+        if code != 0: raise MedicareError("GLP returned "+str(v))
         s = s.strip()[1:-1].split(",")[0]
         self.logic_packs[pack] = s
         return s
@@ -139,7 +150,8 @@ class MedicareOnline:
         self._write("GRE", elem)
         logging.debug("GetReportElement({})".format(repr(elem)))
         v, val = self._read(True)
-        if v != 0: raise MedicareError("GRE returned "+v)
+        if v == 9205: return None  # 9205 == "requested data itme is empty"
+        if v != 0: raise MedicareError("GRE returned "+str(v))
         return val
 
     def next(self):
@@ -148,15 +160,15 @@ class MedicareOnline:
         v = self._read()
         if v == 0: return True
         if v == 8002: return False
-        raise MedicareError("NRR returned "+v)
+        raise MedicareError("NRR returned "+str(v))
 
     def is_report_available(self):
-        self._write("ISA")
+        self._write("IRA")
         logging.debug("IsReportAvailable")
         v = self._read()
         if v == 0 or v == 9501: return True
         if v == 2027 or v == 8002: return False
-        raise MedicareError("IRA returned "+v)
+        raise MedicareError("IRA returned "+str(v))
 
     def send_content(self,content_type):
         self._write("SC", content_type)

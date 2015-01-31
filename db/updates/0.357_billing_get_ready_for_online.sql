@@ -1,4 +1,4 @@
-alter table billing.invoices add column online boolean default false not null;
+﻿alter table billing.invoices add column online boolean default false not null;
 
 comment on column billing.invoices.online is 'true if the invoice is to be uploaded via Medicare Online';
 
@@ -13,7 +13,7 @@ comment on column billing.invoices.result_code is 'text returned by medicare Onl
 drop table billing.link_invoice_bulk_bill_claim cascade;
 
 alter table billing.bulk_billing_claims rename to claims;
-alter table billing.claims add primary key (pk);
+-- alter table billing.claims add primary key (pk);
 alter table billing.invoices add column fk_claim integer references billing.claims (pk);
 
 COMMENT ON TABLE billing.claims

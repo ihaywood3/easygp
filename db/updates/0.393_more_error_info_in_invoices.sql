@@ -1,4 +1,4 @@
-alter table billing.invoices add column pms_claim_id text;
+﻿alter table billing.invoices add column pms_claim_id text;
 alter table billing.invoices add column error_level char(1);
 alter table billing.items_billed add column error_level char(1);
 
@@ -35,11 +35,12 @@ begin
 end
 $function$;
 
+drop view billing.vwinvoices cascade;
 
 create or replace view billing.vwinvoices as 
  SELECT invoices.pk AS pk_invoice,
     invoices.pk AS fk_invoice,
-   invoices.notes,
+    invoices.notes,
     invoices.fk_staff_invoicing,
     invoices.fk_patient,
     invoices.date_printed,
@@ -104,6 +105,8 @@ create or replace view billing.vwinvoices as
    LEFT JOIN billing.claims ON invoices.fk_claim = claims.pk
    LEFT JOIN billing.codes c1 ON invoices.result_code = c1.code
    LEFT JOIN billing.codes c2 ON claims.result_code = c2.code;
+
+drop view billing.vwitemsbilled;
 
 create or replace view billing.vwitemsbilled as 
  SELECT items_billed.pk AS pk_items_billed,

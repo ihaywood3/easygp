@@ -1,4 +1,4 @@
-drop view billing.vwinvoices cascade; -- will cascade to vwitemandinvoices
+﻿drop view billing.vwinvoices cascade; -- will cascade to vwitemandinvoices
 drop view billing.vwitemsbilled;
 
 alter table billing.invoices add column voucher_id varchar(2);
@@ -57,7 +57,7 @@ create view billing.vwitemsandinvoices as
    FROM billing.vwitemsbilled, billing.vwinvoices
   WHERE vwinvoices.fk_invoice = vwitemsbilled.fk_invoice;
 
-insert into billing.lu_payment_method (pk,"method") values (5, 'medicare');
+--insert into billing.lu_payment_method (pk,"method") values (5, 'medicare');
 
 grant select on billing.vwitemsandinvoices to staff;
 grant select on billing.vwinvoices to staff;

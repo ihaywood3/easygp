@@ -338,17 +338,22 @@ Public Sub Init()
    
 End
 
-Public Sub Notify(its_us As Boolean, param As String)
+Public Function Notify(its_us As Boolean, param As String) As Variant
   
   Dim pk_invoice As Integer
    
-  If its_us Then Return
+  If its_us Then Return Null
   pk_invoice = CInt(Param)
   If fk_invoice = pk_invoice Then
+     Debug "trying to get invoice"
      invoice = modBillingDBI.Get_Invoice_PK(fk_invoice)
+     Debug invoice
      Reload_Invoice_Data()
   Endif
-   
+Finally
+   Return Null
+Catch
+   Log.ErrorMsg("FRecordVist.Notfiy failed" & Error.Text & " " & Error.Backtrace.Join(" "))
 End
 
 
@@ -1504,9 +1509,19 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True)
    Dim sMsg As String
    Dim referrer As Collection
    Dim date_paid As Date
+   Dim latex As String
    
-   
-   If VBox_EditArea_Outer.Padding = 0 Then Return           'no data change no save
+   If VBox_EditArea_Outer.Padding = 0 Then
+      If IsNull(invoice) Then Return 
+      If Not bPrint Then Return
+      If IsNull(invoice!latex) And If invoice!online Then
+        latex = modBillingDBI.Generate_Online_Latex(invoice!fk_invoice)
+      Else
+        latex = invoice!latex
+      Endif
+      If Not IsNull(latex) Then modPrinting.Print_latex(latex)
+      Return           'no data change no save
+   Endif
    Debug "in FRecordVist.Save"
    If Not Valid_Invoice_Items() Then Return                 'items invalid no save
    '-----------------------------------------------------
@@ -1677,9 +1692,12 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True)
    End If
    If Not IsNull(patient) Then
       cvwInvoices_Refresh()
-      Invoice_New()
    Endif
-   
+   If invoice!result_code <> 4005 Then
+      Invoice_New()
+   Else
+      fk_invoice = invoice!fk_invoice
+   Endif 
 End
 
 Public Sub Billing_Type_Get_Pk(txt As String) As Integer
@@ -2164,7 +2182,7 @@ Public Sub mnuInvoices_Click()
          Else
             latex = item_billed!latex
          Endif
-         modPrinting.Print_latex(latex)
+         If Not IsNull(latex) Then modPrinting.Print_latex(latex)
       Case "font"
          modUtilGUI.Columnview_SetFont(cvwInvoices, "FRecordVisit")
       Case "print account statement"
@@ -2611,18 +2629,40 @@ End
 
 Private Sub Reload_Invoice_Data()
    Dim item_billed As Collection
-
+   Dim i As Collection
+   Dim item_with_error As Collection
+   Dim s As String
+   Dim rcode As Integer
+   Dim items As Collection
+   
    ' set online data
    rbOnline_No.Visible = False
    rbOnline_Yes.Visible = False
    lblOnlineStatus.Visible = True
+   items = modBillingDBI.Get_Billed_Items(invoice)
    If invoice!result_code = 4006 Then
-      lblOnlineStatus.Text = "(" & Items_Billed[0]!reason_code & ") " & Items_Billed[0]!item_description & " " & Items_Billed[0]!item_comment
+      For Each i In Items
+         If i!fk_invoice = invoice!fk_invoice And If Not IsNull(i!reason_code) And If i!reason_code <> 0 Then
+           item_with_error = i 
+         Endif
+      Next
+      rcode = item_with_error!reason_code
+      s = item_with_error!description & " " & item_with_error!comment
    Else If invoice!result_code = 4007 Then
-      lblOnlineStatus.Text = "(" & invoice!claim_result_code & ") " & invoice!claim_description & " " & invoice!claim_result_text
+      rcode = invoice!claim_result_code
+      s = invoice!claim_description & " " & invoice!claim_result_text
    Else 
-      lblOnlineStatus.Text = "(" & invoice!result_code & ") " & invoice!description & " " & invoice!result_text
+      rcode = invoice!result_code
+      s = invoice!description & " " & invoice!result_text
    Endif
+   lblOnlineStatus.Text = "(" & Str$(rcode) & ") " & Left$(s, 30)
+   lblOnlineStatus.Tooltip = s
+   Select Case rcode
+      Case 0
+         lblOnlineStatus.Foreground = Color.DarkGreen
+      Case Else
+         lblOnlineStatus.Foreground = Color.Red
+   End Select
    If Not invoice!paid Then                           'if this invoice is not paid
       tbSaveNoPrint.Enabled = False                       'as are paying disable the save no print button
       lblEditAreaHeading.text = "Pay Invoice"
@@ -2675,7 +2715,7 @@ Private Sub Reload_Invoice_Data()
       .Foreground = Color.Black
       .Border = Border.Plain
    End With
-   For Each Item_Billed In Items_Billed
+   For Each Item_Billed In Items
       If Item_Billed!fk_invoice = fk_invoice Then
          gvwItemsBIlled.Rows.count = onrow_items + 1
          gvwItemsBIlled[onrow_items, 0].text = Trim(Item_Billed!mbs_item & " " & Item_Billed!ama_item & " " & Item_Billed!user_item)

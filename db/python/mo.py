@@ -36,7 +36,13 @@ medicare_flags = {
             ' ':'No change'}
 
 class MedicareError(Exception):
-    pass
+    def __init__(self,line,number=4012):
+        m = re.match("ERROR:(.*): *([0-9]+)",line)
+        if m:
+            number = int(m.group(2))
+            line = m.group(1)
+        Exception.__init__(self,line)
+        self.number = number
 
 class MedicareOnline:
     def __init__(self, java_path, passphrase, sender, location_id):
@@ -71,11 +77,11 @@ class MedicareOnline:
             self.pro.poll()
         except IOError:
             e = self.pro.stdout.read()
-            logging.error(e)
-            raise MedicareError("java subprocess died: "+e)
+            logging.error("java process had IOError on _write returning %r" % e)
+            raise MedicareError(e)
         if not self.pro.returncode is None and self.pro.returncode <> 0:
             line = self.pro.stdout.read()
-            logging.error(line)
+            logging.error("java process had non-zero exit on _write returning %r" % line)
             self._setup()
             raise MedicareError(line)
 
@@ -88,12 +94,13 @@ class MedicareOnline:
             line = f.readline()
             self.pro.poll()
             if not self.pro.returncode is None and self.pro.returncode <> 0:
-                logging.error(line)
+                logging.error("java layer had IOError on _read returning %r" % line)
                 self._setup()
                 raise MedicareError(line)
             r = line.strip()
             m = re.match("ERROR:.*",r)
             if m:
+                logging.error("Java layer sent us ERROR line: %r" % line)
                 raise MedicareError(line)
             try:
                 v = int(r)
@@ -110,57 +117,57 @@ class MedicareOnline:
             return v
 
     def create_object(self, obj, path, value):
-        self._write("CBO",obj, path, value)
         desc = "CreateBusinessObject({},{},{})".format(repr(obj),repr(path),repr(value))
         logging.debug(desc)
+        self._write("CBO",obj, path, value)
         v, val = self._read(True)
-        if v != 0: raise MedicareError("{} returned {}".format(desc,value))
+        if v != 0: raise MedicareError("{} returned {}".format(desc,value),v)
         return val
 
     def set(self, path, elem, value):
-        self._write("SBO", path, elem, value)
         desc = "SetBusinessObject({},{},{})".format(repr(path),repr(elem),repr(value))
         logging.debug(desc)
+        self._write("SBO", path, elem, value)
         v = self._read()
-        if v == 9201: raise MedicareError("{} has invalid format for value".format(desc))
-        if v == 9202: raise MedicareError("{} has invalid value".format(desc))
-        if v != 0: raise MedicareError("{} returned code {}".format(desc,v))
+        if v == 9201: raise MedicareError("{} has invalid format for value".format(desc),9201)
+        if v == 9202: raise MedicareError("{} has invalid value".format(desc),9202)
+        if v != 0: raise MedicareError("{} returned code {}".format(desc,v),v)
 
     def get_logic_pack(self, pack):
         if pack in self.logic_packs:
             return self.logic_packs[pack]
         self._write("GLPV", pack)
         code, s = self._read(True)
-        if code != 0: raise MedicareError("GLP returned "+str(v))
+        if code != 0: raise MedicareError("GLP returned "+str(v),v)
         s = s.strip()[1:-1].split(",")[0]
         self.logic_packs[pack] = s
         return s
 
     def create_report(self, report, param):
-        self._write("CR",report, param)
         l = "CreateReport({},{})".format(repr(report),repr(param))
         logging.debug(l)
+        self._write("CR",report, param)
         v = self._read()
         if v == 0: return True
         if v == 8002: return False
         if v == 2023: return False
-        if v != 0: raise MedicareError("{} returned {}".format(l,v))
+        if v != 0: raise MedicareError("{} returned {}".format(l,v),v)
 
     def get(self, elem):
-        self._write("GRE", elem)
         logging.debug("GetReportElement({})".format(repr(elem)))
+        self._write("GRE", elem)
         v, val = self._read(True)
-        if v == 9205: return None  # 9205 == "requested data itme is empty"
-        if v != 0: raise MedicareError("GRE returned "+str(v))
+        if v == 9205: return None  # 9205 == "requested data item is empty"
+        if v != 0: raise MedicareError("GRE returned "+str(v),v)
         return val
 
     def next(self):
-        self._write("NRR")
         logging.debug("NextReportRecord")
+        self._write("NRR")
         v = self._read()
         if v == 0: return True
         if v == 8002: return False
-        raise MedicareError("NRR returned "+str(v))
+        raise MedicareError("NRR returned "+str(v),v)
 
     def is_report_available(self):
         self._write("IRA")
@@ -168,11 +175,11 @@ class MedicareOnline:
         v = self._read()
         if v == 0 or v == 9501: return True
         if v == 2027 or v == 8002: return False
-        raise MedicareError("IRA returned "+str(v))
+        raise MedicareError("IRA returned "+str(v),v)
 
     def send_content(self,content_type):
-        self._write("SC", content_type)
         logging.debug("SendContent")
+        self._write("SC", content_type)
         return self._read()
 
     def quit(self):
@@ -183,7 +190,7 @@ class MedicareOnline:
     def reset(self):
         self._write("RST")
         v = self._read()
-        if v != 0: raise MedicareError("RST returned "+v)
+        if v != 0: raise MedicareError("RST returned "+v,v)
 
     def prepare_bb_reports(self,fk_staff_only=None):
         bb = self.db.get_bb_invoices_to_upload()
@@ -375,8 +382,9 @@ class MedicareOnline:
                     while has_row:
                         service_id = self.get("ServiceId")
                         amount = int(self.get('ServiceBenefitAmount'))
+                        pdb.set_trace()
                         reason_code = self.get("ExplanationCode")
-                        self.db.set_item_code(inv['pk_invoice'],service_id,reason_code,"benefit $"+amount/100.0)
+                        self.db.set_item_code(inv['pk_invoice'],service_id,reason_code,"benefit ${:.2f}".format(amount/100.0))
                         has_row = self.next()
                 self.db.set_invoice_return(inv['pk_invoice'],0,result,claim_id)
                 self.reset()
@@ -412,4 +420,4 @@ class MedicareOnline:
             else: # something else
                 self.db.set_invoice_return(inv['fk_invoice'],send_code,None)
         except MedicareError as e:
-            self.db.set_invoice_return(fk_invoice,4012,str(e))
+            self.db.set_invoice_return(fk_invoice,e.number,str(e))

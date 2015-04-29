@@ -154,6 +154,7 @@ Public Sub dbConnect_global(opt As Collection)
    Endif
    If IsNull(conninfo!port) Then conninfo!port = "5432"
    If IsNull(conninfo!username) Then conninfo!username = User.Name
+   event_listeners = New Collection
    Actual_Connect()
    
   'If check_version Then CheckDBVersion()
@@ -163,7 +164,6 @@ Public Sub dbConnect_global(opt As Collection)
     my_is_admin = CheckAdminStatus()                    'IAN another postgres user with super-user rights can slip past here.
   Endif
   bStoring = False
-  event_listeners = New Collection
    
 End
 
@@ -225,6 +225,9 @@ Private Function Actual_Connect() As String
 
    Dim ssh_path As String
    Dim n As Integer = 0
+   Dim evt As Collection
+   Dim s As String
+   
    
    Try $hconn.Close
    Try pg_socket_file.Close()
@@ -262,13 +265,30 @@ Private Function Actual_Connect() As String
      Endif
       $hconn.Port = conninfo!port
    Endif
-   $hconn.Open
+   Try $hconn.Open
+   If Error Then
+     s = Error.Text
+     Log.ErrorMsg("when opening connection: " & s)
+     Error.Raise(s)
+   Endif
    $hconn.Exec("set datestyle = 'iso,dmy'")
-   Try $hconn.Exec("set bytea_output = 'escape'")
+   $hconn.Exec("set bytea_output = 'escape'")
    DB.Current = $hconn
    backend_pid = PQbackendPID(Connection.Handle)
    pg_socket_file = Open "." & PQsocket(Connection.Handle) For Read Watch
-
+   Log.DebugMsg("about to re-attach listeners")
+   Log.DebugMsg("event_listeners is " & Str$(event_listeners))
+   If IsNull(event_listeners) Then
+     Log.WarningMsg("event_listeners was Null: shouldn't happen. Skipping listener attachment")
+   Else
+     For Each evt In event_listeners
+       exec_query("LISTEN " & event_listeners.Key)
+     Next
+   Endif
+   Log.DebugMsg("attached listeners")
+   Catch
+     Log.ErrorMsg("exception in modDBConnect.Actual_Connect () " & Error.Text & " " & Error.Backtrace.Join(" "))
+     Error.Raise("connection error see log")
 End
 
 Public Sub Close_Listener()
@@ -480,32 +500,34 @@ do_query:
       If errtxt Begins "Query failed: SSL SYSCALL error: EOF detected" Or If errtxt Begins "Out of memory" Or If errtxt Begins "Query failed: SSL SYSCALL error: Connection timed out" Then
          ' connection lost
          $hconn = Null
-         Log.ErrorMsg(errtxt)
+         Log.ErrorMsg("lost connection with \"" & errtxt & "\"")
          If event_listeners.Exist("lost_connection") Then
            restart = False
            For Each obj In event_listeners["lost_connection"]
              v = Null
              Try v = Object.Call(obj, "Lost_Connection")
              If v = "restart" Then
-               restart = True
              Endif
            Next
+           ' FIXME: for now always attempt restart
            If restart Then
               Actual_Connect()
               Goto do_query
+           Else
+             Error.Raise("lost connection and not restarting")
            Endif
          Endif
       Else If errtxt Begins "Query failed: ERROR:  schema \"db\" does not exist" Then
          Error.Raise("The database you have connected to seems empty of data, please check your database setup")
       Else If errtxt Begins "Query failed: ERROR:  plpy.Error: No such option " Then
-         Log.ErrorMsg(errtxt & bt)
+         Log.ErrorMsg("no such option: " & errtxt & bt)
          Error.Raise("query failed no directory setting")
       Else If errtxt Begins "Query failed: ERROR:  IOError: [Errno 2] No such file or directory:" Then
-         Log.ErrorMsg(errtxt & bt)
+         Log.ErrorMsg("can't find file " & errtxt & bt)
          Error.Raise("Can't find file")
       Else
          RollBack()
-         Error.Raise("query failed " & errtxt)  'IAN URGENTLY NEED A BUG FIX TO EXIT GRACEFULLY AND RES-SET
+         Error.Raise("query failed: " & errtxt)  'IAN URGENTLY NEED A BUG FIX TO EXIT GRACEFULLY AND RES-SET
       Endif
    Else
       Log.DebugMsg(" ( " & $Result.Count & " rows returned in " & timeDiff(startTime) & "msec )")

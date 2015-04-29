@@ -13,4 +13,4 @@ comment on SEQUENCE documents.hl7_messages_in is
 'a unique key which is added to all incoming hl7 files imported to prevent collisions
  due to different senders using the same file names';
  
-update db.lu_version set lu_minor=392;
+update db.lu_version set lu_minor=396;

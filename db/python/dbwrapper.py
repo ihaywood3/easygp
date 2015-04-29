@@ -189,6 +189,7 @@ pg_class c2, pg_namespace n2, pg_attribute a2
         time.sleep(1)
         while True:
             self.__has_events = False
+            self.conn.commit()
             logging.debug("select()")
             rfd, wfds, xfds = select.select([pfd],[],[],600)
             if pfd in rfd:
@@ -454,6 +455,7 @@ insert into clerical.task_components (fk_task,fk_consult,date_logged,fk_staff_al
     def set_invoice_return(self,fk_invoice,return_code,return_text,pms_claim_id=None,error_level=None):
         c = self.cursor()
         c.execute("update billing.invoices set result_code=%s,result_text=%s,pms_claim_id=%s,error_level=%s where pk=%s",(return_code,return_text,pms_claim_id,error_level,fk_invoice))
+        c.execute("notify invoice_print, '%s'" % fk_invoice)
         c.close()
         logging.debug("invoice PK {} set to {} {}".format(fk_invoice,return_code,repr(return_text)))
         self.commit()  

@@ -119,6 +119,7 @@ Private fk_payer_branch As Integer  'if non zero the invoice is to an organisati
 Private fk_payer_person As Integer                 'if non zero the invoice is to a person
 Private fk_appointment As Integer
 Private fk_invoice As Integer                      'if non zero then key to billing.invoices table
+Private fk_invoice_for_printing As Integer
 Private Unbilled_Consultations As Collection
 Private Unbilled_consultation As Collection
 Private payers As Collection
@@ -333,25 +334,36 @@ Public Sub Init()
    ' txtFilterAccounts.text = "19/10/2012"
    bHSplit_Resized = False
    bComplainedAboutNoItem = False
+   fk_invoice = 0
+   fk_invoice_for_printing = 0
    Accounts_Reload()
-   modDBConnect.Register_Listener("invoice", Me)
+   modDBConnect.Register_Listener("invoice_print", Me)
    
 End
 
 Public Function Notify(its_us As Boolean, param As String) As Variant
   
   Dim pk_invoice As Integer
-   
-  If its_us Then Return Null
-  pk_invoice = CInt(Param)
-  If fk_invoice = pk_invoice Then
-     Debug "trying to get invoice"
-     invoice = modBillingDBI.Get_Invoice_PK(fk_invoice)
-     Debug invoice
-     Reload_Invoice_Data()
+  Dim invoice_print As CRow
+  Dim latex As String
+  
+  If its_us Then 
+      Debug "ignoring invoice event as from us"
+      Return Null
   Endif
-Finally
-   Return Null
+  pk_invoice = CInt(Param)
+  Debug "fk_invoice_for_printing = " & fk_invoice_for_printing & " pk_invoice = " & pk_invoice
+  If fk_invoice_for_printing = pk_invoice Then
+     Debug "matches so now printing invoice pk = " & pk_invoice
+     invoice_print = modBillingDBI.Get_Invoice_PK(fk_invoice_for_printing)
+     If IsNull(invoice_print!latex) And If invoice_print!online Then
+       latex = modBillingDBI.Generate_Online_Latex(fk_invoice_for_printing)
+     Else
+       latex = invoice_print!latex
+     Endif
+     If Not IsNull(latex) Then modPrinting.Print_latex(latex)
+  Endif
+  Return Null
 Catch
    Log.ErrorMsg("FRecordVist.Notfiy failed" & Error.Text & " " & Error.Backtrace.Join(" "))
 End
@@ -537,7 +549,7 @@ Public Sub Fee_Schedule_Reload()
       .Rows.count = 0
    End With
    Inc Application.Busy
-   ScheduledFeeItems = modUtil.Copy_Collection_Keyed_Sequentially(modBillingDBI.Fees_Get_With_Brief_Descriptor(item_number_Categories[combobox1.index]))
+   ScheduledFeeItems = modUtil.Copy_Collection_Keyed_Sequentially(modBillingDBI.Fees_Get_With_Brief_Descriptor())
    gvwFeeScheduleItems_FillGrid()
    Dec Application.Busy
    
@@ -1629,6 +1641,7 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True)
      Endif
    Endif
    invoice.Save("billing.invoices", "fk_invoice")
+   fk_invoice_for_printing = invoice!fk_invoice
    '------------------------------------
    'Get the items from the grid and save
    'FIXME - will later keep the underlying grid data in an array of some sort
@@ -1685,6 +1698,7 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True)
    If Not IsNull(invoice!latex) Then
      modDBConnect.update("billing.invoices", Null, ["pk": invoice!fk_invoice, "latex": invoice!latex])
    Endif
+   fk_invoice = 0
    modDBConnect.CommitTrans()
    EditArea_Notify_Data_Change(False)
    If Not IsNull(Unbilled_consultation) Then
@@ -1693,11 +1707,8 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True)
    If Not IsNull(patient) Then
       cvwInvoices_Refresh()
    Endif
-   If invoice!result_code <> 4005 Then
-      Invoice_New()
-   Else
-      fk_invoice = invoice!fk_invoice
-   Endif 
+   Invoice_New()
+
 End
 
 Public Sub Billing_Type_Get_Pk(txt As String) As Integer
@@ -2622,6 +2633,7 @@ Public Sub cvwInvoices_Select()
    Endif
    cvwInvoices.MoveCurrent()
    fk_invoice = Items_Billed[cvwInvoices.Item.key]!fk_invoice                    'gives us the key to billing.invoices table
+   Log.DebugMsg("fk_invoice to reload is " & fk_invoice)
    invoice = modBillingDBI.Get_Invoice_PK(fk_invoice)
    Reload_Invoice_Data()
    bExit = False

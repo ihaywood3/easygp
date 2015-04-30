@@ -46,6 +46,7 @@
 '        Spell checking on txtInstruction does not work.
 '--------------------------------------------------------------------
 Private temp_drugs As Collection
+Public bUserWantsSpellCheck As Boolean
 Private unique_drugs As Collection
 Private pic_saved As Picture = Picture["icons/12/green_dot.png"]
 Private pic_not_saved As Picture = Picture["icons/12/red_dot.png"]
@@ -87,7 +88,6 @@ Private brand As Collection
 Private gridrow As Integer 'current row the grid is on
 Private fk_brand As String
 Private fk_medication As Integer
-'Private fk_medications_progressnote As Integer
 Public script_items As Collection
 Private script_item As Collection
 Public Drug_Search_Scope As String[]   'must be public
@@ -97,7 +97,6 @@ Private habit As Collection
 Private Authority_Increased_Quantity_Reasons As Collection
 Private SpellChecker As ClskSpell
 Public sDefault_Prescribing_Mode As String   'accessed from FStaffPreferencesPrescribing via static form
-'Private allergy_class_codes As Collection
 Private sPBS_RPBS As String
 Private iAuthority_Type As Integer
 Private iIncreased_quantity_type As Integer
@@ -107,6 +106,7 @@ Static Public form_prescriptions As FPrescriptions
 Public Sub _new()
    
    Try sDefault_Prescribing_Mode = modAdminDBI.Config_Get_Staff_Member("user_prescribing_mode", "brand", Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff)
+   bUserWantsSpellCheck = modAdminDBI.Config_Get_Staff_Member("spelling-prescriptions", False, Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff)
    Search_Scope_Set() 'Has user set their scope? if not put in defaults
    form_prescriptions = Me                                              'allow access of this instance from FClinical
    lblMeasure.text = " Authority Approval No.  "
@@ -241,7 +241,7 @@ Public Sub Allergies_Show()
    Dim x As Integer
    Dim tempstring As String = Replace(Space$(40), " ", "z")  'fixme remove once Ian fixes cTemplate
    
-     tlAllergies.Visible = True  
+   tlAllergies.Visible = True  
    Separator3.Visible = True  
    sString = "<P><B>Allergies</B></P>" & tempstring & "%allergies"
    templ = New CTemplate(sstring)
@@ -720,10 +720,12 @@ Public Sub EditArea_TxtBox_LostFocus()
          Timer1.stop()
       Case "reason"
          'note this needs to be both in here and EditArea_TxtBox_Activate
-         bExit = True
-         SpellChecker.init(TxtReason) 'can't use last because invoking spell checker > recursive lost_focus()
-         SpellChecker.StartSpelling()
-         bExit = False
+         If bUserWantsSpellCheck Then  
+            bExit = True
+            SpellChecker.init(TxtReason) 'can't use last because invoking spell checker > recursive lost_focus()
+            SpellChecker.StartSpelling()
+            bExit = False
+         End If   
          If iPBS_Script_Type = const.pbs_script_type_pbs_authority_increased_quantity Or drug!restrictionflag = "A" And Trim(txtAuthorityWording.text) = "" Then
             If Trim(txtAuthorityWording.text) = "" Then
                txtAuthorityWording.SetFocus()
@@ -738,10 +740,12 @@ Public Sub EditArea_TxtBox_LostFocus()
             tbOk.SetFocus()
          End If
       Case "instructions" 'fixme bug, lost focus not tiggering for this.
-         bexit = True
-         SpellChecker.init(txtInstructions)
-         SpellChecker.StartSpelling()
-         bExit = False
+         If bUserWantsSpellCheck Then  
+            bexit = True
+            SpellChecker.init(txtInstructions)
+            SpellChecker.StartSpelling()
+            bExit = False
+         End If   
    End Select
    
    Last.pos = 0
@@ -1096,7 +1100,7 @@ Public Sub EditArea_TxtBox_GotFocus()
          '    .Height = txtbrand.height * 8
          '    .Raise
          ' End With
-        '     HSplit_DrugDisplay.Visible = True
+         '     HSplit_DrugDisplay.Visible = True
          pnlColumnView_SetPosition_brand
    End Select
    
@@ -1104,7 +1108,7 @@ End
 
 Public Sub pnlColumnView_SetPosition_brand()
    'used twice. When prescribing used in inbox for some reason the set focus not working    
-
+   
    With pnlcolumnview
       .top = Vbox_EditArea_Inner.top + txtbrand.parent.parent.top + txtbrand.parent.height
       .left = txtbrand.parent.Left + Vbox_EditArea_Inner.Padding
@@ -1114,7 +1118,7 @@ Public Sub pnlColumnView_SetPosition_brand()
       .Raise
    End With 
    HSplit_DrugDisplay.Visible = True
-
+   
 End
 
 Public Sub Instruction_Habits_Display()
@@ -1880,6 +1884,12 @@ Public Sub EditArea_Buttons_Click()
    Dim sProductInformationFilename As String
    
    Select Case Last.tag
+      Case "wipe instruction history"
+         If IsNull(drug!fk_product) Then Return
+         Message.title = "Deleting auto-instruction history "
+         If Message.Warning("If you continue,  you will remove all the history of instructions for this drug. EasyGP will or couse re-learn your habits as  you continue to prescribe.", "Wipe History", "Cancel") = 2 Then Return 
+         modPrescribingDBI.Instruction_Habit_Delete(drug!fk_product)
+         modDBConnect.CommitTrans
       Case "scope"
          columnview1.Visible = True
          Return

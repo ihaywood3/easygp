@@ -21,7 +21,7 @@
 
 """This code contains general support routines for the Python daemon"""
 
-import sys, os, getpass, pwd, glob, imp, os.path, traceback, shlex, time, logging, logging.handlers, re, socket
+import sys, os, getpass, pwd, glob, imp, os.path, traceback, shlex, time, logging, logging.handlers, re, socket, pprint
 import pdb
 import psycopg2
 import soap
@@ -65,31 +65,55 @@ class Daemon:
         i = 1
         self.cmd_config = None
         self.debug_mode = False
-        self.test_mode = False
-        self.overnight_mode = False
+        self.cmd = 'wait'
+        self.claim_id = None
         while i < len(sys.argv):
             s = sys.argv[i]
             if s == '--config' or s == '-c':
                 i += 1
                 if i < len(sys.argv): self.cmd_config = sys.argv[i]
-            if s == '--help':
+            elif s == '--help':
                 print """EasyGP daemon for communication with external providers
-Options
+   daemon.py options command
+Options:
    -c, --config  [file]:  specify non-standard location for config file. Standard is /etc/easygp.conf and $HOME/easygp.conf
    -h,, --help:  this help
-   -o,--overnight: instead of becoming a deamon run overnight tasks such as rechecking status
-                   on old IHIs in the database. Intended to be run from cron
+
    -d,--debug:  run in debug mode: no daemon, log to stdout.
-   -t,--test: run unit tests. only if you know what you are doing
+Commands:
+    test: run unit tests. only if you know what you are doing   
+    overnight: instead of becoming a deamon run overnight tasks such as rechecking status
+                   on old IHIs in the database. Intended to be run from cron
+    compile: compile a bulk-billing claim and print details to stdout
+    claim X: submit (or resubmit) claim X
+    report X: query a processing report on claim X
+    payment X: query a payment report on claim X
+    outstanding: list all outstanding claims
+    vouchers X: list all invoices (vouchers) on claim X
+    recent N: list all claims within last N months
+    wait: sit and wait for client events (the default)
+    pci [N]: submit one or all waiting Patient Claim - Interactive
 """
                 sys.exit(0)
-            if s == '-d' or s =='--debug':
+            elif s == '-d' or s =='--debug':
                 self.debug_mode = True
-            if s == '-o' or s == '--overnight':
-                self.overnight_mode = True
-            if s == '-t' or s == '--test':
-                self.test_mode = True
-                self.debug_mode = True
+            elif s in ['test','overnight','compile','wait','outstanding']:
+                self.cmd = s
+                if s == 'test': self.debug_mode = True
+            elif s in ['claim','report','payment','vouchers','recent']:
+                self.cmd = s
+                i += 1
+                self.claim_id = sys.argv[i]
+            elif s == 'pci':
+                self.cmd = 'pci'
+                if len(sys.argv) <= i+2:
+                    i += 1
+                    self.invoice_no = int(sys.argv[i])
+                else:
+                    self.invoice_no = None
+            else:
+                print >>sys.stderr,"Unknown option: %s" % s
+                sys.exit(2)
             i += 1
 
      
@@ -157,15 +181,14 @@ Options
             if not self.config.has_key("mo_passphrase"):
                 logging.error("mo_passphrase must be set in config file")
             elif not self.config.has_key("mo_sender"):
-                logging.error("mo_sender must be set in config file")
-            elif not self.config.has_key("mo_location_id"):
-                logging.error("mo_location_id must be set in config file")       
+                logging.error("mo_sender must be set in config file")       
             else:
-                mox = mo.MedicareOnline(self.config["drivers"],self.config["mo_passphrase"],self.config["mo_sender"],self.config["mo_location_id"])
+                mox = mo.MedicareOnline(self.config["drivers"],self.config["mo_passphrase"],self.config["mo_sender"],self.db.get_location_id())
                 self.mo = mox
                 self.evts.mo = mox
                 self.mo.db = self.db
                 self.db.listen("invoice",self.evts.invoice)
+                self.db.listen("same_day_delete",self.mo.same_day_delete)
         else:
             logging.warn('Medicare Online JAR not found in %s so MO module not loaded' % self.config['drivers'])
         # Personally Controlled Electronic Record
@@ -201,7 +224,6 @@ Options
         
 
     def daemonise(self):
-
         if os.fork () != 0: sys.exit(0)  # parent dies
         os.close(0)  # close standard file descriptors
         os.close(1)
@@ -215,32 +237,71 @@ Options
         self.read_config()
         self.setup_log()
         try:
-            if not self.overnight_mode and not self.debug_mode: self.daemonise()
+            if (not self.debug_mode) and self.cmd == 'wait': self.daemonise()
             try:
                 self.setup()
                 self.db = DBWrapper(self.config)
                 self.setup_drivers()
-                if self.overnight_mode: 
-                    self.evts.overnight()
-                    if not self.mo is None: 
-                        self.mo.prepare_bb_reports()
-                        for i in self.db.get_claims_awaiting_transmission(): self.transmit_claim(i)
-                        for i in self.db.get_claims_awaiting_processing_report(): self.mo.get_bb_processing_report(i)
-                        for i in self.db.get_claims_awaiting_payment_report(): self.mo.get_bb_payment_report(i)
-                else:
-                    if self.test_mode:
-                        #self.db.synth_event("script",12)
-                        #self.mo.send_bb_report(fk_staff_only=4)
-                        #self.mo.prepare_bb_reports(fk_staff_only=4)
-                        #self.mo.get_bb_processing_report(self.db.get_claim('B0006@'))
-                        #self.mo.transmit_claim(self.db.get_claim('B0006@'))
-                        self.mo.upload_private_invoice(1462) # Diana Kahn's 306
-                    else:
-                        self.db.wait_events()
+                getattr(self,self.cmd)()
             except: logging.exception("exception in child")
             finally: self.shutdown()
         except SystemExit: pass # parent dying
         except: logging.exception("top-level exception")
+
+    def overnight(self):
+         self.evts.overnight()
+         if not self.mo is None: 
+             self.mo.prepare_bb_reports()
+             for i in self.db.get_claims_awaiting_transmission(): self.mo.transmit_claim(i)
+             for i in self.db.get_claims_awaiting_processing_report(): self.mo.get_bb_processing_report(i)
+             for i in self.db.get_claims_awaiting_payment_report(): self.mo.get_bb_payment_report(i)
+
+    def test(self):
+        #self.db.synth_event("script",12)
+        #self.mo.send_bb_report(fk_staff_only=4)
+        #self.mo.prepare_bb_reports(fk_staff_only=4)
+        #self.mo.get_bb_processing_report(self.db.get_claim('B0006@'))
+        #self.mo.transmit_claim(self.db.get_claim('B0006@'))
+        self.mo.upload_private_invoice(1462) # Diana Kahn's 306
+
+    def wait(self):
+        self.db.wait_events()
+
+    def compile(self):
+        pdb.set_trace()
+        pprint.pprint(self.mo.prepare_bb_reports())
+
+    def claim(self):
+        pprint.pprint(self.mo.transmit_claim(self.db.get_claim(self.claim_id)))
+
+    def report(self):
+        pprint.pprint(self.mo.get_bb_processing_report(self.db.get_claim(self.claim_id)))
+  
+    def payment(self):
+        pprint.pprint(self.mo.get_bb_payment_report(self.db.get_claim(self.claim_id)))
+
+    def outstanding(self):
+        pprint.pprint(self.db.get_outstanding_claims())
+
+    def vouchers(self):
+        pprint.pprint([self.clean_invoice(i) for i in self.db.get_invoices_on_claim(self.db.get_claim(self.claim_id)['pk'])])
+
+    def clean_invoice(self,inv):
+        del inv['latex']
+        for i in inv['items_billed']:
+            del i['descriptor']
+        return inv
+
+    def recent(self):
+        pprint.pprint(self.db.get_recent_claims(int(self.claim_id)))
+
+    def pci(self):
+        if not self.invoice_no is None:
+            self.mo.upload_private_invoice(self.invoice_no)
+        else:
+            for pk in self.db.get_all_private_invoices_to_upload():
+                self.mo.upload_private_invoice(pk)
+            self.db.commit()
 
 if __name__=='__main__':
     d = Daemon()

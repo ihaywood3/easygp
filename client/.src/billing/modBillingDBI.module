@@ -1156,7 +1156,6 @@ Public Sub Print_Invoice(invoice_in As Variant, bPrint As Boolean, Optional bBul
    Dim invoice As CRow
    Dim v As Variant
    
-  'IAN AT THIS POINT ?HOW YOU GETTING THE ONLINE FIELD?
    If TypeOf(invoice_in) = gb.Integer Then
       invoice = Get_Invoice_PK(invoice_in)
    Else
@@ -1170,10 +1169,9 @@ Public Sub Print_Invoice(invoice_in As Variant, bPrint As Boolean, Optional bBul
    "where o.pk = s.fk_occupation and s.fk_staff = &1  and fk_branch = &2 limit 1"
    doctor = modDBConnect.exec_query_first(sql, [invoice!fk_staff_provided_service, invoice!fk_branch])
    referrer_type = doctor!referrer_type
-   Print invoice!online
    If invoice!online Then
       If bBulkBill Then
-         If referrer_type = "s" Then
+         If referrer_type = "s" Or If Not IsNull(referrer) Then
             templ = New CTemplate("templates/invoice-online-bb-specialist.tex")
             Load_Template_Specialist(templ, invoice, referrer)
          Else
@@ -1185,9 +1183,12 @@ Public Sub Print_Invoice(invoice_in As Variant, bPrint As Boolean, Optional bBul
          Return latex
       Else
          If IsNull(invoice!result_code) Or If invoice!result_code = 4005 Then
-            Return Null ' private invoices get generated later
+            Return Null ' we are waiting for a response from the Medicare server, so printing happens later
          Else
-            If referrer_type = "s" Then
+            ' we have a response code from the Medicare server
+            ' this isn't/shouldn't be where printing normally happens for private online billing
+            ' but Print anyway As Per user request
+            If referrer_type = "s" Or If Not IsNull(referrer) Then
                templ = New CTemplate("templates/invoice-online-specialist.tex")
                Load_Template_Specialist(templ, invoice, referrer)
             Else
@@ -1200,7 +1201,7 @@ Public Sub Print_Invoice(invoice_in As Variant, bPrint As Boolean, Optional bBul
          Endif
       Endif
    Else
-      ' the old manual printing code
+      ' here's the old manual offline printing code
       If bBulkBIll Then
          ' cue scary music: patient is being bulk-billed
           If referrer_type = "s" Then  'FIXME: reliable way of determinging specialist status
@@ -1266,7 +1267,11 @@ Public Function Generate_Online_Latex(fk_invoice As Integer) As String
    doctor = modDBConnect.exec_query_first(sql, [invoice!fk_staff_provided_service])
    referrer_type = doctor!referrer_type
    referrer = Find_Referrer(invoice!fk_patient, invoice!visit_date)
-   If referrer_type = "s" Then
+   ' logic for determining user is specialist/GP is surprisingly tricky
+   ' Medicare testing makes it harder as the fake doctor identities we
+   ' are given are GPs, but must be used to test specialist billing also
+   ' so go on specialist status and if they have a valid referral in the system
+   If referrer_type = "s" Or If Not IsNull(referrer) Then
       templ = New CTemplate("templates/invoice-online-specialist.tex")
       Load_Template_Specialist(templ, invoice, referrer)
    Else
@@ -1279,7 +1284,7 @@ Public Function Generate_Online_Latex(fk_invoice As Integer) As String
    Endif
    Load_Template_GP(invoice, templ, doctor, items, payments, cc, True)
    latex = templ.GetData()
-   modDBConnect.update("billing.invoices", Null, ["pk": invoice!fk_invoice, "latex": latex])
+   modDBConnect.update("billing.invoices", Null, ["pk": invoice!fk_invoice, "latex": latex, "date_printed": "now()"])
    Return latex
    
 End
@@ -1328,14 +1333,14 @@ Private Sub Load_Template_GP(invoice As Crow, templ As CTemplate, doctor As Coll
       templ.Subst("doctor-address-line3", "\\relax")
    Else
       templ.Subst("doctor-address-line2", doctor!street2)
-      templ.Subst("doctor-address-line2", doctor!town & " " & doctor!postcode)
+      templ.Subst("doctor-address-line3", doctor!town & " " & doctor!postcode)
    Endif
    templ.Subst("doctor-occupation", modUtil.Ucase_Word_First_Letter(doctor!occupation))
    templ.Subst("doctor-provider-number", doctor!provider_number)
    templ.Subst("current-time", Format$(Now, "dd/mm/yy hh:nn"))
    templ.Subst("abn", doctor!australian_business_number)
    templ.Subst("hic-location-id", doctor!hic_location_id)
-   
+   templ.Subst("invoice-num", invoice!fk_invoice)
    If IsNull(invoice!account_to_name) Then
       templ.Subst("account-to-name", "\\relax")
       Templ.Subst("account-to-address-line1", "\\relax")
@@ -1499,4 +1504,13 @@ Public Sub UnitTest(main_form As Form)
    modDBConnect.exec_query("insert into billing.payments_received(fk_lu_payment_method, amount, fk_invoice) values (1,'$100.00', &1)", [invoice!fk_invoice])
    Print_Invoice(invoice!fk_invoice, True)
 
+End
+
+' Same Day Delete is a Medicare Online function call
+' it allows you to reverse an invoice if it is deleted on the same day
+
+Public Sub Same_Day_Delete(fk_invoice As Integer, reason As String)
+   
+   modDBConnect.exec_query("NOTIFY '" & fk_invoice & "/" & reason & "'")
+   
 End

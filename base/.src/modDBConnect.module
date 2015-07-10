@@ -288,7 +288,7 @@ Private Function Actual_Connect() As String
    Log.DebugMsg("attached listeners")
    Catch
      Log.ErrorMsg("exception in modDBConnect.Actual_Connect () " & Error.Text & " " & Error.Backtrace.Join(" "))
-     Error.Raise("connection error see log")
+     Error.Raise("connection error: " & Error.Text)
 End
 
 Public Sub Close_Listener()
@@ -308,7 +308,7 @@ Public Function Send_Notify(notify As String, param As String, Optional its_us A
   r2 = Null
   If event_listeners.Exist(notify) Then
     For Each i In event_listeners[notify]
-      Log.DebugMsg("calling " & Str$(i) & " with param: " & param)
+      Log.DebugMsg("calling listener " & Str$(i) & " with param: " & param)
       r = Null
       Try r = Object.Call(i, "Notify", [its_us, param])
       If (Not IsNull(r)) And If IsNull(r2) Then
@@ -330,16 +330,19 @@ End
 
 ' process asynchronous notifications
 Public Sub File_Read()
-   
+ 
+   PQconsumeInput(Connection.Handle)
+   Check_Notifications()
+End
+
+Private Sub Check_Notifications()
    Dim notifies As Pointer
    Dim notifies2 As Pointer
    Dim notify_string As String
    Dim notify_pid As Integer
    Dim notify_param As String
    Dim its_us As Boolean
-
- 
-   PQconsumeInput(Connection.Handle)
+   
    notifies = PQnotifies(Connection.Handle)
    While Not IsNull(notifies)
       notifies2 = notifies
@@ -348,7 +351,7 @@ Public Sub File_Read()
       notify_pid = Integer@(notifies)
       notifies += SizeOf(gb.Pointer) 'remember C structs are padded for speed to the larger type
       notify_param = String@(Pointer@(notifies))
-      Log.DebugMsg("NOTIFY " & notify_string & " pid: " & notify_pid & " param: " & notify_param)
+      Log.DebugMsg("received NOTIFY " & notify_string & " pid: " & notify_pid & " param: " & notify_param)
       ' check if it's our client making the update happen
       ' some listeners may wish to ignore in this case, some may not
       its_us = False
@@ -460,6 +463,9 @@ Public Function CommitTrans() As Result
          Log.DebugMsg(" COMMIT ( took " & timeDiff(startTime) & "msec )")
       Endif
       Try File_Read()
+      If Error Then
+        Log.ErrorMsg("during File_read():" & Error.Text & " " & Error.Where)
+      Endif
       Return $Result
    End If
    
@@ -695,12 +701,14 @@ Public Function update(table As String, old_data As Collection, new_data As Coll
       If TypeOf(field) = gb.string Then
          If InStr(field, "BLOB:") Then
             changes.Push(new_data.Key & "=" & $hconn.FormatBlob(File.Load((Right$(field, -5)))) & ":: bytea ")
+         Else If field = "now()" Then
+           changes.Push(new_data.Key & "= now()")
          Else
-            If TypeOf(field) = gb.Date Then
-               field = Format$(field, "dd/mm/yyyy")
-            Endif
             changes.Push($hconn.Subst(new_data.Key & " = &1", field))
          Endif
+      Else If TypeOf(field) = gb.Date Then
+         field = Format$(field, "dd/mm/yyyy")
+         changes.Push($hconn.Subst(new_data.Key & " = &1", field))
       Else
          changes.Push($hconn.Subst(new_data.Key & " = &1", field))
       End If

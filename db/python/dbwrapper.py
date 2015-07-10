@@ -91,6 +91,9 @@ class DBWrapper:
         self.pid = self.conn.get_backend_pid()
         self.__retry_mode = False
 
+    def get_location_id(self):
+        return self.staff['hic_location_id']
+
     def each_table(self,tbl='.*',typs='r'):
         """set of table names matching the provided regular expression"""
         return set((i['tblnam'] for i in self.query("select nspname || '.' || relname as tblnam from pg_class, pg_namespace where relnamespace = pg_namespace.oid and (not relname ilike 'pg_%%') and nspname<>'information_schema' and nspname || '.' || relname ~ %s and position(relkind in %s) > 0",(tbl,typs))))
@@ -393,6 +396,9 @@ insert into clerical.task_components (fk_task,fk_consult,date_logged,fk_staff_al
         """claims successfully transmitted but no report as yet"""
         return self.query("select * from billing.claims where processing_report_run_date is null and age(claim_date) > '1 day' and result_code=0")
 
+    def get_recent_claims(self,months):
+        """all claims within last so many months"""
+        return self.query("select * from billing.vwclaims where age(claim_date) < '%d month'" % months)
 
     def get_claims_awaiting_payment_report(self):
         """claims successfully transmitted but no report as yet"""
@@ -402,8 +408,12 @@ insert into clerical.task_components (fk_task,fk_consult,date_logged,fk_staff_al
         """claims saved but needing transmission"""
         return self.query("select * from billing.claims where result_code=4008")
 
+    def get_outstanding_claims(self):
+        """The union of the above: all claims waiting for 'something' to happen to them"""
+        return self.query("select * from billing.vwclaims where result_code=4008 or payment_report_run_date is null or processing_report_run_date is null")
+
     def get_claim(self,claim_id):
-        """get a claim by its ID, really only for testing"""
+        """get a claim by its ID, surprisingly useful"""
         return self.query("select * from billing.claims where claim_id=%s",(claim_id,))[0]
 
     def get_invoices_on_claim(self,claim_pk):
@@ -454,7 +464,10 @@ insert into clerical.task_components (fk_task,fk_consult,date_logged,fk_staff_al
 
     def set_invoice_return(self,fk_invoice,return_code,return_text,pms_claim_id=None,error_level=None):
         c = self.cursor()
-        c.execute("update billing.invoices set result_code=%s,result_text=%s,pms_claim_id=%s,error_level=%s where pk=%s",(return_code,return_text,pms_claim_id,error_level,fk_invoice))
+        if pms_claim_id is None:
+            c.execute("update billing.invoices set result_code=%s,result_text=%s,error_level=%s where pk=%s",(return_code,return_text,error_level,fk_invoice))
+        else:
+            c.execute("update billing.invoices set result_code=%s,result_text=%s,pms_claim_id=%s,error_level=%s where pk=%s",(return_code,return_text,pms_claim_id,error_level,fk_invoice))
         c.execute("notify invoice_print, '%s'" % fk_invoice)
         c.close()
         logging.debug("invoice PK {} set to {} {}".format(fk_invoice,return_code,repr(return_text)))
@@ -483,9 +496,9 @@ insert into clerical.task_components (fk_task,fk_consult,date_logged,fk_staff_al
         for r in report:
             inv = self.query("""
 select i.result_text,i.pk as pk_invoice, b.pk as pk_item from billing.invoices i, billing.items_billed b 
-where i.fk_claim=%s and b.service_id=%s""",(pk_claim,r['service_id']),c)
+where i.fk_claim=%s and b.service_id=%s and b.fk_invoice = i.pk""",(pk_claim,r['service_id']),c)
             if len(inv) != 1:
-                raise MedicareError("couldn't find invoice for claim {} service id {}".format(claim_id,r['service_id']))
+                logging.warn("couldn't find invoice for claim {} service id {}".format(claim_id,r['service_id']))
             inv = inv[0]
             c.execute("update billing.items_billed set reason_code=%s,comment=%s,error_level=%s where pk=%s", (r['reason_code'],r['comment'],r.get('error_level',None),inv['pk_item']))
             if r['amount'] > 0:

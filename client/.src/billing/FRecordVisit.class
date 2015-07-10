@@ -348,13 +348,13 @@ Public Function Notify(its_us As Boolean, param As String) As Variant
   Dim latex As String
   
   If its_us Then 
-      Debug "ignoring invoice event as from us"
+      Log.DataMsg("ignoring invoice event as from us. param: " & param)
       Return Null
   Endif
   pk_invoice = CInt(Param)
-  Debug "fk_invoice_for_printing = " & fk_invoice_for_printing & " pk_invoice = " & pk_invoice
+  Log.DataMsg("fk_invoice_for_printing = " & fk_invoice_for_printing & " pk_invoice = " & pk_invoice)
   If fk_invoice_for_printing = pk_invoice Then
-     Debug "matches so now printing invoice pk = " & pk_invoice
+     Log.DataMsg("matches so now printing invoice pk = " & pk_invoice)
      invoice_print = modBillingDBI.Get_Invoice_PK(fk_invoice_for_printing)
      If IsNull(invoice_print!latex) And If invoice_print!online Then
        latex = modBillingDBI.Generate_Online_Latex(fk_invoice_for_printing)
@@ -362,6 +362,14 @@ Public Function Notify(its_us As Boolean, param As String) As Variant
        latex = invoice_print!latex
      Endif
      If Not IsNull(latex) Then modPrinting.Print_latex(latex)
+     fk_invoice_for_printing = 0 
+  Endif
+  If pk_invoice = fk_invoice Then
+     ' we match the invoice being displayed as well/instead
+     If IsNull(invoice_print) Then
+         invoice_print = modBillingDBI.Get_Invoice_PK(fk_invoice)
+         Set_Online_Data(invoice_print)
+     Endif
   Endif
   Return Null
 Catch
@@ -1581,8 +1589,7 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True)
       invoice.put_unchanged(fk_invoice, "fk_invoice")                   'edit the record
    Else
       invoice!fk_staff_invoicing = modDBConnect.currentUser!fk_staff    'new - then current user is doing the invoicing
-      invoice!date_invoiced = Now()
-      invoice!date_printed = Now()
+      invoice!date_invoiced = "now()"
       invoice!notes = cmbInvoiceComments.Text
       invoice!reference = Trim(txtReferenceDetails.text)
       If bBulkBill Then
@@ -1696,7 +1703,7 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True)
    'fixme won't always be printed, but need to always save latex
    invoice!latex = modBillingDBI.Print_Invoice(invoice!fk_invoice, bPrint, bBulkBill, Null, referrer)
    If Not IsNull(invoice!latex) Then
-     modDBConnect.update("billing.invoices", Null, ["pk": invoice!fk_invoice, "latex": invoice!latex])
+     modDBConnect.update("billing.invoices", Null, ["pk": invoice!fk_invoice, "latex": invoice!latex, "date_printed": "now()"])
    Endif
    fk_invoice = 0
    modDBConnect.CommitTrans()
@@ -2639,33 +2646,35 @@ Public Sub cvwInvoices_Select()
    bExit = False
 End
 
-Private Sub Reload_Invoice_Data()
-   Dim item_billed As Collection
+Private Sub Set_Online_Data(inv As Crow, Optional items As Collection)
+
    Dim i As Collection
    Dim item_with_error As Collection
    Dim s As String
    Dim rcode As Integer
-   Dim items As Collection
+
    
    ' set online data
    rbOnline_No.Visible = False
    rbOnline_Yes.Visible = False
    lblOnlineStatus.Visible = True
-   items = modBillingDBI.Get_Billed_Items(invoice)
-   If invoice!result_code = 4006 Then
+   If inv!result_code = 4006 Then
+      If IsNull(items) Then
+        items = modBillingDBI.Get_Billed_Items(inv)
+      Endif
       For Each i In Items
-         If i!fk_invoice = invoice!fk_invoice And If Not IsNull(i!reason_code) And If i!reason_code <> 0 Then
+         If i!fk_invoice = inv!fk_invoice And If Not IsNull(i!reason_code) And If i!reason_code <> 0 Then
            item_with_error = i 
          Endif
       Next
       rcode = item_with_error!reason_code
       s = item_with_error!description & " " & item_with_error!comment
-   Else If invoice!result_code = 4007 Then
-      rcode = invoice!claim_result_code
-      s = invoice!claim_description & " " & invoice!claim_result_text
+   Else If inv!result_code = 4007 Then
+      rcode = inv!claim_result_code
+      s = inv!claim_description & " " & inv!claim_result_text
    Else 
-      rcode = invoice!result_code
-      s = invoice!description & " " & invoice!result_text
+      rcode = inv!result_code
+      s = inv!description & " " & inv!result_text
    Endif
    lblOnlineStatus.Text = "(" & Str$(rcode) & ") " & Left$(s, 30)
    lblOnlineStatus.Tooltip = s
@@ -2675,6 +2684,15 @@ Private Sub Reload_Invoice_Data()
       Case Else
          lblOnlineStatus.Foreground = Color.Red
    End Select
+End
+
+
+Private Sub Reload_Invoice_Data()
+   Dim items As Collection
+   Dim item_billed As Collection
+
+  items = modBillingDBI.Get_Billed_Items(invoice)
+  Set_Online_Data(invoice, items)
    If Not invoice!paid Then                           'if this invoice is not paid
       tbSaveNoPrint.Enabled = False                       'as are paying disable the save no print button
       lblEditAreaHeading.text = "Pay Invoice"

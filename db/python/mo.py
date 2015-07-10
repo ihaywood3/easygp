@@ -53,6 +53,7 @@ class MedicareOnline:
         self.start_process()
 
     def start_process(self):
+        logging.info("starting Java slave process hiconline.sender={} hiconline.location_id={} java path {}".format(self.sender,self.location_id,self.java_path))
         self.pro = subprocess.Popen(["/usr/bin/java","-classpath","lib:lib/*:build","-Djava.library.path=lib","-Dhiconline.sender={}".format(self.sender),"-Dhiconline.passphrase={}".format(self.passphrase),"-Dhiconline.location_id={}".format(self.location_id),"HICOnline"],cwd=self.java_path,stdin=subprocess.PIPE,stderr=subprocess.STDOUT,stdout=subprocess.PIPE,close_fds=True)
         self.logic_packs = {}
 
@@ -121,7 +122,7 @@ class MedicareOnline:
         logging.debug(desc)
         self._write("CBO",obj, path, value)
         v, val = self._read(True)
-        if v != 0: raise MedicareError("{} returned {}".format(desc,value),v)
+        if v != 0: raise MedicareError("{} returned {}".format(desc,v),v)
         return val
 
     def set(self, path, elem, value):
@@ -169,6 +170,14 @@ class MedicareOnline:
         if v == 8002: return False
         raise MedicareError("NRR returned "+str(v),v)
 
+    def accept(self):
+        logging.debug("acceptContent()")
+        self._write("ACT")
+        v = self._read()
+        if v == 0: return
+        raise MedicareError("ACT returned "+str(v),v)
+
+
     def is_report_available(self):
         self._write("IRA")
         logging.debug("IsReportAvailable")
@@ -197,13 +206,13 @@ class MedicareOnline:
         claims = []
         for k in bb:
             fk_branch, fk_staff = k
-            if fk_staff is not None and fk_staff != fk_staff_only: continue
+            if fk_staff_only is not None and fk_staff != fk_staff_only: continue
             invoices = bb[k]
             invoices = sorted(invoices,key=lambda x: x['visit_date'])
-            if len(invoices) < 10:
-                if datetime.date.today().toordinal() - invoices[0]['visit_date'].toordinal() < 14: continue
+            #if len(invoices) < 10:
+            #    if datetime.date.today().toordinal() - invoices[0]['visit_date'].toordinal() < 14: continue
             while len(invoices) > 0:
-                claims.add(self.db.create_claim(fk_branch,invoices[:50]))
+                claims.append(self.db.create_claim(fk_branch,invoices[:50]))
                 invoices = invoices[50:]
         return claims
     
@@ -222,6 +231,7 @@ class MedicareOnline:
                 typ = 'O'
             self.set(path, "ServiceTypeCde",typ)  # O=GP, S=Specialist
             pts = {}
+            invoices = sorted(invoices,key=lambda x:x['voucher_id'])  # yes the java layer cracks it if the vouchers aren't loaded in order. Sigh.
             for inv in invoices:
                 voucher_path = self.create_object("Voucher",'./'+path,inv['voucher_id'])
                 if not inv['fk_patient'] in pts:
@@ -235,10 +245,19 @@ class MedicareOnline:
                 self.set(voucher_path,"PatientReferenceNum",pt['medicare_ref_number'])
                 self.set_voucher_items(voucher_path,inv)
             send_code = self.send_content(content_type)
+            old_send_code = send_code
             if send_code == 0: send_code = 4010 # successfull BB transmission
             self.db.set_claim_return(claim_id,send_code,"")
+            self.reset()
+            return {'send_code':old_send_code}
         except MedicareError as e:
+            self.db.set_claim_return(claim_id,e.number,str(e))
+            self.cycle_process()
+            return {'error':str(e)}
+        except Exception as e:
             self.db.set_claim_return(claim_id,4009,str(e))
+            self.cycle_process()
+            return {'error':str(e)}
 
     def amount_to_cents(self,amt):
         m = re.match("\$([0-9]+)\.([0-9]+)",amt)
@@ -285,10 +304,14 @@ class MedicareOnline:
                 line['service_id'] = self.get("ServiceId")
                 line['amount'] = int(self.get('ServiceBenefitAmount'))
                 medicare_flag = self.get('MedicareCardFlag') 
-                if medicare_flag != " ":
+                if medicare_flag != " " and medicare_flag != "":
                     medicare_number = self.get("PatientMedicareCardNum")
                     medicare_ref_number = self.get('PatientReferenceNum')
-                    line['comment'] = medicare_flags[medicare_flag].format(medicare_number, medicare_ref_number)
+                    if medicare_flags.has_key(medicare_flag):
+                        line['comment'] = medicare_flags[medicare_flag].format(medicare_number, medicare_ref_number)
+                    else:
+                        line['comment'] = "Unknown flag {}".format(medicare_flag)
+                        logging.warn(line["comment"])
                 else:
                     line['comment'] = None
                 line['reason_code'] = self.get("ExplanationCode")
@@ -297,8 +320,11 @@ class MedicareOnline:
             self.reset()
             if len(lines) > 0:
                 self.db.set_processing_report(claim['pk'],claim['claim_id'],lines)
+                return lines
         except MedicareError as e:
             self.db.set_claim_return(claim['claim_id'],4009,str(e))
+            self.cycle_process()
+            return {'error':str(e),'claim_id':claim['claim_id']}
 
     def convert_charge(self, n):
         if n is None: return "$0.00"
@@ -309,23 +335,69 @@ class MedicareOnline:
     def get_bb_payment_report(self, claim):
         try:
             has_row = self.create_report("DBPaymentReport",self.claim_query(claim))
+            lines = []
             report = ""
             while has_row:
-                line = {}
-                line['bsb']  = self.get("BSBCode") 
-                line['account_no'] = self.get("BankAccountNum") 
-                line['name'] = self.get("BankAccountName") 
-                line['amount'] = self.convert_charge(self.get('DepositAmount'))
-                line['charge'] = self.convert_charge(self.get('ClaimChargeAmount'))
-                pms_claim_id = self.get('PmsClaimId')
-                line['date'] = self.get("PaymentRunDate")
-                report += """Deposit of {amount_display} into {bsb} {account_no} {name} on {date}\nClaim amount {charge}\n""".format(**line)
+                for i in ["BSBCode","BankAccountNum","BankAccountName",'ClaimDate','ClaimBenefitPaid','ClaimChargeAmount','DepositAmount',"PaymentRunDate","PaymentRunNum",'PmsClaimId']:
+                    try:
+                        val = self.get(i)
+                        report += "{}: {}\n".format(i,val)
+                    except MedicareError as e:
+                        pass
+                report += "\n\n"
                 has_row = self.next()
-            if report != "":
-                self.db.set_payment_report(claim['pk'],report,pms_claim_id)
+            if len(lines) > 0:
+                self.db.set_payment_report(claim['pk'],report,lines[0]['pms_claim_id'])
             self.reset()
+            return report
         except MedicareError as e:
             self.db.set_payment_report(claim['pk'],str(e),None)
+            self.cycle_process()
+            return {'error':e,'claim':claim['claim_id']}
+
+    # receive same-day elete events
+    # postgres param is in form fk_invoice/sdd_code as two integers
+    def same_day_delete(self, pid, param):
+        pdb.set_trace()
+        try:
+            fk_invoice, sdd_code = param.split("/")
+            fk_invoice = int(fk_invoice)
+            inv = self.db.get_private_invoice_to_upload(fk_invoice)
+            pt = self.db.get_patient(inv['fk_patient'])
+            logic_pack = self.get_logic_pack("HIC/HolClassic")
+            content_type = "HIC/HolClassic/SameDayDeleteClaim@"+logic_pack
+            path = self.create_object(content_type,"","")
+
+            self.set(path,"DateOfLodgement",inv["date_invoiced"].strftime("%d%m%Y"))  # of the claim to be deleted
+            self.set(path,"PatientFamilyName",self.clean(pt['surname']))
+            self.set(path,"PatientFirstName",self.clean(pt['firstname']))
+            self.set(path,"PatientMedicareCardNum",pt['medicare_number'])
+            self.set(path,"PatientReferenceNum",pt['medicare_ref_number'])
+            self.set(path,"TimeOfLodgement",inv["date_invoiced"].strftime("%H%M%S"))  # of the claim to be deleted
+            self.set(path,"SDDReasonCode",sdd_code)
+            #001 = Incorrect Patient Selection 
+            #002 = Incorrect Provider Details 
+            #003 = Incorrect Date of Service 
+            #004 = Incorrect Item Number Claimed 
+            #005 = Omitted Text on Original Claim 
+            #006 = Incorrect Payment Type (ie Paid / Unpaid) 
+            #007 = Other 
+            send_code = self.send_content(content_type)
+            if send_code == 0:
+                # success
+                self.db.set_invoice_return(inv['pk_invoice'],4013,None,None)
+                logging.info("successfully did same-day delete on invoice PK {}".format(fk_invoice))
+                self.reset()
+            else: # something else
+                self.db.set_invoice_return(inv['fk_invoice'],send_code,None)
+                logging.warn("****WEIRD result code: %d" % send_code)
+                self.cycle_process()
+        except MedicareError as e:
+            self.cycle_process()
+            self.db.set_invoice_return(fk_invoice,e.number,str(e))
+        except Exception as e:
+            self.cycle_process()
+            self.db.set_invoice_return(fk_invoice,4012,str(e))
 
 
     def upload_private_invoice(self, fk_invoice):
@@ -359,7 +431,7 @@ class MedicareOnline:
                         self.set(path,"ContactPhoneNum",self.clean(c['value'],10))
                         break
             self.set(path,"ClaimSubmissionAuthorised","Y")
-            self.set(path,"DateOfLodgement",time.strftime("%d%m%Y"))
+            self.set(path,"DateOfLodgement",inv["date_invoiced"].strftime("%d%m%Y"))
             self.set(path,"PatientDateOfBirth",pt['birthdate'].strftime('%d%m%Y'))
             self.set(path,"PatientFamilyName",self.clean(pt['surname']))
             self.set(path,"PatientFirstName",self.clean(pt['firstname']))
@@ -367,7 +439,7 @@ class MedicareOnline:
             self.set(path,"PatientReferenceNum",pt['medicare_ref_number'])
             #PayeeProviderNum
             self.set(path,"ServicingProviderNum",inv['staff_provided_service_provider_number'])
-            self.set(path,"TimeOfLodgement",time.strftime("%H%M%S"))
+            self.set(path,"TimeOfLodgement",inv["date_invoiced"].strftime("%H%M%S"))
             voucher_path = self.create_object("Voucher","./"+path,"01")
             self.set_voucher_items(voucher_path,inv)
             send_code = self.send_content(content_type)
@@ -382,11 +454,11 @@ class MedicareOnline:
                     while has_row:
                         service_id = self.get("ServiceId")
                         amount = int(self.get('ServiceBenefitAmount'))
-                        pdb.set_trace()
                         reason_code = self.get("ExplanationCode")
                         self.db.set_item_code(inv['pk_invoice'],service_id,reason_code,"benefit ${:.2f}".format(amount/100.0))
                         has_row = self.next()
                 self.db.set_invoice_return(inv['pk_invoice'],0,result,claim_id)
+                logging.info("***SUCCESSFUL CLAIM PMS claim ID %r" % claim_id)
                 self.reset()
             elif send_code == 9501:
                 # failure
@@ -409,15 +481,27 @@ class MedicareOnline:
                         result += "Medicare advises that the claimant's Medicare number is {} - {}".format(self.get("CurrentClaimantMedicareCardNum"),self.get("CurrentClaimantReferenceNum"))
                     if error_code == 9633:
                         result += "Medicare advises that the patient's Medicare number is {} - {}".format(self.get("CurrentPatientMedicareCardNum"),self.get("CurrentPatientReferenceNum"))
+                    logging.warn("***INVOICE ERROR: code: %s level: %s PMS claim ID: %s" % (error_code,error_level,claim_id))
+                    bad_service_error_level = False
                     while has_row:
                         service_id = self.get("ServiceId")
                         reason_code = self.get("ServiceErrorCode")
                         service_error_level = self.get("ServiceErrorLevel")
                         self.db.set_item_code(fk_invoice,service_id,reason_code,None,service_error_level)
+                        logging.warn("***ITEM ERROR service %s code %s level %s" % (service_id,reason_code,service_error_level))
+                        if service_error_level == 'U':
+                            bad_service_error_level = True
                         has_row = self.next()
                 self.db.set_invoice_return(fk_invoice,error_code,result,claim_id,error_level)
+                if error_level == 'A' and not bad_service_error_level:
+                    # a problem occurred, but we can ram it through to a human at the Medicare end using a special system call
+                    self.accept()
                 self.reset()
             else: # something else
                 self.db.set_invoice_return(inv['fk_invoice'],send_code,None)
+                logging.warn("****WEIRD result code: %d" % send_code)
+                self.cycle_process()
         except MedicareError as e:
+            self.cycle_process()
             self.db.set_invoice_return(fk_invoice,e.number,str(e))
+            

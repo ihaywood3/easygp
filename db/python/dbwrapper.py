@@ -507,7 +507,17 @@ where i.fk_claim=%s and b.service_id=%s and b.fk_invoice = i.pk""",(pk_claim,r['
         c.close()
         self.commit()
 
-    
+    def get_bank_details(self, fk_invoice):
+        c = self.cursor()
+        r = self.query("select bsb, account_number, account_name from billing.bank_details where fk_invoice=%s", (fk_invoice,),c)
+        # don't delete yet as we need it to print invoices.
+        #c.execute("delete from billing.bank_details where fk_invoice=%s",(fk_invoice,))
+        c.close()
+        if len(r) > 0:
+            return (r[0]['account_name'],r[0]['bsb'],r[0]['account_number'])
+        else:
+            logging.warn("can't find bank details for invoice PK {}".format(fk_invoice))
+            return (None, None, None)
 
 
 if __name__=='__main__':

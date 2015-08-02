@@ -56,6 +56,7 @@ class MedicareOnline:
         logging.info("starting Java slave process hiconline.sender={} hiconline.location_id={} java path {}".format(self.sender,self.location_id,self.java_path))
         self.pro = subprocess.Popen(["/usr/bin/java","-classpath","lib:lib/*:build","-Djava.library.path=lib","-Dhiconline.sender={}".format(self.sender),"-Dhiconline.passphrase={}".format(self.passphrase),"-Dhiconline.location_id={}".format(self.location_id),"HICOnline"],cwd=self.java_path,stdin=subprocess.PIPE,stderr=subprocess.STDOUT,stdout=subprocess.PIPE,close_fds=True)
         self.logic_packs = {}
+        self.get_cert_expiry()
 
     def cycle_process(self):
         try:
@@ -73,7 +74,7 @@ class MedicareOnline:
     def _write(self,cmd,*params):
         try:
             s = cmd+"|"+"|".join((str(s) for s in params))+"\n"
-            logging.debug("_write {}".format(repr(s)))
+            #logging.debug("_write {}".format(repr(s)))
             self.pro.stdin.write(s)
             self.pro.poll()
         except IOError:
@@ -111,10 +112,10 @@ class MedicareOnline:
         if extra:
             line = self.pro.stdout.readline()
             line = line.strip()
-            logging.debug("-> {} {}".format(v, repr(line)))
+            #logging.debug("-> {} {}".format(v, repr(line)))
             return (v, line)
         else:
-            logging.debug("-> {}".format(v))
+            #logging.debug("-> {}".format(v))
             return v
 
     def create_object(self, obj, path, value):
@@ -128,6 +129,8 @@ class MedicareOnline:
     def set(self, path, elem, value):
         desc = "SetBusinessObject({},{},{})".format(repr(path),repr(elem),repr(value))
         logging.debug(desc)
+        if value is None:
+            logging.warn("not setting as None value")
         self._write("SBO", path, elem, value)
         v = self._read()
         if v == 9201: raise MedicareError("{} has invalid format for value".format(desc),9201)
@@ -143,6 +146,18 @@ class MedicareOnline:
         s = s.strip()[1:-1].split(",")[0]
         self.logic_packs[pack] = s
         return s
+
+    def get_cert_expiry(self):
+        self._write("GCEX")
+        code, v = self._read(True)
+        if code != 0: raise MedicareError("GCEX returned "+str(v),v)
+        days = int(v)
+        d = datetime.date.fromordinal(days+datetime.date.today().toordinal())
+        if days > 30:
+            logging.info("Location certificate has %d days to expiry, that's %s" % (days,d.strftime('%A, %d %B %Y')))
+        else:
+            logging.warn("Location certicate will expire in %d days, that's %s" % (days,d.strftime('%A, %d %B %Y')))
+        
 
     def create_report(self, report, param):
         l = "CreateReport({},{})".format(repr(report),repr(param))
@@ -263,7 +278,7 @@ class MedicareOnline:
         m = re.match("\$([0-9]+)\.([0-9]+)",amt)
         return (int(m.group(1)) * 100)+int(m.group(2))
 
-    def set_voucher_items(self,voucher_path,inv):
+    def set_voucher_items(self,voucher_path,inv,set_patient_contrib=False):
         self.set(voucher_path,"DateOfService",inv['visit_date'].strftime('%d%m%Y'))
         inv_service_text = inv['notes'] or ""
         if not inv['referrer_provider_number'] is None:
@@ -275,19 +290,77 @@ class MedicareOnline:
                 ref_typ = "S" # "standard", 3 for specialists, 12 for GPs
             else:  # there is a third code, "N", for nonstandard referral durations, which must then be specified in the ServiceText
                 ref_typ = "N"
-                inv_service_text += "referral duration is %s months" % inv['referral_duration']
+                inv_service_text += " referral duration is %s months" % inv['referral_duration']
             self.set(voucher_path,"ReferralPeriodTypeCde",ref_typ)
         # sort items by largest first, as this will usually be the one whole-invoice comments should
         # be attached to
         items = sorted(inv['items_billed'], key=lambda x: x['amount'])
+        total_paid = inv['total_paid']
         for item in items:
             item_path = self.create_object("Service","./"+voucher_path,item['service_id'])
             self.set(item_path,"ChargeAmount",str(self.amount_to_cents(item['amount'])))
+            if set_patient_contrib:
+                if total_paid < 0:
+                    logging.warn("tried to have negative payment %s" % total_paid)
+                    total_paid = 0
+                    contrib = 0
+                elif total_paid == 0:
+                    contrib = 0
+                elif total_paid >= item['amount']:  # we are fully paying this item, any money left over is for the other items on the bill
+                    total_paid = total_paid - item['amount']
+                    contrib = item['amount']
+                else:
+                    contrib = total_paid
+                    total_paid = 0
+                if contrib < 1.00: contrib = 0 # Medicare business rule: no payment less than $1.00
+                self.set(item_path,"PatientContribAmt",str(self.amount_to_cents(contrib)))
             self.set(item_path,"ItemNum",item['mbs_item'])
+            inv_service_text = self.parse_service_text(inv_service_text,item)
+            if item['multiple_procedure']:
+                self.set(item_path,'MultipleProcedureOverrideInd',"Y")
+            if item['duplicate']:
+                self.set(item_path,'DuplicateServiceOverrideInd',"Y")
+            if item['aftercare']:
+                self.set(item_path,'AfterCareOverrideInd',"Y")
+            if item['separate_sites']:
+                self.set(item_path,'RestrictiveOverrideCde',"SP")
+            if item['not_related']:
+                self.set(item_path,'RestrictiveOverrideCde',"NR")
+            if item['procedure_duration'] > 0:
+                d = item['procedure_duration']
+                if d % 15 != 0:
+                    d = (d / 15) * 15
+                    logging.warn("Procedure duration must be multiple of 15, rounding down to %d" % d)
+                self.set(item_path,'TimeDuration',"{:0>3}".format(d))
+            if item['field_quantity'] > 0:
+                if item['field_quantity'] > 99:
+                    logging.warn("field quantity cannot be more than 99")
+                    item['field_quantity'] = 99
+                self.set(item_path,'FieldQuantity',str(item['field_quantity'])
+            inv_service_text = inv_service_text.strip()
             if inv_service_text != "":
                 self.set(item_path,"ServiceText",inv_service_text)
                 inv_service_text = ""
-
+    
+    """semi-temporary measure: parse the service text to determine special Medicare flags
+    big weakness is hard to use and can only apply to the first item
+    """
+    def parse_service_text(self,service_text,item):
+        for reg,field in [(['multiple proc',r'\bmp\b'],'multiple_procedure'),
+                  (['nnac','aftercare','after-care','complication'],'aftercare'),
+                  (['duplicate','seen twice','same day'],'duplicate'),
+                  (['separate sites','two sites','two places'],'separate_sites'),
+                  (['not related','care plan','separate issue'],'not_related'),
+                  (['duration ?=?:? ?([0-9]+)','time ?=?:? ?([0-9]+)'],'procedure_duration'),
+                  (['quantity ?=?:? ?([0-9]+)'],'field_quantity')]:
+            m = re.search(reg,service_text,re.I)
+            if m:
+                service_text = service_text[:m.start()] + service_text[m.end():] # remove the matched text
+                val = True
+                try:
+                    val = int(m.group(1))
+                except IndexError: pass
+                item[field] = val
 
     def claim_query(self, claim):
         pn = claim['provider_number']
@@ -311,7 +384,6 @@ class MedicareOnline:
                         line['comment'] = medicare_flags[medicare_flag].format(medicare_number, medicare_ref_number)
                     else:
                         line['comment'] = "Unknown flag {}".format(medicare_flag)
-                        logging.warn(line["comment"])
                 else:
                     line['comment'] = None
                 line['reason_code'] = self.get("ExplanationCode")
@@ -335,21 +407,23 @@ class MedicareOnline:
     def get_bb_payment_report(self, claim):
         try:
             has_row = self.create_report("DBPaymentReport",self.claim_query(claim))
-            lines = []
-            report = ""
+            ret = []
             while has_row:
+                d = {}
+                r = ""
                 for i in ["BSBCode","BankAccountNum","BankAccountName",'ClaimDate','ClaimBenefitPaid','ClaimChargeAmount','DepositAmount',"PaymentRunDate","PaymentRunNum",'PmsClaimId']:
                     try:
                         val = self.get(i)
-                        report += "{}: {}\n".format(i,val)
+                        r += "{}: {}\n".format(i,val)
+                        d[i] = val
                     except MedicareError as e:
                         pass
-                report += "\n\n"
+                if d:
+                    self.db.set_payment_report(claim['pk'],r,d['PmsClaimId'])
+                    ret.append(d)
                 has_row = self.next()
-            if len(lines) > 0:
-                self.db.set_payment_report(claim['pk'],report,lines[0]['pms_claim_id'])
             self.reset()
-            return report
+            return ret
         except MedicareError as e:
             self.db.set_payment_report(claim['pk'],str(e),None)
             self.cycle_process()
@@ -412,15 +486,18 @@ class MedicareOnline:
             else:
                 self.set(path,"AccountPaidInd","N")
             self.set(path,"AccountReferenceId",inv['pk_invoice'])
-            #BankAccountName
-            #BankAccountNum
-            #BSBCode
+            if 'bank_details_upload' in inv and inv['bank_details_upload']:
+                acct_name, bsb, acct_number = self.db.get_bank_details(inv['fk_invoice'])
+                self.set(path,"BankAccountName",acct_name)
+                self.set(path,"BankAccountNum",acct_number)
+                self.set(path,"BSBCode",bsb)
             if not inv['fk_payer_person'] is None:
                 payer = self.db.get_patient(fk_person=inv['fk_payer_person'])
-                self.set(path,"ClaimantAddressLine1",self.clean(payer['street1']))
-                self.set(path,"ClaimantAddressLine2",self.clean(payer['street2']))
-                self.set(path,"ClaimantAddressLocality",self.clean(payer['town']))
-                self.set(path,"ClaimantAddressPostcode",payer['postcode'])
+                if 'claimant_address_upload' in inv and inv['claimant_address_upload']:
+                    self.set(path,"ClaimantAddressLine1",self.clean(payer['street1']))
+                    self.set(path,"ClaimantAddressLine2",self.clean(payer['street2']))
+                    self.set(path,"ClaimantAddressLocality",self.clean(payer['town']))
+                    self.set(path,"ClaimantAddressPostcode",payer['postcode'])
                 self.set(path,"ClaimantDateOfBirth",payer['birthdate'].strftime('%d%m%Y'))
                 self.set(path,"ClaimantFamilyName",self.clean(payer['surname']))
                 self.set(path,"ClaimantFirstName",self.clean(payer['firstname']))
@@ -441,7 +518,7 @@ class MedicareOnline:
             self.set(path,"ServicingProviderNum",inv['staff_provided_service_provider_number'])
             self.set(path,"TimeOfLodgement",inv["date_invoiced"].strftime("%H%M%S"))
             voucher_path = self.create_object("Voucher","./"+path,"01")
-            self.set_voucher_items(voucher_path,inv)
+            self.set_voucher_items(voucher_path,inv,True)
             send_code = self.send_content(content_type)
             if send_code == 0:
                 # success

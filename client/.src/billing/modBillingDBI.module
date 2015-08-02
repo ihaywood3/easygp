@@ -1324,6 +1324,7 @@ Private Sub Load_Template_GP(invoice As Crow, templ As CTemplate, doctor As Coll
    
    Dim i As Collection
    Dim s As String
+   Dim bank_details As Collection
    
    templ.Subst("doctor-name", doctor!title & " " & doctor!firstname & " " & doctor!surname)
    templ.Subst("doctor-address-line1", doctor!street1)
@@ -1338,6 +1339,7 @@ Private Sub Load_Template_GP(invoice As Crow, templ As CTemplate, doctor As Coll
    templ.Subst("doctor-occupation", modUtil.Ucase_Word_First_Letter(doctor!occupation))
    templ.Subst("doctor-provider-number", doctor!provider_number)
    templ.Subst("current-time", Format$(Now, "dd/mm/yy hh:nn"))
+   templ.Subst("invoice-time", Format$(invoice!date_invoiced, "dd/mm/yy hh:nn"))
    templ.Subst("abn", doctor!australian_business_number)
    templ.Subst("hic-location-id", doctor!hic_location_id)
    templ.Subst("invoice-num", invoice!fk_invoice)
@@ -1346,7 +1348,10 @@ Private Sub Load_Template_GP(invoice As Crow, templ As CTemplate, doctor As Coll
       Templ.Subst("account-to-address-line1", "\\relax")
       Templ.Subst("account-to-address-line2", "\\relax")
       Templ.Subst("account-to-address-line3", "\\relax")
-      
+      Templ.Subst("account-to-medicare-number", "\\relax")
+      templ.Subst("account-to-medicare-ref-number", "\\relax")
+      templ.Subst("account-to-birthdate", "\\relax")
+      templ.Subst("account-to-telephone", "\\relax")
    Else
       Templ.Subst("account-to-name", invoice!account_to_name)
       'have a name - payer could be person/street1/street2/town + postcode
@@ -1355,10 +1360,18 @@ Private Sub Load_Template_GP(invoice As Crow, templ As CTemplate, doctor As Coll
          Templ.Subst("account-to-address-line1", invoice!account_to_branch)
          Templ.Subst("account-to-address-line2", invoice!account_to_street)
          Templ.Subst("account-to-address-line3", invoice!account_to_town_postcode)
+         Templ.Subst("account-to-medicare-number", "\\relax")
+         templ.Subst("account-to-medicare-ref-number", "\\relax")
+         templ.Subst("account-to-birthdate", "\\relax")
+         templ.Subst("account-to-telephone", modContactsDBI.Branch_Telephone(invoice!fk_payer_branch))
       Else 'must be a person
          Templ.Subst("account-to-address-line1", invoice!account_to_street)
          Templ.Subst("account-to-address-line2", invoice!account_to_town_postcode)
          Templ.Subst("account-to-address-line3", "\\relax")
+         Templ.Subst("account-to-medicare-number", invoice!account_to_medicare_number)
+         templ.Subst("account-to-medicare-ref-number", invoice!account_to_medicare_ref_number)
+         templ.Subst("account-to-birthdate", invoice!account_to_birthdate)
+         templ.Subst("account-to-telephone", modContactsDBI.person_Telephone(invoice!fk_payer_person))
       End If
    Endif
    If Not IsNull(invoice!reference) Then
@@ -1379,7 +1392,7 @@ Private Sub Load_Template_GP(invoice As Crow, templ As CTemplate, doctor As Coll
          If Not IsNull(i!comment) Then
             s &= " " & i!comment
          Endif
-         s = "\\multicolumn{6}{p{140mm}}{ \\footnotesize " & s & "}"
+         s = "\\multicolumn{6}{p{140mm}}{ \\footnotesize {\bf Medicare Reason Code: } " & s & "}"
          templ.Row(s)
       Endif
    Next
@@ -1415,17 +1428,24 @@ Private Sub Load_Template_GP(invoice As Crow, templ As CTemplate, doctor As Coll
          If invoice!result_code = 0 Then
             templ.Subst("mo-payment-info", "The cheque benefit will be directed to the: ADDRESS HELD BY THE DEPARTMENT OF HUMAN SERVICES")
          Else
-            templ.Subst_HTML("mo-payment-info", "<b>NO PAYMENT WILL BE MADE, please take this statement to Medicare.</b>")
+            templ.Subst_HTML("mo-payment-info", "<b>NO PAYMENT WILL BE MADE, please take this statement to Department of Human Services.</b>")
          Endif
       Endif
+      templ.Subst("bank-details", "")
    Else
       templ.Subst("fully-paid", "YES")
       If mo_result Then
          If invoice!result_code = 0 Then
             templ.Subst("mo-payment-info", "The Medicare benefit will be paid: if your bank account details are stored with the Department of Human Services your payment, via EFT, if not, a cheque will be issued") 
          Else
-            templ.Subst_HTML("mo-payment-info", "<b>NO PAYMENT WILL BE MADE, please take this statement to Medicare.</b>")
+            templ.Subst_HTML("mo-payment-info", "<b>NO PAYMENT WILL BE MADE, please follow up with the Department of Human Services.</b>")
          Endif
+      Endif
+      bank_details = Get_Bank_Details(invoice!fk_invoice)
+      If Not IsNull(bank_details) Then
+         templ.Subst("bank-details", "I authorise the payment of my benefits for this claim to be paid directly into the following bank or financial institution account: Name: " & bank_details!account_name & " BSB " & bank_details!bsb & " No. " & bank_details!account_number)
+      Else
+         templ.Subst("bank-details", "")
       Endif
    Endif
    templ.Subst("total", invoice!total_bill)
@@ -1513,4 +1533,25 @@ Public Sub Same_Day_Delete(fk_invoice As Integer, reason As String)
    
    modDBConnect.exec_query("NOTIFY '" & fk_invoice & "/" & reason & "'")
    
+End
+
+
+Public Sub Save_Bank_Details(fk_invoice As Integer, nam As String, bsb As String, no As String)
+   
+  modDBConnect.insert("billing.bank_details", ["fk_invoice": fk_invoice, "account_name": nam, "bsb": bsb, "account_number": no]) 
+   
+
+End
+
+Public Function Get_Bank_Details(fk_invoice As Integer) As Collection
+   
+   Dim r As Result
+   
+   r = modDBConnect.exec_query("select * from billing.bank_details where fk_invoice = &1", [fk_invoice]) 
+   If r.count = 1 Then
+      modDBConnect.exec_query("delete from billing.bank_details where fk_invoice = &1", [fk_invoice])
+      Return ["account_number": r!account_number, "bsb": r!bsb, "account_name": r!account_name]
+   Else
+      Return Null
+   Endif
 End

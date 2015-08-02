@@ -174,6 +174,7 @@ Private Const cTabPatientsUnbilled As Integer = 0
 Private Const cTabPatientsAccounts As Integer = 1
 Private branches As Collection
 Private branch As Collection
+Private persons As Collection
 Private form_html_viewer As FHtmlViewer
 Private form_feeschedule As FDescriptorsBrowser
 'the main (large) tabstrip - tabstrip1
@@ -192,6 +193,7 @@ Private Reasons_not_billed As Collection
 Private gvwItemsBIlled_columnWidths As Integer
 Private bAreaOfNeed As Boolean 'see FAdminGlobalPreferences/billing help if true the area attracts 10991 item numbers
 Private bComplainedAboutNoItem As Boolean 'don't complain to the user multiple times about not finding a item/fee code.
+
 
 Static Private Form_Billing As FRecordVisit
 
@@ -363,6 +365,7 @@ Public Function Notify(its_us As Boolean, param As String) As Variant
      Endif
      If Not IsNull(latex) Then modPrinting.Print_latex(latex)
      fk_invoice_for_printing = 0 
+     modDBConnect.CommitTrans()
   Endif
   If pk_invoice = fk_invoice Then
      ' we match the invoice being displayed as well/instead
@@ -424,6 +427,9 @@ Public Sub EditArea_Clear()
    gvwPayments_Clear
    bComplainedAboutNoItem = False
    EditArea_Notify_Data_Change(False)
+   FBankDetails.account_name = Null
+   FBankDetails.account_number = Null
+   FBankDetails.bsb = Null
    bexit = False
    
 End
@@ -1542,7 +1548,6 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True)
       If Not IsNull(latex) Then modPrinting.Print_latex(latex)
       Return           'no data change no save
    Endif
-   Debug "in FRecordVist.Save"
    If Not Valid_Invoice_Items() Then Return                 'items invalid no save
    '-----------------------------------------------------
    'Now, work out if being paid, if so ?all, is it valid?
@@ -1647,8 +1652,21 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True)
        Endif
      Endif
    Endif
+   If invoice!online And If (fk_payer_person <> 0) And If cbSendClaimantAddress.Value = True Then
+      invoice!claimant_address_upload = True
+   Endif
+   If invoice!online And If Not IsNull(FBankDetails.account_number) And If Not Len(FBankDetails.account_number) < 4 Then
+      invoice!bank_details_upload = True
+   Endif
    invoice.Save("billing.invoices", "fk_invoice")
    fk_invoice_for_printing = invoice!fk_invoice
+   If invoice!online And If Not IsNull(FBankDetails.account_number) And If Not Len(FBankDetails.account_number) < 4 Then
+     modBillingDBI.Save_Bank_Details(invoice!fk_invoice, FBankDetails.account_name, FBankDetails.bsb, FBankDetails.account_number)
+   Endif
+   ' never 'remember' bank details across invoices or patients
+   FBankDetails.account_name = Null
+   FBankDetails.account_number = Null
+   FBankDetails.bsb = Null
    '------------------------------------
    'Get the items from the grid and save
    'FIXME - will later keep the underlying grid data in an array of some sort
@@ -1706,7 +1724,6 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True)
      modDBConnect.update("billing.invoices", Null, ["pk": invoice!fk_invoice, "latex": invoice!latex, "date_printed": "now()"])
    Endif
    fk_invoice = 0
-   modDBConnect.CommitTrans()
    EditArea_Notify_Data_Change(False)
    If Not IsNull(Unbilled_consultation) Then
       Accounts_Reload()
@@ -1715,6 +1732,7 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True)
       cvwInvoices_Refresh()
    Endif
    Invoice_New()
+   modDBConnect.CommitTrans() ' do this last to prevent new transaction from forming
 
 End
 
@@ -2095,9 +2113,16 @@ End
 Public Sub columnview1_DblClick()
    
    columnview1.MoveCurrent()
-   Select Case Last.tag.tag
-         
-      Case "something"
+   If Last.tag = "payer org" Then
+         Organisation_Select()
+      Return
+   Endif
+   If Last.tag = "payer person" Then
+      Payer_Person_Select()
+      Return
+   Endif
+
+   If Last.tag.tag = "something" Then
          
          Descriptor_Brief = Descriptors_Brief[columnview1.Item.key]
          If Not IsNull(Descriptor_Brief!mbs_item) Then
@@ -2112,11 +2137,9 @@ Public Sub columnview1_DblClick()
          Get_Items(gvwItemsBIlled[onrow_items, 0].text) 'duplication in a way 'see note in subroutine
          textbox1.Visible = False
          gvwItemsBIlled.SetFocus()
-      Case "payer search"
-         Organisation_Select()
-   End Select
-Catch
-   Return
+   Endif
+
+
    
 End
 
@@ -2177,12 +2200,18 @@ Public Sub mnuInvoices_Click()
    '--------------------------------------------------------------------------------------
    Dim item_billed As Collection
    Dim latex As String
+   Dim form_sdd As FSameDayDelete
    
    cvwInvoices.MoveCurrent()
    Item_Billed = Items_Billed[cvwInvoices.Item.key]
    Select Case Last.tag
       Case "invoice delete"
          modBillingDBI.Delete_Invoice(Item_Billed!fk_invoice)
+         If item_billed!online And If Day(item_billed!date_invoiced) = Day(Now()) And If Month(item_billed!date_invoiced) = Month(Now()) And If Year(item_billed!date_invoiced) = Year(Now()) Then
+            form_sdd = New FSameDayDelete
+            form_sdd.SetInvoicePK(item_billed!fk_invoice)
+            form_sdd.Show()         
+         Endif
          cvwInvoices_Refresh()
          Invoice_New()
       Case "invoice mark unpaid"
@@ -2197,6 +2226,7 @@ Public Sub mnuInvoices_Click()
       Case "reprint invoice"
          If IsNull(item_billed!latex) And If item_billed!online Then
             latex = modBillingDBI.Generate_Online_Latex(item_billed!fk_invoice)
+            modDBConnect.CommitTrans()
          Else
             latex = item_billed!latex
          Endif
@@ -2281,6 +2311,18 @@ Public Sub Payment_Calculate_Total()
    
 End
 
+Public Sub Online_Click()
+   
+   If rbOnline_Yes.Value = True Then
+      If rbInvoiceToOther.Value = True Then
+         cbSendClaimantAddress.Visible = True
+         Return
+      Endif
+   Endif
+   cbSendClaimantAddress.Visible = False
+   
+End
+
 Public Sub rbInvoiceTo_Click()
    '-------------------------------------------------------------------
    'If user changes billing level, change data in grid appropriately
@@ -2294,6 +2336,7 @@ Public Sub rbInvoiceTo_Click()
    If bExit Then Return
    textlabelPayer.text = ""
    
+   cbSendClaimantAddress.Visible = False
    If rbInvoiceToPatient.value = True Then
       If form_billingcards.Billing_Level_Get() <> const.Billingtype_Health_Care_Card_Concession Or form_billingcards.Billing_Level_Get() <> const.Billingtype_Pensioner_Concession Then
          fk_lu_default_billing_level = const.Billing_Default_Level_Private
@@ -2304,6 +2347,9 @@ Public Sub rbInvoiceTo_Click()
       fk_lu_default_billing_level = const.Billing_Default_Level_Private
       tbUniversal.text = "Print Account"
       txtFindPayer.SetFocus()
+      If rbOnline_Yes.Value = True Then
+         cbSendClaimantAddress.Visible = True
+      Endif
    Endif
    If rbInvoiceToMedicare.Value = True Then
       tbUniversal.text = "Medicare Voucher"
@@ -2351,7 +2397,7 @@ Public Sub timer1_Timer()
          Case cTimer_SearchMode_Descriptor
             Descriptors_Brief_Get
          Case cTimer_SearchMode_Payer
-            Organisations_Get()
+            Payer_Search()
          Case cTimer_SearchMode_FeeSchedule
             Scheduled_Fees_Search
       End Select
@@ -2543,6 +2589,7 @@ Public Sub Invoice_New()
    rbOnline_Yes.Visible = True
    rbOnline_No.Visible = True
    lblOnlineStatus.Visible = False
+   bBankDetails.Visible = True
    bExit = False
    
 End
@@ -2658,6 +2705,7 @@ Private Sub Set_Online_Data(inv As Crow, Optional items As Collection)
    rbOnline_No.Visible = False
    rbOnline_Yes.Visible = False
    lblOnlineStatus.Visible = True
+   bBankDetails.Visible = False
    If inv!result_code = 4006 Then
       If IsNull(items) Then
         items = modBillingDBI.Get_Billed_Items(inv)
@@ -2877,8 +2925,6 @@ Public Sub EditArea_TextBox_GotFocus()
          'user has clicked on the textbox where you can search for a payer (organisation or person)
          bExit = True
          textlabelPayer.text = ""
-         fk_payer_branch = 0                            'zero keys
-         fk_payer_person = 0
          rbInvoiceToNotUsed.value = True                'switches off radio buttons for patient, medicare and veterans
          rbInvoiceOrganisation.value = True
          rbInvoiceToOther.value = True
@@ -2922,8 +2968,6 @@ Public Sub EditArea_TextBox_Change()
          Return
       Case "payer search"
          If Trim(Last.text) = "" Then
-            fk_payer_branch = 0
-            fk_payer_person = 0
             textlabelPayer.text = ""
          Endif
    End Select
@@ -3023,36 +3067,54 @@ Public Sub TabStripBilling_Click()
    
 End
 
-Public Sub Organisations_Get()
+Public Sub Payer_Search()
    '-----------------------------------------------------------------
    'User is typing in search textbox, first try and find organisation
    '-----------------------------------------------------------------
+   Dim person As Collection
    
    timer1.Stop
    If Trim(txtFindPayer.text) = "" Then
       columnview1.Visible = False
       Return
    End If
-   Debug txtFindPayer.Text
    branches = modContactsDBI.Organisations_Get(Trim(txtFindPayer.text))
-   If Not branches.count Then Return
    columnview1.Clear
-   For Each branch In branches
-      Columnview1.Add(branch!pk_view, 0)
-      Columnview1[branch!pk_view][0] = Branch!organisation
-      Columnview1[branch!pk_view][1] = Branch!branch
-      Columnview1[branch!pk_view][2] = Trim(Branch!street1 & " " & Branch!street2)
-      Columnview1[branch!pk_view][3] = Branch!suburb & " " & Branch!postcode
-   Next
-   If branches.count > 1 Then
-      With Columnview1
-         .Visible = True
-         .Raise
-         .tag = txtFindPayer
-      End With
+   If branches.count > 0 Then
+      For Each branch In branches
+         Columnview1.Add(branch!pk_view, 0)
+         Columnview1[branch!pk_view][0] = Branch!organisation
+         Columnview1[branch!pk_view][1] = Branch!branch
+         Columnview1[branch!pk_view][2] = Trim(Branch!street1 & " " & Branch!street2)
+         Columnview1[branch!pk_view][3] = Branch!suburb & " " & Branch!postcode
+      Next
+      If branches.count > 1 Then
+         With Columnview1
+            .Visible = True
+            .Raise
+            .tag = "payer org"
+         End With
+      Else
+         Organisation_Select(branch!pk_view)
+      End If
    Else
-      Organisation_Select(branch!pk_view)
-   End If
+     persons = modContactsDBI.Person_Get_By_Surname(txtFindPayer.Text)
+     For Each person In persons
+        Columnview1.Add(person!pk_view, 0)
+         Columnview1[person!pk_view][0] = person!wholename
+         Columnview1[person!pk_view][1] = person!street1 & " " & person!street2
+         Columnview1[person!pk_view][2] = person!suburb & " " & person!postcode
+     Next 
+     If persons.count > 1 Then
+         With Columnview1
+            .Visible = True
+            .Raise
+            .tag = "payer person"
+         End With
+      Else
+         Payer_Person_Select(person!pk_view)
+      End If
+   Endif   
    
 End Sub
 
@@ -3082,6 +3144,34 @@ Finally
    bexit = False    
    
 End
+
+Public Sub Payer_Person_Select(Optional person_pk As Variant)
+   'Really a branch select FIXME consistancy throughout entire project
+   Dim c As Collection
+   
+   bexit = True
+   If IsNull(person_pk) Then
+      If IsNull(columnview1.Item) Then
+        Log.ErrorMsg("FRecordVisit.Payer_Person_Select: columnview1.Item is NULL")
+        Error.Raise("No available selection for payer columnview1") 
+      Endif
+      columnview1.MoveCurrent()
+      person_pk = columnview1.Item.Key
+   Endif
+   c = persons[person_pk]
+   textlabelPayer.text = c!wholename & "<BR>"
+   textlabelPayer.text &= Trim(c!street1 & " " & c!street2) & "<BR>"
+   textlabelPayer.text &= c!town & " " & c!postcode
+   columnview1.Visible = False
+   Debug "setting fk_payer_person to "; c!fk_person 
+   fk_payer_person = c!fk_person
+   txtFindPayer.text = ""  
+   txtReferenceDetails.SetFocus()
+Finally
+   bexit = False    
+   
+End
+
 
 Public Sub rbAccounts_Click()
    '-------------------------------------------------------------------------
@@ -3864,5 +3954,14 @@ End
 Public Sub txtSearch_KeyPress()
 
    
+
+End
+
+Public Sub bBankDetails_Click()
+
+   Dim form_bank As FBankDetails
+   
+   form_bank = New FBankDetails
+   form_bank.ShowModal()
 
 End

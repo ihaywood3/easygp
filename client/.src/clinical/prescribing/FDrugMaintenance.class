@@ -51,7 +51,7 @@
 '
 ' Example: C03C High-ceiling diuretics
 ' Fourth level
-'
+'           Patients_Get()
 ' The fourth level of the code indicates the chemical/therapeutic/pharmacological subgroup and consists of one letter.
 '   Select Case ActiveWindow_Get_Name()
 ' Example: C03CA Sulfonamides
@@ -94,6 +94,12 @@ Private CopyPDFName As String     'buffer to hold a copied pi file name see mnuD
 Private bLinkPDF_Drug As Boolean  'if true user is linking an existing drug to a pdf
 Private BrandsHavePDF As Collection
 Private PI_Filenames As Collection
+Private iSearchMode As Integer
+Private Const cSearchMode_Generic As Integer = 1
+Private Const cSearchMode_ATC As Integer = 2
+Private Const cSearchMode_None As Integer = 0
+Private Const cSearchMode_Existing As Integer = 3
+Private itimer_Count As Integer 
 
 Public Sub Form_Open()
    
@@ -194,9 +200,9 @@ Public Sub Init()
    modUtilGUI.LoadCombo(cmbSchedules, Schedules, "schedule")
    lblMeasure.text = "Prescription Only Medicine OR Prescription Animal Remedy (S4)   "
    cmbSchedules.width = lblMeasure.Width
-'   If Not modDBConnect.IsAdmin Then
+   '   If Not modDBConnect.IsAdmin Then
    Product_Information_Dir = modAdminDBI.Config_Get("product_information_directory", "", Null, modDBConnect.currentUser!fk_clinic)
- '  Endif
+   '  Endif
    txtEditGrid.Height = txtBrand.Height
    bExit = True
    Try Settings_Load() 'prevent the Hsplit1_resize event
@@ -413,8 +419,9 @@ Public Sub Show_EditingTextBox()
    
    gridcol = gvwGenerics.Column
    gridrow = gvwGenerics.Row
-   txtEditGrid.Width = gvwGenerics.Columns[gridcol].width
-   itop = gvwGenerics.top + (gvwGenerics.Rows[0].height * gridrow)
+   Print gvwGenerics.Width
+   'txtEditGrid.Width = gvwGenerics.Columns[1].width
+   itop = gvwGenerics.top + (gvwGenerics.Rows[0].height * +1)
    hEditor = txtEditGrid
    $hEditor = hEditor
    Try Move_EditingTextBox
@@ -424,6 +431,7 @@ Public Sub Show_EditingTextBox()
    $hEditor = txtEditGrid
    txtEditGrid.SelectAll
    txtEditGrid.text = gvwGenerics[gridrow, gridcol].Text
+   HSplit_DataEntry_Resize() 'snaps the editor textbox to proper width, don't know why but setting this in code doesn't work
    txtEditGrid.SetFocus()
 Catch
    Return
@@ -451,7 +459,7 @@ Public Sub Move_EditingTextBox()
    colpos = gvwGenerics.Columns[gridcol].Left
    If IsNull($hEditor) Or gvwGenerics.Row = -1 Then Return 'FIXME BAD BAD BUGFIX ?WHY GOING -1
    
-   iheight = gvwGenerics.Rows[gridrow].height + 5
+   iheight = gvwGenerics.Rows[gridrow].height ' + 5
    With gvwGenerics[gvwGenerics.Row, 1]
       '  txtEditGrid.Move(gridview1.X + (gridview1.width - gridview1.Columns[0].width - gridview1.Columns[1].width - 3) - gridview1.ScrollX, gridview1.Y + itop + 1 - gridview1.ScrollY, .Width + 5, iheight)
       txtEditGrid.Move(gvwGenerics.X + colpos - gvwGenerics.ScrollX, gvwGenerics.Y + itop + 1 - gvwGenerics.ScrollY, txtEditGrid.width + 5, iheight)
@@ -750,9 +758,9 @@ Public Sub Product_Information_Show(pdf_filename As String)
    'Attempt to show a product information PDF
    '-----------------------------------------
    
-    Try Form_PDF.Load_PDF(Product_Information_Dir &/ pdf_filename)
-    If Error Then
-       Message.Error("The requested product information could not be found")
+   Try Form_PDF.Load_PDF(Product_Information_Dir &/ pdf_filename)
+   If Error Then
+      Message.Error("The requested product information could not be found")
    Else
       TabStrip1.index = 1
    Endif
@@ -1082,32 +1090,37 @@ Public Sub Save()
          bUserPIFile = True                                                         'no - the user has downloaded one
       End If
    End If
-   sMsg = "Drug:" & txtBrand.text & "\n"
-   sMsg &= "PI File:"
+   '----------------------------------------
+   'Create the html for the popup dialog box
+   '----------------------------------------
+   sMsg = "<B>Drug:</B>" & txtBrand.text & "\n"
+   sMsg &= "<B>PI File:</B>"
    If Trim(txtPIFile.text) = "" Then
       sMsg &= "No Product Information PDF found\n"
    Else
       smsg &= txtPIFile.text & "\n"
    Endif
-   sMsg &= "Generic:" & generics_list & "\n"
-   sMsg &= "Strength:" & strengths_list & "\n"
-   sMsg &= "ATC Name:" & txtACTName.text & "\n"
-   sMsg &= "Form:" & txtForm.text & "\n"
+   sMsg &= "<B>Generic:</B>" & generics_list & "\n"
+   sMsg &= "<B>Strength:</B>" & strengths_list & "\n"
+   sMsg &= "<B>ATC Name:</B>" & txtACTName.text & "\n"
+   sMsg &= "<B>Form:</B>" & txtForm.text & "\n"
    If Trim(txtVolume.text) Then
-      sMsg &= "Amount:" & txtVolume.text & cmbUnits.Text & "\n"
+      sMsg &= "<B>Amount:</B>" & txtVolume.text & cmbUnits.Text & "\n"
    Endif
    If txtForm.text = "injection" Or InStr(txtForm.text, "liquid") Or InStr(txtForm.text, "drops") Or InStr(txtForm.text, "spray") Or txtForm.text = "" Then
-      sMsg &= "Units Per Pack:"
+      sMsg &= "<B>Units Per Pack:</B>"
    Else
-      sMsg &= modUtil.Ucase_Word_First_Letter(txtForm.text & "s per pack")
+      sMsg &= "<B>" & modUtil.Ucase_Word_First_Letter(txtForm.text) & "s per pack</B>"
    End If
+   smsg &= txtUnits_per_pack.text
    sMsg &= "\n"
-   sMsg &= "Pack Size:" & txtNoOfPacks.text
+   sMsg &= "<B>Pack Size:</B>" & txtNoOfPacks.text
    If Message.Question(sMsg & "\n\nAre you sure this is accurate?", "Yes", "Cancel") = 2 Then Return
    brand.Save("drugs.brand", "fk_brand")
    sMsg = "insert into drugs.product (pk,generic,strength,"
    sMsg &= "fk_form,atccode,free_comment,fk_schedule,pack_size,units_per_pack,"
-   sMsg &= ",amount_unit,amount,updated_at) values ("
+   sMsg &= "amount_unit,amount,updated_at) values ("  'RT 02aug15 I removed this extra comma ?why here in the first place
+   ' sMsg &= ",amount_unit,amount,updated_at) values ("
    sMsg &= Subst$("'&1',", fk_existing_product_key)
    sMsg &= Subst$("$$&1$$,", generics_list)
    sMsg &= Subst$("$$&1$$,", strengths_list)
@@ -1136,14 +1149,14 @@ Public Sub Save()
    Endif
    sMsg &= ");\n"
    Print sMsg
-   If chkShareDrug.Value Then
-      Try modUtil.SendMailToDeveloper("drug contribution", sMsg)  'bug here if sending fails > crashes program without the try
-   End If
    If bUserPIFile Then
       modDBConnect.update("drugs.brand", Null, ["pk": brand!fk_brand, "product_information_filename_user": Trim(txtPIFile.text)])
    Endif
-   
    modDBConnect.CommitTrans()
+   
+   If chkShareDrug.Value Then
+      Try modUtil.SendMailToDeveloper("drug contribution", sMsg)  'bug here if sending fails > crashes program without the try
+   End If
    
    Dec Application.Busy
    Reload()
@@ -1239,6 +1252,250 @@ HavingTrouble:
    sMsg = "You seem to be having trouble figuring out how to allocate a pdf name to a drug.\n\n"
    "Please read the help file on the Help tab and try again."
    Message.Info(sMsg)
+   
+End
+
+Public Sub Save_old()
+   '-----------------------------
+   'Save a new user defined drug
+   ' CREATE TABLE drugs.brand
+   ' (
+   '   fk_product uuid NOT NULL,
+   '   fk_company character varying(3) NOT NULL,
+   '   brand character varying(100) NOT NULL,
+   '   price money, -- dispensed price for PBS drugs.
+   '   from_pbs boolean NOT NULL DEFAULT false, -- true if the brand comes from the PBS database, allows the list to be easily reloaded...
+   '   original_tga_text text, -- drugs imported from TGA database, the original label therein
+   '   original_tga_code character varying(12), -- drugs imported from TGA database, their TGA code
+   '   pk uuid NOT NULL DEFAULT uuid_generate_v4(),
+   '   product_information_filename text,
+   '   CONSTRAINT brand_pkey PRIMARY KEY (pk ),
+   '  'brand!product_information_filename =    CONSTRAINT brand_fk_company_fkey FOREIGN KEY (fk_company)
+   '       REFERENCES drugs.company (code) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT brand_fk_product_fkey FOREIGN KEY (fk_product)
+   '       REFERENCES drugs.product(pk)MATCH SIMPLE
+   '       pdf-4pdf-4
+   ' CREATE TABLE drugs.pack
+   ' (
+   '   fk_product uuid,pk_viewpk_view
+   '   amount double precision, -- the amount of drugs that have a fluid form
+   '   amount_unit integer,
+   '   pack_size integer DEFAULT 1, -- the number of identical units (bottles, vials, tablets, etc) within a pack
+   '   CONSTRAINT pack_fk_product_fkey FOREIGN KEY (fk_product)
+   '       REFERENCES drugs.product (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   'pk_viewpk_view
+   '    Create TABLE drugs.productadmin
+   ' (
+   '   pk uuid Not Null Default uuid_generate_v4(),
+   '   atccode character varying(8) Not Null,
+   '   generic text Not Null, - - full generic name In Lower - case.For compounds names separated by ";"
+   '   salt text, - - If Not normally part Of generic name, the adjuvant salt
+   '   fk_form integer Not Null, - - the form Of the drug
+   '   strength text, - - the strength As A number followed by a unit.For compounds...
+   '   salt_strength text, - - where a weight Of the full salt Is Listed(being heavier than the weight...
+   '   original_pbs_name text, - - For a drug imported From the PBS Yellow Book database, the original...
+   '   original_pbs_fs text, - - For a drug imported From the PBS Yellow Book database, the original...
+   '   free_comment text, - - a FreIf Not Drug_Valid() Then Return  e - text comment on properties Of the product.For example For complex packages...
+   '   updated_at timestamp without Time zone Default Now(),
+   '   fk_schedule integer,pk_view
+   '   shared boolean Default True, - - If True Then the user / surgery wants To share this drug With easygp - central
+   '   poison smallint Default 4,
+   '
+   '----------------------------
+   
+   Dim sMsg As String
+   Dim generics_list As String
+   Dim strengths_list As String
+   Dim fk_existing_product_key As String
+   Dim fk_existing_brand_key As String
+   Dim product As CRow
+   Dim brand As CRow
+   Dim brandname As String
+   Dim pack As Collection
+   Dim bUserPIFile As Boolean                         'if true the product information file is not ours (not from the guild)
+   '--------------------------------------------------------------------------------------------------
+   'First save the product to product table
+   'Saving a new drug has multiple nuances around the generic composition
+   'We must make the user choose from existing generics, sometimes, to get the composition of the drug
+   'the user could have taken two generics from the popup list and deleted one, then selected another
+   'from the popup list to make the compound generic in this new drug
+   'This compound generic may exist in the database linked to a particular form, so must test for this
+   '--------------------------------------------------------------------------------------------------
+   If Vbox_EditArea_Outer.Padding = 0 Then Return
+   Gridview_Unload(ByRef generics_list, ByRef strengths_list)
+   If Trim(txtBrand.Text) = "" Then
+      txtBrand.SetFocus()
+      Return
+   End If
+   
+   If atccode = "" Then
+      txtACTName.SetFocus()
+      Return
+   End If
+   If Replace(generics_list, ";", "") = "" Then
+      txtFindGenericComponent.SetFocus
+      Return
+   End If
+   If fk_form = 0 Then
+      txtForm.SetFocus()
+      Return
+   End If
+   If Trim(txtNoOfPacks.text) = "" Then
+      txtNoOfPacks.SetFocus()
+      Return
+   Endif
+   If Trim(txtUnits_per_pack.text) = "" Then
+      txtUnits_per_pack.SetFocus()
+      Return
+   Endif
+   If cmbSchedules.index = -1 Then
+      Message.Warning("Please select a schedule for this drug", "Ok")
+      Return
+   Endif
+   If fk_company = "" Then     'some of our own 'recipies', won't have a company
+      If Message.Question("Continue to save without allocating a company for this drug?", "Yes", "No") = 2 Then
+         txtCompany.SetFocus()
+         Return
+      Endif
+   End If
+   EditArea_TextBoxes_SetReadOnly_Status(False)
+   EditArea_Notify_Data_Change(False)
+   Wait           'update the gui
+   Inc Application.Busy
+   product = New CRow
+   '------------------------------------------------------------------------------------------------------------
+   'Current logic flaw here.
+   'User may have saved a product with certain generics > realised they made a mistake and go back to correct it
+   '------------------------------------------------------------------------------------------------------------
+   fk_existing_product_key = modPrescribingDBI.Product_Check_Exists(atccode, generics_list, strengths_list, fk_form)
+   If Not IsNull(fk_existing_product_key) Then
+      product.put_unchanged(fk_existing_product_key, "fk_product")
+   Endif
+   If chkShareDrug.value = False Then
+      If Message.Question("Do you want to share this drug definition with the central database?", "Yes", "No") = 1 Then
+         chkShareDrug.Value = True
+      End If
+   Endif
+   If chkShareDrug.value = True Then
+      product!shared = True
+   Else
+      product!shared = False
+   Endif
+   product!fk_schedule = schedules[cmbSchedules.index]!pk
+   product!generic = generics_list                                                 'will always have a generic name
+   If strengths_list <> "" Then product!strength = strengths_list                        'may not have a strength
+   product!fk_form = fk_form
+   product!atccode = atccode
+   If Trim(txtComment.text) <> "" Then product!free_comment = Trim(txtComment.Text)
+   If Trim(txtVolume.text) <> "" Then product!amount = Trim(txtVolume.text)            'often dosen't have an amount
+   If cmbUnits.Index <> -1 Then
+      Select Case cmbUnits.Index
+         Case 0
+            product!amount_unit = const.Units_gram
+         Case 1
+            product!amount_unit = const.Units_millilitre
+      End Select
+   Endif
+   product!units_per_pack = Val(txtNoOfPacks.text)        'wacky eh! but that's how ian named it
+   product!pack_size = Val(txtUnits_per_pack.text)
+   product.Save("drugs.product", "fk_product")
+   fk_existing_product_key = product!fk_product
+   'fixme put in schedule and poison
+   brand = New CRow
+   brandname = Trim$(Upper$(txtBrand.Text))
+   If IsNull(fk_brand) Then
+      fk_existing_brand_key = modPrescribingDBI.Brand_Check_Exists(fk_existing_product_key, brandname)
+   Else
+      fk_existing_brand_key = fk_brand
+   Endif
+   brand!brand = brandname
+   If IsNull(fk_existing_brand_key) Then
+      brand!fk_product = fk_existing_product_key
+   Else
+      brand.put_unchanged(fk_existing_brand_key, "fk_brand")
+      brand!fk_product = fk_existing_product_key
+   Endif
+   If fk_company <> "" Then brand!fk_company = fk_company                           'may not have a company                                               'must always have a brand or 'our brand'
+   If Trim(txtPIFile.text) <> "" Then                                               'we have a pi-filename
+      If PI_Filenames.Exist(Trim(txtPIFile.text)) Then                              'does it come from the guild?
+         brand!product_information_filename = Trim(txtPIFile.text)                  'yes, its is one of ours
+      Else
+         bUserPIFile = True                                                         'no - the user has downloaded one
+      End If
+   End If
+   sMsg = "<B>Drug:</B>" & txtBrand.text & "\n"
+   sMsg &= "<B>PI File:</B>"
+   If Trim(txtPIFile.text) = "" Then
+      sMsg &= "No Product Information PDF found\n"
+   Else
+      smsg &= txtPIFile.text & "\n"
+   Endif
+   sMsg &= "<B>Generic:</B>" & generics_list & "\n"
+   sMsg &= "<B>Strength:</B>" & strengths_list & "\n"
+   sMsg &= "<B>ATC Name:</B>" & txtACTName.text & "\n"
+   sMsg &= "<B>Form:</B>" & txtForm.text & "\n"
+   If Trim(txtVolume.text) Then
+      sMsg &= "<B>Amount:</B>" & txtVolume.text & cmbUnits.Text & "\n"
+   Endif
+   If txtForm.text = "injection" Or InStr(txtForm.text, "liquid") Or InStr(txtForm.text, "drops") Or InStr(txtForm.text, "spray") Or txtForm.text = "" Then
+      sMsg &= "Units Per Pack:"
+   Else
+      sMsg &= modUtil.Ucase_Word_First_Letter("<B>" & txtForm.text & "s per pack</B>")
+   End If
+   sMsg &= "\n"
+   sMsg &= "<B>Pack Size:</B>" & txtNoOfPacks.text
+   If Message.Question(sMsg & "\n\nAre you sure this is accurate?", "Yes", "Cancel") = 2 Then Return
+   brand.Save("drugs.brand", "fk_brand")
+   sMsg = "insert into drugs.product (pk,generic,strength,"
+   sMsg &= "fk_form,atccode,free_comment,fk_schedule,pack_size,units_per_pack,"
+   sMsg &= "amount_unit,amount,updated_at) values ("  'RT 02aug15 I removed this extra comma ?why here in the first place
+   ' sMsg &= ",amount_unit,amount,updated_at) values ("
+   sMsg &= Subst$("'&1',", fk_existing_product_key)
+   sMsg &= Subst$("$$&1$$,", generics_list)
+   sMsg &= Subst$("$$&1$$,", strengths_list)
+   sMsg &= Subst$("&1,", fk_form)
+   sMsg &= Subst$("'&1',", atccode)
+   If Trim(txtComment.Text) <> "" Then
+      sMsg &= Subst$("$$&1$$,", Trim(txtComment.Text))
+   Else
+      sMsg &= "NULL,"
+   Endif
+   sMsg &= product!fk_schedule & ","
+   sMsg &= txtNoOfPacks.Text & ","
+   sMsg &= txtUnits_per_pack.Text & ","
+   If cmbUnits.Index <> -1 Then
+      sMsg &= Subst$("&1,&2,", product!amount_unit, product!amount)
+   Else
+      sMsg &= "NULL,NULL,"
+   Endif
+   sMsg &= "'" & Now() & "'::timestamp);\n"
+   sMsg &= "insert into drugs.brand (pk,fk_product,fk_company,brand,product_information_filename) values ("
+   sMsg &= Subst$("'&1','&2','&3',$$&4$$,", brand!fk_brand, fk_existing_product_key, fk_company, brandname)
+   If brand.Exist("product_information_filename") Then
+      sMsg &= "'" & brand!product_information_filename & "'"
+   Else
+      sMsg &= "NULL"
+   Endif
+   sMsg &= ");\n"
+   Print sMsg
+   If chkShareDrug.Value Then
+      Try modUtil.SendMailToDeveloper("drug contribution", sMsg)  'bug here if sending fails > crashes program without the try
+   End If
+   If bUserPIFile Then
+      modDBConnect.update("drugs.brand", Null, ["pk": brand!fk_brand, "product_information_filename_user": Trim(txtPIFile.text)])
+   Endif
+   
+   modDBConnect.CommitTrans()
+   
+   Dec Application.Busy
+   Reload()
+   txtSearch.SetFocus
    
 End
 
@@ -1366,8 +1623,13 @@ Public Sub EditArea_TextBox_GotFocus()
    
    Last.BackGround = Color.rgb(95, 255, 175)
    ListView2.Visible = False
+   iSearchMode = cSearchMode_None
+   itimer_Count = 0
+   Timer1.stop
    Select Case Last.tag
       Case "form", "atc", "company", "find generic component", "product information"
+         itimer_Count = 0
+         Timer1.stop
          With listview2
             .top = Last.Parent.Parent.top + Last.Parent.height
             .Left = Last.Parent.Left + VBox_EditArea_Inner.padding
@@ -1376,6 +1638,8 @@ Public Sub EditArea_TextBox_GotFocus()
             .Height = 200
             .Raise
          End With
+         If Last.tag = "find generic component" Then iSearchMode = cSearchMode_Generic
+         If Last.tag = "atc" Then iSearchMode = cSearchMode_ATC
    End Select
    If Last.tag = "product information" Then
       Try Product_Information_Filename_Get()
@@ -1413,16 +1677,17 @@ End Sub
 Public Sub EditArea_TextBox_KeyRelease()
    
    Select Case Last.tag
-      Case "find generic component"
-         Generic_Names_Get()
+      Case "find generic component", "atc"
+         itimer_count = 0
+         Timer1.start()
       Case "form"
          Drug_Forms_Get()
       Case "product information"
          Try Product_Information_Filename_Get()
       Case "company"
          Company_Get()
-      Case "atc"
-         ACT_Codes_Get()
+         ' Case "atc"
+         '    ACT_Codes_Get()
    End Select
    
 End
@@ -1493,8 +1758,9 @@ Public Sub mnuGenerics_Click()
       Case "delete"
          Generic_Delete()
    End Select
-   Catch
-      Return 
+Catch
+   Return 
+   
 End
 
 Public Sub tbAddGeneric_KeyPress()
@@ -1575,13 +1841,16 @@ Public Sub txtSearch_GotFocus()
       .foreground = Color.Black
       .text = "Brand"
    End With
-   
+   iSearchmode = cSearchMode_Existing
+
 End
 
 Public Sub HSplit_DataEntry_Resize()
+   'occurs if  user resizes the vertical splitter handle   
    
    If bExit Then Return
    listview2.width = txtFindGenericComponent.Width
+   If txtEditGrid.Visible Then txtEditGrid.width = gvwGenerics.Columns[1].width
    
 End
 
@@ -1659,8 +1928,9 @@ Public Sub mnuDrugs_Click()
          modDBConnect.CommitTrans()
          Reload
    End Select
-   Catch
-      Return 
+Catch
+   Return 
+   
 End
 
 Public Sub gvwGenerics_Select()
@@ -1695,6 +1965,26 @@ Public Sub txtSearch_Change()
 End
 
 Public Sub timer1_Timer()
+   '------------------------------------------------------------------------------
+   'If the timer is running, user is typing in either the brand or generic textbox
+   '------------------------------------------------------------------------------
+   
+   Inc itimer_Count
+   If itimer_count > 3 Then
+      timer1.stop
+      Select Case iSearchMode
+         Case cSearchMode_Generic
+            Generic_Names_Get
+         Case cSearchMode_ATC
+            ACT_Codes_Get
+         Case cSearchMode_Existing 'search for existing drugs
+            Reload
+      End Select   
+   End If
+   
+End
+
+Public Sub timer1_Timer_old()
    '------------------------------------------------------------------------------
    'If the timer is running, user is typing in either the brand or generic textbox
    '------------------------------------------------------------------------------
@@ -1797,15 +2087,15 @@ Public Sub editArea_RadioButtons_Click()
 End
 
 Public Sub btnDisclaimer_Click()
-
+   
    If Message.Warning("Are you absolutely sure?\n\n Remember that you can potentially damage your database, put in incorrect information and prescribe wrongly entered medications, or worse cause others to do this, "
-   "and have a real medico-legal problem on your hands.\n\nWe strongly advise against you using this module.", "Yes - Ignore the warnings", "No - Get me out of here") = 2 Then Return
-  VBox_HideTheForm.Visible = False  
-
+      "and have a real medico-legal problem on your hands.\n\nWe strongly advise against you using this module.", "Yes - Ignore the warnings", "No - Get me out of here") = 2 Then Return
+      VBox_HideTheForm.Visible = False  
+      
 End
 
 Public Sub Form_Leave()
-
+   
    ' VBox_HideTheForm.Visible = True 
-
+   
 End

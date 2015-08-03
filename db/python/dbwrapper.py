@@ -140,6 +140,49 @@ pg_class c2, pg_namespace n2, pg_attribute a2
         if cur is None: c.close()
         return r
 
+
+    def wipe_invoices(self):
+        cur = self.cursor()
+        cur.execute("truncate billing.invoices cascade")
+        cur.close()
+
+    def insert_table(self,tbl,fields,cur):
+        fieldlist = []
+        valuelist = []
+        params = []
+        for f,v in fields.items():
+            fieldlist.append(f)
+            valuelist.append('%s')
+            params.append(v)
+        fieldlist = fieldlist.join(',')
+        valuelist = valuelist.join(',')
+        params = tuple(params)
+        print "insert into {} ({}) values ({}) returning (pk)".format(tbl,fieldlist,valuelist)
+        print repr(params)
+        #r = cur.fetchall()
+        #return r[0][0]
+        return 1
+    
+    def insert_invoice(self,**kwargs):
+        items = kwargs,get('items',[])
+        payments = kwargs.get('payments',[])
+        cur = self.cursor()
+        try:
+            del kwargs['items']
+        except: pass
+        try:
+            del kwargs['payments']
+        except: pass
+        pk = self.insert_table('billing.invoices',kwargs,cur)
+        for i in items:
+            i['fk_invoice'] = pk
+            self.insert_table('billing.items_billed',i,cur)
+        for i in payments:
+            i['fk_invoice'] = pk
+            self.insert_table('billing.payments_received',i,cur)
+        cur.close()
+        return pk
+        
     def cursor(self):
         return self.conn.cursor()
 

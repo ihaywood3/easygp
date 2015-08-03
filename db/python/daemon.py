@@ -248,6 +248,14 @@ Commands:
         except SystemExit: pass # parent dying
         except: logging.exception("top-level exception")
 
+    def setup_test(self):
+        self.read_config()
+        self.debug_mode = True
+        self.setup_log()
+        self.setup()
+        self.db = DBWrapper(self.config)
+        self.setup_drivers()
+        
     def overnight(self):
          self.evts.overnight()
          if not self.mo is None: 

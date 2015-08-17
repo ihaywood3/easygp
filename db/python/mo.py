@@ -17,9 +17,8 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 # This code does not refer to any restricted information, it communicates
-# with a closed-source Java module using a JSON API spec developed
-# by myself (Ian Haywood), prior to reading NDA-restricted Medicare
-# documentation.
+# with a closed-source Java module using a line-based API spec developed
+# by myself (Ian Haywood)
 
 """A class for making Medicare Online billing submissions
 """
@@ -240,10 +239,16 @@ class MedicareOnline:
             path = self.create_object(content_type,"","")
             self.set(path, "PmsClaimId", claim_id)
             self.set(path, "ServicingProviderNum", invoices[0]['staff_provided_service_provider_number'])
+            if (not invoices[0]['payee_provider_number'] is None) and invoices[0]['payee_provider_number'] <> invoices[0]['staff_provided_service_provider_number']:
+                self.set(path,"PayeeProviderNum", invoices[0]['payee_provider_number'])
+            typ = 'O'
             if 'referrer_provider_number' in invoices[0] and not invoices[0]['referrer_provider_number'] is None:
                 typ = 'S'
-            else:
-                typ = 'O'
+            notes = invoices[0]['notes']
+            if notes:
+                notes = notes.lower()
+                if 'lost referral' in notes or 'emergency referral' in notes:
+                    typ = 'S'
             self.set(path, "ServiceTypeCde",typ)  # O=GP, S=Specialist
             pts = {}
             invoices = sorted(invoices,key=lambda x:x['voucher_id'])  # yes the java layer cracks it if the vouchers aren't loaded in order. Sigh.
@@ -292,6 +297,11 @@ class MedicareOnline:
                 ref_typ = "N"
                 inv_service_text += " referral duration is %s months" % inv['referral_duration']
             self.set(voucher_path,"ReferralPeriodTypeCde",ref_typ)
+        if 'lost referral' in inv_service_text.lower():
+            self.set(voucher_path,"ReferralOverrideTypeCde","L")
+        else:
+            if 'emergency referral' in inv_service_text.lower():
+                self.set(voucher_path,"ReferralOverrideTypeCde","E")
         # sort items by largest first, as this will usually be the one whole-invoice comments should
         # be attached to
         items = sorted(inv['items_billed'], key=lambda x: x['amount'])
@@ -336,7 +346,9 @@ class MedicareOnline:
                 if item['field_quantity'] > 99:
                     logging.warn("field quantity cannot be more than 99")
                     item['field_quantity'] = 99
-                self.set(item_path,'FieldQuantity',str(item['field_quantity'])
+                self.set(item_path,'FieldQuantity',str(item['field_quantity']))
+            if item['number_of_patients'] > 0:
+                self.set(item_path,"NoOfPatientsSeen",str(item['number_of_patients']))
             inv_service_text = inv_service_text.strip()
             if inv_service_text != "":
                 self.set(item_path,"ServiceText",inv_service_text)
@@ -353,14 +365,16 @@ class MedicareOnline:
                   (['not related','care plan','separate issue'],'not_related'),
                   (['duration ?=?:? ?([0-9]+)','time ?=?:? ?([0-9]+)'],'procedure_duration'),
                   (['quantity ?=?:? ?([0-9]+)'],'field_quantity')]:
-            m = re.search(reg,service_text,re.I)
-            if m:
-                service_text = service_text[:m.start()] + service_text[m.end():] # remove the matched text
-                val = True
-                try:
-                    val = int(m.group(1))
-                except IndexError: pass
-                item[field] = val
+            for i in reg:
+                m = re.search(i,service_text,re.I)
+                if m:
+                    service_text = service_text[:m.start()] + service_text[m.end():] # remove the matched text
+                    val = True
+                    try:
+                        val = int(m.group(1))
+                    except IndexError: pass
+                    item[field] = val
+        return service_text
 
     def claim_query(self, claim):
         pn = claim['provider_number']

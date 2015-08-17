@@ -144,6 +144,7 @@ pg_class c2, pg_namespace n2, pg_attribute a2
     def wipe_invoices(self):
         cur = self.cursor()
         cur.execute("truncate billing.invoices cascade")
+        cur.execute("truncate billing.claims cascade")
         cur.close()
 
     def insert_table(self,tbl,fields,cur):
@@ -154,33 +155,42 @@ pg_class c2, pg_namespace n2, pg_attribute a2
             fieldlist.append(f)
             valuelist.append('%s')
             params.append(v)
-        fieldlist = fieldlist.join(',')
-        valuelist = valuelist.join(',')
-        params = tuple(params)
-        print "insert into {} ({}) values ({}) returning (pk)".format(tbl,fieldlist,valuelist)
-        print repr(params)
-        #r = cur.fetchall()
-        #return r[0][0]
-        return 1
+        fieldlist = ','.join(fieldlist)
+        valuelist = ','.join(valuelist)
+        cur.execute("insert into {} ({}) values ({}) returning (pk)".format(tbl,fieldlist,valuelist),tuple(params))
+        r = cur.fetchall()
+        return r[0][0]
     
     def insert_invoice(self,**kwargs):
-        items = kwargs,get('items',[])
+        items = kwargs.get('items',[])
         payments = kwargs.get('payments',[])
         cur = self.cursor()
-        try:
-            del kwargs['items']
-        except: pass
-        try:
-            del kwargs['payments']
-        except: pass
+        if 'items' in kwargs: del kwargs['items']
+        if 'payments' in kwargs: del kwargs['payments']
+        if 'fk_staff' in kwargs: 
+            kwargs['fk_staff_provided_service'] = kwargs['fk_staff']
+            del kwargs['fk_staff']
+        if not 'fk_staff_invoicing' in kwargs: kwargs['fk_staff_invoicing'] = kwargs['fk_staff_provided_service']
         pk = self.insert_table('billing.invoices',kwargs,cur)
         for i in items:
+            if type(i) is str:
+                i = {'item':i,'type':'Schedule Fee'}
             i['fk_invoice'] = pk
+            if 'item' in i:
+                if not 'type' in i: i['type'] = 'Schedule Fee'
+                cur.execute("select fk_lu_billing_type,price,fk_fee_schedule from billing.vwfees where mbs_item=%s and fee_type=%s",(i['item'],i['type']))
+                x = cur.fetchone()
+                del i['item']
+                if 'type' in i: del i['type']
+                i['fk_fee_schedule'] = x[2]
+                i['fk_lu_billing_type'] = x[0]
+                if not 'amount' in i: i['amount'] = x[1]
             self.insert_table('billing.items_billed',i,cur)
         for i in payments:
             i['fk_invoice'] = pk
             self.insert_table('billing.payments_received',i,cur)
         cur.close()
+        self.commit()
         return pk
         
     def cursor(self):

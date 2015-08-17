@@ -30,9 +30,13 @@ from dbwrapper import DBWrapper
 
 class Daemon:
 
+    def __init__(self):
+        self.cmd_config = None
+        self.debug_mode = False
+        self.config = {}
+
     def read_config(self):
         """Find and read configuration file"""
-        self.config = {}
         self.config['logfile'] = '/var/log/easygp.log'
         self.config['pidfile'] = '/var/run/easygp-python.pid'
         self.config['host'] = 'localhost'
@@ -63,8 +67,6 @@ class Daemon:
 
     def read_cmd(self):
         i = 1
-        self.cmd_config = None
-        self.debug_mode = False
         self.cmd = 'wait'
         self.claim_id = None
         while i < len(sys.argv):

@@ -1,8 +1,35 @@
 ' Gambas class file
 
+' Copyright (C) 2008-2015 Dr. Richard Terry
+' Gui screen designs in IDE and at runtime Copyright (C) 2008-2015 Dr. Richard Terry
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/liPath to library filescenses/>.
+'---------------------------------------------------------------------------------------------
+' PURPOSE         Allow user to save contents of a text editor as a template for future use
+' USED BY         FReferrals (templates stored in Clin_Referrals.lu_referral_letter_templates
+'                 FProgressNoteEditor  stored in Clin_Consult.lu_progressnote_templates
+'                                       that table has different fields To allow auto - coding 
+'                                       of consultations
+'---------------------------------------------------------------------------------------------                                       
+
 Private template As CRow
 Private Embedded_In_Form As String
 Private pk_template As Integer
+Private Form_Terms As FCodedTermSelector
+Private obs As Observer
+Private fk_coding_system As Integer                'if non-zero is a valid coding system
+Private fk_code As String                          'if not "" then a valid code
+Private timer_count As Integer
 
 Public Sub Run() As Boolean
    
@@ -16,19 +43,99 @@ Public Sub Set_Embedded_In_Form(form_name As String)
    
 End
 
-Public Sub Init(shtml As String, Optional template_key As Integer, Optional template_name As String) 'fixme fix progressnote editor to pass this then remove the options
-   '----------------------------------------
-   'Expects the html of the richtext control
-   '----------------------------------------
-
+Public Sub Init(sHtml As String, Optional existing_template As Collection)
+   '-----------------------------------------------------------------------------
+   'Expects the html of the richtext control and optionally an existing template
+   'This module  used by FProgressNoteEditor and FReferrals
+   '----------------------------------------------------------------------------
+   
    Template = New CRow
-   If template_key Then
-      Template.put_unchanged(template_key, "pk_template")
+   If Embedded_In_Form = "FReferrals" Then
+      HBox_AutoCode_Consult.visible = False  
+      HBox_LinkTo_Code.visible = False 
+   Endif
+   If existing_template.Count Then
+      Template.put_unchanged(existing_template!pk, "pk_template")
+      txtTemplateName.text = existing_template!name
+      If Not IsNull(existing_template!code) Then
+         fk_code = existing_template!code
+         txtCodedTerm.text = existing_template!term & " (" & fk_code & ")"
+      End If   
+      If existing_template!shared = True Then
+         rbShareEveryone.value = True
+      Else
+         rbShareNo.value = True
+      End If
+      If Not IsNull(existing_template!auto_code_consult) Then
+          chkAutoCodeConsult.value = existing_template!auto_code_consult 
+      End If   
    Endif
    Template!fk_staff = modDBConnect.currentUser!fk_staff
    Template!template = shtml
-   Template!shared = False 
-   txtTemplateName.text = template_name   
+   
+   With Form_Terms = New FCodedTermSelector(Vbox_EditArea)
+      .Ignore = True
+      .Visible = False
+   End With  
+   obs = New Observer(Form_Terms.ColumnView1) As "cvwTerms"
+   
+End
+
+
+Public Sub cvwTerms_KeyPress()
+   '------------------------------------------------------------------
+   'Act only on the <ENTER> key display what is in list in the textbox
+   'This event occurs of Form_Terms and is over-ridden by this observer
+   '------------------------------------------------------------------
+   
+   If Key.code = Key.Return Then
+      cvwTerms_DblClick()
+   End If
+   
+End
+
+Public Sub Form_Leave()
+   
+   Timer1.Stop 
+   
+End
+
+Public Sub cvwTerms_DblClick()
+   '-----------------------------------------------------------------
+   'This is an observer event on  Form_Terms.ColumnView1 - see Init()
+   '----------------------------------------------------------------
+   
+   Stop Event
+   
+   Coded_Term_Select()
+   Form_Terms.Visible = False
+   
+End
+
+Public Sub Coded_Term_Select()
+   '-------------------------------------------
+   'User has chosen a term from popup listview1
+   'Display this in the txtCodedTerm Textbox
+   'Set currentProblem!fk_code to the pk_term
+   '-------------------------------------------
+   
+   Dim CurrentTerm As Collection
+   
+   CurrentTerm = Form_Terms.Get_Term()
+   '-----------------------------------------------------------------------
+   'We allow free text in the health issue = past history problem
+   'so, if user has typed something in there like ** very bad diabetes**
+   '(bad example I know), then we keep this as the health issue but it
+   'will be coded back to the appropriate icpc2+ term
+   'However if they havn't typed anything in here, put the natural language
+   'term in the txtConditon text box and the coded term in the coded textbox
+   'e.g Diabetes;Type1 (T89002) or something similar
+   '------------------------------------------------------------------------
+   
+   txtCodedTerm.text = CurrentTerm!term & " (" & CurrentTerm!code & ")"
+   fk_code = CurrentTerm!code
+   fk_coding_system = CurrentTerm!fk_coding_system
+   chkAutoCodeConsult.SetFocus
    
 End
 
@@ -38,6 +145,15 @@ Public Sub btnOK_Click()
       txtTemplateName.SetFocus() 
    Else
       Template!name = Trim(txtTemplateName.text) 
+      If fk_code <> "" Then 
+         template!code = fk_code 
+         template!auto_code_consult = CBool(chkAutoCodeConsult.value)
+      End If 
+      If rbShareEveryone.value = True Then
+         template!shared = True
+      Else
+         template!shared = False 
+      End If     
    Endif
    Select Case Embedded_In_Form 
       Case "FProgressNoteEditor" 
@@ -66,5 +182,131 @@ End
 Public Sub txtTemplateName_GotFocus()
    
    Last.BackGround = Color.rgb(95, 255, 175)
+   
+End
+
+Public Sub txtTemplateName_KeyPress()
+   
+   If Key.code = Key.Return Or Key.code = Key.Enter Or Key.code = Key.Tab Then
+      If Embedded_In_Form <> "FReferrals" Then 'ie. is progress notes
+         txtCodedTerm.SetFocus
+      Else
+         rbShareEveryone.SetFocus
+      End If   
+   Endif
+   
+End
+
+Public Sub txtCodedTerm_KeyRelease()
+   'restart the timer (it is stopped by Timer1_timer), zero timer count
+   'if count > 1 (fixme make this user defined) then timer1_timer searches for terms
+   
+   timer1.Start
+   timer_count = 0 
+   
+End
+
+Public Sub txtCodedTerm_LostFocus()
+   
+   Last.background = Color.White
+   timer1.Stop
+   
+End
+
+Public Sub txtCodedTerm_KeyPress()
+   
+   If Key.code = Key.down And Form_Terms.Visible Then
+      Stop Event
+      With Form_Terms
+         .ColumnView1.MoveFirst
+         .ColumnView1.SetFocus()
+         .ColumnView1.Item.Selected = True   
+      End With
+      Return
+   Else
+      If Key.code = Key.Return Then
+         chkAutoCodeConsult.SetFocus
+      Endif
+   Endif
+   
+End
+
+Public Sub txtCodedTerm_Change()
+   
+   If Trim(txtCodedTerm.text) = "" Then
+      fk_code = ""
+      fk_coding_system = 0
+   Endif
+   
+End
+
+Public Sub txtCodedTerm_GotFocus()
+   
+   Last.BackGround = Color.rgb(95, 255, 175)
+   timer1.Enabled = True
+   With Form_Terms
+      .top = Last.parent.Parent.top + Last.height
+      .left = Last.Parent.left + Vbox_EditArea.Padding
+      .height = (Last.Parent.Parent.Height * 2) + pnlSpacer1.height 'fit just above the buttons
+      .width = txtCodedTerm.Width
+      .Visible = False
+      .ColumnView1.Clear()
+   End With
+   
+End
+
+Public Sub Timer1_Timer()
+   
+   Inc timer_count
+   If timer_count > 1 Then  'FIXME MAKE THESE USER CONFIGURABLE PER TYPING SPEED
+      timer1.stop
+      timer_count = 0
+      Coded_Terms_Get()
+   End If
+   
+End
+
+Public Sub Coded_Terms_Get()
+   '-------------------------------------------------------------------------------------
+   'Gets list of coded terms
+   'Cannot set default if count is one because must  be able to add new occupations
+   'can't remove the label because it needs to occupy space to keep textbox correct width
+   '-------------------------------------------------------------------------------------
+   
+   If Trim(txtCodedTerm.text) = "" Then
+      fk_code = ""
+      fk_coding_system = const.coding_none_selected
+      Form_Terms.Visible = False
+      Return
+   End If
+   If Trim(txtCodedTerm.text) <> "" Then
+      Form_Terms.Set_SearchText(Trim(txtCodedTerm.text))
+   End If
+   
+End
+
+Public Sub chkAutoCodeConsult_Click()
+   
+   rbShareEveryone.SetFocus
+   
+End
+
+Public Sub rbShareEveryone_KeyPress()
+   
+   If Key.code = Key.return Then
+      If Last.value = True Then
+         btnOK.SetFocus
+      Else
+         rbShareNo.SetFocus
+      Endif
+   Endif
+   
+End
+
+Public Sub rbShareNo_KeyPress()
+   
+   If Key.code = Key.return Then
+      btnOK.SetFocus
+   Endif
    
 End

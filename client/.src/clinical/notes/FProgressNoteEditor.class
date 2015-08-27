@@ -20,10 +20,12 @@ Private fk_todo As Integer          'if not zero then the key to clin_consult.ne
 Private bEditLastConsult As Boolean
 Private bAllowTransactionCompletion As Boolean = True
 Private pk_progressnote As Integer
-Private CommonCodedTerms As Collection
+'Private CommonCodedTerms As Collection
 Private lvwFavourites_Key As Integer
 Private Favourite_Codes As Collection      'of the clinician's favourite codes e.g could hard to rememember ones or common ones
-Private Templates As Collection
+Private Templates As Collection            'the collection of user definated templates eg 'annual checkup
+Private template As Collection             'any currently selected template
+Private pk_template As Integer       'if non zero is key to clin_consult.lu_progressnote_templates
 Public bBold As Boolean
 Public cp1 As Integer
 Public cp2 As Integer
@@ -40,7 +42,6 @@ Public CurAt As Integer
 Public Paragraph_At As Integer
 Public character_at As Integer
 Public iZoom As Integer  ' With MiniBMICalc = New FBMICalc(HBox_BMICalc)
-Private pk_template As Integer       'if non zero is key to clin_consult.lu_progressnote_templates
 Public default_Zoom As Integer
 Public check_state As Boolean
 Public FDraw As FDrawEditor
@@ -67,6 +68,7 @@ Private Form_Save_Template As FSaveNotesTemplate
 Private fk_section As Integer 'current default 0 = general notes
 Private cMedications_remove_from_html As Integer = 1
 Private last_todos As String                               'todo's saved last visit
+
 Static Private form_progress_note_editor As FProgressNoteEditor        
 
 Public Sub Set_Embedded_In_Form(form_name As String)
@@ -138,16 +140,7 @@ Public Sub Init(cons As CConsult, Optional bEditLastNotes As Boolean = False)
       If r.count Then                                                                   'yes?
          tenotes.RichText = Replace(modConsultDBI.Images_Get(R!notes), "file://", "")   'add back in the images and display notes to user
          pk_progressnote = R!pk_progressnote
-         '  MedicationsList_Update_Notes(cMedications_remove_from_html)                             'remove html of meds prescribed this consult
       Endif
-      ' Else                                                                             'User wants to edit the last consult
-      '    If bEditLastConsult = True Then  
-      '       For Each pn In currentconsult!progress_notes
-      '          
-      '       Next
-      '       tenotes.RichText = Replace(modConsultDBI.Images_Get(pn!notes), "file://", "")   'add back in the images and display notes to user
-      '       pk_progressnote = pn!pk_progressnote
-      '    End If   
    End If 
    Shortcuts_Init                                                                 'add shortcuts e.g .dx will expand to Diagnosis
    ProgressNotes_Codes_Reload                                                          'Reloads any existing codes for this currentconsult
@@ -204,7 +197,7 @@ Public Sub Todos_Save()
    '--------------------------------------------------------------------
    
    Dim todo As CRow
-    
+   
    If last_todos = Trim(txtToDoNextVisit.text) Then Return 
    todo = New CRow
    If fk_todo Then
@@ -332,7 +325,7 @@ Public Sub Save()
       copy_of_Editor_text = teNotes.text                                  'save copy of what is in the editor for later comparison.
       DataChange_Update_Indicators(False)                                 'remove the red border which indicates data change
       If FClinical.IsSamePatient(currentconsult!patient!fk_patient) Then  'Is the same patient in FClinical - editor used all over the place
-      '   FClinical.Refresh_AllPreviousNotes()                             'refresh the html of previous  notes
+         '   FClinical.Refresh_AllPreviousNotes()                             'refresh the html of previous  notes
          FClinical.Refresh_Section(const.cSection_HealthSummary)          'refresh the health summary if showing
          FClinical.Update_graphs()                                        'update any graphs
       End If
@@ -426,7 +419,7 @@ Public Sub teNotes_Change()
          DataChange_Update_Indicators(True)
       End If
       cvwReasonForEncounter.Clear
-      ' txtReasonEncounter.Enabled = False  
+      template = New Collection
    Else
       DataChange_Update_Indicators(True)
       Editor1.text = tenotes.text
@@ -449,6 +442,7 @@ Public Sub teNotes_Change()
    '   ' modDbug.pasthistory_debug(modglobal.clinicalform.currentpatient.past_history, modglobal.clinicalform.teDebugOutput)
    '  End If
    tenotes.EnsureVisible
+   
 End
 
 Public Sub Editor_Fonts_Reset()
@@ -561,6 +555,7 @@ Public Sub tenotes_KeyPress()
          Case Asc("w") 'WIPE fixme put in docs
             backup()
             teNotes.Clear()
+            template = Null
          Case Asc("O") 'OOPS fixme implement me
          Case Asc("B")
             teNotes.Format.Font.Bold = Not teNotes.Format.Font.Bold
@@ -630,7 +625,7 @@ Public Sub teNotes_KeyRelease()
       notes = modMeasurementsDBI.ProgressNote_Parse_For_Measurement_Keypress(teNotes.RichText, txtHeight, txtweight) 
       If notes <> teNotes.RichText Then teNotes.RichText = notes ' only replace when there is a change
    Endif
-
+   
 Catch 'the ReExp code above sometimes crashes Ian FIXME
    Return 
    
@@ -698,8 +693,12 @@ Public Sub cmbTemplates_Click()
       Try teNotes.RichText = templates[cmbTemplates.index]!template
       bExit = False
    Endif
-    DataChange_Update_Indicators(True)
+   DataChange_Update_Indicators(True)
    Try pk_template = templates[cmbTemplates.index]!pk
+   template = templates[cmbTemplates.index]
+   If template!auto_code_consult = True Then
+      ProgressNotes_Code_Add(template)
+   Endif
 Catch
    Return   'sometimes the message box due to delay in the gui can already be showing.
    
@@ -900,9 +899,12 @@ Public Sub mnuNotes_Click()
          Immunisations_Insert
       Case "insert problem list"
          Problem_list_Insert
+      Case "delete template"   
+         Template_Delete(pk_template)
       Case "save new template"
          pk_template = 0
-         Template_Save(modStrings.Capitalise_Words_In_String(Last.tag))
+         template = New Collection  
+        Template_Save(modStrings.Capitalise_Words_In_String(Last.tag))
       Case "save existing template"
          Template_Save(modStrings.Capitalise_Words_In_String(Last.tag))
       Case "save as shortcut"
@@ -946,26 +948,61 @@ Public Sub Immunisations_Insert()
    
 End
 
+Public Sub Template_Delete(pk_template As Integer)
+   ' Deletes a template
+   ' Same code in FReferrals FixMe
+   
+   Dim sMsg As String
+   
+   Message.Title = "Delete Template"
+   
+   sMsg = "Are you sure you wan to delete the existing template:\n\n"
+   sMsg &= template!name
+   If Message.Question(sMsg, "Yes - Delete Template", "No") = 2 Then Return
+   modDBConnect.exec_query("Update clin_consult.lu_progressnote_templates set deleted = True where pk=" & pk_template)
+   modDBConnect.CommitTrans
+   Templates_ReLoad
+   
+End
+
 Public Sub Template_Save(sTitle As String)
    '---------------------------------------------------------------------------------------------------
    'Saves new or existing template, if existing then the clin_referrals.lu_referral_letter_template.pk
    'is passed to the popup dialog which saves the template
+   'same code in FReferral fixme
    '---------------------------------------------------------------------------------------------------
    
    Dim template_name As String
+   Dim old_pk_template As Integer = pk_template 
    
- '  If Trim(tenotes.text) = "" Then Return 
    If InStr(sTitle, "Existing") Then
       template_name = cmbTemplates.Text
    End If   
+   
    With Form_Save_Template = New FSaveNotesTemplate
       .Title = sTitle  
       .Set_Embedded_In_Form("FProgressNoteEditor")
-      .Init(teNotes.RichText, pk_template, template_name)
+      .Init(teNotes.RichText, template)
       If .ShowModal() Then
          Templates_ReLoad()
+         If old_pk_template <> 0 Then  
+            template = template_Reload(old_pk_template)
+            pk_template = template!pk
+         Endif
       Endif
    End With
+
+End
+
+Public Sub Template_Reload(old_pk_template As Integer) As Collection
+   
+   Dim T As Collection
+   
+   For Each T In templates 
+      If T!pk = old_pk_template Then
+         Return T  
+      Endif
+   Next
    
 End
 
@@ -1151,7 +1188,8 @@ End
 Public Sub Templates_ReLoad()
    
    pk_template = 0
-   templates = modUtilGUI.LoadCombo(cmbTemplates, modProgressNotes.Templates_Get(), "name")
+   template = New Collection
+   templates = modUtilGUI.LoadCombo(cmbTemplates, modUtil.Copy_Collection_Keyed_Sequentially(modProgressNotes.Templates_Get()), "name")
    cmbTemplates.index = -1
    
 End
@@ -1162,10 +1200,23 @@ Public Sub teNotes_Menu()
    character_at = teNotes.ToIndex(teNotes.pos)
    If Trim(teNotes.text) = "" Then
       mnuNotes_SaveTemplate.Enabled = False
-     mnuNotes_SaveExistingTemplate.enabled = False  
+      mnuNotes_SaveExistingTemplate.enabled = False  
+      mnuNotes_DeleteTemplate.Enabled = False   
    Else
       mnuNotes_SaveTemplate.Enabled = True
-      mnuNotes_SaveExistingTemplate.Enabled = True 
+      If template.count Then
+         With mnuNotes_SaveExistingTemplate
+            .Enabled = True 
+            .text = "Edit Template '" & template!name & "'"
+         End With
+         With mnuNotes_DeleteTemplate
+            .Enabled = True
+            .text = "Delete Template '" & template!name & "'"
+         End With
+      Else
+         mnuNotes_DeleteTemplate.Enabled = False  
+         mnuNotes_SaveExistingTemplate.Enabled = False  
+      End If   
    Endif
    If Clipboard.type = Clipboard.Image Then
       mnuNotes_PasteImage.Enabled = True
@@ -1216,6 +1267,7 @@ Public Sub Editor_Clear()
          BMI_Clear
          pk_template = 0
          cmbTemplates.index = -1
+         template = New Collection 
    End Select
 Catch
    Return
@@ -1362,6 +1414,7 @@ Public Sub Auto_Text_Section(shortcut As Collection, re As Regexp)
    teNotes.Format.Font.Bold = False
    teNotes.Format.Font.Underline = False
    DataChange_Update_Indicators(True)
+   
 End
 
 Public Sub tbLoadFile_Click()

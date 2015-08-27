@@ -50,6 +50,7 @@ Private PersonWritingTo As Collection                       'Person for whom the
 Private persons As Collection
 Private person As Collection
 Private persons_excluding_retired_or_left As Collection
+Private template As Collection
 Private templates As Collection
 Private Branches As Collection
 Private Branch_comms As Collection
@@ -1196,8 +1197,8 @@ Public Sub teLetter_Change()
       vbox_LetterText.Padding = 0
       vbox_LetterText.BackGround = Color.Default
    Else
-      'EditArea_Notify_DataChange(False)
-      ' cmbTemplates.index = -1
+      EditArea_Notify_DataChange(False)
+      pk_template = 0
    End If
    Object.Lock(teLetter)
    sText = teLetter.RichText
@@ -2705,6 +2706,47 @@ Public Sub Spelling_Check()
    
 End
 
+Public Sub Template_Save(sTitle As String)
+   '---------------------------------------------------------------------------------------------------
+   'Saves new or existing template, if existing then the clin_referrals.lu_referral_letter_template.pk
+   'is passed to the popup dialog which saves the template
+   'same code in FReferral fixme
+   '---------------------------------------------------------------------------------------------------
+   
+   Dim template_name As String
+   Dim old_pk_template As Integer = pk_template 
+   
+   If InStr(sTitle, "Existing") Then
+      template_name = cmbTemplates.Text
+   End If   
+   
+   With Form_Save_Template = New FSaveNotesTemplate
+      .Title = sTitle  
+      .Set_Embedded_In_Form("FReferrals")
+      .Init(teLetter.RichText, template)
+      If .ShowModal() Then
+         Templates_ReLoad()
+         If old_pk_template <> 0 Then  
+            template = template_Reload(old_pk_template)
+            pk_template = template!pk
+         Endif
+      Endif
+   End With
+   
+End
+
+Public Sub Template_Reload(old_pk_template As Integer) As Collection
+   
+   Dim T As Collection
+   
+   For Each T In templates 
+      If T!pk = old_pk_template Then
+         Return T  
+      Endif
+   Next
+   
+End
+
 Public Sub lvwInclusions_EditArea_Menu()
    
    If Last.count Then
@@ -2717,6 +2759,27 @@ Public Sub teLetter_Menu()
    
    Paragraph_At = teLetter.ToParagraph(teLetter.pos)
    character_at = teLetter.ToIndex(teLetter.pos)
+   
+   If Trim(teLetter.text) = "" Then
+      mnuLetter_SaveTemplate.Enabled = False
+      mnuLetter_EditTemplate.enabled = False  
+      mnuLetter_DeleteTemplate.Enabled = False   
+   Else
+      mnuLetter_SaveTemplate.Enabled = True
+      If template.count Then
+         With mnuLetter_EditTemplate
+            .Enabled = True 
+            .text = "Edit Template '" & template!name & "'"
+         End With
+         With mnuLetter_DeleteTemplate
+            .Enabled = True
+            .text = "Delete Template '" & template!name & "'"
+         End With
+      Else
+         mnuLetter_DeleteTemplate.Enabled = False  
+         mnuLetter_EditTemplate.Enabled = False  
+      End If   
+   Endif
    If Clipboard.type = Clipboard.Image Then
       mnuLetter_PasteImage.Enabled = True
       mnuLetter_Paste.Enabled = False
@@ -2724,6 +2787,7 @@ Public Sub teLetter_Menu()
       mnuLetter_PasteImage.Enabled = False
       mnuLetter_Paste.Enabled = True
    Endif
+   
    mnuLetter.Popup()
    
 End
@@ -2738,35 +2802,55 @@ Public Sub mnuLetter_Click()
             teLetter.Insert(Clipboard.Text)
          End If
       Case "save new template"
-         pk_template = 0
+          pk_template = 0
+          template = New Collection    
          Template_Save(modStrings.Capitalise_Words_In_String(Last.tag))
-      Case "save existing template"
+      Case "edit template"
          Template_Save(modStrings.Capitalise_Words_In_String(Last.tag))
+      Case "delete template"
+         Template_Delete(pk_template)
    End Select
 Catch
    Return 
    
 End
 
-Public Sub Template_Save(sTitle As String)
+Public Sub Template_Delete(pk_template As Integer)
+   ' Deletes a template
+   ' Same code in FReferrals FixMe cept dual tables, ?should merge
+   
+   Dim sMsg As String
+   
+   Message.Title = "Delete Template"
+   
+   sMsg = "Are you sure you wan to delete the existing template:\n\n"
+   sMsg &= template!name
+   If Message.Question(sMsg, "Yes - Delete Template", "No") = 2 Then Return
+   modDBConnect.exec_query("Update clin_referrals.lu_referral_letter_templates set deleted = True where pk=" & pk_template)
+   modDBConnect.CommitTrans
+   Templates_ReLoad
+   
+End
+
+Public Sub Template_Save_old(sTitle As String)
    '---------------------------------------------------------------------------------------------------
    'Saves new or existing template, if existing then the clin_referrals.lu_referral_letter_template.pk
    'is passed to the popup dialog which saves the template
    '---------------------------------------------------------------------------------------------------
-   
-   Dim template_name As String
-   
-   If InStr(sTitle, "Existing") Then
-      template_name = cmbTemplates.Text
-   End If   
-   With Form_Save_Template = New FSaveNotesTemplate
-      .Title = sTitle  
-      .Set_Embedded_In_Form("FReferrals")
-      .Init(teLetter.RichText, pk_template, template_name)
-      If .ShowModal() Then
-         Templates_ReLoad()
-      Endif
-   End With
+   ' 
+   ' Dim template_name As String
+   ' 
+   ' If InStr(sTitle, "Existing") Then
+   '    template_name = cmbTemplates.Text
+   ' End If   
+   ' With Form_Save_Template = New FSaveNotesTemplate
+   '    .Title = sTitle  
+   '    .Set_Embedded_In_Form("FReferrals")
+   '    .Init(teLetter.RichText, pk_template, template_name)
+   '    If .ShowModal() Then
+   '       Templates_ReLoad()
+   '    Endif
+   ' End With
    
 End
 
@@ -2932,25 +3016,25 @@ Public Function SendAsHL7() As String
          ReferralDisposition = "AM" 'Send written report = ‘WR’ Return patient after evaluation =‘RP’Assume management = ‘AM’Second opinion = ‘SO’ NOTE: ‘SO’ = Provide second, third Or other opinion. Additional Australian table values: Discharge summary = ‘DS’ Update care plan = ‘UCP’ Update health record = ‘UHR’ Case conference = ‘CC’ Notification – no further action =‘FI
          
       Case "Feedback"
-          ReferralReason = "S"
-          ReferralType = "GRF"
+         ReferralReason = "S"
+         ReferralType = "GRF"
          'ObservationResultStatus = "F"
          ReferralStatus = "A" 'Accepted = 'A' Pending = 'P' Rejected = 'R' Expired = 'E'
          ReferralDisposition = "UCP" 'Send written report = ‘WR’ Return patient after evaluation =‘RP’Assume management = ‘AM’Second opinion = ‘SO’ NOTE: ‘SO’ = Provide second, third Or other opinion. Additional Australian table values: Discharge summary = ‘DS’ Update care plan = ‘UCP’ Update health record = ‘UHR’ Case conference = ‘CC’ Notification – no further action =‘FI
-     Case "Reply To Referral"
+      Case "Reply To Referral"
          ReferralReason = "O" 'Second opinion = ‘S’ Patient preference = ‘P’ Provider ordered = ‘O’ Work load = ‘W’
          ReferralType = "GRF" 'General referral = ‘GRF’Discharge referral = ‘DRF’Shared care update = ‘SCU’Notification = ‘NOT’Shared EHR update = ‘SEU’Decision support system update =‘DSU’
          ReferralStatus = "A" 'Accepted = 'A' Pending = 'P' Rejected = 'R' Expired = 'E'
          ReferralDisposition = "AM" 'Send written report = ‘WR’ Return patient after evaluation =‘RP’Assume management = ‘AM’Second opinion = ‘SO’ NOTE: ‘SO’ = Provide second, third Or other opinion. Additional Australian table values: Discharge summary = ‘DS’ Update care plan = ‘UCP’ Update health record = ‘UHR’ Case conference = ‘CC’ Notification – no further action =‘FI
-       
+         
       Case Else
-
+         
          ReferralReason = "S" 'Second opinion = ‘S’ Patient preference = ‘P’ Provider ordered = ‘O’ Work load = ‘W’
          ReferralType = "GRF" 'General referral = ‘GRF’Discharge referral = ‘DRF’Shared care update = ‘SCU’Notification = ‘NOT’Shared EHR update = ‘SEU’Decision support system update =‘DSU’
          
          ReferralStatus = "P" 'Accepted = 'A' Pending = 'P' Rejected = 'R' Expired = 'E'
          ReferralDisposition = "AM" 'Send written report = ‘WR’ Return patient after evaluation =‘RP’Assume management = ‘AM’Second opinion = ‘SO’ NOTE: ‘SO’ = Provide second, third Or other opinion. Additional Australian table values: Discharge summary = ‘DS’ Update care plan = ‘UCP’ Update health record = ‘UHR’ Case conference = ‘CC’ Notification – no further action =‘FI
-      
+         
    End Select
    
    ReferredtoProvider = New Collection
@@ -3028,7 +3112,7 @@ Private Function Referral_Letter_HL7_Construct(ReferredtoProvider As Collection)
          sLetterText &= "Fax: " & com!value & "\n"
       Endif
    Next
-    sLetterText &= "\n"
+   sLetterText &= "\n"
    sLetterText &= "Dear " & ReferredtoProvider!firstname & ",\n\n" 
    sLetterText &= "Re:\t" & currentconsult!patient!wholename 
    sLetterText &= " " & Trim(currentconsult!patient!street1 & " " & currentconsult!patient!street2)
@@ -3050,8 +3134,9 @@ Private Function Referral_Letter_HL7_Construct(ReferredtoProvider As Collection)
          sLetterText &= "Fax: " & comm!value & " " 
       Endif
    Next
-    Print sLetterText
+   Print sLetterText
    Return sLetterText
+   
 End
 
 Private Function Referral_Letter_HL7_Construct_V2(ReferredtoProvider As Collection) As String
@@ -3231,9 +3316,11 @@ Static Public Sub UnitTest(form_main As FMain)
 End
 
 Public Sub Templates_ReLoad()
+   'Reloads templates into the cmbTemplates specific for referral letters
    
    pk_template = 0
-   templates = modUtilGUI.LoadCombo(cmbTemplates, modReferralsDBI.Templates_Get(), "name")
+   template = New Collection
+   templates = modUtilGUI.LoadCombo(cmbTemplates, modUtil.Copy_Collection_Keyed_Sequentially(modReferralsDBI.Templates_Get()), "name")
    cmbTemplates.index = -1
    
 End
@@ -3265,7 +3352,7 @@ Public Sub cmbTemplates_Click()
    Endif
    
    Try pk_template = templates[cmbTemplates.index]!pk
-   
+   template = templates[cmbTemplates.index]
 Catch
    Return   'sometimes the message box due to delay in the gui can already be showing.
    

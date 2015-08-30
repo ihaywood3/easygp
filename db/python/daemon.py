@@ -121,7 +121,7 @@ Commands:
      
     def setup_log(self):
         if self.debug_mode:
-            logging.basicConfig(stream=sys.stderr,level=logging.DEBUG)
+            logging.basicConfig(stream=sys.stderr,level=logging.DEBUG,format='%(asctime)s\t%(levelname)s\t%(message)s')
         else:
             if self.config['syslog'] != 'false':
                 m = re.match('/.*',self.config['syslog'])
@@ -137,7 +137,7 @@ Commands:
                 logging.getLogger().addHandler(hdlr)
                 logging.basicConfig(level=logging.WARNING)
             else:    
-                logging.basicConfig(filename=self.config['logfile'],level=logging.WARNING)
+                logging.basicConfig(filename=self.config['logfile'],level=logging.WARNING,format='%(asctime)s\t%(levelname)s\t%(message)s')
 
     def setup(self):
         with open(self.config["pidfile"],'w') as f:

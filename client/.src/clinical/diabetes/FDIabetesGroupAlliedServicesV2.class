@@ -20,12 +20,37 @@
 '-------------------------------------------------------------------------
 
 Private currentconsult As CConsult  
+Private bExit As Boolean
+Private ReferenceHboxForTopColumnview As Hbox               'used if split moves to reposition columnview
+Private Persons As Collection
+Private fk_employee As Integer
+Private fk_organisation As Integer
+Private fk_address As Integer
+Private fk_branch As Integer
+Private fk_person As Integer
+Private PersonWritingTo As Collection
+Private branches As Collection
+Private branch As Collection
+Private Active_Health_Issues As Collection
+Private Health_Issues_To_Add As Collection
+Private HI As Collection
+Private bStopSearch As Boolean
 
 Public Sub Init(cons As CConsult)
    
    currentconsult = cons 
    lblmeasure.text = "Relevant Information   "
    modEditAreaHelpers.Resize_labels(Vbox_EditArea, lblmeasure)
+   Active_Health_Issues = New Collection   
+   For Each HI In currentconsult!past_history                                   'look through all past history or health issues
+      If HI!active = True Or HI!major = True Then                                     'and if an active problem
+         If HI!confidential = False Then                                         'and not confidential
+            Active_Health_Issues.Add(HI, cmbIncludeHealthIssue.count)              'add it to collection of active health issues
+            cmbIncludeHealthIssue.Add(HI!description, cmbIncludeHealthIssue.count)     'and display in the combo
+         End If   
+      End If  
+   Next
+   cmbIncludeHealthIssue.Index = -1
    Settings_Load
    Decision_Support
    Reload
@@ -36,7 +61,7 @@ Private Sub Settings_Load()
    
    HSplit_GroupServices.Layout = Settings["FDiabetesGroupAlliedServices/HSplit_GroupServices", modUtilGUI.HSplit([1, 1])]
    VSplit_GroupServices.Layout = Settings["FDiabetesGroupAlliedServices/VSplit_GroupServices", modUtilGUI.HSplit([1, 1])]
-
+   
 End
 
 Public Sub Decision_Support()
@@ -81,7 +106,7 @@ Private Function Decision_Support_Text() As String
    "practitioner (diabetes educator, exercise physiologist or dietitian) or the allied health practice you wish to refer the patient to for this assessment. The assessment "
    "must be done before the patient can access group services"
    "</UL>"
-
+   
 End
 
 ' Private Function heading_html() As String
@@ -100,6 +125,22 @@ End
 
 Public Sub rbEditArea_Click()
    
+   Print Last.value, Last.tag
+   If Bexit Then Return
+   bExit = True
+   Select Case Last.tag
+      Case "new gpmp"
+         rbDGAS_ReviewGPMP.value = Not Last.value
+         rbDGAS_AgedCareResident.value = Not Last.value
+      Case "review gpmp"
+         rbDGAS_NewGPMP.Value = Not Last.value
+         rbDGAS_AgedCareResident.value = Not Last.value
+      Case "aged care resident"
+         rbDGAS_ReviewGPMP.value = Not Last.value
+         rbDGAS_NewGPMP.Value = Not Last.value
+   End Select
+   bExit = False  
+   
 End
 
 Public Sub HSplit_GroupServices_Resize()
@@ -112,4 +153,367 @@ Public Sub VSplit_GroupServices_Resize()
    
    Settings["FDiabetesGroupAlliedServices/VSplit_GroupServices"] = VSplit_GroupServices.Layout
    
+End
+
+Public Sub Person_Get()
+   '-------------------------------------------------------------
+   'Gets a list of persons who could be sole traders or employees
+   '-------------------------------------------------------------
+   
+   Dim address As String
+   Dim x As Integer
+   Dim person As Collection
+   
+   With columnview1
+      .Visible = False
+      .Columns.count = 3
+      .Clear
+   End With
+   If Trim(txtPractitioner.text) = "" Then Return
+   lblMeasure.font = columnview1.Font
+   'get union of non patient persons and employees exclude records where person left the address or is retired or is dead
+   persons = modUtil.Copy_Collection_Keyed_Sequentially(modReferralsDBI.Person_Get_By_Surname(Trim(txtPractitioner.text), True, True, True))
+   
+   If persons.count <> 0 Then
+      For Each person In persons
+         If Not (person!retired = True Or person!fk_status = const.Employee_status_leftOrganisation) Then   'exlude retired or persons left this address
+            columnview1.Add(x, 0)
+            columnview1[x][0] = person!wholename
+            columnview1[x][1] = "(" & person!occupation & ") "
+            If Not IsNull(person!organisation) Then
+               columnview1[x][2] = person!organisation & " " & person!branch
+               Try address = Trim(person!street1 & " " & person!street2)
+               Try address &= person!town & " " & person!postcode
+               columnview1[x][3] = address
+            Else
+               Try columnview1[x][2] = Trim(person!street1 & " " & person!street2)
+               Try columnview1[x][2] &= person!town & " " & person!postcode
+            Endif
+            Inc x
+         End If   
+         
+      Next
+      If columnview1.count Then 
+         If persons.count = 1 Then                              'auto-select single person
+            Person_Select(person)
+         Else                                                  'otherwise show a list with resized column widths
+            modUtilGUI.Columnview_Columns_Set_Size(columnview1, lblmeasure)
+            With columnview1
+               .tag = txtPractitioner
+               .Visible = True
+               .Raise
+            End With
+         End If
+      End If   
+   End If
+   
+End
+
+Public Sub Person_Select(person As Collection)
+   '-----------------------------------------------------------------------------------------
+   'User selects person to send letter to from popup list
+   'Remembering that the view contains person with addresses in organisations or sole traders
+   'Hence all the Try's. Also, an organisation or person can be in the database 'name only'
+   'without associated address. Bumma eh!
+   'FIXME same code as FReferrals
+   '------------------------------------------------------------------------------------------
+   
+   PersonWritingTo = New Collection
+   bExit = True
+   txtPractitioner.Text = person!wholename
+   'txtOccupation.text = person!occupation
+   fk_person = person!fk_person
+   Try fk_employee = person!fk_employee
+   Try fk_organisation = person!fk_organisation
+   Try fk_address = person!fk_address
+   Try fk_branch = person!fk_branch
+   PersonWritingTo!firstname = person!firstname
+   PersonWritingTo!surname = person!surname
+   PersonWritingTo!title = person!title
+   PersonWritingTo!provider_number = person!provider_number
+   ' Try stored_state = person!state
+   Try txtOrganisation.text = person!organisation
+   Try txtBranch.text = person!branch
+   Try txtStreet1.text = person!street1
+   Try txtStreet2.text = person!street2
+   Try txtSuburb.text = person!town
+   Try txtPostcode.text = person!postcode
+   'this is a bit arbitrary fixme test me
+   ' If fk_branch Then Branch_Comms_Get()
+   '  If IsNull(comms) Then
+   'If fk_person Then Person_Comms_Get()
+   ' End If
+   bExit = False
+   
+End
+
+Public Sub Organisation_Get()
+   '-----------------------------------------------------------------------------------
+   'Gets list of all organisations (an organisation is a branch just HEAD OFFICE)
+   'If branches of an organisation  exist to match the text, auto-select or show a list
+   '-----------------------------------------------------------------------------------
+   
+   Dim x As Integer
+   
+   With columnview1
+      .Visible = False
+      .Clear
+   End With
+   If Trim(txtOrganisation.text) = "" Then Return
+   fk_organisation = 0
+   fk_branch = 0
+   branches = modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.Organisations_Get(Trim(txtOrganisation.text)))
+   If Not branches.count Then Return
+   '-----------------------------------------------------------------------------------
+   For Each branch In branches
+      Columnview1.Add(x, 0)
+      Columnview1[x][0] = Branch!organisation
+      Columnview1[x][1] = Branch!branch
+      Columnview1[x][2] = Trim(Branch!street1 & " " & Branch!street2)
+      Columnview1[x][3] = Branch!suburb & " " & Branch!postcode
+      Inc x
+   Next
+   
+   If branches.count = 1 Then
+      Branch_Select(branch)
+   Else
+      modUtilGUI.Columnview_Columns_Set_Size(columnview1, lblmeasure)
+      columnview1.Visible = True
+      columnview1.Raise
+      columnview1.tag = txtOrganisation
+   End If
+   
+End
+
+Public Sub Branch_Select(branch As Collection)
+   '--------------------
+   ' Displays the branch
+   '--------------------
+   
+   bexit = True
+   txtOrganisation.text = branch!organisation
+   txtBranch.text = branch!branch
+   txtstreet1.text = branch!street1
+   txtstreet2.text = branch!street2
+   txtSuburb.text = branch!town
+   txtPostcode.text = branch!postcode
+   '  txtCategory.text = branch!category
+   fk_branch = branch!fk_branch
+   'stored_state = branch!state
+   fk_organisation = branch!fk_organisation
+   ' Branch_Comms_Get()
+   bexit = False
+   
+End
+
+Public Sub ColumnView1_KeyPress()
+   
+   If Key.Code = Key.RETURN Then
+      ColumnView1_DblClick()
+   End If
+   
+End
+
+Public Sub ColumnView1_DblClick()
+   '-----------------------------------------------------------
+   'The columnview tag is always a control, usually a textbox
+   'here we read the textbox tag to determine which textbox
+   'poppuped up the columnview
+   '---------------------------------------------------------
+   
+   columnview1.MoveCurrent()
+   Select Case Last.Tag.tag
+      Case "branch", "organisation"
+         branch_select(branches[columnview1.Item.key])
+      Case "practitioner"
+         Person_Select(persons[columnview1.Item.key])
+   End Select
+   columnview1.Visible = False
+Catch
+   Return
+   
+End
+
+Public Sub EditArea_TxtBox_KeyRelease()
+   '----------------------------------------------------------------------------
+   'FIXME - same code as FReferrals
+   'Search for appropriate collections of information on each key-release stroke
+   '-----------------------------------------------------------------------------
+   
+   If bExit Then Return
+   If bStopSearch Then 
+      Stop Event
+      Return
+   Endif
+   bStopSearch = True   
+   Select Case Last.tag
+      Case "practitioner"
+         Person_Get()
+      Case "organisation"
+         Organisation_Get()
+   End Select
+   bStopSearch = False  
+
+End
+
+Public Sub EditArea_TxtBox_LostFocus()
+   
+   Last.BackGround = Color.White 
+   
+End
+
+Public Sub EditArea_TxtBox_Change()
+   
+   If bExit Then Return
+   Select Case Last.tag
+      Case "organisation"
+         If Trim(Last.text) = "" Then
+            bexit = True
+            fk_organisation = 0
+            fk_branch = 0
+            txtOrganisation.text = ""
+            txtBranch.Text = ""
+            txtStreet1.Text = ""
+            txtStreet2.Text = ""
+            txtSuburb.text = ""
+            txtPostcode.text = ""
+            '   lvworgcontacts.Clear()
+            '   cvwPersonContacts.Clear()
+            bexit = False
+            
+         Endif
+      Case "practitioner"
+         '-----------------------------------------------------
+         'User deletes the name, visciously reset the edit area
+         'Why, we must enforce keys for saving ie fk_person etc
+         'must exist
+         '------------------------------------------------------
+         If Trim(txtPractitioner.text) = "" Then
+            '  lvworgcontacts.Clear()
+            ' cvwPersonContacts.Clear()
+            bExit = True
+            fk_organisation = 0
+            fk_branch = 0
+            fk_employee = 0
+            fk_person = 0
+            '  txtOccupation.text = ""
+            txtOrganisation.text = ""
+            txtBranch.Text = ""
+            txtStreet1.Text = ""
+            txtStreet2.Text = ""
+            txtSuburb.text = ""
+            txtPostcode.text = ""
+            bExit = False
+         End If
+   End Select
+   EditArea_Notify_DataChange(True)
+
+End
+
+Public Sub EditArea_TxtBox_KeyPress()
+   '-------------------------------------------------------------------------------
+   ' exclude keys on basis of the textbox tag, otherwise if the down key is pressed
+   ' move onto a list if visible
+   ' -------------------------------------------------------------------------------
+   
+   If bExit Then Return
+   ' If Not EditAreaTextbox_ExcludeKeys(key.code, Last.tag) Then
+   '    Stop Event
+   '    Return
+   ' End If
+   Select Case Key.Code
+      Case Key.Down
+         Select Case Last.tag
+            Case "practitioner", "organisation"
+               If columnview1.Visible Then
+                  columnview1.MoveFirst()
+                  columnview1.SetFocus()
+                  columnview1.Item.Selected = True
+               End If
+         End Select
+      Case Key.Return, Key.Tab
+         Select Case Last.tag
+            Case "practitioner"
+               txtOrganisation.SetFocus()
+         End Select
+   End Select
+   
+End
+
+Public Sub EditArea_TxtBox_GotFocus()
+   
+   If Bexit Then Return
+   columnview1.Visible = False
+   Last.BackGround = Color.rgb(95, 255, 175)
+   ReferenceHboxForTopColumnview = Last.parent.Parent
+   Select Case Last.tag
+      Case "practitioner"
+         With columnview1
+            .top = Last.parent.parent.top + Last.Height
+            .width = Last.Width - 5
+            .height = 150
+            .left = Last.parent.Left + Vbox_EditArea.Padding
+            .columns.count = 4 '0=name,surname 1= occupation 2= organisation/branch 3=address
+         End With
+      Case "organisation"
+         With columnview1
+            .top = Last.parent.parent.top + Last.Height
+            .width = Last.width - 5
+            .left = Last.parent.Left + Vbox_EditArea.Padding
+            .height = 150
+            .columns.count = 4 'branch, street, suburb
+         End With
+   End Select
+   
+End
+
+Public Sub EditArea_Notify_DataChange(flag As Boolean)
+   '--------------------------------------------------
+   'Adds or removes padding around edit area and lists
+   'to indicate if data is changed and unsaved
+   '--------------------------------------------------
+   
+   If Bexit Then Return
+   If flag Then
+      Vbox_EditArea_Outer.Padding = 1
+   Else
+      Vbox_EditArea_Outer.Padding = 0
+   End If
+   
+End
+
+Public Sub New_Entry()
+   '----------------------------------------------------------------------
+   'Called from FClinical where the button tag is a generic 'New Entry'
+   'I've left the orginal nomenclature here for easier reading of the code
+   '----------------------------------------------------------------------
+   
+   Diabetes_Group_Allied_Service_New
+   
+End
+
+Public Sub cmbIncludeHealthIssue_Click()
+   '------------------------------------------------------------------------------
+   'User wants to include clinical notes on some additional health issues/problems
+   'end up with label.text like hypertension, obesity, fatty liver
+   'add to list and update the LaTex
+   '------------------------------------------------------------------------------      
+   
+   Wait
+   If Health_Issues_To_Add.Exist(Active_Health_Issues[cmbIncludeHealthIssue.index]!pk_pasthistory) Then 
+      Return
+   Endif
+   Health_Issues_To_Add.Add(Active_Health_Issues[cmbIncludeHealthIssue.index], Active_Health_Issues[cmbIncludeHealthIssue.index]!pk_pasthistory)
+   lvHealthIssues.Add(Active_Health_Issues[cmbIncludeHealthIssue.index]!pk_pasthistory, cmbIncludeHealthIssue.text)
+   cmbIncludeHealthIssue.Index = -1
+   EditArea_Notify_DataChange(True)
+   
+End
+
+Public Sub Diabetes_Group_Allied_Service_New()
+   
+   txtDate.text = Format(Now, "dd/mm/yyyy")
+   Health_Issues_To_Add = New Collection
+   Vbox_EditArea_Outer.Enabled = True 
+   txtPractitioner.SetFocus
 End

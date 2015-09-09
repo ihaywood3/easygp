@@ -16,7 +16,9 @@
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '-------------------------------------------------------------------------
 ' PURPOSE         A form to do diabetic group allied health care services 
-' VERSION 2
+' Acronyms        Throughout this form:
+'                     gpmp = GP management Plan
+'                     gahs = Group Allied Health Services
 '-------------------------------------------------------------------------
 
 Private currentconsult As CConsult  
@@ -35,6 +37,7 @@ Private Active_Health_Issues As Collection
 Private Health_Issues_To_Add As Collection
 Private HI As Collection
 Private bStopSearch As Boolean
+Private fk_gahs_referral_form As Integer
 
 Public Sub Init(cons As CConsult)
    
@@ -109,13 +112,63 @@ Private Function Decision_Support_Text() As String
    
 End
 
-' Private Function heading_html() As String
-'    
-'    Return "<B>Note:  </B>Eligible patients may acess Medicare rebates for <b><I>one</I></B> asessment for group services item in a calandar year. Indicate the name of the "
-'    "practitioner (diabetes educator, exercise physiologist or dietitian) or the allied health practice you wish to refer the patient to for this assessment. The assessment "
-'    "must be done before the patient can access group services" 
-'    
-' End
+Public Sub Save()
+   '------------------------------------------------------------------------------------
+   ' Create table chronic_disease_management.group_allied_health_services
+   ' (pk serial primary key,
+   '  fk_consult integer not null,
+   '  confirm_diabetic boolean default false,
+   '  gpmp_new  boolean default false,
+   '  gpmp_review  boolean default false,
+   '  age_care_plan_review  boolean default false,
+   '  latex_form text not null,
+   '  health_issue_keys text default null, 
+   '  fk_branch integer default null,
+   '  fk_employee integer default null,
+   '  fk_person integer default null,
+   '  CONSTRAINT group_allied_health_services_fk_consult_fkey FOREIGN KEY (fk_consult)
+   '       REFERENCES clin_consult.consult (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION
+   '       );
+   
+   '------------------------------------------------------------------------------------       
+   
+   Dim GAHS_Referral As Crow
+   
+   If VBox_EditArea_Outer.padding = 0 Then Return 'no data to save
+   If Not Diabetes_Group_Allied_Service_Valid() Then Return
+   
+   Inc Application.Busy
+   GAHS_Referral = New CRow  
+   If fk_gahs_referral_form Then
+      GAHS_Referral.put_unchanged(fk_gahs_referral_form, "fk_gahs_referral_form")
+   Endif
+   GAHS_Referral!fk_consult = currentConsult.GetPK()
+   GAHS_Referral!confirm_diabetic = True
+   GAHS_Referral!gpmp_new = CBool(rbDGAS_NewGPMP.value)
+   GAHS_Referral!gpmp_review = CBool(rbDGAS_ReviewGPMP.value)
+   GAHS_Referral!age_care_plan_review = CBool(rbDGAS_AgedCareResident.value)
+   GAHS_Referral!latex = Diabetes_Group_Allied_Services_Latex()
+   If fk_branch <> 0 Then
+      GAHS_Referral!fk_branch = fk_branch
+   Else
+      GAHS_Referral!fk_branch = Null
+   Endif
+   If fk_employee <> 0 Then
+      GAHS_Referral!fk_employee = fk_employee
+   Else 
+      GAHS_Referral!fk_employee = Null
+   Endif
+   If fk_person <> 0 Then
+      GAHS_Referral!fk_person = fk_person
+   Else
+      GAHS_Referral!fk_person = Null
+   Endif
+   GAHS_Referral.Save("chronic_disease_management.group_allied_health_services", fk_gahs_referral_form)
+   modDBConnect.CommitTrans()
+   Reload()
+   
+End
 
 Public Sub Reload()
    
@@ -353,7 +406,7 @@ Public Sub EditArea_TxtBox_KeyRelease()
          Organisation_Get()
    End Select
    bStopSearch = False  
-
+   
 End
 
 Public Sub EditArea_TxtBox_LostFocus()
@@ -407,7 +460,7 @@ Public Sub EditArea_TxtBox_Change()
          End If
    End Select
    EditArea_Notify_DataChange(True)
-
+   
 End
 
 Public Sub EditArea_TxtBox_KeyPress()
@@ -510,10 +563,113 @@ Public Sub cmbIncludeHealthIssue_Click()
    
 End
 
+Private Function Diabetes_Group_Allied_Services_Latex() As String
+   
+   Dim Templ As New CTemplate("diabetes-group-allied-services", "tex")
+   Dim sstring As String
+   Dim x As Integer
+   Dim PH As Collection    'individual past history item
+   Dim sHealthIssues As String   ' If Team_Care_Members_Forms[ListContainer1.index].Additional_Health_Issues_Get().count Then
+   Dim sLaterality As String
+   
+   Return sstring  
+   
+End
+
+Public Sub Button1_Click()
+   
+   Dim templ As New CTemplate("diabetes-group-allied-services", "tex")
+   Dim x As Integer
+
+   templ.subst_common(currentconsult)
+   templ.Subst("postcode", "\\relax")
+   templ.Subst("pdf-path", modUtil.Find_File("templates" &/ "diabetes-group-allied-health-services.ps"))
+ 
+   Print templ.getdata()
+   If chkPatientHasNIDDM.Value = True Then
+      templ.Subst("patient-has-diabetes", "X")
+   Endif
+   ' If chkMDCP.value = True Then
+   '    templ.Subst("residential-facility-plan", "X")
+   ' Else
+   '    templ.Subst("residential-facility-plan", "\\relax")
+   ' Endif
+   ' the provider number
+   For x = 1 To 22
+      If x < 10 Then
+         templ.Subst("provider-number0" & Str(x), Mid$(modDBConnect.currentUser!provider_number, x, 1))
+      Else
+         templ.Subst("provider-number" & Str(x), "")
+      Endif
+   Next
+   For x = 1 To Len(modDBConnect.currentUser!provider_number)
+      If x < 10 Then
+         templ.Subst("provider-number0" & Str(x), "")
+      Else
+         templ.Subst("provider-number" & Str(x), "")
+      End If
+   Next
+  
+   templ.Subst("provider-name", "The name")
+   templ.Subst("provider-address", "The address")
+   Print templ.GetData()
+   modPrinting.Print_latex(templ.GetData())
+   
+End
+
+Private Function Diabetes_Group_Allied_Service_Valid() As Boolean
+   'Ensure adequate data before saving
+   
+   Dim smsg As String
+   
+   Dec Application.Busy
+   Message.Title = "Invalid Data"
+   If chkPatientHasNIDDM.Value = False Then
+      sMsg = "Please indicate that the patient is a diabetic"
+      Message.Warning(smsg, "OK")
+      chkPatientHasNIDDM.SetFocus
+      Return
+   Endif
+   If rbDGAS_NewGPMP.value = False And rbDGAS_ReviewGPMP.value = False And rbDGAS_AgedCareResident.value = False Then   
+      sMsg = "Please select the type of new plan or review you have undertaken for this patient."
+      Message.Warning(smsg, "OK")
+      rbDGAS_NewGPMP.SetFocus
+      Return
+   Endif
+   If fk_branch = 0 Then
+      If fk_person = 0 Then
+         sMsg = "Please select a person or organisation you will be sending the patient to."
+         Message.Warning(smsg, "OK")
+         txtPractitioner.SetFocus
+         Return
+      Endif
+   Endif
+   If Health_Issues_To_Add.count = 0 Then
+      Message.title = "Please Add Co-Morbidities"
+      sMsg = "Given this patient has diabeties and you are sending them of for an exercise regime "
+      "it would be reasonable to expect they have co-morbidities which would be of interest "
+      "to the provider of this service\n\n"
+      "Medicare explicitly and politely suggest that GP's are encouraged to attach a copy of the "
+      "relevant part of the patients care plan to this document.\n\n"
+      "By selecting any relevant health issues which may impact on the patient's ability to perform "
+      "exercise from the health issues list, this ancilliary document will be generated for you.\n\n"
+      If Message.Question(sMsg, "Stuff Medicare - Save Anyway", "Oops, Let me add Relevant Issues") = 2 Then 
+         cmbIncludeHealthIssue.SetFocus
+         Return
+      End If   
+   Endif
+   Return True
+   
+End
+
 Public Sub Diabetes_Group_Allied_Service_New()
    
    txtDate.text = Format(Now, "dd/mm/yyyy")
    Health_Issues_To_Add = New Collection
    Vbox_EditArea_Outer.Enabled = True 
    txtPractitioner.SetFocus
+   chkIncludeAllergies.value = True
+   chkIncludeMedications.value = True
+   fk_gahs_referral_form = 0 
+   
 End

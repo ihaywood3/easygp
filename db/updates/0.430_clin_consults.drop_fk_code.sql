@@ -110,7 +110,7 @@ CREATE OR REPLACE VIEW chronic_disease_management.vwdiabetescycleofcare AS
      JOIN clin_consult.progressnotes ON diabetes_annual_cycle_of_care.fk_progressnote_components = progressnotes.pk
      JOIN admin.vwstaff vwstaff1 ON consult.fk_staff = vwstaff1.pk;
 
-ALTER TABLE chronic_disease_management.vwdiabetescycleofcare   OWNER TO richard;
+ALTER TABLE chronic_disease_management.vwdiabetescycleofcare   OWNER TO easygp;
 GRANT SELECT ON TABLE chronic_disease_management.vwdiabetescycleofcare TO staff;
 
 
@@ -253,9 +253,7 @@ CREATE OR REPLACE VIEW clin_consult.vwstaffmemberspatientsconsults AS
    FROM clin_consult.vwprogressnotes
   WHERE (vwprogressnotes.fk_audit_action = 1 OR vwprogressnotes.fk_audit_action = 2) AND vwprogressnotes.deleted = false;
 
-ALTER TABLE clin_consult.vwstaffmemberspatientsconsults
-  OWNER TO richard;
-GRANT ALL ON TABLE clin_consult.vwstaffmemberspatientsconsults TO richard;
+ALTER TABLE clin_consult.vwstaffmemberspatientsconsults   OWNER TO easygp;
 GRANT SELECT ON TABLE clin_consult.vwstaffmemberspatientsconsults TO staff;
 
 COMMENT ON VIEW clin_consult.vwstaffmemberspatientsconsults   IS 'a view of all the consults of a patient for a individual staff members keyed by consult date';

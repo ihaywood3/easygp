@@ -23,8 +23,8 @@
 
 import dbwrapper
 import pdb
-db = dbwrapper.DBWrapper(None,True)
-others= {'fk_consult':'clin_consult.consult','fk_patient':'clerical.data_patients','fk_employee':'contacts.data_employees','fk_person':'contacts.data_persons','fk_staff':'admin.staff','fk_branch':'contacts.data_branches','fk_address':'contacts.data_addresses','fk_progressnote':'clin_consult.progressnotes','fk_pasthistory':'clin_history.past_history','fk_clinic':'admin.clinics','fk_occupation':'common.lu_occupations','fk_generic_product':'drugs.product'}
+db = dbwrapper.DBWrapper({'database':'easygp2','db_user':'ian','host':'','port':None,'password':None},True)
+others= {'fk_consult':'clin_consult.consult','fk_patient':'clerical.data_patients','fk_employee':'contacts.data_employees','fk_person':'contacts.data_persons','fk_staff':'admin.staff','fk_branch':'contacts.data_branches','fk_address':'contacts.data_addresses','fk_progressnote':'clin_consult.progressnotes','fk_pasthistory':'clin_history.past_history','fk_clinic':'admin.clinics','fk_occupation':'common.lu_occupations','fk_generic_product':'drugs.product','fk_document':'documents.documents','fk_coding_system':'coding.lu_systems'}
 
 def convert_table_uuid(tbl):
     constraints = db.each_foreign_constraint()
@@ -44,19 +44,22 @@ def convert_table_uuid(tbl):
 
 def add_constraints():
     constraints = {}
-    for c in db.each_foreign_constraint():
-        if not c["table1"] in constraints: constraints[c["table1"]] = set()
-        constraints[c["table1"]].add(c["col1"])
+    constraints = db.each_foreign_constraint()
     for t in db.each_table():
         for c in db.each_table_cols(t):
             if c.startswith("fk_"):
                 if not (t in constraints and c in constraints[t]):
                     t2 = t.split('.')
                     t2 = t2[1]
-                    if c in others:
-                        print 'ALTER TABLE %s add constraint "%s_%s_fkey" foreign key (%s) references %s (pk);' % (t,t2,c,c,others[c])
-                    else:
+                    found = False
+                    for c2 in others.keys():
+                        if c.startswith(c2):
+                            pk_name = 'pk'
+                            if c2 == 'fk_code': pk_name = 'code'
+                            print 'ALTER TABLE %s add constraint "%s_%s_fkey" foreign key (%s) references %s (%s);' % (t,t2,c,c,others[c2],pk_name)
+                            found = True
+                    if not found:
                         print '--alter table %s add constraint "%s_%s_fkey" foreign key (%s) references ?? (pk);' % (t,t2,c,c)
 
-#add_constraints()
-convert_table_uuid("clerical.data_patients")
+add_constraints()
+#convert_table_uuid("clerical.data_patients")

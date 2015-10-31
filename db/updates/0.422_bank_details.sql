@@ -169,4 +169,4 @@ create or replace view billing.vwitemsandinvoices as
     billing.vwinvoices
   WHERE vwinvoices.fk_invoice = vwitemsbilled.fk_invoice;
 
-update db.lu_version set lu_minor=404; 
+update db.lu_version set lu_minor=422; 

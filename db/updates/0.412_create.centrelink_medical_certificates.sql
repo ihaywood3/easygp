@@ -220,7 +220,7 @@ CREATE OR REPLACE VIEW clin_certificates.vwcentrelinkcertificates AS
     progressnotes.notes AS progress_notes
    FROM clin_certificates.centrelink_medical_certificates
      JOIN clin_consult.consult ON centrelink_medical_certificates.fk_consult = consult.pk
-     JOIN clerical.data_patients ON clin_consult.fk_patient = data_patients.pk
+     JOIN clerical.data_patients ON consult.fk_patient = data_patients.pk
      JOIN admin.vwstaffinclinics ON consult.fk_staff = vwstaffinclinics.fk_staff
      JOIN clin_consult.progressnotes ON progressnotes.pk = centrelink_medical_certificates.fk_progressnote;
  

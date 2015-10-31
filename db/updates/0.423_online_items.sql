@@ -323,3 +323,5 @@ create or replace view billing.vwitemsandinvoices as
 
 alter table billing.fee_schedule alter column number_of_patients set default 0;
 update billing.fee_schedule set number_of_patients = 0 where mbs_item <> '4';
+
+update db.lu_version set lu_minor=423;

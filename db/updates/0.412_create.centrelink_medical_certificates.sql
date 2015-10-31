@@ -7,6 +7,12 @@
 --DROP TABLE clin_certificates.lu_centrelink_diagnosis_type;
 
 
+ALTER TABLE clerical.data_patients add column patient_at_practice_since text default null;
+COMMENT ON COLUMN clerical.data_patients.patient_at_practice_since IS
+'the number of years this patient has been attending this practice 
+ note for new practices this will default to date of first constultation 
+ but for others like myself I''ve been in practice 35 years and using easyGP only since 2011';
+
 Create table clin_certificates.lu_centrelink_condition_temporality 
 (pk serial primary key,
  temporality text not null);

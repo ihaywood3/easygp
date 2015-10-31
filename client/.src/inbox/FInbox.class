@@ -142,7 +142,7 @@ Public Form_PreviousNotes As FProgressNotesViewer
 Private Form_ProgressNotes As FProgressNoteEditor
 Private Form_INRs As FInr
 Public Form_Prescriptions As FPrescriptions            'do not make this private
-Private form_medications As FMedicationsList
+Private form_medications As FClinLists_Medications
 
 Static Private Form_Inbox As FInbox                'allow access of this form globally
 
@@ -151,6 +151,12 @@ Public Sub _New()
    Init()                           'Initialse gui etc on the inbox tab
    Try Settings_Load()
    Form_Inbox = Me
+   
+End
+
+Static Public Sub ReLoad_Requests_External()
+   
+   form_inbox.Patient_Outstanding_Requests_Show(True)
    
 End
 
@@ -167,6 +173,16 @@ Static Public Function Is_Same_Patient(fk_patient As Integer) As Boolean
          If fk_patient = form_inbox.currentconsult!patient!fk_patient Then Return True
       End If   
    End If   
+   
+End
+
+Static Public Sub Reload_Inbox_External()
+   '-------------------------------------------------------------
+   'Reloads the inbox from other forms if patient is same in both
+   'eg from FclinList_ordering, where metadata has been accessed
+   'and an unfiled document filed
+   '-------------------------------------------------------------
+   form_inbox.tbRefreshInbox_Click() 
    
 End
 
@@ -292,12 +308,14 @@ Public Sub Init()
    cmbSenders.index = -1
    With Form_Graph = New FGraph(HBox_LowerLists)
       .Visible = False
+      .Hbox_Default_Results.visible = False
+      .pnlTool.Visible = True
    End With
    lblMeasure.text = "Filter Senders   "
    modEditAreaHelpers.Resize_labels(VBox_Filters, lblMeasure)
    lblMeasure.text = "Patient  "
    modEditAreaHelpers.Resize_labels(Vbox_Staff_Patient, lblMeasure)
-   obs = New Observer(Form_Graph.tbGraphRemove) As "tbGraph"
+ '  obs = New Observer(Form_Graph.tbDeleteFavourite) As "tbGraph"
    obs = New Observer(Form_ActionDocument.FMetaData) As "FmetaData"
    With FPreview_HtmlDocument = New FHtmlViewer(HBox_HTML_Viewer)                                       'Form to show html of hl7 received
       .tbWebBrowserPrint.Visible = True
@@ -699,11 +717,7 @@ Public Sub gvwInboxDocuments_Select()
          Else
             Form_ActionDocument.FMetaData.txtUserObservationName.text = modParseDocument.Guess_Letter_Content(observations)
          End If
-         '   If Selected_Inbox!fk_unmatched_patient = False 
          Allow_Filing(True)
-         '    Else
-         '     Allow_Filing(False)
-         '  End If
          HTML_Document_Show(SelectedDocument!fk_lu_message_display_style, SelectedDocument, observations)
          Try Auto_Graph(Observations)
    End Select
@@ -768,7 +782,10 @@ Public Sub Auto_Graph(observations As Collection)
    '-----------------------------------------------
    'Remove any existing toolbuttons below the graph
    '-----------------------------------------------
-   For Each hCtrl In Form_Graph.pnlToolButtons.Children
+   With Form_Graph
+      .Init(currentconsult)
+   End With
+   For Each hCtrl In Form_Graph.pnlTool.Children
       hCtrl.Delete()
    Next
    '------------------------------------------------------------
@@ -800,7 +817,7 @@ Public Sub Auto_Graph(observations As Collection)
             'It's tag is its loinc, its text label = the measurement
             '--------------------------------------------------------
             If sLoinc <> "" Then
-               With tb = New ToolButton(Form_Graph.pnlToolButtons) As "graph_buttons"
+               With tb = New ToolButton(Form_Graph.pnlTool) As "graph_buttons"
                   .name = observation!loinc
                   .tag = observation!loinc
                   .autoresize = True
@@ -820,7 +837,7 @@ Public Sub Auto_Graph(observations As Collection)
                      sFirstMeasurement = observation!identifier
                      Try sFirstLoinc = observation!loinc
                   Endif
-                  With tb = New ToolButton(Form_Graph.pnlToolButtons) As "graph_buttons"
+                  With tb = New ToolButton(Form_Graph.pnlTool) As "graph_buttons"
                      .name = observation!loinc
                      .tag = observation!loinc
                      .autoresize = True
@@ -844,7 +861,7 @@ Public Sub Auto_Graph(observations As Collection)
                If observation!loinc = const.Loinc_INR Then
                   sFirstLoinc = observation!loinc 
                End If   
-               With tb = New ToolButton(Form_Graph.pnlToolButtons) As "graph_buttons"
+               With tb = New ToolButton(Form_Graph.pnlTool) As "graph_buttons"
                   .name = observation!loinc
                   .tag = observation!loinc
                   .autoresize = True
@@ -864,11 +881,11 @@ Public Sub Auto_Graph(observations As Collection)
    If Buttoncount Then
       If sFirstLoinc <> "" Then
          Show_Graph(sFirstLoinc, sFirstMeasurement)
-      Endif
+       Endif
    End If
    Dec Application.Busy
 Catch
-   Dec Application.Busy
+   Dec Application.Busy '
    
 End
 
@@ -886,7 +903,7 @@ Public Sub Show_Graph(loinc As String, measurement As String)
    'Show graph of this loinc code's values over time
    '------------------------------------------------
    
-   Form_Graph.Graph(currentconsult, loinc, measurement)
+   Form_Graph.Measurement_Graph(loinc, measurement)
    tlMissingProvider.Visible = False
    Form_Graph.Visible = True
    
@@ -1113,7 +1130,7 @@ Public Function Document_File(sFilingAction As String) As Boolean
    End If
    Selected_Inbox!documents.Remove(gvwInboxDocuments.row)
    If FClinical.IsSamePatient(currentconsult!patient!fk_patient) Then
-      FClinical.Refresh_AllPreviousNotes(True)
+   '   FClinical.Refresh_AllPreviousNotes(True)
    Endif
    Document_RefreshList()                                'refresh the documents list or clears it if none left
    tbFile.Enabled = True
@@ -1864,19 +1881,18 @@ End
 
 Public Sub Patient_Medications_Show()  'must be public otherwise FPrescriptions can't access this
    
-   '  modPrescribingDBI.cvwMedications_Refresh(cvwPatientMedications, currentconsult, lblmedications) 
    form_medications.Medications_Refresh()
    
 End
 
-Private Sub Patient_Outstanding_Requests_Show()
+Public Sub Patient_Outstanding_Requests_Show(Optional bReloadFromFClinical As Boolean = False)
    '------------------------------------------------------------------------------
    'Show the last 10 requests ordered, just to jog users memory what they ordered
    'as often what comes back is a different name, helps them put in the correct
    'user-tag to match what they ordered
    '------------------------------------------------------------------------------  
    
-   If cvwPatientsRequests.tag = 0 Then
+   If cvwPatientsRequests.tag = 0 Or bReloadFromFClinical = True Then  'no patient
       modEditAreaHelpers.Patient_Requests_Show(currentconsult, cvwPatientsRequests, 10)
       cvwPatientsRequests.tag = Selected_Inbox!fk_patient
    End If
@@ -2243,16 +2259,16 @@ Public Sub cvwPatientsRequests_Select()
    
 End
 
-Public Sub tbGraph_Click()
-   
-   Stop Event
-   Select Case Last.tag
-      Case "remove"
-         Form_Graph.Visible = False
-         '  Vbox_OutstandingRequests.Visible = True
-   End Select
-   
-End
+' Public Sub tbGraph_Click()
+'    
+'    Stop Event
+'    Select Case Last.tag
+'       Case "remove"
+'          Form_Graph.Visible = False
+'          '  Vbox_OutstandingRequests.Visible = True
+'    End Select
+'    
+' End
 
 Public Sub chkOnlyRecent_Click()
    
@@ -2296,7 +2312,7 @@ Public Sub tabStripInbox_Click()
                End With
             End If
             If IsNull(form_medications) Then 
-               With form_medications = New FMedicationsList(VBox_Medications_2)
+               With form_medications = New FClinLists_Medications(VBox_Medications_2)
                   .Set_Embedded_Form_Name("FInbox")
                End With
             End If

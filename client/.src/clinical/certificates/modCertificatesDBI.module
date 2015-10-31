@@ -25,6 +25,7 @@ Public Function Certificates_Miscellaneous(fk_patient As Integer, Optional sort_
    'but was effectively 'lost' as not displayed anywhere
    'I will be (richard) rectifiying this over the coming months when this sub will disappear
    '--------------------------------------------------------------------------------------------------------------- 
+   
    Dim sql As String
    
    sql = "Select * from documents.vwDocuments where fk_patient= " & fk_patient
@@ -35,6 +36,33 @@ Public Function Certificates_Miscellaneous(fk_patient As Integer, Optional sort_
    
 End
 
+Public Function CentreLinkCertificates_Get(fk_patient As Integer) As Collection
+   
+   Dim certificates As New Collection
+   Dim certificate As Collection
+   Dim sql As String
+   Dim Diagnoses As Collection                    'all associated diagnoses with this certificate, primary or secondary
+   Dim Diagnosis As Collection 
+   
+   certificates = modDBConnect.exec_query_collection("Select * from clin_certificates.vwCentreLInkCertificates where fk_patient = " & fk_patient & " AND deleted = false")
+   For Each certificate In Certificates
+      'get the all associated diseases
+      sql = "Select * From clin_certificates.vwCentreLinkdiagnoses where fk_centrelink_certificate = " & certificate!pk_certificate
+      sql &= "AND diagnosis_deleted is false"
+      Diagnoses = modDBConnect.exec_query_collection(sql)
+      'will only ever be one primary diagnosis for each  clin_certificates.centrelink_medical_certificates.pk
+      For Each Diagnosis In Diagnoses
+         If Diagnosis!fk_lu_centrelink_diagnosis_type = const.centrelink_diagnosis_type_primary Then
+            certificate!primary_diagnosis = Diagnosis
+         Else
+            If IsNull(certificate!secondary_diagnoses) Then certificate!secondary_diagnoses = New Collection   
+            certificate!secondary_diagnoses.Add(Diagnosis, Diagnosis!fk_pasthistory) 'the secondary_diagnoses colleciton on FCentreLinkCondition is keyed to this
+         Endif
+      Next
+   Next
+   Return certificates
+   
+End
 
 Public Function MedicalCertificates_Get(fk_patient As Integer) As Collection
    '-----------------------------------------------
@@ -44,7 +72,6 @@ Public Function MedicalCertificates_Get(fk_patient As Integer) As Collection
    Return modDBConnect.exec_query_collection("Select * from clin_certificates.vwMedicalCertificates where fk_patient = " & fk_patient & " AND deleted = false")
    
 End
-
 
 Public Function MedicalCertificates_Get_Deleted(fk_consult As Integer) As Collection
    '-----------------------------------------------------------------------------
@@ -62,13 +89,12 @@ Public Function MedicalCertificates_Delete(currentconsult As CConsult, certifica
    
    Dim audit_notes As String
    
-   Print certificate
    Message.Title = "Delete Medical Certificate"
    If Message.Question("Are you sure you want to delete the medical certificate", "Yes", "No") = 2 Then Return
    modDBConnect.update("clin_certificates.medical_certificates", Null, ["pk": certificate!pk_medicalcertificate, "deleted": True])
    audit_notes = "The medical certificate issued by " & Trim(certificate!staff_title & " " & certificate!staff_wholename)
    audit_notes &= " dated " & Format(certificate!certificate_date, "dd/mm/yyyy")
-   audit_notes &= " or the reason '" & certificate!reason & "' - where the patient was stated to be "
+   audit_notes &= " for the reason '" & certificate!reason & "' - where the patient was stated to be "
    audit_notes &= certificate!fitness & " from " & Format(certificate!from_date, "dd/mm/yyyy") 
    If Not IsNull(certificate!to_date) Then
       audit_notes &= " to " & Format(certificate!to_date, "dd/mm/yyyy")
@@ -87,7 +113,44 @@ Public Function MedicalCertificates_Delete(currentconsult As CConsult, certifica
 Catch
    modDBConnect.RollBack
    Return 
+   
+End
 
+Public Function Centrelink_Medical_Certificate_Delete(currentconsult As CConsult, certificate As Collection) As Boolean
+   '------------------------------------------------------ 
+   'Deletes a medical certificate, returns true if succeed
+   '------------------------------------------------------ 
+   
+   Dim audit_notes As String
+   Dim pn As String
+   
+   Message.Title = "Delete Centrelink Medical Certificate"
+   If Message.Question("Are you sure you want to delete the centrelink medical certificate", "Yes", "No") = 2 Then Return
+   Print certificate
+   pn = certificate!progress_notes   
+   pn = Replace(pn, "<P>", "<del><P>")
+   pn = Replace(pn, "<UL>", "<DEL><UL>")
+   pn = Replace(pn, "</UL>", "</DEL></UL>")
+   'First strikethrough the exsiting progress note
+   pn = "<P>This certifcate was deleted by " & certificate!staff_title & " " & certificate!staff_wholename & " on " & Format(Now(), "dd/mm/yyyy") & " please refer to the audit trail for details</P>" & pn
+   Print pn
+   modDBConnect.update("clin_consult.progressnotes", Null, ["pk": certificate!fk_progressnote, "notes": pn])
+   modDBConnect.update("clin_certificates.centrelink_medical_certificates", Null, ["pk": certificate!pk_certificate, "deleted": True])
+   audit_notes = "The centre medical certificate issued by " & Trim(certificate!staff_title & " " & certificate!staff_wholename)
+   audit_notes &= " dated " & Format(certificate!consult_date, "dd/mm/yyyy")
+   audit_notes &= " with the major reason for illness being '" & certificate!primary_diagnosis!description & "' - where the patient was stated to be "
+   audit_notes &= "Unfit from " & Format(certificate!unfit_from, "dd/mm/yyyy") & " to " & Format(certificate!unfit_to, "dd/mm/yyyy")
+   audit_notes &= " has been deleted."
+   If Not modAudit.MakeAudit(currentconsult, "mark deleted", "clin_certificates.centrelink_medical_certificates", certificate!pk_certificate, const.cSection_Centrelink_MedicalCertificates, audit_notes) Then
+      modDBConnect.RollBack
+   Else
+      modDBConnect.CommitTrans
+      Return True
+   Endif
+Catch
+   modDBConnect.RollBack
+   Return 
+   
 End
 
 Public Function MedicalCertificates_Save(old_data As Collection, pk_view As Integer, new_data As Collection) As Integer
@@ -127,5 +190,5 @@ Public Function Reasons_Get(txt As String) As Collection
    
    sql &= "AND fk_staff = " & modDBConnect.currentUser!fk_staff & " ORDER BY reason LIMIT 20"
    Return modDBConnect.exec_query_collection(sql)
-  
+   
 End

@@ -1,0 +1,859 @@
+' Gambas class file
+
+'TO FIX  Document_Edit_Metadata
+' 
+Private currentconsult As CConsult
+Private CurrentObservations As Collection
+Private cvwResultsReceived_Key As Integer
+Private Deleted_Documents As Collection
+Public bExit As Boolean                    'do not change to Private used to prevent data events when module referenced from other forms
+Private Request_Types As Collection
+Private cvwRequests_Key As String
+Private Deleted_Request As Collection
+Private form_metadata As FDocumentMetaData
+Private obs As Observer
+Private Const cTabstrip_lists_Tab_Results As Integer = 1
+Private Const cTabstrip_lists_Tab_Correspondence As Integer = 2
+Private Vbox_Graph As VBox
+
+Public Sub _new()
+   '---------------------------------------------------------------------------
+   'Load the filters on the results, at the moment arbitrarily restricted
+   'removes physio, obstet, audiology, exercise physiology etc
+   'leave pathology, radiology, cardiovascular, nuclear medicine and respiratory
+   'Add a 'No Filter' option to keep it visually consistent with meds
+   '----------------------------------------------------------------------------
+   
+   Dim Notype As New Collection
+   
+   Notype!pk = 199
+   Notype!type = "No Filter"
+   request_types = modRequestsDBI.RequestTypes_Get()
+   request_types.Remove("3")
+   request_types.Remove("10")
+   request_types.Remove("9")
+   request_types.Remove("7")
+   request_types.Remove("12")
+   request_types.Remove("13")
+   request_types.Remove("14")
+   request_types.Add(Notype, "15")
+   request_types = modUtilGUI.LoadCombo(cmbRequestTypes, modUtil.Copy_Collection_Keyed_Sequentially(Request_types), "type")
+   Settings_Load
+   With Form_MetaData = New FDocumentMetaData(Vbox_Metadata)
+      .Set_Embedded_Form_Name("FClinical")
+      .Init("Allocated Documents")
+      .HBox_Save.visible = True                                         'contains the save button in the gui at base of form_metadata
+      .hBox_Urgency.Visible = False                                     'not needed as already in the patients notes 
+      .tbClose.Visible = True                            'only ever used on this form
+      .Visible = False  
+   End With
+   obs = New Observer(form_metadata.tbSave) As "form_metadata_tbSave"    'Let FClinical handle the save event"
+   obs = New Observer(form_metadata.txtUserObservationName) As "form_metadata_txtUserObservationName"
+   obs = New Observer(form_metadata.tbClose) As "form_metadata_tbClose"   'Let FClinical handle the save event"
+   'so we can access this and hide it when we need to
+   
+End 
+
+Public Sub Set_Graph_Vbox(VB As Vbox)
+   'passed the container fo the graph so can hide if necessary if editing the metadata
+   'this subis only accessed once per running instance of EasyGP
+   
+   Vbox_Graph = VB   
+   
+End
+
+Public Sub Current_Consult_Exists() As Boolean
+   'If not null, this module is currently being used for current patient
+   
+   If Not IsNull(currentconsult) Then Return True 
+   
+End
+
+Public Sub Init(cons As CConsult)
+   'Do only those things peculiar to the first time this form
+   'is accessed by a new patient   
+   
+   currentconsult = cons                                                'set consult for the new patient           
+   cmbRequestTypes.Index = cmbRequestTypes.Find("No Filter")            'default filtering to none
+   Deleted_Documents = New Collection                                   
+   form_metadata.Set_consult(currentconsult)                            'to the document metadata for the new patient
+   
+End
+
+Public Sub Settings_Load()
+   
+   cvwRequests.Font = Font[Settings["FClinLists_Ordering/cvwRequests.font", "Arial,9"]]
+   cvwResults.Font = Font[Settings["FClinLists_Ordering/cvwResults.font", "Arial,9"]]
+   
+End
+
+Public Sub cmbRequestTypes_Click()
+   'Filter results on request type
+   
+   bExit = True   
+   txtExcludeResult.text = ""
+   txtFilterResult.text = ""
+   If rbResultsReceived.value = True Then cvwResults_Reload
+   If rbRequestsOrdered.value = True Then cvwRequests_Reload
+   bExit = False 
+   
+End
+
+Public Sub cvwResults_Menu()
+   'key is set cvwresultsRecieved_key in cvwResults_select()
+   
+   Dim Document As Collection
+   Dim mnu As Menu
+   Dim bHaveDeletedResult As Boolean
+   
+   Print cvwResults.Selection
+   For Each mnu In mnuResultsReceived.Children                                'default to no items available on menu
+      mnu.Enabled = False
+   Next
+   For Each Document In Deleted_Documents                                      'check if there are deleted results user may want to undelete
+      If Document!fk_lu_display_as = const.Document_Display_As_Result Then     'there are?
+         mnuResultsReceived_UndoDelete.Enabled = True                          ' enable undelete menu option
+         bHaveDeletedResult = True  
+         Break
+      Endif
+   Next
+   If Not cvwResults.count Then                                                'if no results in the list
+      If bHaveDeletedResult = False Then Return                                'and nothing to  undelete leave
+   Endif
+   cvwResults.MoveCurrent()
+   mnuResultsReceived_ShowGraphable()
+   If cvwResults.count Then                                                   'if there are menu options
+      If cvwResults.Selection.count > 1 Then                                  'see if more than one item has been selected
+         mnuResultsReceived_PrintSelected.Enabled = True                      'enable appropriate menu's
+         mnuResultsReceived_PrintAll.Enabled = True
+         mnuResultsReceived_JoinPDF.Enabled = True
+      Else
+         For Each mnu In mnuResultsReceived.Children
+            If mnu.Name <> "mnuResultsReceived_UndoDelete" Then
+               mnu.Enabled = True
+            End If   
+         Next
+         mnuResultsReceived_JoinPDF.Enabled = False
+      Endif
+      If currentconsult!results_received[cvwResultsReceived_Key]!msh_transmitting_entity = "snail mail" Then 'can only send back non-hl7 e.g scanned FIXME, LATER ?IMAGES
+         mnuResultsReceived_Refile.Enabled = True
+      Else
+         mnuResultsReceived_Refile.Enabled = False
+      End If
+   End If   
+   mnuResultsReceived.Popup()
+   '
+Catch
+   Return 'FIXME still getting null object bug here. 
+   
+End
+
+Public Sub Gui_Clear()
+   
+   txtFilterResult.text = ""
+   txtExcludeResult.text = ""
+   rbResultsReceived.value = True
+   modUtilGUI.Columnview_Clear_Properly(cvwRequests)
+   modUtilGUI.Columnview_Clear_Properly(cvwResults)
+   UnFiled_Document_Metadata_Show(False)      
+   currentconsult = Null     
+   
+End
+
+Public Sub cvwResults_MouseDrag()
+   
+   If Not cvwResults.count Then Return
+   Last.MoveCurrent()
+   Drag.icon = Picture.Load("icons/16/bloodtube16x16.png")
+   Last.Drag(Str(currentconsult!results_received[cvwResultsReceived_Key]!pk_document))
+   
+Catch
+   Return 
+   
+End
+
+Public Sub UnFiled_Document_Metadata_Show(bShow As Boolean)
+   '---------------------------------------------------------
+   'Show or remove the unfiled document metadata gui elements
+   '---------------------------------------------------------
+   
+   form_metadata.visible = bShow
+   If bShow Then
+      Vbox_Graph.Visible = False 
+      VBox_MetaData.height = 16 * 20
+      VBox_MetaData.Visible = True
+      FClinical.Hide_Tasks_And_Problems_Lists(True)
+   Else
+      VBox_MetaData.Visible = False   
+      Vbox_Graph.Visible = True 
+      FClinical.Hide_Tasks_And_Problems_Lists(False)
+   Endif
+   
+End
+
+Public Sub Document_Edit_Metadata(documents As Collection, document_key As Integer, Optional sHtml As String) ' As Integer, user_tag As String)
+   '-----------------------------------------------
+   'Edits the metadata of an existing document
+   'If unfiled sHtml is not null
+   'if the document is not showing, then display it
+   'this has become a messy routine
+   'fixme - in July 2014 I added fields to documents.documents
+   ' - the field html ceased to exist all html  moved to:
+   ' - data field which now contains also LaTex
+   ' - to the nomenclature of this code is all mixed up
+   '-----------------------------------------------
+   
+   With Form_MetaData
+      .Edit(documents[document_key])                                    'pass the document collection 
+      If shtml <> "" Then
+         .Document_HTML_Set(shtml)
+      End If
+      If Not IsNull(documents[document_key]!data) Then
+         .Document_HTML_Set(documents[document_key]!data)
+      Endif
+      .txtUserObservationName.pos = 0
+      .txtUserObservationName.SetFocus()
+      .Visible = True   
+   End With
+   UnFiled_Document_Metadata_Show(True)                                    'set up FClinical to show form_metadata
+   
+End
+
+Public Sub cvwResults_Select()
+   '----------------------------
+   'User has clicked on a result
+   '---------------------------- 
+   
+   Dim Clinical_Tab_Caption As String = FClinical.WorkspaceEditor_Caption()
+   
+   If bexit Then Return 
+   
+   cvwResults.MoveCurrent
+   cvwResultsReceived_Key = cvwResults.item.key
+   If Clinical_Tab_Caption <> "Referrals" And Clinical_Tab_Caption <> "Export Wizard" And Clinical_Tab_Caption <> "Pregnancy" Then
+      Result_Display
+   End If   
+   Return
+   'special case - pregnancy don't load onto a tab, show it within the pregnancy modulee
+   If Clinical_Tab_Caption = "Pregnancy" Then
+      If FPregnancy.IsInEditMode() Then 
+         FPregnancy.Result_Show(currentconsult!results_received[cvwResultsReceived_Key]!html)
+         'fixme could be a pdf
+      End If  
+      ' Else
+      '    Inbox_showResult
+   Endif
+   'Catch
+   ' Log.WarningMsg("FClinical.cvwResult_Select: " & Error.Text & " " & Error.Where)
+   Return 
+   
+End
+
+Public Sub cvwResults_DblClick()
+   '------------------------------------------------------------------
+   'As the letter writer needs the click or select event to allow
+   'user to drag and drop a result copy to the letter being written
+   'viewing resulits per-se occurs via the dblclick event if the letter
+   'writer is open otherwise the select event
+   '-------------------------------------------------------------------  
+   
+   If Not Last.count Then Return
+   '  If FClinical.WorkspaceEditor.ActiveWindow.Caption <> "Referrals" Then Return
+   If FClinical.WorkSpaceEditor_Caption() <> "Referrals" Then Return
+   If IsNull(currentconsult) Then Return
+   Result_Display
+   
+End
+
+Public Sub Result_Display(Optional bNewTab As Boolean = False)
+   '-------------------------------------------------------------------------------------
+   'Display a result - this could have been received as HL7 or as as scanned pdf or image
+   'It may or may not have been 'filed' - ie viewed in the users inbox
+   'If Filed and bNewTab is true the result is shown in a new workspace tab
+   'otherwise it is displayed in the generic 'Results' tab
+   'If unfiled it is always shown in new tab.
+   '-------------------------------------------------------------------------------------
+   
+   Dim bExcludeFTReport As Boolean
+   Dim bExcludePIT As Boolean
+   Dim display_style As Integer = const.Document_Display_As_Result
+   Dim fgc As Integer
+   Dim bgc As Integer
+   Dim sHtml As String
+   Dim SelectedDocument As Collection
+   Dim filename As String
+   Dim file_extension As String
+   Dim page_tag As String
+   
+   If cvwResults.count = 0 Then Return
+   UnFiled_Document_Metadata_Show(False)                                     'remove this it could be showing if not completed from previous document
+   '---------------------------------------------------------
+   'If this document has been filed, show the pdf or the html
+   '---------------------------------------------------------
+   filename = currentconsult!results_received[cvwResultsReceived_Key]!source_file
+   file_extension = Lower(File.Ext(currentconsult!results_received[cvwResultsReceived_Key]!source_file))
+   If Not IsNull(currentconsult!results_received[cvwResultsReceived_Key]!tag_user) Then
+      Select Case file_extension
+         Case "pdf"
+            If bNewTab Then 
+               FClinical.Editor_ShowPage_External("pdf document", currentconsult!results_received[cvwResultsReceived_Key]!tag_user & ":" & Str(currentconsult!results_received[cvwResultsReceived_Key]!pk_document), filename)
+            Else
+               FClinical.Editor_ShowPage_External("result", currentconsult!results_received[cvwResultsReceived_Key]!tag_user & ":" & Str(currentconsult!results_received[cvwResultsReceived_Key]!pk_document), filename, "pdf")
+            End If   
+         Case "jpg", "png", "bmp", "jpeg", "tiff"
+            If bNewTab Then   
+               FClinical.Editor_ShowPage_External("image", currentconsult!results_received[cvwResultsReceived_Key]!tag_user, filename) ' , "An Extra Tag")
+            Else
+               FClinical.Editor_ShowPage_External("result", currentconsult!results_received[cvwResultsReceived_Key]!tag_user, filename) ' , "image")
+            End If   
+         Case Else
+            page_tag = currentconsult!results_received[cvwResultsReceived_Key]!tag_user
+            '  Document_HTML = modHL7Process.Construct_HTML(Selected_Inbox, Doc, Document_observations, bExcludePIT, bExcludeFTReport, display_style, fgc_errors, bgc_errors)
+            ' Document_HTML = Replace(Document_HTML, "%filingas%", "")
+            If Right(page_tag) = ";" Then page_tag = Left(page_tag, Len(page_tag) - 1)
+            page_tag &= " (" & Format(currentconsult!results_received[cvwResultsReceived_Key]!date_created, "dd/mm/yyyy") & ":" & Str(currentconsult!results_received[cvwResultsReceived_Key]!pk_document) & ")"
+            If bNewTab Then   
+               Try FClinical.Editor_ShowPage_External("browser", page_tag, currentconsult!results_received[cvwResultsReceived_Key]!data, currentconsult!results_received[cvwResultsReceived_Key]!organisation)
+            Else  
+               ' FClinical.Editor_ShowPage_External("result", page_tag, currentconsult!results_received[cvwResultsReceived_Key]!data, "html")
+               FClinical.Editor_ShowPage_External("result", page_tag, currentconsult!results_received[cvwResultsReceived_Key]!data, "html")
+            End If   
+      End Select
+   Else
+      '------------------------------------------------------------------------------
+      'tag_user is null construct the page tag along with a date eg FBC (01/02/2010)
+      'Now determine if this has actually been viewed and filed by the doctor
+      'if it has, then there will be a user tag
+      'If not, then show the metadata for this document
+      '-------------------------------------------------------------------------------
+      SelectedDocument = currentconsult!results_received[cvwResultsReceived_Key]    'makes typing easier
+      '-------------------------------------------------------------------
+      'Now, if a HL7 result, if no html - ie not yet file, create the html
+      '------------------------------------------------------------------
+      Select Case file_extension
+         Case "pdf"
+            FClinical.Editor_ShowPage_External("pdf document", "UNFILED", filename)
+         Case Else
+            bExcludeFTReport = SelectedDocument!exclude_ft_report
+            bExcludePIT = SelectedDocument!exclude_pit
+            fgc = SelectedDocument!abnormals_foreground_color
+            bgc = SelectedDocument!abnormals_background_color
+            display_style = SelectedDocument!fk_lu_message_display_style
+            CurrentObservations = modDBConnect.exec_query_collection("Select  * from documents.observations where fk_document =" & SelectedDocument!pk_document & " ORDER BY observations.observation_date, set_id")
+            shtml = modHL7Process.Construct_HTML(currentconsult!patient, SelectedDocument, currentobservations, bExcludePIT, bExcludeFTReport, display_style, fgc, bgc)
+            sHtml = Replace(shtml, "%filingas%", "")
+            sHtml = Replace(shtml, "** UNFILED **:", "")
+            page_tag = "UNFILED RESULT"
+            FClinical.Editor_ShowPage_External("result", page_tag, sHtml, "html")
+      End Select
+      With form_metadata
+         .Edit(currentconsult!results_received[cvwResultsReceived_Key])        'display metadata for this document
+         .bexit = True
+         .txtUserObservationName.text = cvwResults[cvwResultsReceived_Key][1]
+         .txtUserObservationName.pos = 0    'ensure start of line showing
+         .Document_HTML_Set(sHtml)
+         .HBox_Save.visible = True                                           'contains the save button
+         .hBox_Urgency.Visible = False                                       'not needed as already in the patients notes
+         .bExit = False
+      End With
+      UnFiled_Document_Metadata_Show(True)                                   'set up FClinical to show form_metadata
+   End If
+   
+End
+
+Public Sub cvwResults_Reload(Optional bRefresh As Boolean = False)
+   '-------------------------------------------------------------
+   'PURPOSE  : Displays the patients results i.e
+   '           pathology/radiology/nuclear medicine
+   '           in the results column view
+   'LOGIC    : RequestResults_Get() has retrieved a collection
+   '           of results from the backend, keyed on the primary
+   '           key of clin_results.inbox_general which stores
+   '           pathology/radiology ie non-letters from providers
+   '           Loop through this collection load into columnview
+   '           only the date, test, who ordered it
+   '           Later when one needs to access any result it will
+   '           be contained in
+   '           currentconsult.requestResults[cvwResults.item.key]
+   'WARNING  : All the lists contained on the gui-element TabStrip_Lists
+   '           are members of the tabbedlists group.There is no
+   '           cvwResults_events() per se, its events are under
+   '           TabbedLists_events()
+   'TOFIX    : Smarter column sizing - make second column (1) with
+   '           the requests max-width of the widest item
+   '--------------------------------------------------------------
+   
+   Dim x As Integer                      'for readability = key
+   Dim results_received As Collection
+   Dim filter As String
+   Dim exclude As String
+   Dim result_received As String
+   Dim guessed_user_Name As Collection
+   Dim bSkip As Boolean 
+   
+   If IsNull(currentconsult) Then Return
+   If txtFilterResult.text <> "" Then
+      filter = txtFilterResult.text
+   End If
+   exclude = txtExcludeResult.text 
+   cvwResults.Clear()
+   With cvwResults
+      .Columns.count = 3
+      .Columns[0].width = 80
+      .Columns[1].width = ((cvwResults.width - 100) * 2) / 3
+   End With
+   If bRefresh Then Currentconsult.Refresh("results_received")
+   For Each results_received In currentconsult!results_received
+      result_received = ""
+      If filter = "" And exclude = "" Then
+         If IsNull(results_received!tag_user) Then                         'not user tag = document not filed
+            'attempt to guess the user tag
+            CurrentObservations = modDBConnect.exec_query_collection("Select  * from documents.observations where fk_document =" & results_received!pk_document & " ORDER BY observations.observation_date, set_id")
+            guessed_user_Name = modParseDocument.Guess_UserName(currentconsult, const.Synonyms(), results_received, CurrentObservations)
+            If Not IsNull(guessed_user_Name!name) Then
+               result_received = "** UNFILED **:" & guessed_user_Name!name
+            Else
+               result_received = "** UNFILED RESULT **:"
+            End If
+         Else
+            result_received = results_received!tag_user
+         End If
+         
+      Else
+         If exclude Then
+            'If Lower(results_received!tag_user) <> Lower(exclude) Then
+            If Not InStr(Lower(results_received!tag_user), Lower(exclude)) Then
+               result_received = results_received!tag_user
+            Endif
+         Else
+            If results_received!tag_user = "" And InStr("unfiled", Lower(filter)) Then
+               result_received = "** UNFILED **:"
+            Else
+               If InStr(Lower(results_received!tag_user), filter) Then
+                  result_received = results_received!tag_user
+               Endif
+            End If
+         End If
+      End If
+      If result_received <> "" Then
+         bskip = False
+         If cmbRequestTypes.text <> "" And cmbRequestTypes.text <> "No Filter" Then    'if user wants to filter on type
+            If results_received!sending_entity_request_type <> cmbRequestTypes.text Then    
+               bskip = True
+            End If  
+         End If
+         If Not bskip Then
+            x = results_received!pk_document
+            cvwResults.Add(x, 0)
+            If Not IsNull(results_received!date_created) Then  
+               cvwResults[x][0] = Format(results_received!date_created, "dd/mm/yyyy")
+            Else
+               cvwResults[x][0] = "?date"   'import bug hl7 errors fixme this can be null - have put in a fix all new imports use date_ordered if date_created is null
+            End If 
+            cvwResults[x][1] = result_received 'results_received!tag_user
+            cvwResults[x][2] = results_received!originator
+         End If    
+      End If
+   Next
+   
+End
+
+Public Sub mnuResultsReceived_Click()
+   '--------------------------------------------------------
+   'User has clicked on the menu over result's received
+   'Note that graph items, which are added 'on the fly' are
+   'handled with mnuResultGraphable_Click()
+   '--------------------------------------------------------
+   
+   Dim D As Collection
+   Dim x As Integer
+   Dim pdfs_to_merge As Collection
+   Dim TabulatedResults As CTabResults
+   Dim audit_notes As String
+   Dim pdf_path As String
+   
+   Print cvwResults.Selection
+   D = currentconsult!results_received[cvwResultsReceived_Key] 
+   
+   Select Case Last.tag
+      Case "external viewer" 'if possible
+          If Lower(File.Ext(D!source_file)) = "pdf" Then   
+            pdf_path = modFiles.Get("document_archiving_directory", D!source_file)
+            modArchiveDocumentsDBI.Launch_External_PDF_Viewer(pdf_path)
+         Else
+            If D!fk_lu_data_content_type = const.cData_Type_HTML Then
+               pdf_path = modPrinting.Make_PDF_From_Html(D!data)
+               modArchiveDocumentsDBI.Launch_External_PDF_Viewer(pdf_path)
+            Endif
+         End If   
+      Case "transfer to pdfs to join list"
+         '-----------------------------------------------------------------------------------------
+         'joining pdf's difficult (not the actual joining)
+         'eg.user could want to or be stupid enough to join disparate pdf's
+         'so some decision needs to be made about the original collection's settings e.g originator
+         'for the moment (experimental) the last document sent to the list (i.e this one) will
+         'be attatched  as the tag of the lvFilesToJoin
+         '------------------------------------------------------------------------------------------
+         ' cvwResults.MoveFirst
+         ' pdfs_to_merge = New Collection
+         ' lvFilesToJoin.Clear()
+         ' txtTagUser.text = ""
+         ' For x = 0 To cvwResults.Selection.count - 1
+         '    If Lower(File.Ext(currentconsult!results_received[cvwResults.Selection[x]]!source_file)) = "pdf" Then
+         '       Try lvFilesToJoin.Add(cvwResults.Selection[x], currentconsult!results_received[cvwResults.Selection[x]]!source_file)
+         '       If Not Error Then
+         '          pdfs_to_merge.Add(currentconsult!results_received[cvwResults.Selection[x]], pdfs_to_merge.count) 'needed to delete these later
+         '       End If
+         '    Else
+         '       Message.info("Only pdf files can be joined together, sorry.....")
+         '       cvwResults.UnselectAll()
+         '       Return
+         '    End If
+         ' Next
+         ' lvFilesToJoin.tag = pdfs_to_merge
+         ' VBox_Files_To_Join.Visible = True
+         ' Vbox_MiniGraphs.Visible = False
+      Case "tabulated cumulative results"
+         Message.Info("This module though written has serious inaccuracies and cannot be used till fixed - Hands up please??")
+         Return   
+         Message.Info("DANGER DANGER.\n\nI think this module is inaccurate and should not be used clinically until re-developed.")
+         TabulatedResults = New CTabResults(currentconsult, currentconsult!results_received[cvwResultsReceived_Key]!tag_user, currentconsult!results_received[cvwResultsReceived_Key]!pk_document)
+         FClinical.Editor_ShowPage_External("browser", "Tabulated Results", TabulatedResults.Get_HTML())
+      Case "fonts"
+         modUtilGUI.Columnview_SetFont(cvwResults, "FClinLists_Ordering")
+      Case "edit metadata"
+         If currentconsult!results_received[cvwResultsReceived_Key]!protected Then
+            Message.Title = "Protected Document"
+            Message.Info("You may not edit this document.\n\n When it was created it was marked as 'protected' by EasyGP.")
+            Return
+         Endif
+         Document_Edit_Metadata(currentconsult!results_received, cvwResultsReceived_Key)
+      Case "delete"                                              'deletes a document and enforces an audit trail
+         If currentconsult!results_received[cvwResultsReceived_Key]!protected Then
+            Message.Title = "Protected Document"
+            Message.Info("You may not delete this document.\n\n When it was created it was marked as 'protected' by EasyGP.")
+            Return
+         Endif
+         If modArchiveDocumentsDBI.Delete(currentconsult, currentconsult!results_received[cvwResultsReceived_Key], const.cSection_Documents, const.sAuditAction[const.cAuditAction_MarkDeleted]) Then
+            modDBConnect.CommitTrans()
+            Deleted_Documents.Add(currentconsult!results_received[cvwResultsReceived_Key], cvwResultsReceived_Key)            'keep for undelete
+            cvwResults_Reload(True)                                'refresh the collection and reshow the list
+         Else
+            modDBConnect.RollBack
+         End If
+      Case "delete duplicate"             'Delete the result, but don't enforce a reason
+         If currentconsult!results_received[cvwResultsReceived_Key]!protected Then
+            Message.Title = "Protected Document"
+            Message.Info("You may not delete this document.\n\n When it was created it was marked as 'protected' by EasyGP.")
+            Return
+         Endif
+         If modArchiveDocumentsDBI.Delete(currentconsult, currentconsult!results_received[cvwResultsReceived_Key], const.cSection_Documents, const.sAuditAction[const.cAuditAction_DeleteDuplicateDocument]) Then
+            modDBConnect.CommitTrans()
+            Deleted_Documents.Add(currentconsult!results_received[cvwResultsReceived_Key], cvwResultsReceived_Key)
+            cvwResults_Reload(True)
+         Else
+            modDBConnect.RollBack
+         End If
+      Case "delete preliminary result"
+         If currentconsult!results_received[cvwResultsReceived_Key]!protected Then
+            Message.Title = "Protected Document"
+            Message.Info("You may not delete this document.\n\n When it was created it was marked as 'protected' by EasyGP.")
+            Return
+         Endif
+         If modArchiveDocumentsDBI.Delete(currentconsult, currentconsult!results_received[cvwResultsReceived_Key], const.cSection_Documents, const.sAuditAction[const.cAuditAction_DeletePreliminaryResult]) Then  
+            modDBConnect.CommitTrans()
+            Deleted_Documents.Add(currentconsult!results_received[cvwResultsReceived_Key], cvwResultsReceived_Key)
+            cvwResults_Reload(True)
+         Else
+            modDBConnect.RollBack
+         End If
+      Case "undo delete"
+         For Each D In Deleted_Documents
+            If D!fk_lu_display_as = const.Document_Display_As_Result Then
+               If modArchiveDocumentsDBI.UnDelete(currentconsult, d, const.cSection_Documents) Then
+                  modDBConnect.CommitTrans()
+                  Deleted_Documents.Remove(d!pk_document)
+                  cvwResults_Reload(True)
+                  Break
+               Endif
+            Endif
+         Next
+      Case "do not show"
+         'Enable user to permanantly remove from sight unwanted results eg INR's in patient no longer on coumadin.
+      Case "refile document"
+         If currentconsult!results_received[cvwResultsReceived_Key]!protected Then
+            Message.Title = "Protected Document"
+            Message.Info("You may not move this document.\n\n When it was created it was marked as 'protected' by EasyGP.")
+            Return
+         Endif
+         If modArchiveDocumentsDBI.Document_SendBack_For_ReFiling(currentconsult, currentconsult!results_received[cvwResultsReceived_Key]) Then
+            cvwResults_Reload(True)
+         Endif
+      Case "display in new tab"
+         FClinical.Inbox_showResult(True)
+      Case "display as letter"
+         audit_notes = "Display mode changed from result to letter"
+         If modArchiveDocumentsDBI.Change_Display_Mode(currentconsult, currentconsult!results_received[cvwResultsReceived_Key], const.Document_Display_As_Letter, const.cSection_Documents, audit_notes) Then
+            cvwResults_Reload(True)
+            FClinical.Refresh_Section(const.cSection_Documents)
+         Endif
+      Case "audit trail"
+         modAudit.Document_AuditTrail_Show(cvwResultsReceived_Key)
+      Case "print all"
+         cvwResults.Selectall
+         For x = 0 To cvwResults.Selection.count - 1
+            modPrinting.Document_Print(currentconsult!results_received[cvwResults.Selection[x]])
+         Next
+         '    cvwResults.UnselectAll
+      Case "print selected"
+         For x = 0 To cvwResults.Selection.count - 1
+            modPrinting.Document_Print(D)
+         Next
+         '   cvwResults.UnselectAll
+      Case "help"
+         modUtilGUI.NotImplemented("Help for the results list")
+   End Select
+   cvwResults.UnselectAll
+Catch
+   Return
+   
+End
+
+Public Sub mnuResultsReceived_ShowGraphable()
+   '----------------------------------------------------------
+   'User has clicked on the popup menu for results
+   'Get all measurements available for this result or results
+   'Load them onto the graphable menu
+   'or disable this option if nothing is graphable
+   '----------------------------------------------------------
+   
+   Dim graphable_item As Collection
+   Dim graphable_items As Collection
+   Dim mnu As Menu
+   
+   mnuResultsReceived_Graphable.Children.Clear()
+   graphable_items = modMeasurementsDBI.Get_Graphable(currentconsult!results_received[cvwResultsReceived_Key]!pk_document)
+   If graphable_items.count = 0 Then
+      mnuResultsReceived_Graphable.Enabled = False
+      Return
+   Else
+      mnuResultsReceived_Graphable.Enabled = True
+   End If
+   For Each graphable_item In graphable_items
+      mnu = New Menu(mnuResultsReceived_Graphable) As "mnuResultGraphable"
+      mnu.name = graphable_item!identifier
+      mnu.caption = graphable_item!identifier
+      mnu.tag = graphable_item!loinc
+   Next
+Catch
+   Return 
+   
+End
+
+Public Sub mnuResultGraphable_Click()
+   '-----------------------------------------------------------------
+   'User has clicked on a graphable item on the results received list
+   'pass it the Last.tag (loinc) and the Last.caption (name eg sodium
+   '-----------------------------------------------------------------
+   
+   Dim GraphableItem_Data As New Collection
+   
+   FClinicalLists.Graph_Item(Last.tag, Last.caption)
+Catch
+   Return
+   
+End
+
+' Public Sub cvwRequests_Reload()
+'    
+'    modEditAreaHelpers.Patient_Requests_Show(currentconsult, cvwRequests)
+'    
+' End
+
+Public Sub rbOrdered_Received_Click()
+   
+   Select Case Last.tag
+      Case "requests ordered"
+         cvwResults.Visible = False
+         cvwRequests.Visible = True                            'show requests order
+         If cvwRequests.count = 0 Then cvwRequests_Reload
+         ' cvwRequests_Reload
+      Case "results received"
+         cvwRequests.Visible = False
+         cvwResults.Visible = True
+         If cvwResults.count = 0 Then cvwResults_Reload(True)
+         ' cvwResults_Reload(True)
+   End Select
+   
+End
+
+Public Sub CvwRequests_Select()
+   
+   cvwRequests.MoveCurrent
+   cvwRequests_key = cvwRequests.Item.Key
+   
+End
+
+Public Sub cvwRequests_Menu()
+   'User has clicked over the user generated request forms list
+   
+   If cvwrequests.count Then 
+      mnuRequests.popup()
+   End If   
+   
+End
+
+Public Sub cvwRequests_Reload()
+   
+   modEditAreaHelpers.Patient_Requests_Show(currentconsult, cvwRequests,,, Trim(Lower(txtExcludeResult.text)), Trim(Lower(txtFilterResult.text)))
+   
+End
+
+Public Sub mnuRequests_Click()
+   '-----------------------------------------------------------------------------------
+   'This is the menu which has popped up over the requests the user has ordered e.g FBC
+   'Process the menu options
+   'Explanation Split(cvwRequests.item.key, "-").Count = 3
+   '- was included because at some stage I allowed double clicking to expand the
+   '- columnview and show the requests on form, with sub lines being the
+   '- individual requests - I'll probably remove this as not found useful
+   '-----------------------------------------------------------------------------------
+   
+   Dim RequestForm As New Collection
+    
+   cvwRequests.MoveCurrent()
+   If Split(cvwRequests_key, "-").Count = 3 Then
+      Try RequestForm = currentconsult!requests_ordered[Right(cvwRequests_key, Len(cvwRequests_key) - InStr(cvwRequests_key, "-"))]
+   Else
+      RequestForm = currentconsult!requests_ordered[cvwRequests_key]
+   End If
+   Select Case Last.tag
+      Case "delete"
+         Try modRequestsDBI.RequestForm_Delete(currentconsult, RequestForm)
+         Try FRequests.Requests_Today_Refresh
+         Deleted_Request = RequestForm            'may not still be open,but fix  under its edit area if was written today
+         cvwRequests_Reload
+      Case "undo delete"
+         modRequestsDBI.RequestForm_UnDelete(currentconsult, Deleted_Request)
+         Deleted_Request = New Collection 'reset, but fix this to multi-delete
+         Try FRequests.Requests_Today_Refresh
+         cvwRequests_Reload
+      Case "re-order"
+         modUtilGUI.NotImplemented("Re-ordering from past forms is not yet implemented")
+      Case "re-print"
+         Try modPrinting.Print_latex(RequestForm!latex)
+      Case "preview form"
+         Try modRequestsDBI.RequestForm_Preview(RequestForm)
+      Case "fonts"
+         modUtilGUI.Columnview_SetFont(cvwRequests, "FClinLists_Ordering")
+      Case "help"
+         modUtilGUI.NotImplemented("Help for using the user request list")
+   End Select
+Catch
+   Return 
+   
+End
+
+Public Sub EditArea_Results_KeyRelease()
+   '-----------------------------------------------------------------------
+   'User has typed in one of the two textboxes underneath the results inbox
+   'to operate the filters
+   '-----------------------------------------------------------------------
+   
+   If Bexit Then Return
+   Select Case Last.tag
+      Case "exclude"
+         bExit = True
+         txtFilterResult.text = ""
+         bexit = False
+      Case "filter"
+         bExit = True
+         txtExcludeResult.text = ""
+         bexit = False
+   End Select
+   If cvwResults.visible Then cvwResults_Reload()
+   If cvwRequests.Visible Then cvwRequests_Reload()
+   
+End
+
+Public Sub tbRequestCombo_Click()
+   
+   cmbRequestTypes.Index = cmbRequestTypes.Find("No Filter")
+   ' cvwResults_Reload
+   
+End
+
+Public Sub cmbRequestTypes_KeyPress()
+   'Does not do anything useful, I just prefer the visual
+   'look of a textbox like combo box and prevent user typing
+   
+   Stop Event  
+   
+End
+
+Public Sub form_metadata_txtUserObservationName_Activate()
+   '------------------------------------------------------------------------------------------
+   'This over-rides the event on this textbox in the form_metadata
+   'For ease of use, when user hits enter here, File doc and roll on to next one automatically
+   '------------------------------------------------------------------------------------------
+   
+   Stop Event
+   If Last.tag = "user name" Then
+      form_metadata_tbSave_Click()
+   Endif
+   
+End
+
+Public Sub form_metadata_tbSave_Activate()
+   '------------------------------------------------------------
+   'Detects if user clicked <enter> on the form_metadata save button
+   'overrides this event and saves. I've done this so that
+   'I can then remove the metadata form and re-arrange the screen
+   'from this form
+   '------------------------------------------------------------
+   
+   Stop Event
+   If key.code = key.Return Then
+      form_metadata_tbSave_Click()
+   Endif
+   
+End
+
+Public Sub form_metadata_tbSave_Click()
+   '-----------------------------------------------------------------------
+   'User is modifying a document's metadata
+   'Apply the changes, remove the metadata gui and re-load the results list
+   'this observor over-rides the click on the form_metadata form 
+   'i.e the instance of FDocumentMetaData we are using
+   '-----------------------------------------------------------------------
+   
+   Stop Event
+   If form_metadata.txtUserObservationName.text = "" Then
+      With form_metadata
+         .txtUserObservationName.SetFocus
+         .txtUserObservationName.Background = Color.rgb(95, 255, 175)
+      End With
+      Return
+   Endif
+   If form_metadata.txtDocumentDate.text = "" Then
+      With form_metadata
+         .txtDocumentDate.SetFocus
+         .txtDocumentDate.Background = Color.rgb(95, 255, 175)
+      End With
+      Return
+   Endif
+   form_metadata.Save()                           'successful
+   modDBConnect.CommitTrans()                     'save transaction
+   UnFiled_Document_Metadata_Show(False)          'remove the gui components
+   Select Case FClinicalLists.TabStrip_Lists_Get_Index()
+      Case cTabstrip_lists_Tab_Correspondence
+         '   FClinicalLists.form_clinlists_correspondence.cvwLettersReceived_Reload(True)
+         
+      Case cTabstrip_lists_Tab_Results
+         cvwResults_Reload(True)
+         If FInbox.Is_Same_Patient(currentconsult!patient!fk_patient) Then
+            FInbox.Reload_Inbox_External
+         Endif
+   End Select
+   
+End

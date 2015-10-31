@@ -14,4 +14,1311 @@
 
 ' You should have received a copy of the GNU General Public License
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'---------------------------------------------------------------------------------------------------
+'PURPOSE        A class to printout Australian Government Centrelink Medical Certificates
+'               Diagnoses must be in the health issues problem lists
+'               Coded diagnoses are kept
+'HOW THIS WORKS - This form has two VBoxes: Vbox_Primary_Condition, VBox_Secondary_Condition
+'               - When this forms (Init) is run, it creates two instances of the
+'                 FCentreLinkCondition form (primary, secondary) which collect the main data
+'               - Observers on this form allow for tabbing or <enter> back onto the non-common
+'                 textboxes on this form
+'               -  Before Saving, data is validated to ensure minimum dataset
+'               - The actual Form can be written on top of the pre-printed form, or generated de-novo
+'                 as per user choice in FStaffPreferences.Clinical or via this form at run time
+'               - The plain paper printer in each room could be different, so horizontal and vertical
+'                 onsets can be saved on a per-room basis by the user in FRoomSetup
+'               - The certificate remains accessible for one day only to edit
+'                 but can be reprinted from FClinical centrelink certicates option button > list
+'               - Irreguardless of whether the user prints on a pre-printed form, we only keep then
+'                 overpic copy using our own (crappy quailty) electronic copy on a scanned pdf
+'KNOWN BUGS     - cvwCertificatesPrevious_Fill() can't use modUtilGUI.Columnview_Columns_Set_Size
+'                (see comment In that routine) 
+'                GUI BUG if user doesn't resize the vertical splint some text fields will be missing
+'-----------------------------------------------------------------------------------------------------
+Private currentConsult As CConsult                                   'gives access to all fore collections
+Private bExit As Integer                                             'prevents entry to subs as needed
+Private Certificates_This_Consult As Collection  
+Private Certificate_This_Consult As Collection                       'The currently selected certificate for today                    
+Private Certificates_Previous As Collection                          'Collection of all previous certificates
+Private Certificate_Previous As Collection                                    'The currently selected previous certificate
+Private form_medical_condition_primary As FCentreLinkCondition       'will collect the data on the main medical condition
+Private form_medical_condition_secondary As FCentreLinkCondition     'will collect the data on the secondary conditioins
+Private obs As Observer                                              'set up observers on the embedded forms
+Private fk_certificate As Integer                                    'key to clin_certificates.centrelink_medical_certificates table
+Private fk_progressnote As Integer                                   'key to clin_consult.progressnotes table
+Private fk_document As Integer                                       'key to documents.documents which will contain the LaTex of this form
+Private fk_centrelink_diagnoses_primary As Integer
+Private Active_Health_Issues As Collection
+Private cvwCertificatesToday_key As Integer     
+Private cvwCertificatesPrevious_key As Integer                                
+Private fk_code As String
+Private fk_coding_system As Integer
+Private sHelpHeading As String = "Centrelink Medical Certificates"
 
+Static Private form_Centrelink As FCentreLink
+
+Static Public Sub Reload_External()
+   
+   'Called if this form is in use and user has deleted a certificate of the 
+   'centrelink certificates in FClinical which was writtten today 
+   form_Centrelink.Reload
+   
+End
+
+Static Public Sub Health_Issues_Reload()
+   'If health issues are updated in FPasthistory update the embedded forms
+   
+   form_Centrelink.Reload_Health_Issues()
+   
+End
+
+Public Sub Reload_Health_Issues()
+   
+   form_medical_condition_primary.Problems_Reload                    'reload the problem lists
+   form_medical_condition_secondary.Problems_Reload
+   
+   Me.Enabled = True 
+   
+End
+
+Public Sub Init(cons As CConsult)
+   '--------------------------------------------------------
+   'Called by FCertificates and passed the consult object
+   'Sets up the subforms to collect data on primary/secondary conditions
+   ' creates observers for controls on those forms
+   '-------------------------------------------------------- 
+   
+   form_Centrelink = Me    'I can now be accessed from FPastHistory
+   currentConsult = cons
+   modEditAreaHelpers.Resize_labels(VBox_EditArea_Left, lblmeasure)
+   'The primary medical condition Init(..True) tells the form to only load disease combo with major conditions
+   With form_medical_condition_primary = New FCentreLinkCondition(Vbox_Primary_Condition)
+      .lblDiagnosis.Text = "Primary Diagnosis"
+      .lblConditionType.text = "The Condition With Most Impact"
+      .lblCondition.text = "Condition is"
+      .Init(currentConsult, VBox_EditArea, True) '
+      If Have_No_Major_Health_Issues() Then
+         Me.Enabled = False 
+      Endif
+   End With  
+   'observers to allow this form to control <enter> or tabbing between textboxes from embedded form back to this one
+   obs = New Observer(form_medical_condition_primary.txtTreatmentPlanned) As "TxtPrimaryCondition"
+   obs = New Observer(form_medical_condition_primary.txtSymptoms) As "TxtPrimaryCondition"
+   obs = New Observer(form_medical_condition_primary.txtTreatmentCurrent) As "TxtPrimaryCondition"
+   obs = New Observer(form_medical_condition_primary.txtTreatmentPast) As "TxtPrimaryCondition"
+   'The secondary medical condition Init(..False) tells the form to only load disease combo with major and active conditions
+   With form_medical_condition_secondary = New FCentreLinkCondition(Vbox_Secondary_Condition)
+      .lblDiagnosis.text = "Secondary Diagnoses"
+      .lblConditionType.text = "Other Conditions which Impact Health"
+      .lblCondition.text = "Condition(s) is/are"
+      .Init(currentConsult, VBox_EditArea, False) 'the conditions combo will have both secondary and major conditions
+   End With
+   obs = New Observer(form_medical_condition_secondary.txtTreatmentPlanned) As "TxtSecondaryCondition"
+   obs = New Observer(form_medical_condition_secondary.txtSymptoms) As "TxtSecondaryCondition"
+   obs = New Observer(form_medical_condition_secondary.txtTreatmentCurrent) As "TxtSecondaryCondition"
+   obs = New Observer(form_medical_condition_secondary.txtTreatmentPast) As "TxtSecondaryCondition"
+   lblmeasure.text = "Other Impacting Conditions     "
+   modEditAreaHelpers.Resize_labels(VBox_EditArea_Left, lblmeasure)
+   modEditAreaHelpers.Resize_labels(VBox_EditArea_Right, lblmeasure)
+   Settings_Load                                                     'resize splits, get fonts
+   If modAdminDBI.Config_Get_Staff_Member("centrelink-form-use-pre-printed", False, Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff) Then
+      chkPrintOnCentreLinkForm.value = True
+   Endif
+   With cvwCertificatesToday
+      .Columns.count = 4
+      .Columns[0].text = "Written on"
+      .Columns[1].text = "Diagnosis               "
+      .Columns[2].text = "Unfit From"
+      .Columns[3].text = "Unfit To"
+   End With
+   With cvwCertificatesPrevious
+      .Columns.count = 4
+      .Columns[0].text = "Written on"
+      .Columns[1].text = "Diagnosis               "
+      .Columns[2].text = "Unfit From"
+      .Columns[3].text = "Unfit To"
+   End With
+   Decision_Support
+   Reload                                                            'show previous certificates
+   New_Entry                                                         'default to a new entry
+   
+End
+
+Public Sub TxtPrimaryCondition_KeyPress()
+   'over-ride the keypress events on the embedded diagnosis forms to allow <enter> or <tab> ot the next textbox 
+   'this seems to be a bit cleaner than using the event in the textarea's on the embedded form where <enter> just
+   'pushes you to the newline in the control.  
+   
+   If Key.code = Key.Return Or Key.Code = Key.Tab Then
+      Select Case Last.tag
+         Case "symptoms"
+            form_medical_condition_primary.txtTreatmentPast.SetFocus()
+         Case "treatment past"
+            form_medical_condition_primary.txtTreatmentCurrent.SetFocus()
+         Case "treatment current"
+            form_medical_condition_primary.txtTreatmentPlanned.SetFocus()
+         Case "treatment planned"
+            Stop Event
+            txtOtherConditions.SetFocus
+      End Select
+   End If  
+   
+End
+
+Public Sub TxtSecondaryCondition_KeyPress()
+   'over-ride the keypress events on the embedded diagnosis forms to allow <enter> or <tab> ot the next textbox 
+   'this seems to be a bit cleaner than using the event in the textarea's on the embedded form where <enter> just
+   'pushes you to the newline in the control.  
+   
+   If Key.code = Key.Return Or Key.Code = Key.Tab Then
+      Select Case Last.tag
+         Case "symptoms"
+            form_medical_condition_secondary.txtTreatmentPast.SetFocus()
+         Case "treatment past"
+            form_medical_condition_secondary.txtTreatmentCurrent.SetFocus()
+         Case "treatment current"
+            form_medical_condition_secondary.txtTreatmentPlanned.SetFocus()
+         Case "treatment planned"
+            Stop Event
+            txtAtPracticeSince.SetFocus
+      End Select
+   End If  
+   
+End
+
+Private Sub Reload()
+   'Loads any existing centrelink certificates for today
+   
+   cvwCertificatesPrevious_Fill   'will refresh the main collection 
+   cvwCertificatesToday_Fill
+   
+End
+
+Public Sub Decision_Support()
+   'till I decide which button to  use
+   
+   Help()
+   
+End
+
+Public Sub Help()
+   
+   modUtilGUI.Decision_Support_Help_Show(Decision_Support_Text(), sHelpHeading, "FCentrelink" & sHelpHeading)
+   
+End
+
+Public Sub New_Entry()
+   'Triggered by clicking the <New> button on the FClinical main toolbar
+   'clear all data fields, start a new entry   
+   
+   Dim sMsg As String
+   
+   EditArea_Clear
+   fk_certificate = 0
+   fk_progressnote = 0
+   fk_coding_system = 0
+   fk_code = ""
+   bExit = True
+   Try txtAtPracticeSince.text = currentConsult!patient!patient_at_practice_since
+   bExit = False  
+   If Have_No_Major_Health_Issues() Then
+      Message.Title = "Inadquate Data"
+      sMsg = "It seems you have no major health issues listed in your patients history section.\n\n"
+      "Please update this before attempting to write a centrelink certificate"
+      Message.Info(sMsg)
+   Else
+      Me.Enabled = True
+   Endif
+   cvwCertificatesToday.UnselectAll
+   'Test_Data                       'development, load test data
+   VBox_EditArea.Enabled = True
+   
+End
+
+Public Sub Save()
+   '------------------------------------------------------------------------------------------------------------------
+   ' CREATE TABLE clin_certificates.centrelink_medical_certificates
+   ' (
+   '   pk serial NOT NULL,
+   '   fk_consult integer NOT NULL,
+   '   fk_progressnote integer NOT NULL,
+   '   primary_diagnosis_fk_lu_condition_temporality integer NOT NULL, -- key to centrelink_lu_condition_temporality table ie whether the GP thinks the condition is temporary, permanent or an exacerbation
+   '   primary_diagnosis_fk_lu_condition_prognosis integer NOT NULL, -- key to centrelink_lu_condition_prognosis table ie the duration of time the condition is expected to persist
+   '   primary_diagnosis_symptoms text NOT NULL,
+   '   primary_diagnosis_treatment_past text,
+   '   primary_diagnosis_treatment_current text NOT NULL,
+   '   primary_diagnosis_treatment_planned text,
+   '   secondary_diagnoses_fk_lu_condition_temporality integer,
+   '   secondary_diagnoses_fk_lu_condition_prognosis integer,
+   '   secondary_diagnoses_symptoms text,
+   '   secondary_diagnoses_treatment_past text,
+   '   secondary_diagnoses_treatment_current text,
+   '   secondary_diagnoses_treatment_planned text,
+   '   other_impacting_conditions text,
+   '   unfit_from date NOT NULL,
+   '   unfit_to date NOT NULL,
+   '   can_do_usual_work boolean DEFAULT false,
+   '   can_do_other_work boolean DEFAULT false,
+   '   impacting_factors text,
+   '   print_on_centrelink_form boolean DEFAULT true, -- If true then an existing pdf in templates/ will be used to print LaTex on
+   '   my_patient_since text NOT NULL,
+   '   latex text NOT NULL,
+   '   fk_document integer NOT NULL, -- key to document.documents which will contain the LaTex of the form
+   '   deleted boolean DEFAULT false,
+   '------------------------------------------------------------------------------------------------------------------
+   
+   Dim Certificate As CRow
+   Dim ProgressNote As CRow
+   Dim Diagnosis As CRow
+   Dim main_condition As Collection
+   Dim secondary_conditions As Collection
+   Dim HealthIssue As Collection
+   Dim Patient As CRow  
+   Dim Document_Centrelink_Form As CRow   
+   Dim bOverpic As Boolean = True                  'will force saved latex to used overpic
+   
+   If VBox_EditArea.Padding = 0 Then Return
+   If Not Certificate_Valid() Then Return
+   If Bexit Then Return
+   
+   Inc Application.Busy
+   bExit = True   
+   main_condition = form_medical_condition_primary.Diagnosis()
+   secondary_conditions = form_medical_condition_secondary.Diagnosis()
+   'First create and save the progress notes
+   ProgressNote = New CRow                                            'If the progress note was written on today, we can edit it, otherwise, create a new one
+   If fk_progressnote Then                                            'And Format(Now(), "dd/mm/yyyy") = Format(currentconsult.GetConsultDate(), "dd/mm/yyyy") Then  'if originally entered on today
+      ProgressNote.put_unchanged(fk_progressnote, "fk_progressnote")  'am editing todays progress note
+   End If   
+   ProgressNote!fk_audit_action = const.cAuditAction_Insert           'is an insert
+   ProgressNote!fk_consult = currentconsult.GetPK()
+   ProgressNote!notes = Progress_Notes_Create(main_condition, secondary_conditions)
+   ProgressNote!fk_section = const.cSection_GeneralNotes
+   ProgressNote!problem = "Centrelink Certificate"
+   ProgressNote.Save("clin_consult.progressnotes", "fk_progressnote")
+   'Now the document for the form itself
+   Document_Centrelink_Form = New CRow 
+   If fk_document Then
+      Document_Centrelink_Form.put_unchanged(fk_document, "fk_document")
+   End If 
+   Document_Centrelink_Form!fk_sending_entity = modInboxDBI.SendingEntity_GetPK(const.Document_Display_As_Letter, "", modDBConnect.currentUser!fk_branch)
+   Document_Centrelink_Form!fk_patient = currentconsult!patient!fk_patient 
+   Document_Centrelink_Form!imported_time = currentconsult.GetConsultDate()
+   Document_Centrelink_Form!date_requested = currentconsult.GetConsultDate()
+   Document_Centrelink_Form!date_created = currentconsult.GetConsultDate()
+   Document_Centrelink_Form!fk_staff_filed_document = modDBConnect.currentUser!fk_staff  
+   Document_Centrelink_Form!originator_reference = "Centrelink Medical Certificate"
+   Document_Centrelink_Form!originator = UCase(modDBConnect.currentUser!organisation) & "." & UCase(modDBConnect.currentUser!branch)
+   Document_Centrelink_Form!fk_staff_destination = modDBConnect.currentUser!fk_staff 
+   Document_Centrelink_Form!comment_on_document = "Centrelink Medical Certificate"
+   Document_Centrelink_Form!patient_access = True
+   Document_Centrelink_Form!concluded = True 
+   Document_Centrelink_Form!deleted = False
+   Document_Centrelink_Form!fk_lu_urgency = const.UrgencyLevelRoutine
+   Document_Centrelink_Form!tag = "Centrelink Medical Certificate - " & main_condition!description
+   Document_Centrelink_Form!tag_user = Document_Centrelink_Form!tag 
+   Document_Centrelink_Form!fk_lu_display_as = const.Document_Display_As_Certificate
+   Document_Centrelink_Form!fk_lu_request_type = Null
+   Document_Centrelink_Form!incoming_referral = False
+   Document_Centrelink_Form!data = Certificate_LaTeX_Create(bOverpic)            'the  overpic plain latex for the certificate
+   Document_Centrelink_Form!fk_lu_data_content_type = const.cData_Type_Latex
+   Document_Centrelink_Form!protected = True                                         'as an audit document, users cannot remove this, needed for medicare
+   Document_Centrelink_Form.Save("documents.documents", "fk_document")
+   'Now the certificate itself (we needed the fk_progressnote and fk_document for this table)
+   Certificate = New CRow
+   If fk_certificate Then
+      Certificate.put_unchanged(fk_certificate, "fk_certificate")
+   End If
+   Certificate!fk_consult = currentConsult.GetPK()
+   Certificate!fk_progressnote = ProgressNote!fk_progressnote   
+   Certificate!primary_diagnosis_fk_lu_condition_temporality = form_medical_condition_primary.Condition_Temporality()
+   Certificate!primary_diagnosis_fk_lu_condition_prognosis = form_medical_condition_primary.Condition_Prognosis()
+   Certificate!primary_diagnosis_symptoms = form_medical_condition_primary.Symptoms()
+   Certificate!primary_diagnosis_treatment_past = form_medical_condition_primary.Treatment_past()
+   Certificate!primary_diagnosis_treatment_current = form_medical_condition_primary.Treatment_Current()
+   Certificate!primary_diagnosis_treatment_planned = form_medical_condition_primary.Treatment_planned()
+   If form_medical_condition_secondary.Condition_Temporality() <> 0 Then 
+      Certificate!secondary_diagnoses_fk_lu_condition_temporality = form_medical_condition_secondary.Condition_Temporality()
+   End If
+   If form_medical_condition_secondary.Condition_Prognosis() <> 0 Then
+      Certificate!secondary_diagnoses_fk_lu_condition_prognosis = form_medical_condition_secondary.Condition_Prognosis()
+   End If
+   Certificate!secondary_diagnoses_symptoms = form_medical_condition_secondary.Symptoms()
+   Certificate!secondary_diagnoses_treatment_past = form_medical_condition_secondary.Treatment_past()
+   Certificate!secondary_diagnoses_treatment_current = form_medical_condition_secondary.Treatment_Current()
+   Certificate!secondary_diagnoses_treatment_planned = form_medical_condition_secondary.Treatment_planned()
+   Certificate!other_impacting_conditions = Trim(txtOtherConditions.text)
+   Certificate!unfit_from = Val(txtUnfitFrom.text)
+   Certificate!unfit_to = Val(txtUnfitTo.text)
+   If rbUsualWorkYes.Value = True Then
+      Certificate!can_do_usual_work = True
+   Else
+      Certificate!can_do_usual_work = False
+   End If   
+   If rbOtherWorkYes.Value = True Then
+      Certificate!can_do_other_work = True
+   Else
+      Certificate!can_do_other_work = False
+   Endif
+   Certificate!impacting_factors = Trim(txtImpactingFactors.text)
+   Certificate!print_on_centrelink_form = CBool(chkPrintOnCentreLinkForm.Value)
+   Certificate!my_patient_since = Trim(txtMyPatientSince.text)
+   Certificate!latex = Document_Centrelink_Form!data
+   Certificate!fk_document = Document_Centrelink_Form!fk_document
+   Certificate.Save("clin_certificates.centrelink_medical_certificates", "fk_certificate")
+   'now save length of time at practice if not saved
+   If currentConsult!patient!patient_at_practice_since <> Trim(txtAtPracticeSince.text) Then
+      Patient = New CRow   
+      Patient.put_unchanged(currentConsult!patient!fk_patient, "fk_patient")
+      Patient!patient_at_practice_since = Trim(txtAtPracticeSince.text)
+      Patient.Save("clerical.data_patients", "fk_patient")
+      currentConsult!patient!patient_at_practice_since = Trim(txtAtPracticeSince.text)
+   Endif
+   '---------------------------------------------------------------------------------------------------------
+   'NowsSave the diagnoses details
+   'CREATE TABLE clin_certificates.centrelink_diagnoses
+   ' (
+   '   pk serial NOT NULL,
+   '   fk_centrelink_certificate integer NOT NULL, -- key to the main clin_certificates.centrelink_medical_certificates table which contains...
+   '   fk_lu_centrelink_diagnosis_type integer NOT NULL, -- key to clin_certificates.fk_lu_diagnosis type being either primary (main) or secondary (one or more)
+   '   description text NOT NULL, -- text of the primary diagnosis. Though initially obtatined from past_history!description field that field is...
+   '   year_onset text NOT NULL, -- the mm/yyyy or yyyy the approximate date of onset initially pulled from clin_history.past_history table
+   '   fk_pasthistory integer NOT NULL, -- key to clin_history.past_history table. used in editing the certificate on the day of creation only...
+   '   fk_code text NOT NULL, -- key to coding.lu_systems. However this is obtained intially from the past_history table. AS the entry in that table...
+   '   fk_coding_system integer NOT NULL, -- the coding system being used for the code. Again this ia a 'snapshot' in time see the above comment
+   '   deleted boolean DEFAULT false,
+   '----------------------------------------------------------------------------------------------------------
+   'First for the primary condition centrelink_diagnosis_type_primary
+   '----------------------------------------------------------------------------------------------------------
+   Diagnosis = New CRow
+   If fk_centrelink_diagnoses_primary Then
+      Diagnosis.put_unchanged(fk_centrelink_diagnoses_primary, "fk_diagnosis")   
+   Endif
+   Diagnosis!fk_centrelink_certificate = Certificate!fk_certificate
+   Diagnosis!fk_lu_centrelink_diagnosis_type = const.centrelink_diagnosis_type_primary
+   Diagnosis!description = main_condition!description
+   Diagnosis!year_onset = main_condition!year_onset   
+   Diagnosis!fk_pasthistory = main_condition!pk_pasthistory
+   Diagnosis!fk_code = main_condition!fk_code
+   Diagnosis!fk_coding_system = main_condition!fk_coding_system
+   Diagnosis.Save("clin_certificates.centrelink_diagnoses", "fk_diagnosis")
+   '---------------------------------------------------------------------------------------------------------------------
+   'now the secondary diagnoses
+   'if a new seconary diagnosis is saved it is essential a virgin currentpatient!past_history[pk_pasthistory] collection
+   'and that is keyed to 'pk_pasthistory'
+   'if this is an existing one, it has been created from clin_certificates.centrelink_diagnoses and the past history key
+   'in that collection is fk_pasthistory, hence the two instances of Diagnosis!fk_pasthistory below
+   '----------------------------------------------------------------------------------------------------------------------
+   
+   For Each HealthIssue In secondary_conditions
+      Diagnosis = New CRow
+      If Not IsNull(HealthIssue!pk_centrelink_diagnoses) Then  
+         Diagnosis.put_unchanged(HealthIssue!pk_centrelink_diagnoses, "fk_diagnosis")
+         Diagnosis!fk_pasthistory = HealthIssue!fk_pasthistory
+      Else
+         Diagnosis!fk_pasthistory = HealthIssue!pk_pasthistory
+      Endif
+      Diagnosis!fk_centrelink_certificate = Certificate!fk_certificate
+      Diagnosis!fk_lu_centrelink_diagnosis_type = const.centrelink_diagnosis_type_secondary
+      Diagnosis!description = HealthIssue!description
+      Diagnosis!year_onset = HealthIssue!year_onset 
+      Diagnosis!fk_code = HealthIssue!fk_code
+      Diagnosis!fk_coding_system = HealthIssue!fk_coding_system
+      If HealthIssue!diagnosis_deleted = True Then
+         Diagnosis!deleted = True
+      Endif
+      Diagnosis.Save("clin_certificates.centrelink_diagnoses", "fk_diagnosis")
+   Next
+   modDBConnect.CommitTrans
+   '-------------------------------------------------------------------------------------------
+   'Now print the form, irregardless, the LaTex saved uses over pic for future invulnverability 
+   'with re-printing (Centrelink change their forms like you/I hopefully change our underpants
+   'However some users may want to stick on the pretty bit of pre-printed paper
+   '-------------------------------------------------------------------------------------------
+   If chkPrintOnCentreLinkForm.value = True Then
+      Message.title = "Pre-Printed Centelink Form"
+      Select Case Message.Question("Confirm paper type", "Print on Centrelink Form", "Print on Electronic Version")
+         Case 1
+            modPrinting.Print_latex(Certificate_LaTeX_Create()) 're-get the Latex without using overpic
+         Case 2
+            modPrinting.Print_latex_PDF(certificate!latex)  'we have already saved the overpic
+      End Select
+   Else
+      modPrinting.Print_latex_PDF(certificate!latex)
+   Endif
+   Dec Application.busy    
+   bexit = False  
+   Reload()
+   
+Catch
+   Dec Application.busy
+   Message.info("An error occurred trying to save the centrelink certificate")
+   modDBConnect.RollBack
+   bexit = False  
+   
+End
+
+Public Sub Print_Content()
+   'User will probably initively try and 'print' the certificate rather than saving the data
+   'which will print for them anyway!
+   
+   Save
+   
+End
+
+Public Sub Certificate_This_Consult_Edit()
+   
+   VBox_EditArea.Enabled = True
+   
+End
+
+Public Sub Certificate_Display(CERT As Collection)
+   '---------------------------------------------------------------------
+   'displays the currently selected certificate either current or old
+   'The certicate is:
+   '     CERT!primary_diagnosis (collection)
+   '     CERT!secondary_diagnosis(collection of collections) if it exists
+   '----------------------------------------------------------------------
+   
+   Dim secondary_condition As Collection
+   
+   EditArea_Clear 
+   bExit = True 
+   If modUtil.IsSameDay(currentConsult.GetConsultDate(), CERT!consult_date) Then   
+      fk_certificate = CERT!pk_certificate
+      fk_progressnote = CERT!fk_progressnote
+      fk_document = CERT!fk_document
+      fk_centrelink_diagnoses_primary = CERT!primary_diagnosis!pk_centrelink_diagnoses
+   Else                                        'we must be editing as a new certificate
+      fk_certificate = 0
+      fk_progressnote = 0
+      fk_document = 0
+      fk_centrelink_diagnoses_primary = 0
+   End If   
+   fk_code = CERT!primary_diagnosis!fk_code
+   fk_coding_system = CERT!primary_diagnosis!fk_coding_system
+   'set option and check boxes on the left hand side of screen for primary condition
+   Select Case CERT!primary_diagnosis_fk_lu_condition_temporality
+      Case 1
+         form_medical_condition_primary.chkConditionTemporary.value = True
+      Case 2
+         form_medical_condition_primary.chkConditionPermanant.value = True
+      Case 3
+         form_medical_condition_primary.chkConditionExacerbation.value = True
+   End Select
+   Select Case CERT!primary_diagnosis_fk_lu_condition_prognosis
+      Case 1
+         form_medical_condition_primary.chkPrognosisLT3M.Value = True
+      Case 2
+         form_medical_condition_primary.chkPrognosis3to12M.value = True
+      Case 3
+         form_medical_condition_primary.chkPrognosis13to24M.value = True
+      Case 4
+         form_medical_condition_primary.chkPrognosisOver24M.value = True
+      Case 5
+         form_medical_condition_primary.chkPrognosisUncertain.value = True
+   End Select
+   'set option and check boxes on the right hand side of screen for secondary condition
+   Select Case CERT!secondary_diagnoses_fk_lu_condition_temporality
+      Case 1
+         form_medical_condition_secondary.chkConditionTemporary.value = True
+      Case 2
+         form_medical_condition_secondary.chkConditionPermanant.value = True
+      Case 3
+         form_medical_condition_secondary.chkConditionExacerbation.value = True
+   End Select
+   Select Case CERT!secondary_diagnoses_fk_lu_condition_prognosis
+      Case 1
+         form_medical_condition_secondary.chkPrognosisLT3M.Value = True
+      Case 2
+         form_medical_condition_secondary.chkPrognosis3to12M.value = True
+      Case 3
+         form_medical_condition_secondary.chkPrognosis13to24M.value = True
+      Case 4
+         form_medical_condition_secondary.chkPrognosisOver24M.value = True
+      Case 5
+         form_medical_condition_secondary.chkPrognosisUncertain.value = True
+   End Select
+   With form_medical_condition_primary
+      .txtSymptoms.text = CERT!primary_diagnosis_symptoms
+      .txtTreatmentCurrent.text = CERT!primary_diagnosis_treatment_current
+      .txtTreatmentPast.text = CERT!primary_diagnosis_treatment_past
+      .txtTreatmentplanned.text = CERT!primary_diagnosis_treatment_planned
+   End With
+   With form_medical_condition_secondary
+      .txtSymptoms.text = CERT!secondary_diagnoses_symptoms
+      .txtTreatmentCurrent.text = CERT!secondary_diagnoses_treatment_current
+      .txtTreatmentPast.text = CERT!secondary_diagnoses_treatment_past
+      .txtTreatmentplanned.text = CERT!secondary_diagnoses_treatment_planned
+   End With
+   'now the common textboxes under the left hand side of the screen
+   txtOtherConditions.text = CERT!other_impacting_conditions
+   If fk_certificate = 0 Then    
+      txtUnfitFrom.text = Format(CERT!unfit_to, "dd/mm/yyyy")
+   Else
+      txtUnfitFrom.text = Format(CERT!unfit_from, "dd/mm/yyyy")
+      txtUnfitTo.text = Format(CERT!unfit_to, "dd/mm/yyyy")
+   Endif
+   If CERT!can_do_usual_work = True Then
+      rbUsualWorkYes.value = True
+   Else
+      rbUsualWorkNo.Value = True 
+   End If   
+   If CERT!can_do_other_work = True Then
+      rbOtherWorkYes.Value = True   
+   Else
+      rbOtherWorkNo.Value = True 
+   Endif
+   txtImpactingFactors.text = CERT!impacting_factors
+   chkPrintOnCentreLinkForm.value = CERT!print_on_centrelink_form
+   txtMyPatientSince.text = CERT!my_patient_since
+   txtAtPracticeSince.text = currentconsult!patient!patient_at_practice_since
+   'now set the health issues combo's on either side of the input screen
+   form_medical_condition_primary.Set_Health_Issues(CERT!primary_diagnosis!fk_pasthistory)
+   'now if this is a new form but via an 'Edit as new' from the popup menu then
+   'have to remove some keys, otherwise it will stuff up saving see Save(). about line 413
+   If fk_certificate = 0 Then    
+      If Not IsNull(CERT!secondary_diagnoses) Then    
+         For Each secondary_condition In CERT!secondary_diagnoses
+            Try secondary_condition.Remove("pk_centrelink_diagnoses")
+         Next
+      End If 
+   End If     
+   form_medical_condition_secondary.Set_Health_Issues(, CERT!secondary_diagnoses)
+   bExit = False  
+   EditArea_Nofify_Data_Change(False)
+   
+End
+
+Public Sub Certificate_This_Consult_Delete()
+   'Can only be deleted on the day in this section
+   'May be deleted any day with Audit via the tabbed lists in FClinical   
+   
+   Dim Cert As CRow
+   Dim ProgressNote As CRow
+   Dim Document_Centrelink_Form As CRow   
+   
+   Message.title = "Delete a Centrelink Certificate"
+   Inc Application.Busy
+   If Message.Question("Are you sure you want to delete this certificate?", "Yes", "No") = 2 Then Return  
+   'First remove the progress note 
+   ProgressNote = New CRow                                           
+   ProgressNote.put_unchanged(fk_progressnote, "fk_progressnote") 
+   ProgressNote!fk_audit_action = const.cAuditAction_MarkDeleted 
+   ProgressNote!deleted = True 
+   ProgressNote.Save("clin_consult.progressnotes", "fk_progressnote")
+   'next the document
+   Document_Centrelink_Form = New CRow
+   Document_Centrelink_Form.put_unchanged(fk_document, "fk_document")
+   Document_Centrelink_Form!deleted = True   
+   Document_Centrelink_Form.Save("documents.documents", "fk_document")
+   'next the certificate
+   Cert = New CRow  
+   Cert.put_unchanged(fk_certificate, "fk_certificate")
+   Cert!deleted = True
+   Cert.Save("clin_certificates.centrelink_medical_certificates", "fk_certificate")
+   modDBConnect.CommitTrans()
+   ' FClinical.Refresh_AllPreviousNotes()
+   Reload   
+   Dec Application.Busy
+Catch
+   Dec Application.Busy
+   Message.info("An error occurred whilst trying to delete this certificate.\n\n"
+   "If this persists please contact your System Administrator")
+   
+End
+
+Public Sub Certificate_Preview()
+   
+End
+
+Private Sub Settings_Load()
+   
+   VSplit_Certificates.Layout = Settings["FCentreLink/Vsplit_Certificates.Layout", modUtilGUI.VSplit([9, 1])]  
+   cvwCertificatesToday.font = Font[Settings["FCentreLink/cvwCertificates.font", "DejaVu Sans,9"]]
+   HSplit_Certificates.layout = Settings["FCentreLink/Hsplit_Certificates.Layout", modUtilGUI.HSplit([1, 1])]  
+   
+End
+
+Public Sub VSplit_Certificates_Resize()
+   
+   Settings["FCentreLink/Vsplit_Certificates.Layout"] = VSplit_Certificates.Layout
+   Settings.Save
+   
+End
+
+Public Sub EditArea_TxtBox_Change()
+   
+   EditArea_Nofify_Data_Change(True)
+   
+End
+
+Public Sub EditArea_Nofify_Data_Change(flag As Boolean)
+   
+   If bexit Then Return
+   If flag Then
+      VBox_EditArea.Padding = 1
+   Else
+      VBox_EditArea.Padding = 0
+   End If
+   
+End
+
+Public Sub EditArea_TxtBox_GotFocus()
+   
+   Last.BackGround = Color.rgb(95, 255, 175)
+   If Last.text = "" And Last.tag = "unfit from" Then 
+      Last.text = Format(Now(), "dd/mm/yyyy")
+      txtUnfitTo.text = Format(DateAdd(Now(), gb.Month, 1), "dd/mm/yyyy")
+   End If
+
+End
+
+Public Sub EditArea_TxtBox_LostFocus()
+   
+   Last.BackGround = Color.White
+   Select Case Last.tag
+      Case "unfit from"   ', "unfit_to"   
+         If Last.text <> "" Then
+            If Not modEditAreaHelpers.Valid_Date(Last) Then
+               Last.clear
+            End If
+         End If
+   End Select
+   
+End
+
+Public Function EditArea_Clear()
+   
+   bExit = True
+   form_medical_condition_primary.bExit = True
+   form_medical_condition_secondary.bExit = True
+   modEditAreaHelpers.EditArea_Clear(VBox_EditArea_Left)
+   modEditAreaHelpers.EditArea_Clear(form_medical_condition_primary.VBox_EditArea)
+   modEditAreaHelpers.EditArea_Clear(form_medical_condition_secondary.VBox_EditArea)
+   form_medical_condition_primary.cvwHealthIssues.Clear
+   form_medical_condition_secondary.cvwHealthIssues.Clear
+   form_medical_condition_primary.bExit = False   
+   form_medical_condition_secondary.bExit = False  
+   fk_certificate = 0
+   fk_progressnote = 0
+   fk_centrelink_diagnoses_primary = 0
+   fk_code = ""
+   fk_coding_system = 0
+   bExit = False 
+   EditArea_Nofify_Data_Change(False)
+   VBox_EditArea.Enabled = False 
+   
+End
+
+Public Function EditArea_TxtBox_ExcludeKeys(keycode As Integer, tag As String) As Boolean
+   
+   Dim bKeyValid As Boolean
+   
+   Select Case tag
+      Case "unfit from", "unfit to"
+         bKeyValid = modUtilGUI.AllowKeys(const.AllowKeys_DateFormat, keycode)
+      Case "my patient since", "at practice since"
+         bKeyValid = modUtilGUI.AllowKeys(const.AllowKeys_NumbersOnly, keycode)
+      Case Else
+         bKeyValid = True
+   End Select
+   Return bKeyValid
+   
+End
+
+Public Sub EditArea_TxtBox_KeyPress()
+   
+   Dim bKeyValid As Boolean
+   
+   bkeyvalid = EditArea_TxtBox_ExcludeKeys(key.code, Last.tag)
+   If bkeyvalid = False Then
+      Stop Event
+      Return
+   End If
+   If Key.code = Key.Return Or Key.code = Key.Tab Then
+      Select Case Last.tag
+         Case "other conditions"
+            txtUnfitFrom.SetFocus
+         Case "unfit from"
+            txtUnfitTo.SetFocus
+         Case "unfit to"
+            rbUsualWorkYes.SetFocus
+         Case "impacting factors"
+            txtAtPracticeSince.SetFocus
+         Case "at practice since"
+            txtMyPatientSince.SetFocus
+         Case "my patient since"
+            
+      End Select
+   Endif
+   
+End
+
+Private Function Certificate_Valid() As Boolean
+   '-------------------------------------------- 
+   'Ensure have enough information to save/print
+   'first the primary condition
+   '--------------------------------------------
+   
+   Message.title = "Missing Data - Primary Condition"
+   If form_medical_condition_primary.Diagnosis().count = 0 Then
+      Message.Warning("PLease fill in a primary diagnosis", "Ok")
+      form_medical_condition_primary.cmbIncludeHealthIssue.SetFocus
+      Return
+   Endif
+   If form_medical_condition_primary.Condition_Temporality() = 0 Then
+      Message.Warning("Please indicate if the primary condition is temporary, permanent, or an exacerbation.", "Ok")
+      Return
+   Endif
+   If form_medical_condition_primary.Condition_Prognosis() = 0 Then
+      Message.Warning("Please indcate the duration of time the primary condition will be present.", "Ok")
+      Return
+   Endif
+   If form_medical_condition_primary.Symptoms() = "" Then
+      Message.Warning("Please indicate what the symptoms are for the primary condition.", "OK")
+      form_medical_condition_primary.txtSymptoms.SetFocus
+      Return
+   Endif
+   
+   If form_medical_condition_primary.Treatment_Current() = "" Then
+      Message.Warning("Please indicate the current treatment; for the primary condition.", "Ok")
+      form_medical_condition_primary.txtTreatmentCurrent.SetFocus()
+      Return   
+   Endif
+   Message.title = "Secondary Conditions"
+   If form_medical_condition_secondary.Symptoms() <> "" Or form_medical_condition_secondary.Treatment_current() <> "" Or form_medical_condition_secondary.treatment_past() <> "" Or form_medical_condition_secondary.treatment_planned() <> "" Then
+      If form_medical_condition_secondary.diagnosis().count = 0 Then
+         Message.Warning("Please select a diagnosis for the secondary condition(s)", "OK")
+         Return
+      Endif
+   Endif
+   'Next the secondary condition if present
+   If form_medical_condition_secondary.diagnosis().count <> 0 Then
+      Message.title = "Missing Data - Secondary Condition"
+      If form_medical_condition_secondary.Condition_Temporality() = 0 Then
+         Message.Warning("Please indicate if the secondary condition is temporary, permanent, or an exacerbation.", "Ok")
+         Return
+      Endif
+      If form_medical_condition_secondary.Condition_Prognosis() = 0 Then
+         Message.Warning("Please indcate the duration of time the secondary condition will be present", "Ok")
+         Return
+      Endif
+      If form_medical_condition_secondary.Symptoms() = "" Then
+         Message.Warning("Please indicate what the symptoms are for the secondary condition.", "OK")
+         form_medical_condition_secondary.txtSymptoms.SetFocus
+         Return
+      Endif
+      If form_medical_condition_secondary.Treatment_Current() = "" Then
+         Message.Warning("Please indicate the current treatment for the secondary condition.", "Ok")
+         form_medical_condition_secondary.txtTreatmentCurrent.SetFocus()
+         Return
+      Endif
+   End If  
+   Message.title = "Missing Data - Form Dates" 
+   'Now check certificate dates are present
+   If Trim(txtUnfitFrom.text) = "" Then
+      Message.Warning("Please fill in the date the patient is/was unfit from", "Ok")
+      txtUnfitFrom.SetFocus()
+      Return
+   Endif
+   If Trim(txtUnfitTo.text) = "" Then
+      Message.Warning("Please fill in the date the patient was or will be unfit to", "Ok")
+      txtUnfitTo.SetFocus()
+      Return
+   Endif
+   Message.title = "Missing Data - Ability to work" 
+   If rbUsualWorkYes.Value = False And rbUsualWorkNo.Value = False Then
+      Message.Warning("Please indicate if the patient can or cannot do their usual work", "Ok")
+      Return
+   Endif
+   If rbOtherWorkYes.Value = False And If rbOtherWorkNo.Value = False Then
+      Message.Warning("Please indicate if the patient can or cannot do other work")
+      Return
+   Endif
+   Message.title = "Missing Data - Length of Time At Practice" 
+   If Trim(txtAtPracticeSince.text) = "" Then
+      Message.Warning("Please indicate how the year the patient started attending the practice.", "Ok")
+      txtAtPracticeSince.SetFocus()
+      Return
+   Endif
+   Message.title = "Missing Data - Years You've Know the Patient" 
+   If Trim(txtMyPatientSince.text) = "" Then
+      Message.Warning("Please indicate the year you started looking after this patient", "Ok")
+      txtMyPatientSince.SetFocus()
+      Return
+   Endif
+   
+   Return True
+   
+End
+
+Public Sub rbEditArea_Click()
+   
+   If Last.tag = "other work yes" Or Last.tag = "other work no" Then txtImpactingFactors.SetFocus
+   
+End
+
+Private Function Secondary_Diagnoses_Summary(secondary_conditions As Collection) As String
+   
+   Dim HealthIssue As Collection
+   Dim sString As String
+   
+   For Each HealthIssue In secondary_conditions
+      sString &= HealthIssue!description & ", "
+   Next
+   sString = modUtilGUI.Strip_Last_Character(sString)
+   Return sString  
+   
+End
+
+Private Sub Progress_Notes_Create(main_condition As Collection, secondary_conditions As Collection) As String
+   '----------------------------------------------------------------------------
+   ' Prepares a brief thml progress note to indicate what is on the certificate
+   '   Centrelink Medical Certificate Printed
+   '    * main health issue
+   '    * secondary healh issues
+   '    * date of unfitness
+   '    * ability to do their normal work
+   '    * ability to do any work or study
+   '    * Other actors needing assistance from centrelink
+   '----------------------------------------------------------------------------
+   
+   Dim sPN As String
+   Dim HealthIssue As Collection 
+   
+   sPN = "<P><B>Centrelink Medical Certificate Printed</B></P>" 
+   "<UL>"
+   sPN &= "<LI>Condition with most impact: " & main_condition!description
+   If secondary_conditions.count Then
+      sPN &= "<LI>Secondary conditions included are: " & Secondary_Diagnoses_Summary(secondary_conditions)
+   Endif
+   sPN &= "<LI>Unfit for work or study from " & txtUnfitFrom.text & " to " & txtUnfitTo.Text
+   sPN &= "<LI>Able to do usual work or study: " 
+   If rbUsualWorkYes.value = True Then
+      sPN &= "Yes"
+   Else
+      sPN &= "No"
+   End If 
+   sPn &= "<LI>Able to do other work for > 8 hours per Week: "
+   If rbOtherWorkYes.value = True Then
+      sPn &= "Yes"
+   Else
+      sPn &= "No"
+   Endif
+   If Trim(txtImpactingFactors.text) <> "" Then
+      sPn &= "<LI>Factors impacting return to work which may need assistance: " & Trim(txtImpactingFactors.text)
+   Endif
+   sPn &= "</UL>"
+   Return sPn
+   
+End
+
+Private Function Certificate_LaTeX_Create(Optional bUseOverPic As Boolean = False) As String
+   
+   '-----------------------------------------------------------------------
+   'Prepares the LaTeX definition to be with be printed on the actual form
+   'of to saved to the database (always uses overpic)
+   'in FUserPrefernces, the user can elect to print on pre-printed form
+   'The printout can be shifted up/down for each room printer by the user
+   'in FRoomSetup
+   '---------------------------------------------------------------------   
+   
+   Dim templ As CTemplate
+   Dim x As Integer
+   Dim sstring As String
+   Dim filename As String
+   Dim date_components As String[]
+   Dim main_condition As Collection
+   Dim secondary_condition As Collection
+   
+   If bUseOverPic = True Then
+      templ = New CTemplate("centrelink-medical-certificate-overpic", "tex")
+      templ.Subst("pdf-path", modUtil.Find_File("templates" &/ "centrelink-medical-certificate.pdf"))
+   Else
+      templ = New CTemplate("centrelink-medical-certificate-plain", "tex")
+      templ.Subst("print-offset-vertical", Settings["FRoomSetup/Centrelink_Form_Vertical_Offset", "-39.5mm"])
+      templ.Subst("print-offset-horizontal", Settings["FRoomSetup/Centrelink_Form_Horizontal_Offset", "-36mm"])
+   Endif
+   
+   templ.subst_common(currentconsult)
+   main_condition = form_medical_condition_primary.Diagnosis()
+   templ.Subst("my-patient-since", Trim(txtMyPatientSince.text))
+   templ.Subst("at-practice-since", Trim(txtAtPracticeSince.text))
+   templ.Subst("primary-condition-diagnosis", main_condition!description)
+   date_components = Split(main_condition!year_onset, "/")
+   If date_components.Length = 1 Then  
+      templ.Subst("primary-date-onset-from-year", date_components[0])
+   Endif
+   If date_components.Length = 2 Then
+      templ.Subst("primary-date-onset-from-month", date_components[0])
+      templ.Subst("primary-date-onset-from-year", date_components[1])
+   Endif
+   If date_components.Length = 3 Then
+      templ.Subst("primary-date-onset-from-day", date_components[0])
+      templ.Subst("primary-date-onset-from-month", date_components[1])
+      templ.Subst("primary-date-onset-from-year", date_components[2])
+   Endif
+   templ.Subst("primary-date-onset-from-day", "\\relax")
+   templ.Subst("primary-date-onset-from-month", "\\relax")
+   templ.Subst("primary-date-onset-from-year", "\\relax")
+   If form_medical_condition_primary.chkConditionTemporary.value = True Then
+      templ.Subst("primary-condition-temporary", "X")
+   Else
+      templ.Subst("primary-condition-temporary", "\\relax")
+   Endif
+   If form_medical_condition_primary.chkConditionPermanant.value = True Then
+      templ.Subst("primary-condition-permanent", "X")
+   Else
+      templ.Subst("primary-condition-permanent", "\\relax")
+   Endif
+   If form_medical_condition_primary.chkConditionExacerbation.value = True Then
+      templ.Subst("primary-condition-exacerbation", "X")
+   Else
+      templ.Subst("primary-condition-exacerbation", "\\relax")
+   Endif
+   If form_medical_condition_primary.chkPrognosisLT3M.value = True Then
+      templ.Subst("primary-condition-prognosis-lt3m", "X")
+   Else
+      templ.Subst("primary-condition-prognosis-lt3m", "\\relax")
+   Endif
+   If form_medical_condition_primary.chkPrognosis3to12M.value = True Then
+      templ.Subst("primary-condition-prognosis-3to12m", "X")
+   Else
+      templ.Subst("primary-condition-prognosis-3to12m", "\\relax")
+   Endif
+   If form_medical_condition_primary.chkPrognosis13to24M.value = True Then
+      templ.Subst("primary-condition-prognosis-13to24m", "X")
+   Else
+      templ.Subst("primary-condition-prognosis-13to24m", "\\relax")
+   Endif
+   If form_medical_condition_primary.chkPrognosisOver24M.value = True Then
+      templ.Subst("primary-condition-prognosis-over24m", "X")
+   Else
+      templ.Subst("primary-condition-prognosis-over24m", "\\relax")
+   Endif
+   If form_medical_condition_primary.chkPrognosisUncertain.value = True Then
+      templ.Subst("primary-condition-prognosis-uncertain", "X")
+   Else
+      templ.Subst("primary-condition-prognosis-uncertain", "\\relax")
+   Endif
+   'Now the secondary condition(s)
+   x = 1
+   For Each secondary_condition In form_medical_condition_secondary.Diagnosis()
+      templ.Subst("secondary-condition-diagnosis" & Str(x), secondary_condition!description & " onset " & secondary_condition!year_onset)
+      Inc x
+   Next
+   templ.Subst("secondary-condition-diagnosis1", "\\relax")
+   templ.Subst("secondary-condition-diagnosis2", "\\relax")
+   templ.Subst("secondary-condition-diagnosis3", "\\relax")
+   
+   If form_medical_condition_secondary.chkConditionTemporary.value = True Then
+      templ.Subst("secondary-condition-temporary", "X")
+   Else
+      templ.Subst("secondary-condition-temporary", "\\relax")
+   Endif
+   If form_medical_condition_secondary.chkConditionPermanant.value = True Then
+      templ.Subst("secondary-condition-permanent", "X")
+   Else
+      templ.Subst("secondary-condition-permanent", "\\relax")
+   Endif
+   If form_medical_condition_secondary.chkConditionExacerbation.value = True Then
+      templ.Subst("secondary-condition-exacerbation", "X")
+   Else
+      templ.Subst("secondary-condition-exacerbation", "\\relax")
+   Endif
+   If form_medical_condition_secondary.chkPrognosisLT3M.value = True Then
+      templ.Subst("secondary-condition-prognosis-lt3m", "X")
+   Else
+      templ.Subst("secondary-condition-prognosis-lt3m", "\\relax")
+   Endif
+   If form_medical_condition_secondary.chkPrognosis3to12M.value = True Then
+      templ.Subst("secondary-condition-prognosis-3to12m", "X")
+   Else
+      templ.Subst("secondary-condition-prognosis-3to12m", "\\relax")
+   Endif
+   If form_medical_condition_secondary.chkPrognosis13to24M.value = True Then
+      templ.Subst("secondary-condition-prognosis-13to24m", "X")
+   Else
+      templ.Subst("secondary-condition-prognosis-13to24m", "\\relax")
+   Endif
+   If form_medical_condition_secondary.chkPrognosisOver24M.value = True Then
+      templ.Subst("secondary-condition-prognosis-over24m", "X")
+   Else
+      templ.Subst("secondary-condition-prognosis-over24m", "\\relax")
+   Endif
+   If form_medical_condition_secondary.chkPrognosisUncertain.value = True Then
+      templ.Subst("secondary-condition-prognosis-uncertain", "X")
+   Else
+      templ.Subst("secondary-condition-prognosis-uncertain", "\\relax")
+   Endif
+   templ.Subst("primary-condition-symptoms", Trim(form_medical_condition_primary.txtSymptoms.text))
+   templ.Subst("primary-condition-treatment-past", Trim(form_medical_condition_primary.txtTreatmentPast.text))
+   templ.Subst("primary-condition-treatment-current", Trim(form_medical_condition_primary.txtTreatmentcurrent.text))
+   templ.Subst("primary-condition-treatment-planned", Trim(form_medical_condition_primary.txtTreatmentplanned.text))
+   templ.Subst("secondary-condition-symptoms", Trim(form_medical_condition_secondary.txtSymptoms.text))
+   templ.Subst("secondary-condition-treatment-past", Trim(form_medical_condition_secondary.txtTreatmentPast.text))
+   templ.Subst("secondary-condition-treatment-current", Trim(form_medical_condition_secondary.txtTreatmentcurrent.text))
+   templ.Subst("secondary-condition-treatment-planned", Trim(form_medical_condition_secondary.txtTreatmentplanned.text))
+   templ.Subst("other-impacting-conditions", Trim(txtOtherConditions.Text))
+   date_components = Split(txtUnfitFrom.Text, "/")
+   templ.Subst("unfit-from-day", date_components[0])
+   templ.Subst("unfit-from-month", date_components[1])
+   templ.Subst("unfit-from-year", date_components[2])
+   date_components = Split(txtUnfitTo.Text, "/")
+   templ.Subst("unfit-to-day", date_components[0])
+   templ.Subst("unfit-to-month", date_components[1])
+   templ.Subst("unfit-to-year", date_components[2])
+   If rbUsualWorkYes.value = True Then
+      templ.Subst("usual-work-yes", "X")
+      templ.Subst("usual-work-no", "\\relax")
+   Else
+      templ.Subst("usual-work-no", "X")
+      templ.Subst("usual-work-yes", "\\relax")
+   End If   
+   If rbOtherWorkYes.value = True Then
+      templ.Subst("other-work-yes", "X")
+      templ.Subst("other-work-no", "\\relax")
+   Else
+      templ.Subst("other-work-no", "X")
+      templ.Subst("other-work-yes", "\\relax")
+   End If
+   templ.Subst("other-impacting-factors", Trim(txtImpactingFactors.text))
+   date_components = Split(Format(currentConsult.GetConsultDate(), "dd/mm/yyyy"), "/")
+   templ.Subst("printed-on-day", date_components[0])
+   templ.Subst("printed-on-month", date_components[1])
+   templ.Subst("printed-on-year", date_components[2])
+   Return Templ.GetData()
+   
+End
+
+Public Sub cvwCertificatesPrevious_Select()
+   
+   cvwCertificatesToday.MoveCurrent
+   cvwCertificatesPrevious_key = cvwCertificatesPrevious.Item.Key
+   Certificate_Previous = Certificates_Previous[cvwCertificatesPrevious_key]
+   
+End
+
+Public Sub cvwCertificatesPrevious_Fill()
+   'Load all previous certificates (allows eg Edit as New), bhowever need to exclude today's
+   'hence can't easily zero-base the collection for reference so use the pk
+   'due to a bug in modUtilGUI.Columnview_Columns_Set_Size(,) can't use this to size columns
+   
+   Dim Cert As Collection
+   Dim x As Integer
+   
+   currentConsult.Refresh("centrelink_certificates")
+   Certificates_Previous = modUtil.Copy_Collection_Keyed_Sequentially(currentConsult!centrelink_certificates)
+   cvwCertificatesPrevious.Clear
+   For Each Cert In Certificates_Previous
+      If Not modUtil.IsSameDay(cert!consult_date, currentConsult.GetConsultDate()) Then  
+         x = cert!pk_certificate
+         cvwCertificatesPrevious.add(x, 0)
+         cvwCertificatesPrevious[x][0] = Format(cert!consult_date, "dd/mm/yyyy")
+         cvwCertificatesPrevious[x][1] = cert!primary_diagnosis!description
+         cvwCertificatesPrevious[x][2] = Format(cert!unfit_from, "dd/mm/yyyy")
+         cvwCertificatesPrevious[x][3] = Format(cert!unfit_to, "dd/mm/yyyy")
+      End If   
+   Next
+   ' modUtilGUI.Columnview_Columns_Set_Size(cvwCertificatesPrevious, lblmeasure)
+   
+End
+
+Public Sub cvwCertificatesToday_Fill()
+   'Only load the certificate written today
+   
+   Dim Cert As Collection
+   Dim x As Integer
+   
+   EditArea_Clear
+   currentConsult.Refresh("centrelink_certificates_this_consult")
+   Certificates_This_Consult = modUtil.Copy_Collection_Keyed_Sequentially(currentConsult!centrelink_certificates_this_consult)
+   cvwCertificatesToday.Clear
+   For Each cert In Certificates_This_Consult
+      cvwCertificatesToday.add(x, 0)
+      cvwCertificatesToday[x][0] = Format(cert!consult_date, "dd/mm/yyyy")
+      cvwCertificatesToday[x][1] = cert!primary_diagnosis!description
+      cvwCertificatesToday[x][2] = Format(cert!unfit_from, "dd/mm/yyyy")
+      cvwCertificatesToday[x][3] = Format(cert!unfit_to, "dd/mm/yyyy")
+      Inc x
+   Next
+   modUtilGUI.Columnview_Columns_Set_Size(cvwCertificatesToday, lblmeasure)
+   
+End
+
+Public Sub cvwCertificatesPrevious_Menu()
+   
+   If cvwCertificatesPrevious.count Then mnuCertificates_Previous.Popup
+   
+End
+
+Public Sub mnuCertificates_Previous_Click()
+   
+   Select Case Last.tag
+      Case "edit as new"
+         If cvwCertificatesToday.count Then
+            Message.Info("You have already created a centrelink certificate today, you can't do another one using this template.\n\n"
+            "Please edit the existing one if you wish to make changes.")
+            Return
+         Endif
+         Certificate_Display(certificate_previous)   'will display but remove the keys fk_certificate, fk_progressnote, fk_document and secondary condition keys
+         cvwCertificatesPrevious.UnselectAll
+         VBox_EditArea.Enabled = True  
+      Case "delete"
+         If modCertificatesDBI.Centrelink_Medical_Certificate_Delete(currentconsult, certificate_previous) Then
+            cvwCertificatesPrevious_Fill
+         Endif
+      Case "font"
+         modUtilGUI.Columnview_SetFont(cvwCertificatesPrevious, "FCentreLink")     
+      Case "re-print"
+         If InStr(certificate_previous!latex, "overpic") Then
+            modPrinting.Print_latex_PDF(certificate_previous!latex)
+         Else
+            Message.Title = "Re-Print Centrelink Certificate"
+            If Message.Question("Please insert pre-formatted centrelink medical certificate paper into your printer", "Print", "Cancel") = 2 Then Return
+            modPrinting.Print_latex(certificate_previous!latex)
+         Endif
+      Case "preview" 
+         Try FClinical.Editor_ShowPage_External("pdf file", "Centrelink Certificate " & Format(certificate_previous!consult_date, "dd/mm/yyyy"), modPrinting.Latex_To_PDF(certificate_previous!latex))
+      Case "help"
+         Decision_Support            
+   End Select
+   
+End
+
+Public Sub cvwCertificatesToday_Select()
+   
+   cvwCertificatesToday.MoveCurrent
+   cvwCertificatesToday_key = cvwCertificatesToday.Item.Key
+   Certificate_This_Consult = Certificates_This_Consult[cvwCertificatesToday_key]
+   Certificate_Display(Certificate_This_Consult)
+   
+End
+
+Public Sub cvwCertificatesToday_Menu()
+   
+   If cvwCertificatesToday.count Then mnuCertificateToday.Popup
+   
+End
+
+Public Sub mnuCertificateToday_Click()
+   
+   Select Case Last.tag
+      Case "edit"
+         Certificate_This_Consult_Edit  'enable the edit area
+      Case "delete"
+         Certificate_This_Consult_Delete
+      Case "font"
+         modUtilGUI.Columnview_SetFont(cvwCertificatesToday, "FCentreLink")    
+         modUtilGUI.Columnview_Columns_Set_Size(cvwCertificatesToday, lblmeasure)
+      Case "re-print"
+         If InStr(Certificate_This_Consult!latex, "overpic") Then
+            modPrinting.Print_latex_PDF(Certificate_This_Consult!latex)
+         Else
+            Message.Title = "Re-Print Centrelink Certificate"
+            If Message.Question("Please insert pre-formatted centrelink medical certificate paper into your printer", "Print", "Cancel") = 2 Then Return
+            modPrinting.Print_latex(Certificate_This_Consult!latex)
+         Endif
+      Case "preview" 
+         Try FClinical.Editor_ShowPage_External("pdf file", "Centrelink Certificate " & Format(Certificate_This_Consult!consult_date, "dd/mm/yyyy"), modPrinting.Latex_To_PDF(Certificate_This_Consult!latex))
+      Case "help"
+         Decision_Support            
+   End Select
+   
+End
+
+Private Sub cmbIncludeHealthIssue_Primary_Click()
+   '-----------------------------------------------------------------------------------------
+   'User has clicked on the health issues combo box on the embedded FCentreLinkCondition form
+   'for primary health issues (the one embedded on the left side top of this form
+   '-----------------------------------------------------------------------------------------
+   '  Stop Event
+   ' form_medical_condition_primary.HealthIssue_Add
+   
+End  
+
+Private Sub cmbIncludeHealthIssue_Secondary_Click()
+   '-----------------------------------------------------------------------------------------
+   'User has clicked on the health issues combo box on the embedded FCentreLinkCondition form
+   'for primary health issues (the one embedded on the left side top of this form
+   '-----------------------------------------------------------------------------------------
+   
+End
+
+Private Sub Have_No_Major_Health_Issues() As Boolean
+   'If there are not  major health issues in past history return  true flag
+   
+   Dim HI As Collection
+   
+   For Each HI In CurrentConsult!past_history                                  'look through all past history or health issues
+      If HI!major = True Then                                               'and if an active problem
+         If HI!confidential = False Then Return False
+      End If  
+   Next
+   Return True
+   
+End
+
+Public Sub chkEditArea_Click()
+   
+   If Last.tag = "include confidential" Then 'include or exclude history items rated as confidential
+      form_medical_condition_primary.Problems_Reload(chkIncludeConfidential.value)
+      form_medical_condition_secondary.Problems_Reload(chkIncludeConfidential.value)
+   Else
+      EditArea_Nofify_Data_Change(True)
+   End If   
+   
+End
+
+Private Function Decision_Support_Text() As String
+   
+   Return ""
+   "<P><B>Caveats on Data Entry</B></P>"
+   ""
+   "<P>You may not enter free text in this section for diagnoses (sorry Horst I can hear you cursing). The rationale for this is "
+   "that if the patient is so sick as to need a centrelink medical certificate, good record keeping would dictate that you "
+   "should have the relevant medical conditions in your clinical record system (If someone really wants to program direct "
+   "entry of health conditions via this module, please feel free (it's open source after all) but I won't be spending the time on it).</P>"
+   ""
+   "<P>Realising that you may not have entered the relevant history,  EasyGP will attempt to make it easier for you. If you need to update this "
+   "patient's health issues in the Past History section, any that you enter or modify will be automatically reloaded back into the "
+   "selection combo box on this form, including updating any textural description or dates of onset of those conditions you have already "
+   "selected."
+   "<B><P>Minimum Data Input Requirements</B></P>"
+   "<P>At a minimum to complete this certificate, you must select from the drop down combo box:</P>"
+   "<UL>"
+   "<LI> The primary medical condition - that which has the most impact on the patient's inability to work"
+   "<LI> One or more secondary conditions (if relevant)"
+   "<LI> Symptoms and past current treatment for the condition(s)"
+   "<LI> Mandatory information such as if the conditionis temporary etc, expected duration of incapacity, dates of  unfitness "
+   "and whether they can do their usual work or study, or other work or study"
+   "</UL>"
+   ""
+   "<P>Note the illogical nature of this government certificate in that you can enter 1 or more secondary diagnoses "
+   "   but the printed form only allows combined information the temporality or work capacity, symptoms etc of these diagnoses.</P>"
+   "<B><P>Printing Information</B></P>"
+   "<UL>"
+   "<LI>You may either use the supplied 2 column centrelink form, you will be prompted to insert this, or "
+   "<LI>EasyGP will print onto an electronic scanned copy of the form"
+   "</UL>"
+   "<P>Settings for defaults are included in the <I>User Preferences</I> section, and you may adjust the left/right, up/down adjustments for your plain paper printer "
+   "via the <I>Room Setup</I> section via the tabs on the left of this screen.</P>"
+   "<P>To view all previous certificates, select the certificates tab on the tabbled lists at the top right of this screen, then click "
+   "the centrelink radio button</P>"
+   
+End
+
+Public Sub HSplit_Certificates_Resize()
+   'Don't let them screw up the screen display here
+   
+   HSplit_Certificates.layout = [1, 1]
+   
+End
+
+Public Sub HSplit_EditArea_Resize()
+   
+   HSplit_EditArea.Layout = [1, 1]
+   
+End

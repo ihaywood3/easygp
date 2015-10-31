@@ -22,20 +22,52 @@ Public currentconsult As CConsult                   'passed from calling form
 Private medication_sort_order As String = "generic" 'whereas this is the default, may be changed at any time on the scripts tab
 Private embedded_in_form As String                  'the form this form is embedded e.g "FClinical" or "FInbox"
 Private Deleted_medications As Collection           'fixme not yet implemented
+Private ATC As String                               'a substring of ACT eg 'C0' for cardiovascular
 
-Public Sub Init(cons As CConsult)
+Public Sub _new()
    
-   currentconsult = cons 
    If embedded_in_form = "FInbox" Then
       With lblPatient
          .Visible = True   
          .text = currentconsult!patient!wholename
       End With
    Endif
+   lblmeasure.text = "  Cardiovascular         "
+   With cmbATC
+      .Clear
+      .width = lblmeasure.width
+      .Add("Cardiovascular")
+      .Add("Diabetic")
+      .Add("No Filter")
+      .index = 2
+   End With
    
-   Settings_Load
-   Medications_Refresh
+End
+
+Public Sub Init(cons As CConsult)
+   
+   currentconsult = cons 
+   ATC = ""                               'no filtering
+   Medications_Refresh                    'show all meds
    Deleted_Medications = New Collection
+   Settings_Load 'have to be here and not in _New()
+   
+End
+
+Public Sub Gui_Clear()
+   
+   currentconsult = Null
+   modUtilGUI.Columnview_Clear_Properly(cvwMedications)                
+   rbActiveMedications.value = True        'default option button to active meds 
+   
+End
+
+Public Sub cmbATC_Click()
+   
+   If cmbATC.index = 0 Then ATC = "C0"
+   If cmbATC.index = 1 Then ATC = "A10B"
+   If cmbATC.index = 2 Then ATC = ""
+   Medications_Refresh
    
 End
 
@@ -47,7 +79,8 @@ End
 
 Public Sub Medications_Refresh()
    '-------------------------------------------------------------------------------------------
-   'Refreshes the medications list
+   'Refreshes the medications list, ie tells  modPrescribingDBI.cvwMedications_Reload to
+   'reload the collection from the back-end (its default)
    'the medications collection = collection of **ALL** drugs ever prescribed
    'ordered by the last_date - ie most recent on the top
    'hence the brand displayed in the medication list will be the last brand prescribed
@@ -65,7 +98,7 @@ Public Sub Medications_Refresh()
    '        HOWEVER THIS STILL WORKS   
    '------------------------------------------------------------------------------------------
    
-   modPrescribingDBI.cvwMedications_Refresh(cvwMedications, currentconsult, lblmedications, medication_sort_order)
+   modPrescribingDBI.cvwMedications_Reload(cvwMedications, currentconsult, lblmedications, medication_sort_order, ATC)
    
 End
 
@@ -76,10 +109,11 @@ Public Sub Set_Patient_Name(pn As String)
 End
 
 Public Sub rbActiveInactive_Click()
-   
-   '--------------------------------------------
-   'Switches the display from active <> inactive
-   '--------------------------------------------
+   '---------------------------------------------------------------------------------------
+   'Switches the display from active <> inactive doesnt refresh the underlying collection
+   'the FALSE in modPrescribingDBI.cvwMedications_Reload() says don't refresh the collection
+   '----------------------------------------------------------------------------------------
+
    If Last.tag = "active" Then  
       lblMedications.tag = "active"
       lblMedications.text = "Active Medications"
@@ -87,7 +121,7 @@ Public Sub rbActiveInactive_Click()
       lblMedications.tag = "inactive"
       lblMedications.text = "Inactive Medications"
    Endif
-   Medications_Refresh
+   modPrescribingDBI.cvwMedications_Reload(cvwMedications, currentconsult, lblmedications, medication_sort_order, ATC, False)
    
 End
 
@@ -96,11 +130,9 @@ Public Sub Settings_Save()
 End
 
 Private Sub Settings_Load()
-   '---------------------------------------------------
-   'Load font settings according to FClinical or FInbox 
-   '---------------------------------------------------
+   '----------------------------------------------------------
    
-   cvwMedications.Font = Font[Settings[embedded_in_form & "_MedicationsList/cvwMedications.font", "Arial,9"]]
+   cvwMedications.Font = Font[Settings[embedded_in_form & "/cvwMedications.font", "Arial,9"]]
    
 End
 
@@ -112,18 +144,18 @@ Public Sub Refresh_Parent_Forms()
    '---------------------------------------------------------------------------- 
    
    Select Case embedded_in_form
-      Case "FClinical"                                                'meds list already updated
+      Case "FClinicalLists"                                                'meds list already updated
          Try FGPMPTCA.GPMP_Update                                     'try and update the GPMP
          Try FGPMPTCA.GPMP_TCA_Reload_Latex                           'update latex showing in TCA
          If FInbox.Is_Same_Patient(currentconsult!patient!fk_patient) 'if same patient loaded into inbox
             Try FInbox.Medications_Refresh    
          End If    
-         FClinical.Refresh_Section(const.cSection_Food_Drug_List) 'if a drug food list is on a tab, update this
+         FClinical.Refresh_Section(const.cTab_Food_Drug_List) 'if a drug food list is on a tab, update this
          FClinical.Refresh_Section(const.cSection_HealthSummary)  'if a GPMP or health summary is on a tab refresh this
       Case "FInbox"
          If FClinical.IsSamePatient(currentconsult!patient!fk_patient) Then   
             FClinical.Refresh_Section(const.cSection_Prescriptions)  'refresh the meds list on the tabs in FClinical
-            FClinical.Refresh_Section(const.cSection_Food_Drug_List) 'if a drug food list is on a tab, update this
+            FClinical.Refresh_Section(const.cTab_Food_Drug_List) 'if a drug food list is on a tab, update this
             FClinical.Refresh_Section(const.cSection_HealthSummary)  'if a GPMP or health summary is on a tab refresh this
             Try FGPMPTCA.GPMP_Update()                               'if user doing care planning refresh this
             Try FGPMPTCA.GPMP_TCA_Reload_Latex                       'update latex showing in TCA
@@ -143,11 +175,7 @@ Public Sub mnuMedications_Click()
    medication = currentconsult!medications[cvwMedications.Selection[0]]
    Select Case Last.tag
       Case "fonts"
-         If embedded_in_form = "FInbox" Then   
-            modUtilGUI.Columnview_SetFont(cvwMedications, "FInbox_MedicationsList")
-         Else
-            modUtilGUI.Columnview_SetFont(cvwMedications, "FClinical_MedicationsList") 
-         End If    
+         modUtilGUI.Columnview_SetFont(cvwMedications, embedded_in_form) 
       Case "interactions"
       Case "unselect all"
          cvwMedications.UnselectAll
@@ -201,7 +229,7 @@ Public Sub mnuMedications_Click()
       Case "view inactive medications"
          rbInactiveMedications.value = True
       Case "view active medications"
-         rbactiveMedications
+         rbactiveMedications.value = True
       Case "brief product information"
          modUtilGUI.NotImplemented("Brief Product Information")
       Case "view medication history"
@@ -215,7 +243,7 @@ Public Sub mnuMedications_Click()
             FClinical.Editor_ShowPage_External("pdf file", medication!brand, modPrinting.Latex_To_PDF(medication!prescribed!latex))
          End If
       Case "prescribe selected", "prescribe all", "prescribe selected reg24", "prescribe all reg24"
-         If embedded_in_form = "FClinical" Then
+         If embedded_in_form = "FClinicalLists" Then
             FClinical.Editor_ShowPage_External("Scripts", "Prescriptions", "")      'Ensure the script module is loaded and visible
          End If   
          If Last.tag = "prescribe all" Or Last.tag = "prescribe all reg24" Then  'cvwMedicals.SelectAll does not work??
@@ -245,7 +273,7 @@ Public Sub mnuMedications_Click()
                   If InStr(Lower(prescribed!authority_approval_number), "z") Then 'all Z numbers are phone approvals
                      prescribed!authority_approval_number = Null
                   Else 'get latest streamlined code
-                '     prescribed!authority_approval_number = modPrescribingDBI.Restriction_code_get(prescribed!fk_product) <<DO NOT UNCOMMENT THIS IS WRONG
+                     '     prescribed!authority_approval_number = modPrescribingDBI.Restriction_code_get(prescribed!fk_product) <<DO NOT UNCOMMENT THIS IS WRONG
                   End If   
                End If   
             Endif
@@ -348,5 +376,25 @@ Public Sub rbMedicationsDisplay_Click()
    
    medication_sort_order = Last.tag
    Medications_Refresh()
+   
+End
+
+Public Sub cmbATC_KeyPress()
+   'don't allow typing in the combo
+   'I just like the appearance being like a textbox
+   
+   Stop Event
+   
+End
+
+Public Sub tbResetMeds_Click()
+   
+   cmbATC.index = 2
+   
+End
+
+Public Sub Form_Leave()
+   
+   ' cvwMedications.UnselectAll
    
 End

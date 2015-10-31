@@ -1,0 +1,418 @@
+' Gambas class file
+
+Private currentconsult As CConsult
+Private iCertificatetype As Integer = const.certificate_type_medical
+Private certificates_medical As Collection 
+Private cvwCertificates_Key As Integer
+
+Public Sub _new()
+   
+   Settings_Load
+   
+End
+
+Public Sub Init(cons As CConsult)
+   
+   currentconsult = cons 
+   rbMedicalCertificate.value = True
+   iCertificatetype = const.certificate_type_medical
+   Certificates_Reload()
+   
+End
+
+Public Sub Gui_Clear()
+   
+   currentconsult = Null
+   modUtilGUI.Columnview_Clear_Properly(cvwCertificates)
+   
+End
+
+Public Sub Current_Consult_Exists() As Boolean
+   
+   If Not IsNull(currentconsult) Then Return True 
+   
+End
+
+Public Sub Settings_Load()
+   
+   cvwCertificates.Font = Font[Settings["FClinLists_Certificates/cvwCertificates.font", "Arial,9"]] 
+   
+End
+
+Public Sub cvwCertificates_Select()
+   
+   cvwCertificates.MoveCurrent
+   cvwCertificates_Key = cvwCertificates.Item.Key
+   Select Case iCertificatetype
+      Case const.certificate_type_medical
+          Print certificates_medical[cvwCertificates_Key]
+      Case const.certificate_type_government
+         Document_Display(currentconsult!Centerlink_certificates[cvwCertificates.Item.key]) 
+         
+      Case const.certificate_type_insurance
+      Case const.certificate_type_workcover
+      Case const.certificate_type_other
+   End Select
+     
+End
+
+Public Sub mnuCertificates_Click()
+   '--------------------------------------------------------
+   'user has clicked on the certificates menu, this could be
+   'medical or workcover etc
+   '--------------------------------------------------------  
+   
+   Dim filename As String
+   
+   cvwCertificates.MoveCurrent()
+   Select Case Last.tag
+      Case "delete"
+         Select Case iCertificatetype
+            Case const.certificate_type_medical
+               If modCertificatesDBI.MedicalCertificates_Delete(currentconsult, currentconsult!medical_certificates[cvwCertificates.Item.Key]) Then
+                  Certificates_Reload()
+                  'fixme just do this to update if chkaudit.value = true
+               Endif  
+            Case const.certificate_type_government
+               'currently only centrelink medical certificates
+               If modUtil.IsSameDay(Now(), currentconsult.GetConsultDate()) Then
+                  Message.Info("As this certificate was written today, please delete from the certificates section (until I write better code when I get time!)")
+               Else
+                  If modCertificatesDBI.Centrelink_Medical_Certificate_Delete(currentconsult, currentconsult!centrelink_certificates[cvwCertificates.Item.Key]) Then
+                     Certificates_Reload()
+                  Endif
+               End If  
+            Case const.certificate_type_workcover
+               Message.Info("To delete workcover certificates please go to the Workcover Section, selected from the main toolbar.")
+         End Select
+      Case "preview"
+         Select Case iCertificatetype
+            Case const.certificate_type_medical
+               If Not IsNull(currentconsult!medical_certificates[cvwCertificates.Item.Key]!latex)
+                  filename = modPrinting.Latex_To_PDF(currentconsult!medical_certificates[cvwCertificates.Item.Key]!latex)
+                  FClinical.Editor_ShowPage_External("pdf file", "Medical Certificate " & Format(currentconsult!medical_certificates[cvwCertificates.Item.Key]!certificate_date, "dd/mm/yyyy"), filename)
+               Else
+                  Message.Info("Sorry this certificate does not have a LaTex definition.\n\nThis is probably for historical beta-testing reasons, if this is a problem for you please speak to the developers.")
+               End If
+            Case const.certificate_type_workcover
+               If Not IsNull(currentconsult!workcover_claims[cvwCertificates.Item.Key]!latex) Then 'unfortunately for developmental reasons, all WCC <11/11/11, don't have latex
+                  filename = modPrinting.Latex_To_PDF(currentconsult!workcover_claims[cvwCertificates.Item.Key]!latex)
+                  FClinical.Editor_ShowPage_External("pdf file", "Workcover Form " & Format(currentconsult!workcover_claims[cvwCertificates.Item.Key]!certificate_date, "dd/mm/yyyy"), filename)
+               Else
+                  Message.Info("Sorry this certificate does not have a LaTex definition.\n\nThis is probably for historical beta-testing reasons, if this is a problem for you please speak to the developers.")
+               End If
+            Case const.certificate_type_government
+               'currently only centrelinke medical certificates
+               filename = modPrinting.Latex_To_PDF(currentconsult!centrelink_certificates[cvwCertificates.Item.Key]!latex)
+               FClinical.Editor_ShowPage_External("pdf file", "CentreLink Certifiate " & Format(currentconsult!centrelink_certificates[cvwCertificates.Item.Key]!consult_date, "dd/mm/yyyy"), filename)
+               
+            Case const.certificate_type_other
+               Document_Display(currentconsult!miscellaneous_certificates[cvwCertificates.Item.key])
+         End Select
+      Case "reprint"
+         Select Case iCertificatetype
+            Case const.certificate_type_medical
+               If Not IsNull(currentconsult!medical_certificates[cvwCertificates.Item.Key]!latex)
+                  modPrinting.Print_latex(currentconsult!medical_certificates[cvwCertificates.Item.Key]!latex)
+               Else
+                  Message.Info("Sorry this certificate does not have a LaTex definition.\n\nThis is probably for historical beta-testing reasons, if this is a problem for you please speak to the developers.")
+               End If
+            Case const.certificate_type_workcover
+               If Not IsNull(currentconsult!workcover_claims[cvwCertificates.Item.Key]!latex)
+                  modPrinting.Print_latex(currentconsult!workcover_claims[cvwCertificates.Item.Key]!latex)
+               Else
+                  Message.Info("Sorry this certificate does not have a LaTex definition.\n\nThis is probably for historical beta-testing reasons, if this is a problem for you please speak to the developers.")
+               End If
+            Case const.certificate_type_government
+               modPrinting.Print_latex_PDF(currentconsult!centrelink_certificates[cvwCertificates.Item.Key]!latex)  'we have already saved the overpic     
+         End Select
+      Case "fonts"
+         modUtilGUI.Columnview_SetFont(cvwCertificates, "FClinLists_Certificates")
+      Case "help"
+         modUtilGUI.NotImplemented("Help for this menu")
+   End Select
+Catch
+   Return 
+   
+End
+
+Public Sub Certificates_Medical_Refresh()
+   
+   Dim x As Integer
+   Dim sMsg As String
+   Dim cert As Collection
+   
+   If IsNull(currentconsult) Then Return
+   With cvwCertificates
+      .Clear()
+      .Columns.count = 4
+      .Columns[0].width = 60
+   End With
+   lblCertificateType.text = "Medical Certificates"
+   currentconsult.Refresh("medical_certificates")
+   cvwCertificates.Clear()
+   Certificates_Medical = modUtil.Copy_Collection_Keyed_Sequentially(currentconsult!medical_certificates)
+   For Each cert In currentconsult!medical_certificates
+      '  x = cert!pk_medicalcertificate
+      cvwCertificates.Add(x, 0)
+      cvwCertificates[x][0] = Format(cert!certificate_date, "dd/mm/yyyy")
+      cvwCertificates[x][1] = cert!reason
+      Select Case cert!fk_lu_illness_temporality
+         Case 1
+            sMsg = "Is "
+         Case 2
+            sMsg = "Was "
+            
+         Case 3
+            sMsg = "Will be "
+            
+      End Select
+      Select Case cert!fk_lu_fitness
+         Case 1
+            sMsg &= "Fit "
+         Case 2
+            sMsg &= "Unfit"
+      End Select
+      sMsg &= " from " & Format(cert!from_date, "dd/mm/yyyy")
+      If cert!to_date Then
+         sMsg &= " to " & Format(cert!to_date, "dd/mm/yyyy")
+      Endif
+      cvwCertificates[x][2] = sMsg
+      cvwCertificates[x][3] = cert!staff_wholename
+      Inc x
+   Next
+   modUtilGUI.Columnview_Columns_Set_Size(cvwCertificates, lblMeasure)
+Catch
+   Return    
+   
+End
+
+Public Sub Certificates_Reload()
+   '--------------------------------------------------------------
+   'Refreshes the certificate list according to the option buttons
+   'medical (sick sheets) workcover or government (e.g centrelink)
+   'fixme: centre link not done
+   '---------------------------------------------------------------
+   
+   Select Case iCertificatetype
+      Case const.certificate_type_medical
+         Certificates_Medical_Refresh
+      Case const.certificate_type_workcover
+         Workcover_Certificates_Reload
+      Case const.certificate_type_government
+         Certificates_Government_Refresh
+      Case const.certificate_type_insurance
+         Certificates_Insurance_Refresh
+      Case const.certificate_type_other
+         Certificates_Other_Refresh
+   End Select
+   
+End
+
+Public Sub Certificates_Insurance_Refresh()
+   
+   With cvwCertificates
+      .Clear()
+      .Columns.count = 2
+      .Columns[0].width = 60
+   End With 
+   lblCertificateType.text = "Insurance Documents"
+Catch
+   Return   
+   
+End
+
+Public Sub Certificates_Government_Refresh()
+   'for the moment only centrelink
+   
+   Dim cert As Collection
+   Dim x As Integer
+   
+   If IsNull(currentconsult) Then Return
+   With cvwCertificates
+      .Clear()
+      .Columns.count = 2
+      .Columns[0].width = 60
+   End With 
+   lblCertificateType.text = "Centerlink Documents"
+   For Each cert In currentconsult!centrelink_certificates
+      x = cert!pk_certificate
+      cvwCertificates.Add(x, 0)
+      cvwCertificates[x][0] = Format(cert!consult_date, "dd/mm/yyyy")
+      cvwCertificates[x][1] = cert!primary_diagnosis!description & " unfit from: " & Format(cert!unfit_from, "dd/mm/yyyy") & " To " & Format(cert!unfit_to, "dd/mm/yyyy")
+   Next
+Catch
+   Return  
+   
+End
+
+Public Sub Certificates_Other_Refresh()
+   '---------------------------------------------------------------------------------------------------------
+   'This is a temporary sub (08/2015):
+   'displaying of scanned certificates was never implemented, but staff could still file them
+   'hence they 'disappeared' from the GUI!!!!!! bad stuff
+   'I've quickly implemented this till I sort this out
+   'these will all be from the documents table with fk_lu_display_as = const.Document_Display_As_Certificate
+   '---------------------------------------------------------------------------------------------------------
+   
+   Dim cert As Collection
+   Dim x As Integer
+   
+   If IsNull(currentconsult) Then Return
+   
+   With cvwCertificates
+      .Clear()
+      .Columns.count = 2
+      .Columns[0].width = 60
+   End With
+   lblCertificateType.text = "Miscellaneous Documents"
+   currentconsult.Refresh("miscellaneous_certificates")
+   For Each cert In currentconsult!miscellaneous_certificates
+      x = cert!pk_document
+      cvwCertificates.Add(x, 0)
+      cvwCertificates[x][0] = Format(cert!date_created, "dd/mm/yyyy")
+      If Not IsNull(cert!tag_user) Then
+         cvwCertificates[x][1] = cert!tag_user   
+      Else
+         cvwCertificates[x][1] = "Source not stated"
+      End If   
+   Next
+Catch
+   Return  
+   
+End
+
+Public Sub Workcover_Certificates_Reload()
+   
+   Dim cert As Collection
+   Dim x As Integer
+   
+   If IsNull(currentconsult) Then Return
+   With cvwCertificates
+      .Clear()
+      .Columns.count = 2
+      .Columns[0].width = 60
+   End With
+   lblCertificateType.text = "Workcover Certificates"
+   currentconsult.Refresh("workcover_claims")
+   For Each cert In currentconsult!workcover_claims
+      x = cert!pk_view
+      cvwCertificates.Add(x, 0)
+      cvwCertificates[x][0] = Format(cert!visit_date, "dd/mm/yyyy")
+      cvwCertificates[x][1] = cert!identifier
+   Next
+Catch
+   Return 
+   
+End
+
+Public Sub TabbedLists_Menu()
+   
+   If cvwCertificates.count Then mnuCertificates.popup()
+   
+End
+
+Public Sub Document_Display(D As Collection, Optional bNewtab As Boolean)
+   '---------------------------------------------------------------------------------
+   'Displays a document currently in central area until IAN does the emulated browser
+   'If document metadata is not complete, prompt user by showing the metadata
+   '---------------------------------------------------------------------------------
+   
+   Dim filename As String
+   Dim currentobservations As Collection
+   Dim sHtml As String
+   '  Dim documents As Collection = currentconsult!letters_received
+   Dim latex As String
+   Dim charpos As Integer
+   
+   filename = D!source_file
+   Print D!data
+   '   Try UnFiled_Document_Metadata_Show(False)                               'remove this it could be showing if not completed from previous document
+   '-----------------------------------------------------------------------------------------------------
+   'If there is no tag_user, then this is an unfiled document - i.e document can't be filed without a tag
+   '-----------------------------------------------------------------------------------------------------
+   If Not IsNull(D!tag_user) Then
+      Select Case File.Ext(filename)
+         Case "pdf"
+            If bNewtab Then 
+               FClinical.Editor_ShowPage_External("pdf document", D!tag_user & ":" & Str(D!pk_document), filename)
+            Else
+               FClinical.Editor_ShowPage_External("document", D!tag_user & ":" & Str(D!pk_document), filename, "pdf")
+            End If   
+         Case "jpg", "png", "bmp", "jpeg", "tiff"
+            If bNewtab Then   
+               FClinical.Editor_ShowPage_External("image", D!tag_user, D!source_file, "An Extra Tag")
+            Else
+               FClinical.Editor_ShowPage_External("document", D!tag_user, D!source_file, "image")
+            End If  
+            ' Case Else 'must be html or latex FIXME temporary I've been saving the GPMP latex into the thml field
+            '    If InStr(documents[cvwLettersReceived_Key]!html, "\\documentclass") Then
+            '       Editor_ShowPage("pdf file", documents[cvwLettersReceived_Key]!tag_user, modPrinting.Latex_To_PDF(documents[cvwLettersReceived_Key]!html))
+            '    Else
+            '       If bNewTab Then   
+            '          Editor_ShowPage("browser", documents[cvwLettersReceived_Key]!tag_user, documents[cvwLettersReceived_Key]!html, documents[cvwLettersReceived_Key]!originator)
+            '       Else
+            '          Editor_ShowPage("document", documents[cvwLettersReceived_Key]!tag_user, documents[cvwLettersReceived_Key]!html, "html")
+            '       End If 
+            '    End If     
+         Case Else
+            Select Case D!fk_lu_data_content_type
+               Case const.cData_Type_Latex 
+                  Print D!data
+                  If InStr(D!data, "!pdf-path") Then
+                     latex = D!data    'file need to find for overpic is {!pdf-path:the-pdf-name.pdf}
+                     charpos = InStr(latex, "!pdf-path")
+                     filename = Mid$(latex, charpos + 10, InStr(latex, "}", charpos + 10) - charpos - 10)
+                     latex = Replace(latex, "!pdf-path:" & filename, modUtil.Find_File("templates" &/ filename))
+                     filename = modPrinting.Latex_To_PDF(latex)
+                     Print filename 
+                     Print latex
+                     '  Wait 5
+                     FClinical.Editor_ShowPage_External("pdf file", D!tag_user, filename)
+                     '   Wait 1
+                  Else
+                     FClinical.Editor_ShowPage_External("pdf file", D!tag_user, modPrinting.Latex_To_PDF(D!data))
+                  End If   
+               Case const.cData_Type_HTML
+                  If bNewTab Then   
+                     FClinical.Editor_ShowPage_External("browser", D!tag_user, D!data, D!originator)
+                  Else
+                     FClinical.Editor_ShowPage_External("document", D!tag_user, D!data, "html")
+                  End If 
+               Case Else
+                  Message.Info("FClinical.Document_Display:Unknown document data type - please notify the developers")
+            End Select
+      End Select
+   Else
+      '------------------------------------------------------------------------------
+      'tag_user is null construct the page tag along with a date eg FBC (01/02/2010)
+      'Now determine if this has actually been viewed and filed by the doctor
+      'if it has, then there will be a user tag
+      'If not, then show the metadata for this document
+      '-------------------------------------------------------------------------------
+      Select Case File.Ext(filename)
+         Case "pdf"
+            '  Editor_ShowPage("pdf document", "UNFILED", filename, "Document")
+            FClinical.Editor_ShowPage_External("document", "UNFILED", filename, "pdf")
+            '  Document_Edit_Metadata(currentconsult!letters_received, cvwLettersReceived_Key)
+         Case Else
+            If IsNull(D!data) Then        'Null = unfiled, construct this from backend
+               ' CurrentObservations = modDBConnect.exec_query_collection("Select  * from documents.observations where fk_document =" & cvwLettersReceived_Key & " ORDER BY observations.observation_date, set_id")
+               ' shtml = modHL7Process.Construct_HTML(currentconsult!patient, D, currentobservations, True, True, D!fk_lu_display_as)
+            Else
+               shtml = D!data
+            End If
+            FClinical.Editor_ShowPage_External("browser", "UNFILED", sHTML, D!originator)
+            '    Document_Edit_Metadata(currentconsult!letters_received, cvwLettersReceived_Key, sHtml)
+      End Select
+   End If
+   
+End
+
+Public Sub rbCertificates_Click()
+   '
+   
+   iCertificatetype = Last.tag
+   Certificates_Reload()
+   
+End

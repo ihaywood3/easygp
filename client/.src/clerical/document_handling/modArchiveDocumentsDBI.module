@@ -58,6 +58,109 @@ Public Sub Re_Print_Letter(sHtml As String, Optional num_copies As Integer = 1)
    
 End
 
+Public Function Document_Display(D As Collection, currentconsult As CConsult, Optional bNewtab As Boolean, Optional form_metadata As FDocumentMetaData = Null) As Boolean
+   '---------------------------------------------------------------------------
+   'Displays a document currently in central area 
+   'If document metadata is not complete returns a TRUE flag for calling module
+   'to put up the metadata form
+   '----------------------------------------------------------------------------
+   
+   Dim filename As String
+   Dim currentobservations As Collection
+   Dim sHtml As String
+   '  Dim documents As Collection = currentconsult!letters_received
+   Dim latex As String
+   Dim charpos As Integer
+   
+   filename = D!source_file
+   ' UnFiled_Document_Metadata_Show(False)                                     'remove this it could be showing if not completed from previous document
+   
+   '-----------------------------------------------------------------------------------------------------
+   'If there is no tag_user, then this is an unfiled document - i.e document can't be filed without a tag
+   '-----------------------------------------------------------------------------------------------------
+   If Not IsNull(D!tag_user) Then
+      Select Case File.Ext(filename)
+         Case "pdf"
+            If bNewtab Then 
+               FClinical.Editor_ShowPage_External("pdf document", D!tag_user & ":" & Str(D!pk_document), filename)
+               
+            Else
+               FClinical.Editor_ShowPage_External("document", D!tag_user & ":" & Str(D!pk_document), filename, "pdf")
+            End If   
+         Case "jpg", "png", "bmp", "jpeg", "tiff"
+            If bNewtab Then   
+               FClinical.Editor_ShowPage_External("image", D!tag_user, D!source_file, "An Extra Tag")
+            Else
+               FClinical.Editor_ShowPage_External("image", D!tag_user, D!source_file, "image")
+            End If  
+            ' Case Else 'must be html or latex FIXME temporary I've been saving the GPMP latex into the thml field
+            '    If InStr(documents[cvwLettersReceived_Key]!html, "\\documentclass") Then
+            '       Editor_ShowPage("pdf file", documents[cvwLettersReceived_Key]!tag_user, modPrinting.Latex_To_PDF(documents[cvwLettersReceived_Key]!html))
+            '    Else
+            '       If bNewTab Then   
+            '          Editor_ShowPage("browser", documents[cvwLettersReceived_Key]!tag_user, documents[cvwLettersReceived_Key]!html, documents[cvwLettersReceived_Key]!originator)
+            '       Else
+            '          Editor_ShowPage("document", documents[cvwLettersReceived_Key]!tag_user, documents[cvwLettersReceived_Key]!html, "html")
+            '       End If 
+            '    End If     
+         Case Else
+            Select Case D!fk_lu_data_content_type
+               Case const.cData_Type_Latex 
+                  Print D!data
+                  If InStr(D!data, "!pdf-path") Then
+                     latex = D!data    'file need to find for overpic is {!pdf-path:the-pdf-name.pdf}
+                     charpos = InStr(latex, "!pdf-path")
+                     filename = Mid$(latex, charpos + 10, InStr(latex, "}", charpos + 10) - charpos - 10)
+                     latex = Replace(latex, "!pdf-path:" & filename, modUtil.Find_File("templates" &/ filename))
+                     filename = modPrinting.Latex_To_PDF(latex)
+                     FClinical.Editor_ShowPage_External("pdf file", D!tag_user, filename)
+                  Else
+                     FClinical.Editor_ShowPage_External("pdf file", D!tag_user, modPrinting.Latex_To_PDF(D!data))
+                  End If   
+               Case const.cData_Type_HTML
+                  If bNewTab Then   
+                     FClinical.Editor_ShowPage_External("browser", D!tag_user, D!data, D!originator)
+                  Else
+                     FClinical.Editor_ShowPage_External("document", D!tag_user, D!data, "html")
+                  End If 
+               Case Else
+                  Message.Info("FClinical.Document_Display:Unknown document data type - please notify the developers")
+            End Select
+      End Select
+   Else
+      '------------------------------------------------------------------------------
+      'tag_user is null construct the page tag along with a date eg FBC (01/02/2010)
+      'Now determine if this has actually been viewed and filed by the doctor
+      'if it has, then there will be a user tag
+      'If not, then show the metadata for this document
+      '-------------------------------------------------------------------------------
+      Select Case File.Ext(filename)
+         Case "pdf"
+            FClinical.Editor_ShowPage_External("document", "UNFILED", filename, "pdf")
+         Case Else
+            If IsNull(D!data) Then        'Null = unfiled, construct this from backend
+               CurrentObservations = modDBConnect.exec_query_collection("Select  * from documents.observations where fk_document =" & D!pk_document & " ORDER BY observations.observation_date, set_id")
+               ' shtml = modHL7Process.Construct_HTML(currentconsult!patient, D, currentobservations, True, True, D!fk_lu_display_as)
+               shtml = modHL7Process.Construct_HTML(currentconsult!patient, D, currentobservations, True, True, D!fk_lu_display_as)
+            Else
+               shtml = D!data
+            End If
+            FClinical.Editor_ShowPage_External("browser", "UNFILED", sHTML, D!originator)
+      End Select
+      With form_metadata
+         .Edit(D)        'display metadata for this document
+         .bexit = True
+         ' .txtUserObservationName.text = cvwLettersReceived[cvwLettersReceived_Key][1]
+         .txtUserObservationName.pos = 0    'ensure start of line showing
+         .Document_HTML_Set(sHtml)
+         .bExit = False
+      End With
+      
+      Return True 'TRUE = metadata is incomplete, tell calling form to load the metadata GUI
+   End If 
+   
+End
+
 Public Sub Document_Print(currentconsult As Cconsult, fk_document As Integer)
    '--------------------------------------------------------------
    'Print a document by its key
@@ -126,8 +229,9 @@ End
 
 Public Function Change_Display_Mode(cons As Cconsult, document As Collection, fk_lu_display_as As Integer, fk_section As Integer, Optional audit_notes As String) As Boolean
    '---------------------------------------------------------------------------------
-   'Changes display from eg letter to result or certificate or image
+   'Changes display from eg letter to result or certificate or image of form
    'Returns True if successful, progress_note set to '' can probably be removed fixme
+   'fixme ?need this audit-trail, also duplicated in modFormsDBI.
    '---------------------------------------------------------------------------------
    
    modDBConnect.update("documents.documents", Null, ["pk": document!pk_document, "fk_lu_display_as": fk_lu_display_as])
@@ -203,7 +307,7 @@ Public Function Audit_Trail_Make_Progress_notes(audit_action As String, document
          sAction = "scanned"
    End Select
    If Not IsNull(document!date_created) Then    
-         progress_notes &= " which was dated " & Format(document!date_created, "dd/mm/yyyy")
+      progress_notes &= " which was dated " & Format(document!date_created, "dd/mm/yyyy")
    Else
       progress_notes &= " which was dated ??" 
    End If   
@@ -245,15 +349,15 @@ Public Function Document_New_Pk() As Variant
    '---------------------------------------------------------------------------
    'Get value of the next primary key, this won't be 'consumed' until committed
    '----------------------------------------------------------------------------   
+   
    Return modDBConnect.exec_query_first("select nextval('documents.documents_pk_seq')")!nextval 
    
 End
 
 Public Function Unique_filenum_For_Joining() As Integer
    
+   Return modDBConnect.exec_query_first("select nextval('documents.unique_file_number_seq')")!nextval
    
-    Return modDBConnect.exec_query_first("select nextval('documents.unique_file_number_seq')")!nextval
-     
 End
 
 Public Function Save(document As Collection, Optional old_data As Collection) As Integer
@@ -337,7 +441,6 @@ Public Function Inbox_Documents_Get(fk_staff_destination As Integer, fk_lu_type 
    Return modDBConnect.exec_query_collection(sql)
    
 End
-'Public Function Staff_Tasks_Document_Audit_Trail(fk_document As Integer, Optional bDontShowDocumentDetails As Boolean = False) As String
 
 Public Function Audit_Trail_Show_Document_Details_Tasks_Attatched(fk_document As Integer, Optional bDontShowDocumentDetails As Boolean = False) As String
    '--------------------------------------------------------------------------------------------------------
@@ -617,16 +720,18 @@ Public Sub Launch_External_PDF_Viewer(pdf As String)
    Dim viewers As String[] = ["okular", "evince", "acroread", "epdfview", "xpdf", "mupdf", "zathura", "ViewPDF", "gv", "none"]
    Dim viewer As String
    
+   Inc Application.busy
    For Each viewer In viewers
       If Access("/usr/bin" &/ viewer, gb.Exec) Then Break
       If Access("/usr/local/bin" &/ viewer, gb.Exec) Then Break
    Next
    If viewer = "none" Then 
+      Dec Application.Busy
       Message.Error("No PDF viewer found on the system")
       Return
    Endif
    Exec [viewer, pdf]
-   
+   Dec Application.Busy
 End
 
 Public Sub Run_Scanner(pages As Integer)

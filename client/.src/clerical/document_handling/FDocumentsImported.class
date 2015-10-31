@@ -36,12 +36,19 @@ Private pfile As String
 Private fk_document As Integer
 Private patient As Collection
 Private fk_patient As Integer
- Private fk_lu_display_as As Integer
- 
+Private fk_lu_display_as As Integer
+Private sFormEbeddedIn As String                    'the name of the form that this form is embedded in 
+
 Public Sub Set_Patient(p As Collection)
    
    patient = p
    fk_patient = p!fk_patient  
+   
+End
+
+Public Sub Set_Embedded_In_Form(fn As String)
+   
+   sFormEbeddedIn = fn 
    
 End
 
@@ -55,10 +62,12 @@ Public Sub Init()
       .tbWebBrowserZoomOut.visible = True
       .tbWebBrowserZoomIn.visible = True
    End With
-   With FDocumentTasks = New FHtmlViewer(Vbox_DocumentTasks)          'Form to show html of any associated tasks
-      .tbWebBrowserZoomOut.visible = True
-      .tbWebBrowserZoomIn.visible = True
-   End With
+   If sFormEbeddedIn <> "FResearchPathology" Then 
+      With FDocumentTasks = New FHtmlViewer(Vbox_DocumentTasks)          'Form to show html of any associated tasks
+         .tbWebBrowserZoomOut.visible = True
+         .tbWebBrowserZoomIn.visible = True
+      End With
+   End If   
    With PDF_Form = New FPdf(Vbox_PDf)                              'Pdf form to show any scanned doc's
       .BtOpen.Visible = False
       .BtPrint.Visible = True
@@ -92,7 +101,7 @@ Private Sub Settings_Load()
    PDF_Form.CurrentZoom = Settings["FDocumentsImported/pdfZoom", 1.0]
    VSplit_RightSide.Layout = Settings["FDocumentsImported/VSplit_RightSide.Layout", modUtilGUI.VSplit([750, 196])]
    FPreview_HtmlDocument.Webview1.Zoom = Settings["FDocumentsImported/HTML_Document_Zoom", 1.0]
-   FDocumentTasks.Webview1.Zoom = Settings["FDocumentsImported/HTML_Tasks_Zoom", 1.0]
+   Try FDocumentTasks.Webview1.Zoom = Settings["FDocumentsImported/HTML_Tasks_Zoom", 1.0] 'may not exist in some incarnations of this form
    cvwDocumentsImported.font = Font[Settings["FDocumentsImported/cvwDocumentsImported.font", "DejaVu Sans,9"]]
    
 End
@@ -170,14 +179,198 @@ Public Sub Reload()
    '----------------------------------------------------------------------------
    
    Inc Application.Busy
- '  Documents = modUtil.Copy_Collection_Keyed_Sequentially(modInboxDBI.Documents_Get_All_For_Patient(fk_patient, rbResults.value, rbLetters.Value,,,, Trim(txtFilterDocumentTag.text)))
-    Documents = modUtil.Copy_Collection_Keyed_Sequentially(modInboxDBI.Documents_Get_All_For_Patient(fk_patient, fk_lu_display_as,,,, Trim(txtFilterDocumentTag.text)))
+   '  Documents = modUtil.Copy_Collection_Keyed_Sequentially(modInboxDBI.Documents_Get_All_For_Patient(fk_patient, rbResults.value, rbLetters.Value,,,, Trim(txtFilterDocumentTag.text)))
+   If sFormEbeddedIn <> "FResearchPathology" Then  
+      '  Documents = modUtil.Copy_Collection_Keyed_Sequentially(modInboxDBI.Documents_Get_All_For_Patient(fk_patient, fk_lu_display_as,,,, Trim(txtFilterDocumentTag.text)))
+      Documents = modUtil.Copy_Collection_Keyed_Sequentially(modInboxDBI.Documents_Get(fk_patient, fk_lu_display_as,,,, Trim(txtFilterDocumentTag.text)))
+   Else
+      'Documents = modUtil.Copy_Collection_Keyed_Sequentially(modInboxDBI.Documents_Get_All_For_Patient(, fk_lu_display_as,,,, Trim(txtFilterDocumentTag.text)))
+      ' Documents = modUtil.Copy_Collection_Keyed_Sequentially(modInboxDBI.Documents_Get_All_For_Patient(, const.Document_Display_As_Result,,,, "msu")
+      ' Documents = modUtil.Copy_Collection_Keyed_Sequentially(modInboxDBI.Documents_Get(, const.Document_Display_As_Result,,,, "msu"))
+      Documents = modUtil.Copy_Collection_Keyed_Sequentially(modInboxDBI.Documents_Get(, const.Document_Display_As_Result,,, 400, "msu"))
+   End If   
    If documents.Count Then Documents_Refresh_List()
    Dec Application.Busy
    
 End
 
 Public Sub Documents_Refresh_List()
+   '---------------------------------------------------------
+   'Refresh document list and apply filters
+   'FIXME: filters not used at moment aside from patient name
+   '---------------------------------------------------------
+   
+   Dim x As Integer
+   Dim cephalexin_sensitive As Integer
+   Dim cephalexin_resistant As Integer
+   Dim cephalexin_not_tested As Integer
+   Dim augmentin_sensitive As Integer
+   Dim augmentin_resistant As Integer
+   Dim augmentin_not_tested As Integer
+   Dim triprim_sensitive As Integer
+   Dim triprim_resistant As Integer
+   Dim Triprim_not_tested As Integer
+   Dim charpos As Integer
+   Dim charpos_s As Integer
+   Dim charpos_r As Integer
+   Dim charpos_br As Integer
+   Dim sensitivity As String
+   Dim templ As New CTemplate("<HTML><BODY>%Sensitivities</BODY></HTML>", "html", True) ' mode2 defaults to html
+   Dim results As String[]
+   Dim num_male As Integer
+   Dim num_female As Integer
+   Dim age_less_than_15 As Integer
+   Dim age_between_15_40 As Integer
+   
+   TextLabel1.Text = ""
+   With cvwDocumentsImported
+      .Clear()
+      .Visible = True   
+   End With
+   Documents_Filtered = New Collection
+   For Each Document In Documents
+      If Trim(txtFilterDocumentTag.text) = "" Then             'user not filtering on document tag
+         If Trim(txtFilterSender.text) = "" Then               'if they are not filtering on sender
+            Document_Add(document, x)                          'just add all documents
+            Inc x                         
+         Else                                                  'else if they are filtering on sender                   
+            If InStr(Lower(Document!originator), Trim(txtFilterSender.text)) Then  
+               Document_Add(document, x)                       'only include if sender matched
+               Inc x
+            Endif
+         End If  
+      Else                                                      'user is filtering on tag
+         If Not IsNull(Document!tag_user) Then                  'prefer filter on a user tag
+            If InStr(Lower(Document!tag_user), Lower(Trim(txtFilterDocumentTag.text))) Then
+               If Trim(txtFilterSender.text) = "" Then          'no sender filter
+                  If InStr(Lower(Document!data), "no growth") + InStr(Lower(Document!data), "culture proceeding") = 0 + InStr(Lower(Document!data), "mixed growth") + InStr(Lower(Document!data), "no significant growth") + InStr(Lower(Document!data), "contamination") + InStr(Lower(Document!data), "doubtful significance") + InStr(Lower(Document!data), "interim result") + InStr(Lower(Document!data), "low likelihood") + InStr(Lower(Document!data), "organism 2") Then   
+                     
+                     If InStr(Document!data, "SENSITIVITIES") Then  
+                        
+                        If document!patient_sex = "F" Then Inc num_female
+                        If document!patient_sex = "M" Then Inc num_male
+                        If document!patient_age < 16 Then Inc age_less_than_15    
+                        If Document!patient_age > 15 And Document!patient_age < 41 Then Inc age_between_15_40
+                        
+                        If InStr(document!data, "Cephalexin") Then
+                           charpos = InStr(document!data, "Cephalexin")
+                           charpos_br = InStr(document!data, "<", charpos)
+                           sensitivity = modUtil.StripExtraBlanks(Mid(document!data, charpos, charpos_br - charpos))
+                           If sensitivity = "Cephalexin S" Then Inc cephalexin_sensitive
+                           If sensitivity = "Cephalexin R" Then Inc cephalexin_resistant  
+                        Else
+                           Inc cephalexin_not_tested
+                        Endif
+                        If InStr(document!data, "Trimethoprim") Then
+                           charpos = InStr(document!data, "Trimethoprim")
+                           charpos_br = InStr(document!data, "<", charpos)
+                           sensitivity = modUtil.StripExtraBlanks(Mid(document!data, charpos, charpos_br - charpos))
+                           If sensitivity = "Trimethoprim S" Then Inc triprim_sensitive
+                           If sensitivity = "Trimethoprim R" Then Inc triprim_resistant 
+                        Else
+                           Inc Triprim_not_tested  
+                        Endif
+                        If InStr(document!data, "Augmentin") Or InStr(document!data, "Amoxycillin/Clavulanate") Then
+                           If InStr(document!data, "Augmentin") Then    
+                              charpos = InStr(document!data, "Augmentin")
+                              charpos_br = InStr(document!data, "<", charpos)
+                              sensitivity = modUtil.StripExtraBlanks(Mid(document!data, charpos, charpos_br - charpos))
+                              If sensitivity = "Augmentin S" Then Inc augmentin_sensitive
+                              If sensitivity = "Augmentin R" Then Inc augmentin_resistant  
+                           End If   
+                           If InStr(document!data, "Amoxycillin/Clavulanate") Then
+                              charpos = InStr(document!data, "Amoxycillin/Clavulanate")
+                              charpos_br = InStr(document!data, "<", charpos)
+                              sensitivity = modUtil.StripExtraBlanks(Mid(document!data, charpos, charpos_br - charpos))
+                              Print "sensitivity for " & sensitivity
+                              If sensitivity = "Amoxycillin/Clavulanate S" Then Inc augmentin_sensitive
+                              If sensitivity = "Amoxycillin/Clavulanate R" Then Inc augmentin_resistant 
+                           Endif 
+                        Else
+                           Inc augmentin_not_tested
+                        End If 
+                        Document_Add(document, x)
+                        Inc x
+                        Print x
+                     End If 
+                  End If   
+               Else                                             'also filtering on sender
+                  If InStr(Lower(Document!originator), Trim(txtFilterSender.text)) Then  
+                     Document_Add(document, x)                       'only include if sender matched
+                     Inc x
+                  Endif
+               End If
+            Endif
+         Else
+            If InStr(Lower(Document!tag), Lower(Trim(txtFilterDocumentTag.text))) Then
+               If Trim(txtFilterSender.text) = "" Then          'no sender filter
+                  Document_Add(document, x)
+                  Inc x
+               Else                                             'also filtering on sender
+                  If InStr(Lower(Document!originator), Trim(txtFilterSender.text)) Then  
+                     Document_Add(document, x)                       'only include if sender matched
+                     Inc x
+                  Endif
+               End If
+            End If
+         End If
+      End If 
+   Next
+   
+   lblMeasure.font = cvwDocumentsImported.Font
+   modUtilGUI.Columnview_Columns_Set_Size(cvwDocumentsImported, lblmeasure)
+   
+   templ.Row("", " Sensitive ", " Insensitive ", " Not Tested ", " Percentage ")
+   templ.Row("Cephalexin", Str(cephalexin_sensitive), Str(cephalexin_resistant), Str(cephalexin_not_tested), modUtil.As_Percent(cephalexin_sensitive, x))
+   templ.Row("Augmentin", Str(augmentin_sensitive), Str(augmentin_resistant), Str(augmentin_not_tested), modUtil.As_Percent(augmentin_sensitive, x))
+   templ.Row("Trimethoprim", Str(triprim_sensitive), Str(triprim_resistant), Str(Triprim_not_tested), modUtil.As_Percent(triprim_sensitive, x))
+   
+   templ.Table("Sensitivities")
+   Print templ.GetData()
+   TextLabel1.text = "<P><B>MSU Drug Sensitivities</B></P>"
+   TextLabel1.text &= "<P>Female: " & Str(modUtil.As_Percent(num_female, x)) & "<BR><HR>" ""
+   TextLabel1.text &= "<P>Male: " & Str(modUtil.As_Percent(num_male, x)) & "</P>"
+   TextLabel1.text &= "<P>Age less than 15yrs:" & Str(modUtil.As_Percent(age_less_than_15, x)) & "</P>"
+   TextLabel1.text &= "<P>" & templ.GetData() & "</P><HR>"
+   Return
+   TextLabel1.text = "<P><B>Cephalexin</B></P>"
+   TextLabel1.text &= "Sensitive :" & Str(cephalexin_sensitive) & " " & Format(Str((cephalexin_sensitive / x) * 100), "##.##") & "%<BR>"
+   TextLabel1.text &= "Resistant :" & Str(cephalexin_resistant) & "<BR>"
+   TextLabel1.text &= "Not Tested:" & Str(cephalexin_not_tested) & "<BR>"
+   TextLabel1.text &= "<P><B>Triprim</B></P>"
+   TextLabel1.text &= "Sensitive:" & Str(triprim_sensitive) & "<BR>"
+   TextLabel1.text &= "Resistant:" & Str(triprim_resistant) & "<BR>"
+   TextLabel1.text &= "Not Tested:" & Str(triprim_not_tested) & "<BR>"
+   TextLabel1.text &= "<P><B>Augmentin</B></P>"
+   TextLabel1.text &= "Sensitive:" & Str(augmentin_sensitive) & "<BR>"
+   TextLabel1.text &= "Resistant:" & Str(augmentin_resistant) & "<BR>"
+   TextLabel1.text &= "Not Tested:" & Str(augmentin_not_tested) & "<BR>"
+   
+   TextLabel1.text &= "Total Analysed:" & Str(x)
+   
+Catch
+   Return
+   
+End
+
+Public Sub Check_Sensitivities(document As Collection, generic As String, sensitive As Integer, resistance As Integer)
+   
+   Dim charpos As Integer
+   Dim charpos_br As Integer
+   Dim sensitivity As String
+   
+   If InStr(document!data, generic) Then
+      charpos = InStr(document!data, generic)
+      charpos_br = InStr(document!data, "<", charpos)
+      sensitivity = modUtil.StripExtraBlanks(Mid(document!data, charpos, charpos_br - charpos))
+      Print "sensitivity for " & sensitivity
+      If sensitivity = "generic" & "S" Then Inc sensitive
+      If sensitivity = "generic" & "R" Then Inc resistance
+   Endif
+   
+End
+
+Public Sub Documents_Refresh_List_orig()
    '---------------------------------------------------------
    'Refresh document list and apply filters
    'FIXME: filters not used at moment aside from patient name
@@ -204,6 +397,7 @@ Public Sub Documents_Refresh_List()
       Else                                                      'user is filtering on tag
          If Not IsNull(Document!tag_user) Then                  'prefer filter on a user tag
             If InStr(Lower(Document!tag_user), Lower(Trim(txtFilterDocumentTag.text))) Then
+               
                If Trim(txtFilterSender.text) = "" Then          'no sender filter
                   Document_Add(document, x)
                   Inc x
@@ -231,11 +425,6 @@ Public Sub Documents_Refresh_List()
    Next
    lblMeasure.font = cvwDocumentsImported.Font
    modUtilGUI.Columnview_Columns_Set_Size(cvwDocumentsImported, lblmeasure)
-   ' If cvwDocumentsImported.count Then
-   '    cvwDocumentsImported.MoveFirst()
-   '    cvwDocumentsImported.Item.Selected = True
-   ' End If
-   ' txtFilterDocumentTag.SetFocus
 Catch
    Return
    
@@ -273,7 +462,7 @@ End
 
 Public Sub EditAreaTextBox_KeyRelease()
    
-   Documents_Refresh_List()
+   '  Documents_Refresh_List()
    Last.SetFocus
    
 End
@@ -338,7 +527,7 @@ Public Sub Document_Display()
                Vbox_Images.visible = False
                VBox_HTML_Viewer.Visible = False
                PDF_Form.Load_PDF(modPrinting.Latex_To_PDF(documents_filtered[cvwDocumentsImported.item.key]!data), False, False)
-              '  FClinical.Editor_ShowPage_External("pdf file", D!tag_user, modPrinting.Latex_To_PDF(D!data))
+               '  FClinical.Editor_ShowPage_External("pdf file", D!tag_user, modPrinting.Latex_To_PDF(D!data))
             Case Else
                'no data content type, could be unfiled result/letter
                If SelectedDocument!fk_lu_message_standard = const.document_message_standard_hl7 Then  
@@ -355,69 +544,16 @@ Public Sub Document_Display()
                End If  
          End Select
    End Select
-   'Are there any staff tasks?
-   If modDBConnect.exec_query("Select * from clerical.tasks where fk_row=" & documents_filtered[cvwDocumentsImported.item.key]!pk_document).count Then
-      btnShowTasks.enabled = True
-   Else
-      sMsg = "NO "
-      btnShowTasks.enabled = False
-   Endif
-   FDocumentTasks.WebView1.HTML = "<html><body>" & sMsg & " TASKS EXIST FOR THIS DOCUMENT</body></html>"
-   Dec application.Busy
-   
-End
-
-Public Sub Document_Display_29July14()
-   '-------------------
-   'Displays a document
-   '-------------------
-   
-   Dim filename As String = documents_filtered[cvwDocumentsImported.item.key]!source_file
-   Dim sMsg As String
-   
-   Inc application.Busy
-   Select Case File.Ext(filename)
-      Case "pdf"
-         VBox_HTML_Viewer.Visible = False
-         Vbox_Images.Visible = False
-         Vbox_PDF.Visible = True
-         PDF_Form.Load_PDF(modFiles.Get("document_archiving_directory", filename))
-      Case "jpg", "png", "bmp", "jpeg", "tiff"
-         VBox_HTML_Viewer.Visible = False
-         Vbox_PDf.Visible = False
-         Vbox_Images.visible = True
-         modUtil.Kill_If_Temp(pfile)
-         pfile = modFiles.Get("document_archiving_directory", filename)
-         Pbox.picture = Picture.Load(pfile)
-      Case Else 'could be html latex or other
-         lblSendingEntity.text = documents_filtered[cvwDocumentsImported.item.key]!msh_sending_entity
-         Select Case documents_filtered[cvwDocumentsImported.item.key]!fk_lu_data_content_type
-            Case const.cData_Type_HTML
-               Vbox_PDF.Visible = False
-               Vbox_Images.visible = False
-               VBox_HTML_Viewer.Visible = True
-               If IsNull(documents_filtered[cvwDocumentsImported.item.key]!tag_user) Then 'this is an unfiled document
-                  FPreview_HtmlDocument.webview1.HTML = Unfiled_Document_Html(documents_filtered[cvwDocumentsImported.item.key])
-               Else
-                  FPreview_HtmlDocument.webview1.HTML = documents_filtered[cvwDocumentsImported.item.key]!data
-               End If 
-            Case const.cData_Type_Latex
-               Vbox_PDF.Visible = True
-               Vbox_Images.visible = False
-               VBox_HTML_Viewer.Visible = False
-               PDF_Form.Load_PDF(modPrinting.Latex_To_PDF(documents_filtered[cvwDocumentsImported.item.key]!data))
-            Case Else
-               Message.Info("Unknown document data type - please notify the developers")
-         End Select
-   End Select
-   'Are there any staff tasks?
-   If modDBConnect.exec_query("Select * from clerical.tasks where fk_row=" & documents_filtered[cvwDocumentsImported.item.key]!pk_document).count Then
-      btnShowTasks.enabled = True
-   Else
-      sMsg = "NO "
-      btnShowTasks.enabled = False
-   Endif
-   FDocumentTasks.WebView1.HTML = "<html><body>" & sMsg & " TASKS EXIST FOR THIS DOCUMENT</body></html>"
+   If sFormEbeddedIn <> "FResearchPathology" Then  
+      'Are there any staff tasks?
+      If modDBConnect.exec_query("Select * from clerical.tasks where fk_row=" & documents_filtered[cvwDocumentsImported.item.key]!pk_document).count Then
+         btnShowTasks.enabled = True
+      Else
+         sMsg = "NO "
+         btnShowTasks.enabled = False
+      Endif
+      FDocumentTasks.WebView1.HTML = "<html><body>" & sMsg & " TASKS EXIST FOR THIS DOCUMENT</body></html>"
+   End If   
    Dec application.Busy
    
 End
@@ -486,7 +622,6 @@ Public Sub EditAreaTextBox_LostFocus()
 End
 
 Public Sub rbDocumentType_Click()
-
    
    Select Case Last.tag
       Case "gpmp"

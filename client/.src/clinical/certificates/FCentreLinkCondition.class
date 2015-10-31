@@ -1,0 +1,566 @@
+' Gambas class file
+
+' Copyright(C)2008 - 2015 Dr.Richard Terry
+'
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+'
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'-------------------------------------------------------------------------
+' PURPOSE         A form enter common data for primary/secondary conditions
+' HOW THIS WORKS  This form is embedded in FCentreLink two instances
+'--------------------------------------------------------------------------
+Private VBox_EditArea_Parent As VBox
+Public bExit As Boolean 'accessed from parent form
+Private Active_Health_Issues As Collection
+Private CurrentConsult As CConsult
+Private Condition_Main As Collection                    'will only ever be one
+Private Conditions_Secondary As Collection              'can be one or more
+Private cvwHealthIssues_Key As Integer                   ' key to this list
+Private bIsMainCondition As Boolean
+
+Public Sub _new()
+   
+   lblmeasure.text = "Other Impacting Conditions     "
+   modEditAreaHelpers.Resize_labels(VBox_EditArea, lblMeasure) 
+   
+End
+
+Public Sub Init(cons As CConsult, Parent_Vbox_EditArea As VBox, bPrimaryCondition As Boolean)
+   
+   Dim HI As Collection
+   
+   bIsMainCondition = bPrimaryCondition
+   CurrentConsult = Cons 
+   VBox_EditArea_Parent = Parent_Vbox_EditArea
+   Problems_Reload                                  'Load all active or major health issues
+   bExit = True
+   If cmbIncludeHealthIssue.count = 0 Then          'If there are either no health issues recorded in either category then
+      cmbIncludeHealthIssue.Font.Bold = True        'alert the user and diable the  combobox
+      If bPrimaryCondition Then
+         cmbIncludeHealthIssue.Add("No Major Health Issues Recorded")
+         cmbIncludeHealthIssue.Index = 0
+         cmbIncludeHealthIssue.Enabled = False
+      Else
+         cmbIncludeHealthIssue.Add("No Secondary Health Issues Recorded")
+         cmbIncludeHealthIssue.Enabled = False
+         cmbIncludeHealthIssue.Index = 0
+      End If  
+      Alert_No_Health_issues(bPrimaryCondition)      'If no major health issues, warn the user
+      tlAlertNoHealthIssues.Visible = True
+   Else  
+      cmbIncludeHealthIssue.Index = -1
+      tlAlertNoHealthIssues.Visible = False  
+      cmbIncludeHealthIssue.Font.Bold = False
+   End If  
+   With CvwHealthIssues
+      .Columns.count = 2
+      .Columns[0].text = "Condition"
+      .Columns[1].text = "Date Onset"
+   End With
+   Condition_Main = New Collection
+   Conditions_Secondary = New Collection
+   bExit = False  
+   
+End
+
+Public Sub Set_Health_Issues(Optional past_history_key As Integer, Optional secondary_diagnoses As Collection)
+   '--------------------------------------------------------------------------------------
+   'Used during a record edit to re-set the cmbHealthissues and the text in lvHealthissues
+   'The main or primary health condition must be selected from a 
+   'past history item, so we do keep its key in the backend centrelink_certificates tabe
+   'however only the key is guarrenteed to stay the same, so the othe fields which are
+   'autopopulated by the program are kept in the certificates table
+   'The key is valid only for either
+   'a) the day of creation of the certificate or
+   'b) as long as the user hasn't just deleted this health condition
+   'sloppy yes, but unlikely to uset the applecart. They could have however
+   'gone back and changed the 
+   'Secondary Diagnosis contents for table clin_certificates.centrelink_diagnoses (note the 'es' on the end
+   '     pk_centrelink_diagnoses
+   '     fk_centrelink_certificate
+   '     diagnosis
+   '     date_onset
+   '     fk_pasthistory
+   '     fk_code
+   '     deleted
+   '     term
+   '     combined_term_code eg Obesity (T82003)
+   '--------------------------------------------------------------------------------------
+   
+   Dim HI As Collection  
+   Dim secondary_diagnosis As Collection 
+   
+   CvwHealthIssues.Clear
+   If Not IsNull(secondary_diagnoses) Then Conditions_Secondary = secondary_diagnoses
+   If past_history_key Then
+      For Each HI In Active_Health_Issues ' Active_Health_Issueswere loaded in INIT()
+         If HI!pk_pasthistory = past_history_key Then              'there will only be one condition
+            Condition_Main = HI
+            CvwHealthIssues.Add(HI!pk_pasthistory, 0)
+            CvwHealthIssues[HI!pk_pasthistory][0] = HI!description
+            CvwHealthIssues[HI!pk_pasthistory][1] = HI!year_onset
+            cmbIncludeHealthIssue.Index = -1 
+            Return
+         End If  
+      Next
+   Else                                                            'keyed to pk_pasthistory
+      For Each secondary_diagnosis In Conditions_Secondary
+         'Check against the current list of Active_Health_Issues (user could have changed this)
+         For Each HI In Active_Health_Issues
+            If HI!pk_pasthistory = secondary_diagnosis!fk_pasthistory Then
+               secondary_diagnosis!description = HI!description
+               secondary_diagnosis!fk_code = HI!fk_code
+               secondary_diagnosis!coding_system = HI!fk_coding_system
+               CvwHealthIssues.Add(secondary_diagnosis!fk_pasthistory, 0)
+               CvwHealthIssues[secondary_diagnosis!fk_pasthistory][0] = secondary_diagnosis!description
+               CvwHealthIssues[secondary_diagnosis!fk_pasthistory][1] = secondary_diagnosis!year_onset
+            Endif
+         Next
+      Next
+      cmbIncludeHealthIssue.Index = -1 
+      
+   End If   
+   
+End
+
+Public Function Diagnosis() As Collection
+   'Return main diagnosis to the main FCentreLink.Save()   
+   
+   Dim PH As Collection
+   
+   If bIsMainCondition Then Return Condition_Main
+   
+   Return Conditions_Secondary
+   
+End
+
+Public Function Condition_Temporality() As Integer
+   'Return temporality keys to the main FCentreLink.Save() 
+   'keys to clin_certificates.lu_centerlink_condition_temporality
+   'returning 0 if not filled in 'signals to calling form 
+   
+   If chkConditionTemporary.value = True Then Return 1
+   If chkConditionPermanant.value = True Then Return 2
+   If chkConditionExacerbation.value = True Then Return 3 
+   Return 0 
+   
+End
+
+Public Function Condition_Prognosis() As Integer
+   'Return prognosis keys to  the main FCentreLink.Save() 
+   'keys to clin_certificates.lu_centerlink_condition_prognosis
+   'returning 0 signals to calling form not filled in
+   
+   If chkPrognosisLT3M.value = True Then Return 1
+   If chkPrognosis3to12M.value = True Then Return 2
+   If chkPrognosis13to24M.value = True Then Return 3
+   If chkPrognosisOver24M.value = True Then Return 4
+   If chkPrognosisUncertain.value = True Then Return 5
+   Return 0 '
+   
+End
+
+Public Function Symptoms() As String
+   'Return the symptoms to  the main FCentreLink.Save() 
+   
+   Return Trim(TxtSymptoms.text) 
+   
+End
+
+Public Function Treatment_Past() As String
+   'Return past treatment details to  the main FCentreLink.Save() 
+   
+   Return Trim(txtTreatmentPast.text) 
+   
+End
+
+Public Function Treatment_Current() As String
+   'Return current treatment to  the main FCentreLink.Save() 
+   
+   Return Trim(txtTreatmentCurrent.text) 
+   
+End
+
+Public Function Treatment_Planned() As String
+   'Return planned treatment to  the main FCentreLink.Save() 
+   
+   Return Trim(txtTreatmentPlanned.text) 
+   
+End
+
+Public Sub EditArea_Notify_DataChange(flag As Boolean)
+   'If data changes visually show the reader by outlining edit area in red   
+   
+   If flag Then
+      VBox_EditArea_Parent.Padding = 1
+   Else
+      VBox_EditArea_Parent.Padding = 0
+   End If
+   
+End
+
+Public Sub EditArea_TxtBox_KeyPress()
+   
+   Select Case Key.Code
+      Case Key.Return, Key.Tab
+         Select Case Last.tag
+            Case "date onset"
+               chkConditionTemporary.setFocus
+         End Select
+   End Select
+   
+End
+
+Public Sub EditArea_TxtBox_GotFocus()
+   
+   If Last.tag <> "diagnosis" Then Last.BackGround = Color.rgb(95, 255, 175) 'diagnosis is read only"
+   
+End
+
+Public Sub EditArea_TxtBox_LostFocus()
+   
+   Last.BackGround = Color.White
+   
+End
+
+Public Sub chkEditArea_KeyPress()
+   
+   If Bexit Then Return
+   EditArea_Notify_DataChange(True)
+   Select Case Key.Code
+      Case Key.enter, Key.Return
+         Select Case Last.tag
+            Case "temporary"
+               chkConditionPermanant.SetFocus
+            Case "permanant"
+               chkConditionExacerbation.SetFocus
+            Case "exacerbation"
+               chkPrognosisLT3M.SetFocus
+         End Select
+   End Select
+   
+End
+
+Public Sub chkEditArea_Click()
+   '-------------------------------------------------------------------------
+   'Allow on one of each type of checkbox to be set for condition or duration
+   '--------------------------------------------------------------------------
+   
+   If Bexit Then Return
+   EditArea_Notify_DataChange(True)
+   bExit = True   
+   Select Case Last.tag
+      Case "temporary"
+         If chkConditionTemporary.value = True Then
+            chkConditionPermanant.value = False
+            chkConditionExacerbation.value = False 
+         Endif
+      Case "permanant"
+         If chkConditionPermanant.value = True Then
+            chkConditionExacerbation.value = False
+            chkConditionTemporary.value = False 
+         Endif
+      Case "exacerbation"
+         If chkConditionExacerbation.value = True Then
+            chkConditionPermanant.value = False
+            chkConditionTemporary.value = False 
+         Endif
+      Case "prognosis <3 months"
+         If Last.value = True Then
+            chkPrognosis13to24M.value = False
+            chkPrognosisOver24M.value = False
+            chkPrognosisUncertain.Value = False 
+            chkPrognosis3to12M.value = False
+         End If   
+      Case "prognosis 3 to 12 months"
+         If Last.value = True Then
+            chkPrognosisLT3M.value = False
+            chkPrognosis13to24M.value = False
+            chkPrognosisOver24M.value = False
+            chkPrognosisUncertain.Value = False 
+         End If   
+      Case "prognosis 13 to 24 months"
+         If Last.value = True Then
+            chkPrognosisUncertain.Value = False 
+            chkPrognosisLT3M.value = False
+            chkPrognosis3to12M.value = False
+            chkPrognosisOver24M.value = False
+         End If   
+      Case "over 24 months"
+         If Last.value = True Then
+            chkPrognosisLT3M.value = False
+            chkPrognosis3to12M.value = False
+            chkPrognosis13to24M.value = False
+            chkPrognosisUncertain.Value = False 
+         End If
+      Case "prognosis uncertain"
+         If Last.value = True Then
+            chkPrognosisLT3M.value = False
+            chkPrognosis3to12M.value = False
+            chkPrognosis13to24M.value = False
+            chkPrognosisOver24M.value = False
+         End If   
+   End Select
+   bExit = False  
+End
+
+Public Sub EditArea_TxtBox_Change()
+   
+   If Bexit Then Return
+   EditArea_Notify_DataChange(True)
+   
+End
+
+Public Sub HealthIssue_Add()
+   '--------------------------------------------------
+   'User has clicked on the health issues combo.
+   'The event was over-ridden in FCentreLink.class
+   'see cmbHealthIssues_Primary_Click() etc
+   'If this is a primary diagnosis only one is allowed
+   'If secondary multiple can be kept
+   'Either way, they must be health issues
+   '--------------------------------------------------
+   
+   If bIsMainCondition Then                                                 'only one main condition, but can just swap it
+      If Condition_Main.count Then
+         If Condition_Main!description = cmbIncludeHealthIssue.text Then   
+            Return
+         Endif
+      End If   
+      Condition_Main = Active_Health_Issues[cmbIncludeHealthIssue.index]
+   Else       
+      If Conditions_Secondary.Exist(Active_Health_Issues[cmbIncludeHealthIssue.index]!pk_pasthistory) Then 
+         Return
+      Endif                                                                 'secondary allow multiple
+      Conditions_Secondary.Add(Active_Health_Issues[cmbIncludeHealthIssue.index], Active_Health_Issues[cmbIncludeHealthIssue.index]!pk_pasthistory)
+   Endif                                                                       'no auto-date onset for multiple 
+   cmbIncludeHealthIssue.Index = -1
+   EditArea_Notify_DataChange(True)
+   
+End
+
+Public Sub cmbIncludeHealthIssue_Click()
+   '--------------------------------------------------
+   'User has clicked on the health issues combo.
+   'If this is a primary diagnosis only one is allowed
+   'If secondary multiple can be kept
+   'Either way, they must be health issues
+   '--------------------------------------------------
+   If Bexit Then Return
+   If bIsMainCondition Then                                                 'only one main condition, but can just swap it
+      If Condition_Main.count Then
+         If Condition_Main!description = cmbIncludeHealthIssue.text Then   
+            Return
+         Else
+            If Message.Warning("Only one main diagnosis allowed on this form.\n\nReplace existing diagnosis?", "Yes", "No") = 2 Then Return
+            CvwHealthIssues.Clear
+         Endif
+      End If   
+      Condition_Main = Active_Health_Issues[cmbIncludeHealthIssue.index]
+      CvwHealthIssues.Add(Condition_Main!pk_pasthistory, 0)
+      CvwHealthIssues[Condition_Main!pk_pasthistory][0] = Condition_Main!description
+      CvwHealthIssues[Condition_Main!pk_pasthistory][1] = Condition_Main!year_onset 
+   Else    
+      If CvwHealthIssues.count = 3 Then
+         Message.info("There is a maximum of three only conditions allowed on the centrelink form.\n\nYou may delete conditions via the right mouse popup menu.", "OK")
+         Return
+      Endif   
+      If Conditions_Secondary.Exist(Active_Health_Issues[cmbIncludeHealthIssue.index]!pk_pasthistory) Then 
+         Return
+      Endif                                                                 'secondary allow multiple
+      Conditions_Secondary.Add(Active_Health_Issues[cmbIncludeHealthIssue.index], Active_Health_Issues[cmbIncludeHealthIssue.index]!pk_pasthistory)
+      CvwHealthIssues.Add(Active_Health_Issues[cmbIncludeHealthIssue.index]!pk_pasthistory, 0)
+      CvwHealthIssues[Active_Health_Issues[cmbIncludeHealthIssue.index]!pk_pasthistory][0] = Active_Health_Issues[cmbIncludeHealthIssue.index]!description
+      CvwHealthIssues[Active_Health_Issues[cmbIncludeHealthIssue.index]!pk_pasthistory][1] = Active_Health_Issues[cmbIncludeHealthIssue.index]!year_onset 
+   Endif                                                                       'no auto-date onset for multiple 
+   cmbIncludeHealthIssue.Index = -1
+   EditArea_Notify_DataChange(True)
+   
+End
+
+Private Function Alert_No_Health_issues(bPrimaryCondition As Boolean)
+   
+   Dim sMsg As String
+   
+   sMsg = "You cannot enter free text here. If the patient is sick enough to need "
+   " a centrelink certificate you should record these issues in the "
+   " Health Issues i.e Past History section of EasyGP."
+   tlAlertNoHealthIssues.text = sMsg
+   
+End
+
+Public Sub cvwHealthIssues_Menu()
+   '-------------------------------------------
+   'popup the menu over the conditions list(s)
+   '-------------------------------------------   
+   If Not cvwHealthIssues.count Then Return
+   cvwHealthIssues.MoveCurrent
+   cvwHealthIssues_Key = CvwHealthIssues.Item.Key
+   If cvwHealthIssues.count Then
+      mnuConditions.Popup
+   Endif
+   
+End
+
+Private Sub cvwHealthIssues_Reload()
+   '-------------------------------------------------------------------------------------------------------------
+   'Reloads the health issues list after a deletion
+   'for a new health issue the key is pk_pasthistory as comes from current_consult!past_history collection 
+   'so when this is added as a new secondary condition, this is the name of the key 
+   'for a saved one the collectoin is entirely different, comes from vwCentrelinkDiagnoses key = fk_pasthistory
+   'Note: a conditioncould have previously been saved, the certificate re-edited and this condition deleted.
+   '      during an edit, so in this case the  code has marked this as 'deleted' but not yet saved to the back end
+   '--------------------------------------------------------------------------------------------------------------
+   
+   Dim collection_key As Integer
+   
+   Dim secondary_diagnosis As Collection
+   Dim bSkip As Boolean
+   
+   If bIsMainCondition Then Return 'never more than one or none
+   cvwHealthIssues.Clear
+   For Each secondary_diagnosis In Conditions_Secondary
+      bSkip = False 
+      If Not IsNull(secondary_diagnosis!diagnosis_deleted) Then                   'will exist if the form already printed and being re-edited
+         If secondary_diagnosis!diagnosis_deleted = True Then bskip = True        'user could have deleted a saved condition in previously printed form today
+      End If   
+      If bskip = False Then   
+         If IsNull(secondary_diagnosis!pk_pasthistory) Then         
+            collection_key = secondary_diagnosis!fk_pasthistory
+         Else
+            collection_key = secondary_diagnosis!pk_pasthistory
+         Endif
+         CvwHealthIssues.Add(collection_key, 0)
+         CvwHealthIssues[collection_key][0] = secondary_diagnosis!description
+         CvwHealthIssues[collection_key][1] = secondary_diagnosis!year_onset
+      End If
+      
+   Next
+   
+End
+
+Public Sub mnuConditions_Click()
+   '-----------------------------------------------------------------'  
+   'The popup menu over the conditions list
+   'there is only one menu item - delete 
+   'cvwHealthIssues_Key is the list key set when user clicks on a row
+   '-----------------------------------------------------------------
+   
+   If bIsMainCondition Then    
+      cvwHealthIssues.Clear
+      Condition_Main = New Collection
+   Else
+      If Not IsNull(Conditions_Secondary[cvwHealthIssues_Key]!pk_centrelink_diagnoses) Then     'this form is already saved otherwise would have no pk
+         Conditions_Secondary[cvwHealthIssues_Key]!diagnosis_deleted = True                     'will have to be re-saved to backend as deleted when printed
+      Else
+         Conditions_Secondary.Remove(cvwHealthIssues_Key)
+      End If  
+       cvwHealthIssues_Reload()
+      If Conditions_Secondary.count = 0 Then
+       '  bexit = True   
+         modEditAreaHelpers.EditArea_Clear(VBox_EditArea)
+       '  bExit = False  
+      End If   
+   End If 
+   
+Catch
+   Return 'just in case the key didn't set with a positive select
+   
+End
+
+Public Sub cvwHealthIssues_Select()
+   '----------------------------------------------------------
+   'Set the key, if don't sometimes when need key referencing
+   'by lvHealthIssues.Item.Key dosn't work.. go figure
+   '----------------------------------------------------------
+   
+   cvwHealthIssues.MoveCurrent
+   cvwHealthIssues_Key = cvwHealthIssues.Item.Key
+   
+End
+
+Public Sub tbRefreshProblemList_Click()
+   '------------------------------------------------
+   'User wishes to manually refresh the problem list
+   'these are reloaded into the cmbHealthIssues
+   '------------------------------------------------
+   
+   Problems_Reload
+   
+End
+
+Public Sub Problems_Reload(Optional bIncludeconfidential As Boolean = False)
+   '--------------------------------------------------------------------------------------
+   ' 1: Loads the combo with health issues (major (primary) or major + active (secondary)
+   ' 2: If user in middle of creating/editing a record, updates the selected problems if
+   '    they have made changes to past history in FPastHistory (with some limitations)
+   '
+   ' On the left side of the form - only allow major issues, on the right major or active
+   ' Update the appropriate collections if the exist condition_main, conditions_secondary
+   ' in which case the cvwHealthIssues is reloaded to ensure visual data is correct
+   ' (the description and or the year_onset could have been changed in FPastHistory
+   '-------------------------------------------------------------------------------------   
+   
+   Dim HI As Collection
+   
+   cmbIncludeHealthIssue.Clear
+   cvwHealthIssues.Clear
+   Active_Health_Issues = New Collection
+   For Each HI In CurrentConsult!past_history                                  'look through all past history or health issues
+      If Not IsNull(Condition_Main) Then  
+         If Condition_Main!pk_pasthistory = HI!pk_pasthistory Then
+            Condition_Main = HI
+            cvwHealthIssues.Add(Condition_Main!pk_pasthistory, 0)
+            cvwHealthIssues[Condition_Main!pk_pasthistory][0] = Condition_Main!description
+            cvwHealthIssues[Condition_Main!pk_pasthistory][1] = Condition_Main!year_onset
+         Endif
+      End If   
+      If bIsMainCondition Then  
+         If HI!major = True Then                                                       'and if an active problem
+            If HI!confidential = False Or bIncludeconfidential = True Then             'and not confidential confidentiality checked by user in FClerical
+               Active_Health_Issues.Add(HI, cmbIncludeHealthIssue.count)               'add it to collection of active health issues
+               cmbIncludeHealthIssue.Add(HI!description, cmbIncludeHealthIssue.count)  'and display in the combo
+            End If   
+         End If  
+      Else
+         If HI!active = True Or HI!major = True Then                                    'and if an active problem or major problem
+            If HI!confidential = False Or bIncludeconfidential = True Then              'and not confidential confidentiality checked by user in FClerical
+               Active_Health_Issues.Add(HI, cmbIncludeHealthIssue.count)                'add it to collection of active health issues
+               cmbIncludeHealthIssue.Add(HI!description, cmbIncludeHealthIssue.count)   'and display in the combo
+            End If   
+            'update the conditions_secondary collection if exists
+            If Not IsNull(Conditions_Secondary) Then  
+               If Conditions_Secondary.count Then
+                  If Conditions_Secondary.Exist(HI!pk_pasthistory) Then
+                     Conditions_Secondary[HI!pk_pasthistory] = HI
+                     cvwHealthIssues.Add(HI!pk_pasthistory, 0)
+                     cvwHealthIssues[HI!pk_pasthistory][0] = HI!description
+                     cvwHealthIssues[HI!pk_pasthistory][1] = HI!year_onset
+                  Endif
+               Endif
+            End If   
+         End If  
+      End If   
+   Next
+   If cmbIncludeHealthIssue.count Then           'if problems reloaded via past history 
+      tlAlertNoHealthIssues.Visible = False      'this could have been showing or  
+      cmbIncludeHealthIssue.enabled = True       'if no preivous issues this would be disabled
+   Endif
+   cmbIncludeHealthIssue.index = -1
+   
+End
+
+Public Sub cmbIncludeHealthIssue_LostFocus()
+   
+   Last.index = -1
+   
+End

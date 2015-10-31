@@ -186,13 +186,24 @@ Public Sub Init(Optional cons As CConsult = Null, Optional bEmbedded_Param As Bo
       .TempFileForSpelling = User.home &/ "myspelltemp.txt"
       .TempFileForErrors = User.home &/ "myspellerrors.txt"
    End With
+   
+   If embedded_form <> "FDiabetesGroupAlliedServices" Then
+      With Form_Copy_To = New FCopyTo(Vbox_CopyToList)
+         .Init(Me)
+         .lblCopyTo.width = lblmeasure.Width
+      End With
+      modEditAreaHelpers.Resize_labels(Form_Copy_To.Vbox_CopyToList, lblmeasure) 'if embedded eg FDiabetesGroupAlliedServices this may not exist
+   Else
+      HBox_Referral_Priority.Visible = False
+      Hbox_ReferralFor.Visible = False 
+      HBox_Include_Health_Summary.Visible = False
+      HBox_Letter_Tag.Visible = False  
+      HBox_Category.visible = False
+      Vbox_Include.Visible = False
+      VBox_Communications.Visible = False 
+      Vbox_CopyToList.Visible = False  
+   End If   
    Settings_Load                        'load settings for this form
-   With Form_Copy_To = New FCopyTo(Vbox_CopyToList)
-      .Init(Me)
-      .lblCopyTo.width = lblmeasure.Width
-   End With
-   modEditAreaHelpers.Resize_labels(Form_Copy_To.Vbox_CopyToList, lblmeasure)
-   MenuButton1.menu = "mnuHealthIssues"
    bEmbedded = bEmbedded_Param
    If Not bEmbedded Then
       Dictaphone = New FDictaphone(Hbox_Dictaphone)
@@ -229,24 +240,24 @@ Public Sub Set_Consult(new_cc As CConsult)
 End
 
 Public Sub mnuHealthIssues_Click()
-   '---------------------------------------------------
-   'User wants to link a request form to a health issue
-   'The menu tag = the pk_pasthistory
-   '---------------------------------------------------
-   
-   Select Case Last.tag
-      Case "general notes", "remove link"
-         txtHealthIssue.text = "General Notes"
-         cProgressNote_Section = const.cSection_GeneralNotes
-         fk_pasthistory = 0
-      Case Else
-         txtHealthIssue.text = currentconsult!past_history[Last.tag]!description
-         fk_pasthistory = Last.tag
-         cProgressNote_Section = const.cSection_Referrals
-   End Select
-   EditArea_Notify_DataChange(True)
-Catch
-   Return 
+   '    '---------------------------------------------------
+   '    'User wants to link a request form to a health issue
+   '    'The menu tag = the pk_pasthistory
+   '    '---------------------------------------------------
+   '    
+   '    Select Case Last.tag
+   '       Case "general notes", "remove link"
+   '        '  txtHealthIssue.text = "General Notes"
+   '          cProgressNote_Section = const.cSection_GeneralNotes
+   '          fk_pasthistory = 0
+   '       Case Else
+   '        '  txtHealthIssue.text = currentconsult!past_history[Last.tag]!description
+   '          fk_pasthistory = Last.tag
+   '          cProgressNote_Section = const.cSection_Referrals
+   '    End Select
+   '    EditArea_Notify_DataChange(True)
+   ' Catch
+   '    Return 
    
 End
 
@@ -264,7 +275,7 @@ End
 
 Public Sub Save(Optional bFinalised As Boolean = False, bSuppressSpellCheck As Boolean = False)
    '--------------------------------------------------------------
-   'Save the current edit area recall and updates the recalls list
+   'Saves the referral. The returned integer = the fk_referral and is used by FDiabetesGroup_llaiedServices
    'Need this amount of info to save
    'For table clin_referrals.referrals
    '   pk serial NOT NULL,
@@ -333,7 +344,7 @@ Public Sub Save(Optional bFinalised As Boolean = False, bSuppressSpellCheck As B
       referral!include_careplan = False
    End If   
    referral!fk_lu_urgency = priority_types[cmbPriorityTypes.index]!pk
-   referral!copyto = Form_Copy_To.Get_CopyTo_Data()!copyto 'FIXME, I'VE LEFT it as collection till I sort using this in FRequests
+   Try referral!copyto = Form_Copy_To.Get_CopyTo_Data()!copyto 'if embedded in FDiabetesAlliedServices this will be null
    referral!body_html = Referral_BodyHTML_Construct()
    referral!fk_type = referral_types[cmbReferralTypes.index]!pk  'e.g opinion and management
    referral!finalised = bFinalised
@@ -353,9 +364,10 @@ Public Sub Save(Optional bFinalised As Boolean = False, bSuppressSpellCheck As B
    'Ok, save the referral
    'Inclusions are saved to clin_referrals.inclusions
    '-------------------------------------------------
-   Debug referral!letter_html 
    If bFinalised Then
-      referral!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNote_Html, cProgressNote_Section, fk_progressnote, txtHealthIssue.text, fk_pasthistory, False)
+      '  referral!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNote_Html, cProgressNote_Section, fk_progressnote, txtHealthIssue.text, fk_pasthistory, False)
+      referral!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNote_Html, cProgressNote_Section, fk_progressnote, "General Notes", fk_pasthistory, False)
+      
       If chkSendAsHL7.Value = chkSendAsHL7.True Then
          referral!letter_hl7 = SendAsHL7()
       Else
@@ -401,16 +413,18 @@ Public Sub Save(Optional bFinalised As Boolean = False, bSuppressSpellCheck As B
       Else
          modReferralsDBI.Referral_Print(currentconsult, referral, True, bDoNotPrintInclusionsForCCD) 'Print letter copy for copyto's but not the inclusions
       End If
-      
    Endif
    
    If embedded_form <> "FTranscribeNotes" Then
-      FClinical.Refresh_AllPreviousNotes()
+      'FClinical.Refresh_AllPreviousNotes()
       FClinical.Refresh_Section(const.cSection_Referrals)
    End If   
-   EditArea_Notify_DataChange(False)
    
+   EditArea_Notify_DataChange(False)
    Reload()                                                  'Default to a new letter, reload controls
+   
+Catch
+   Return 
    
 End
 
@@ -423,7 +437,11 @@ Public Sub Reload()
    If Not IsNull(currentconsult) Then
       currentconsult.Refresh("referrals_written_this_consult")                  'Delete key = force a refresh
       If Not bEmbedded Then
-         Inclusions_Referrals_This_Consult = modReferralsDBI.Inclusions_Get(currentconsult!patient!fk_patient, False, True) 'fk_patient, deleted, only this consult
+         If modUtil.IsSameDay(currentconsult.GetConsultDate(), Now()) Then  
+            Inclusions_Referrals_This_Consult = modReferralsDBI.Inclusions_Get(currentconsult!patient!fk_patient, False, True) 'fk_patient, deleted, only this consult
+         Else
+            Inclusions_Referrals_This_Consult = modReferralsDBI.Inclusions_Get(currentconsult!patient!fk_patient, False, True,, currentconsult.GetConsultDate()) 
+         End If   
          Referrals_This_consult_Show()                                          'Update list under edit area
       Endif
    Endif
@@ -1168,6 +1186,8 @@ Public Function Valid_Referral() As Boolean
       If HSplitEditArea_Communications.Visible = False Then
          Editor_Maximize_Minimize()                                'if maximized text editor shrink it
       End If
+      Message.title = "Missing data"
+      Message.Info("Please enter a tag to identify this letter")  
       txtTag.SetFocus
       Return False
    End If
@@ -1178,11 +1198,6 @@ Public Function Valid_Referral() As Boolean
          Return False
       Endif
    End If
-   'If Trim(txtHealthIssue.text) = "" Then
-   '   Message.Info("Please select a health issue to link to this request\nor link to 'General Notes'")
-   '   MenuButton1.SetFocus()
-   '   Return False
-   'End If
    Return True
    
 End
@@ -1303,7 +1318,7 @@ Public Sub EditArea_Clear()
    cvwPersonContacts.Clear()
    lvwInclusions_EditArea.Clear()
    columnview1.Visible = False
-   txtHealthIssue.text = "General Notes"          'otherwise users will really get the shits
+   ' txtHealthIssue.text = "General Notes"          'otherwise users will really get the shits
    ' txtReferralDate.Text = Format$(Now, "dd/mm/yy")
    Try txtReferralDate.Text = Format$(currentconsult.GetConsultDate(), "dd/mm/yy")  'fixme
    cProgressNote_Section = const.cSection_GeneralNotes
@@ -1318,11 +1333,11 @@ Public Sub EditArea_Clear()
    fk_pasthistory = 0
    lblDocuments.text = "Included Documents"
    cProgressNote_Section = const.cSection_GeneralNotes
-   txtHealthIssue.text = "general notes"
+   'txtHealthIssue.text = "general notes"
    chkDontPrintCCd.value = True
    bHaveSpellChecked = False
    bExit = False
-   Form_Copy_To.Reset() 'clears the copyto lists.
+   Try Form_Copy_To.Reset() 'clears the copyto lists
    If HSplitEditArea_Communications.Visible = False Then
       Editor_Maximize_Minimize()                                'if maximized text editor shrink it
    End If
@@ -1493,6 +1508,11 @@ Public Sub Referrals_This_Consult_Show()
    Next
    lblMeasure.font = cvwLetters.Font
    modUtilGUI.Columnview_Columns_Set_Size(cvwLetters, lblMeasure)
+   If cvwLetters.count Then   
+      cvwletters.MoveFirst
+      cvwLetters.SetFocus
+      cvwLetters.Item.Selected = True
+   End If   
    
 End
 
@@ -1758,7 +1778,6 @@ Public Sub ReferralsList_Delete()
    referral = referrals_written_this_consult[cvwLetters_key]
    referral!deleted = True
    For Each inclusion In Inclusions_Referral_This_consult  'these are the inclusions just for one referral
-      
       inclusion!deleted = True
    Next
    modDBConnect.BeginTrans()
@@ -1770,7 +1789,7 @@ Public Sub ReferralsList_Delete()
    modDBConnect.CommitTrans()
    Reload()                                                  'Default to a new letter
    FClinical.Refresh_Section(const.cSection_Referrals)
-   FClinical.Refresh_AllPreviousNotes()
+  ' FClinical.Refresh_AllPreviousNotes()
    
 End
 
@@ -1792,7 +1811,7 @@ Public Sub ReferralsList_DeleteUndo()
       modDBConnect.CommitTrans()
       Reload()
       FClinical.Refresh_Section(const.cSection_Referrals)
-      FClinical.Refresh_AllPreviousNotes()
+    '  FClinical.Refresh_AllPreviousNotes()
    Endif
    
 End
@@ -1904,18 +1923,18 @@ Public Sub Referral_Edit(Optional new_referral As Collection)
    '-----------------------------------------------------------------------------
    'Now, use the fk_pasthistory (default = 0) to set the linked past history item
    '-----------------------------------------------------------------------------
-   If Not Letter_from_View.Exist("fk_pasthistory") Or If Letter_from_View!fk_pasthistory = 0 Then
-      txtHealthIssue.text = "General Notes"
-      fk_pasthistory = 0
-   Else
-      For Each PH In currentconsult!past_history
-         If Letter_from_View!fk_pasthistory = PH!pk_pasthistory Then
-            txtHealthIssue.text = PH!description
-            fk_pasthistory = PH!pk_pasthistory
-            Break
-         End If
-      Next
-   End If
+   ' If Not Letter_from_View.Exist("fk_pasthistory") Or If Letter_from_View!fk_pasthistory = 0 Then
+   '    txtHealthIssue.text = "General Notes"
+   '    fk_pasthistory = 0
+   ' Else
+   '    For Each PH In currentconsult!past_history
+   '       If Letter_from_View!fk_pasthistory = PH!pk_pasthistory Then
+   '          txtHealthIssue.text = PH!description
+   '          fk_pasthistory = PH!pk_pasthistory
+   '          Break
+   '       End If
+   '    Next
+   ' End If
    
    If Letter_from_View!include_careplan = True Or Letter_from_View!include_healthsummary = True Then
       chkIncludehealthSummary.value = True
@@ -2802,8 +2821,8 @@ Public Sub mnuLetter_Click()
             teLetter.Insert(Clipboard.Text)
          End If
       Case "save new template"
-          pk_template = 0
-          template = New Collection    
+         pk_template = 0
+         template = New Collection    
          Template_Save(modStrings.Capitalise_Words_In_String(Last.tag))
       Case "edit template"
          Template_Save(modStrings.Capitalise_Words_In_String(Last.tag))
@@ -2829,28 +2848,6 @@ Public Sub Template_Delete(pk_template As Integer)
    modDBConnect.exec_query("Update clin_referrals.lu_referral_letter_templates set deleted = True where pk=" & pk_template)
    modDBConnect.CommitTrans
    Templates_ReLoad
-   
-End
-
-Public Sub Template_Save_old(sTitle As String)
-   '---------------------------------------------------------------------------------------------------
-   'Saves new or existing template, if existing then the clin_referrals.lu_referral_letter_template.pk
-   'is passed to the popup dialog which saves the template
-   '---------------------------------------------------------------------------------------------------
-   ' 
-   ' Dim template_name As String
-   ' 
-   ' If InStr(sTitle, "Existing") Then
-   '    template_name = cmbTemplates.Text
-   ' End If   
-   ' With Form_Save_Template = New FSaveNotesTemplate
-   '    .Title = sTitle  
-   '    .Set_Embedded_In_Form("FReferrals")
-   '    .Init(teLetter.RichText, pk_template, template_name)
-   '    If .ShowModal() Then
-   '       Templates_ReLoad()
-   '    Endif
-   ' End With
    
 End
 

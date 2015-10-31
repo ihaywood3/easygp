@@ -1,0 +1,185 @@
+' Gambas class file
+
+' Copyright (C) 2008-2015 Dr. Richard Terry
+' Gui screen designs in IDE and at runtime Copyright (C) 2008-2015 Dr. Richard Terry
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/liPath to library filescenses/>.
+'-------------------------------------------------------------------------------------------
+' PURPOSE         Display's lists of recalls logged
+' HOW THIS WORKS  Like all modules the cConsult is passed to this module giving acccess to
+'                 currentconsultrecalls_logged
+' TO DO           Implement send email
+'-------------------------------------------------------------------------------------------
+
+Private currentconsult As CConsult
+Private currentrecall As Collection
+
+Public Sub _new()
+   
+   Settings_Load 
+   
+End
+
+Public Sub Current_Consult_Exists() As Boolean
+   
+   If Not IsNull(currentconsult) Then Return True 
+   
+End
+
+Public Sub Init(cons As CConsult)
+   
+   currentconsult = cons
+   
+End
+
+Public Sub Gui_Clear()
+   
+   currentconsult = Null 
+   modUtilGUI.Columnview_Clear_Properly(cvwRecalls)
+   
+End
+
+Public Sub cvwRecalls_Reload()
+   '---------------------------------------------------------------
+   'fixme separate out the toolbar display with the cvw display
+   'I've stuck a routine to fill the columnview in modRecallsDBI
+   'as its used in different spots in the progres
+   'FIXME probably need to do so in the recalls management module
+   '--------------------------------------------------------------
+   
+   Dim x As Integer                      'for readability = key
+   
+   With cvwRecalls
+      .Clear()
+      .Columns.count = 2
+      .AutoResize = True
+   End With
+   currentconsult.Refresh("recalls_logged")
+   For Each currentconsult!recalls_logged
+      x = currentconsult!recalls_logged.Key                        'readability
+      '---------------------------------------------------------
+      'Display in the recalls list on the tabstrip_lists control
+      '---------------------------------------------------------
+      cvwRecalls.Add(x, 0)
+      cvwRecalls[x][0] = Format(currentconsult!recalls_logged[x]!due, "dd/mm/yyyy") & "  " & currentconsult!recalls_logged[x]!reason
+      If Not IsNull(currentconsult!recalls_logged[x]!additional_text) Then
+         cvwRecalls[x][1] = currentconsult!recalls_logged[x]!additional_text
+      End If   
+   Next
+   
+End
+
+Public Sub cvwRecalls_Select()
+   
+   If IsNull(currentconsult) Then Return
+   cvwRecalls.MoveCurrent()
+   currentrecall = currentconsult!recalls_logged[cvwRecalls.Item.key]
+Catch
+   Return 
+   
+End
+
+Public Sub cvwRecalls_Menu()
+   '------------------------------------------------------------------------
+   'Adjust the popup menu text to indicate the usual default repeat interval
+   'turn back on (could be off) all menu options
+   '------------------------------------------------------------------------
+   
+   Dim menuitem As Menu
+   
+   cvwRecalls.MoveCurrent()
+   If cvwRecalls.count Then
+      For Each menuitem In mnuRecalls.Children
+         menuitem.Enabled = True
+      Next
+      mnuRecalls_Completed.caption = "Mark Completed Repeat in " & currentrecall!interval & currentrecall!abbrev_text
+   Else
+      '-------------------------------------------------------------
+      'allow the menu, but only couple of things
+      '-------------------------------------------------------------
+      For Each menuitem In mnuRecalls.Children
+         Select Case menuitem.Tag
+            Case "view audit trail", "help", "exit"
+               menuitem.Enabled = True
+            Case Else
+               menuitem.Enabled = False
+         End Select
+      Next
+   End If
+   mnuRecalls.popup()
+Catch
+   Return 
+   
+End
+
+Public Sub mnuRecalls_click()
+   '-----------------------------------------------------------------
+   'User has clicked on the recalls list, execute the various options
+   'e.g delete the recall, mark it completed, reschedule etc
+   '-----------------------------------------------------------------
+   
+   Select Case Last.tag
+       Case "email"
+         modUtilGUI.NotImplemented("Email the recall")
+      Case "view recall history", "view audit trail"
+         Recalls_Audit_Trail(Last.tag)
+      Case "adjust column widths"
+         cvwrecalls.Header = True
+         cvwRecalls.Resizable = True
+      Case "fonts"
+         modUtilGUI.Columnview_SetFont(cvwRecalls, "FClinLists_Recalls")
+      Case "help"
+         modUtilGUI.NotImplemented("Help for the recalls menu")
+      Case Else
+         modRecallsMenu.Process(currentrecall, Last.tag, currentconsult)
+   End Select
+Catch
+   Return
+   
+End
+
+Public Sub Recalls_Audit_Trail(sAudit_action As String)
+   '------------------------------------------------------------
+   'Displays either history of current recall or all the recalls
+   'according to the mnuTabbedListRecalls.tag property passed as
+   'saudit_Action
+   '------------------------------------------------------------
+   
+   Dim tempstring As String
+   Dim recall As Collection
+   
+   Select Case sAudit_action
+      Case "view recall history"
+         tempstring = "<HTML><BODY><TABLE>" & modHTML.HTML_Template_Audit_Row_Heading()
+         tempstring &= modAudit.MakeTrail("clin_recalls.recalls", currentrecall!pk_recall)
+         tempstring &= "</TABLE>"
+         tempstring &= "</BODY></HTML>"
+         FClinical.WebBrowser_show(tempstring, "Recall Audit Trail for " & currentrecall!reason)
+      Case "view audit trail"
+         tempstring = "<HTML><BODY><TABLE>" & modHTML.HTML_Template_Audit_Row_Heading() & "</TABLE>"
+         For Each recall In modRecallsDBI.get_logged(currentconsult!patient!fk_patient, False, True)
+            tempstring &= "<TABLE>"
+            tempstring &= modAudit.MakeTrail("clin_recalls.recalls", recall!pk_recall)
+            tempstring &= "</TABLE><HR>"
+         Next
+         tempstring &= "</BODY></HTML>"
+         FClinical.WebBrowser_show(tempstring, "Recall Audit Trail - all recalls - logged newest to oldest")
+   End Select
+   
+End
+
+Private Sub Settings_Load()
+   
+   cvwRecalls.Font = Font[Settings["FClinLists_Recalls/cvwRecalls.font", "DejaVu Sans,9"]]
+   
+End

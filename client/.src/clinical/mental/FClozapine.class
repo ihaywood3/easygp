@@ -1,0 +1,1258 @@
+' Gambas class file
+
+' Copyright (C) 2008-2015 Dr. Richard Terry
+'
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'--------------------------------------------------------------------
+'A class to record information about a patient's clozapine management
+'--------------------------------------------------------------------
+Private currentconsult As CConsult
+Private fk_clozapine_record As Integer
+Private fk_clozapine_details As Integer
+Private fk_progressnote As String
+Private Branch As Collection
+Private Branches As Collection
+Private ReferenceHBoxForColumnView As HBox
+Private fk_branch_clozapine_centre As Integer
+Private fk_branch_dispensing_pharmacy As Integer
+Private fk_observation_white_cell_count As Integer
+Private fk_observation_neutrophil_count As Integer
+Private fk_document_form As Integer
+Private bExit As Boolean
+Private iOrganisation_Search As Integer
+Private Const cFindClozapineCentre As Integer = 1
+Private Const cFindPharmacy As Integer = 2   
+Private Brands As Collection
+Private Brand As Collection
+Private Clozapine_Details As Collection
+Private Clozapine_Records As Collection
+Private Clozapine_Record As Collection
+Private wcc As Collection
+Private neutrophils As Collection
+Private weight As Collection
+Private Const cTab_Details_And_Providers As Integer = 0
+Private Const cTab_Blood_Count_Record_Forms As Integer = 1
+Private cvwClozapineForms_key As Integer
+Private bPreventSave As Boolean
+
+Public Sub Init(cons As CConsult)
+   
+   currentconsult = cons
+   lblmeasure.text = "  Clozapine Centre Pharmacy Fax   "
+   modEditAreaHelpers.Resize_labels(Vbox_EditArea_Details, lblmeasure)
+   lblmeasure.text = "Neutrophil Count (Paper Result)     "
+   modEditAreaHelpers.Resize_labels(Vbox_EditArea_Record, lblmeasure)
+   Vbox_EditArea_Details.Enabled = True 
+   Settings_load  
+   With cvwClozapineDetails
+      .Columns.count = 5
+      .Columns[0].text = "Clozapine No"
+      .Columns[0].Alignment = Align.Center
+      .Columns[1].text = "Dose"
+      .Columns[1].Alignment = Align.Center
+      .Columns[2].text = "Brand"
+      .Columns[2].Alignment = Align.Center
+      .Columns[3].text = "Clozapine Centre"
+      .Columns[3].Alignment = Align.Center
+      .Columns[4].text = "Dispensing Pharmacy"
+      .Columns[4].Alignment = Align.Center
+   End With
+   With cvwClozapineForms
+      .Columns.count = 6
+      .Columns[0].text = "Date"
+      .Columns[0].Alignment = Align.Center
+      .Columns[1].text = "Dose"
+      .Columns[1].Alignment = Align.Center
+      .Columns[2].text = "Weight"
+      .Columns[2].Alignment = Align.Center
+      .Columns[3].text = "White Cell Count"
+      .Columns[3].Alignment = Align.Center
+      .Columns[4].text = "Neutrophil Count"
+      .Columns[4].Alignment = Align.Center
+      .Columns[5].text = ""
+   End With
+   Reload_Details  'load the core details about clozapine providers etc
+   Reload_Record   'loads just today's clozapine record
+   textlabel1.text = Consent_Form_text()
+End
+Public Function Consent_Form_text() As String
+   
+  Return ""
+  "<P>It is a current requirement from the NSW Govt Dept of Health "
+  "that - wait for it - beaurocratic lunacy - that every single S100 " 
+  "Highly Specialised Drugs script for the same drug has to be accompanied by a new "
+  "signed patient consent form!<P>"
+  
+   
+End
+
+Private Sub Settings_load()
+   
+   cvwClozapineDetails.font = Font[Settings["FClozapine/cvwClozapineDetails.font", "DejaVu Sans,9"]]
+   VSplit_Clozapine.Layout = Settings["FClozapine/VSplit_Clozapine.Layout", modUtilGUI.HSplit([2, 1])]
+   VSplit_Record.Layout = Settings["FClozapine/VSplit_Record.Layout", modUtilGUI.HSplit([2, 1])]
+    HSplit_Details.Layout = Settings["FClozapine/HSplit_Details.Layout", modUtilGUI.HSplit([2, 1])]
+  
+End
+
+Private Sub Reload_Record()
+   '----------------------------------------------------------   
+   'Reload any record created today, empty collection if none
+   '----------------------------------------------------------
+   
+   Dim x As Integer
+   Dim cell_count As String
+   
+   Clozapine_Records = modUtil.Copy_Collection_Keyed_Sequentially(modMentalHealthDBI.Clozapine_Records_Get(currentConsult!patient!fk_patient))
+   If Clozapine_Records.count = 0 Then Return
+   For Each Clozapine_record In Clozapine_Records
+      cvwClozapineForms.Clear
+      cvwClozapineForms.Add(x, 0)
+      cvwClozapineForms[x][0] = Format(Clozapine_Record!consult_date, "dd/mm/yyyy")
+      cvwClozapineForms[x][1] = Clozapine_Record!clozapine_dose
+      cvwClozapineForms[x][2] = Clozapine_Record!weight & "Kg    "
+      If Not IsNull(Clozapine_Record!date_paper_based_fbc) Then
+         cvwClozapineForms[x][3] = Clozapine_Record!white_cell_count & " x10*9/L     "
+         cvwClozapineForms[x][4] = Clozapine_Record!neutrophil_count & " x10*9/L     "
+      Else
+         cvwClozapineForms[x][3] = Clozapine_Record!wcc_value_numeric & Clozapine_Record!wcc_units & " (" & Clozapine_Record!wcc_reference_range & ")     "
+         cvwClozapineForms[x][4] = Clozapine_Record!neutrophil_value_numeric & Clozapine_Record!neutrophil_units & " (" & Clozapine_Record!neutrophil_reference_range & ")     "
+      End If 
+   Next
+   modUtilGUI.Columnview_Columns_Set_Size(cvwClozapineForms, lblmeasure)
+   Clozapine_Record_Display
+   
+End
+
+Private Sub Clozapine_Record_Display()
+   '-----------------------------------------
+   'Displays the last recorded clozapine form
+   '-----------------------------------------  
+   
+   EditArea_Clear_Record
+   bExit = True   
+   Clozapine_Record = Clozapine_Records[cvwClozapineForms_key]
+   fk_clozapine_record = Clozapine_Record!pk_clozapine_record
+   fk_document_form = Clozapine_Record!fk_document
+   Try fk_observation_white_cell_count = Clozapine_Record!fk_observation_white_cell_count
+   Try fk_observation_neutrophil_count = Clozapine_Record!fk_observation_neutrophil_count
+   fk_progressnote = Clozapine_Record!fk_progressnote
+   txtWeight.text = Clozapine_record!weight
+   txtCurrentDosage.text = Replace(Clozapine_record!clozapine_dose, "mg", "")
+   If Not IsNull(Clozapine_record!date_paper_based_fbc) Then
+      txtDateBloodTakenManualResult.text = Format(Clozapine_record!date_paper_based_fbc, "dd/mm/yyyy")
+      txtWCCPaper.text = Clozapine_record!white_cell_count
+      txtNeutrophilCountPaper.text = Clozapine_record!neutrophil_count
+   Else
+      txtDateBloodTaken.text = Format(Clozapine_record!wcc_observation_date, "dd/mm/yyyy") 'should be same as neutrophil date... highly unlikely not to be
+      txtWCC.text = Clozapine_record!wcc_value_numeric & " " & Clozapine_record!wcc_units & " (" & Clozapine_record!wcc_reference_range & ")"
+      txtNeutrophilCount.text = Clozapine_record!neutrophil_value_numeric & " " & Clozapine_record!neutrophil_units & " (" & Clozapine_record!neutrophil_reference_range & ")"
+      If Clozapine_record!wcc_abnormal = "H" Then lblwccAbnormal.text = "**high**"
+      If Clozapine_record!wcc_abnormal = "L" Then lblwccAbnormal.text &= " **low**"
+      If Clozapine_record!neutrophil_abnormal = "H" Then txtNeutrophilCount.text &= " **high**"
+      If Clozapine_record!neutrophil_abnormal = "L" Then txtNeutrophilCount.text &= " **low**"
+   Endif
+   bExit = False  
+   
+End
+
+Private Sub Reload_Details()
+   
+   Dim x As Integer
+   
+   Clozapine_Details = modMentalHealthDBI.Clozapine_Details_Get(currentconsult!patient!fk_patient)
+   If IsNull(Clozapine_Details) Then Return
+   cvwClozapineDetails.Clear
+   cvwClozapineDetails.Add(x, 0)
+   cvwClozapineDetails[x][0] = Clozapine_Details!clozapine_number
+   cvwClozapineDetails[x][1] = Clozapine_Details!clozapine_dose
+   cvwClozapineDetails[x][2] = Clozapine_Details!brand
+   cvwClozapineDetails[x][3] = Clozapine_Details!clozapine_centre_organisation & " " & Clozapine_Details!clozapine_centre_branch
+   cvwClozapineDetails[x][4] = Clozapine_Details!dispensing_pharmacy_organisation & " " & Clozapine_Details!dispensing_pharmacy_branch
+   modUtilGUI.Columnview_Columns_Set_Size(cvwClozapineDetails, lblmeasure)
+   Clozapine_Details_Display
+   
+End
+
+Private Sub EditArea_Clear_Record()
+   
+   bExit = True
+   modEditAreaHelpers.EditArea_Clear(Vbox_EditArea_Record)
+   bExit = False  
+   
+End
+
+Private Sub EditArea_Clear_Details()
+   
+   bexit = True
+   Vbox_EditArea_Details.Enabled = False 
+   fk_branch_clozapine_centre = 0
+   fk_branch_dispensing_pharmacy = 0
+   fk_clozapine_record = 0
+   fk_clozapine_details = 0
+   modEditAreaHelpers.EditArea_Clear(Vbox_EditArea_Details)
+   With Columnview1
+      .Clear
+      .Visible = False  
+   End With
+   tlClozapineCentre.text = ""
+   tlDispensingPharmacy.text = ""
+   EditArea_Nofify_Data_Change(False)
+   bexit = False  
+   
+End
+
+Public Sub EditArea_Nofify_Data_Change(flag As Boolean)
+   
+   If bexit Then Return
+   If flag Then
+      If TabStrip1.index = cTab_Details_And_Providers Then  
+         Vbox_EditArea_Details_Outer.Padding = 1
+      Else
+         VBox_EditArea_Record_Outer.Padding = 1
+      End If   
+   Else
+      If TabStrip1.index = cTab_Details_And_Providers Then  
+         Vbox_EditArea_Details_Outer.Padding = 0
+      Else
+         VBox_EditArea_Record_Outer.Padding = 0
+      End If  
+   End If
+   
+End
+
+Public Function EditArea_TxtBox_ExcludeKeys(keycode As Integer, tag As String) As Boolean
+   
+   Dim bKeyValid As Boolean
+   
+   Select Case tag
+      Case "date blood taken", "date blood taken manual entry"
+         bKeyValid = modUtilGUI.AllowKeys(const.AllowKeys_DateFormat, keycode)  
+      Case "number", "current dosage"
+         bKeyValid = modUtilGUI.AllowKeys(const.AllowKeys_Letters_Numbers, keycode)
+      Case "neutrophil count paper", "white cell count paper", "weight"
+         bKeyValid = modUtilGUI.AllowKeys(const.AllowKeys_NumbersDecimal, keycode)
+      Case Else
+         bKeyValid = True
+   End Select
+   Return bKeyValid
+   
+End
+
+Public Sub EditArea_txtBox_GotFocus()
+   
+   bExit = True   
+   Last.BackGround = Color.rgb(95, 255, 175)
+   ReferenceHBoxForColumnView = Last.Parent.parent
+   Columnview1.Visible = False  
+   Select Case Last.tag
+      Case "hospital", "brand", "pharmacy"
+         With Columnview1
+            .top = Last.parent.parent.top + Last.height  
+            .left = Last.parent.Left
+            .width = Last.width  
+         End With
+   End Select
+   bExit = False  
+   
+End
+
+Public Sub EditArea_txtBox_LostFocus()
+   
+   Last.Background = Color.white
+   Select Case Last.tag 
+      Case "date blood taken", "date blood taken manual entry"
+         If Not IsDate(Last.text) Then
+            Last.text = ""
+         Endif
+   End Select
+   
+End
+
+Public Sub EditArea_txtBox_KeyPress()
+   '-------------------------------------------------------------
+   'first make sure only valid keys for each text box are entered
+   'here effectively this means only the date
+   'FIXME  - put in commentry here to show how only numbers/mMyYdD allowed in date
+   '--------------------------------------------------------------
+   
+   Dim x As Integer
+   Dim bKeyValid As Boolean
+   
+   bkeyvalid = EditArea_TxtBox_ExcludeKeys(key.code, Last.tag)
+   If bkeyvalid = False Then
+      Stop Event
+      Return
+   End If
+   If Key.code = Key.Down Then
+      If columnview1.Visible Then
+         With columnview1
+            .MoveFirst
+            .Item.Selected = True   
+            .SetFocus
+         End With
+      Endif
+   Endif
+   If Key.code = Key.Return Or Key.code = Key.Tab Then
+      Select Case Last.tag
+         Case "number"
+            txtClozapineDose.setfocus
+         Case "dose"
+            txtClozapineBrand.SetFocus
+         Case "brand"
+            txtHospital.SetFocus
+         Case "hospital"
+            txtCentrePharmacyFax.SetFocus
+         Case "centre pharmacy fax"
+            txtClozapineCoordinatorFax.SetFocus
+         Case "clozapine coordinator fax"
+            txtCommunityPharmacy.SetFocus
+         Case "weight"
+            txtCurrentDosage.SetFocus
+         Case "date blood taken manual entry"
+            txtWCCPaper.SetFocus
+         Case "white cell count paper"
+            txtNeutrophilCountPaper.SetFocus
+         Case "neutrophil count paper"
+            txtCurrentDosage.SetFocus
+      End Select
+   Endif
+   
+End
+
+Private Function Clozapine_Form_Valid() As Boolean
+   '--------------------------------------------------------
+   'Check today's details of the clozapine record are valid
+   '--------------------------------------------------------
+   
+   Dim sMsg As String   
+   
+   If fk_observation_neutrophil_count = 0 Or fk_observation_white_cell_count = 0 Then
+      If Trim(txtDateBloodTakenManualResult.text) = "" Then   
+         If txtNeutrophilCountPaper.text <> "" And txtWCCPaper.text <> "" Then
+            sMsg = "Please enter the date of the paper blood count test"
+            Goto MissingData
+            txtDateBloodTakenManualResult.SetFocus()
+         Else 
+            sMsg = "<HTML><BODY><P>To enter the white cell and neutrophil count you have two options:</P>"
+            "<UL><LI> Clicking the 'New button' from the Toolbar should pull in your last electronic record"
+            "<LI>Clicking the 'Refresh' button should be similar if you have started a new record."
+            "<LI>Manually enter a paper based result in the apppriate text boxes.</UL></BODY></HTML>"
+            Goto MissingData
+         End If   
+      End If   
+      
+   Endif
+   If txtDateBloodTakenManualResult.text <> "" Then
+      If Trim(txtWCCPaper.text) = "" Then
+         sMsg = "You have selected a non-electronic blood count result\n\n"
+         "Please enter the paper based white cell count result."
+         Goto MissingData
+         txtWCCPaper.SetFocus
+      Endif
+      If Trim(txtNeutrophilCountPaper.text) = "" Then
+         sMsg = "You have selected a non-electronic blood count result\n\n"
+         "Please enter the paper based neutrophil cell count result."
+         Goto MissingData
+         txtWCCPaper.SetFocus
+      Endif
+   End If   
+   If Trim(txtWCCPaper.text) <> "" Or Trim(txtNeutrophilCountPaper.text) <> "" Then
+      If Trim(txtDateBloodTakenManualResult.text) = "" Then    
+         sMsg = "By manually entering white cell or neutrophil counts you are electing to ignore any electronic result.\n\n"
+         "However, you have not indicated the date of this paper result."
+         Goto MissingData
+         txtDateBloodTakenManualResult.SetFocus()
+      End If
+   Endif
+   If Trim(txtCurrentDosage.text) = "" Then
+      sMsg = "Missing clozapine dosage"
+      Goto MissingData
+      txtCurrentDosage.SetFocus
+   Endif
+   Return True
+MissingData:
+   Message.title = "Missing Data"
+   Message.Info(sMsg)
+   
+End
+
+Private Function ProgressNote_Create() As String
+   
+   Dim sPN As String
+   Dim sStr As String
+   
+   sPN = "<P align=LEFT> <FONT SIZE=2><b>Clozapine Record and Consent Form</b></FONT></P>"
+   "The patient clozapine consent form and clozapine FBC record form have been created and faxed:<BR><HR>"
+   "<TABLE WIDTH=100% BORDER=0 CELLPADDING=0 CELLSPACING=0>"
+   "   <COL WIDTH=20%>"
+   "   <COL WIDTH=50%>"
+   " <tr VALIGN =TOP>"
+   "  <td WIDTH=20%><P ALIGN=LEFT><FONT SIZE=2><B>Clozapine Number</B></FONT></p></td>"
+   sPN &= "<td WIDTH=50%><P ALIGN=LEFT><FONT SIZE=2>" & Trim(txtClozapineNumber.text) & "</FONT></p></td>"
+   " </tr>"
+   " <tr VALIGN =TOP>"
+   If txtDateBloodTakenManualResult.text <> "" Then
+      sStr = txtDateBloodTakenManualResult.text
+   Else
+      sSTr = txtDateBloodTaken.text
+   Endif
+   sPn &= "<td WIDTH=20%><P ALIGN=LEFT><FONT SIZE=2><B>Date Blood Taken</B></FONT></p></td>"
+   sPn &= "<td WIDTH=50%><P ALIGN=LEFT><FONT SIZE=2>" & sSTr & "</FONT></p></td>"
+   "<tr VALIGN =TOP>"
+   sPn &= "<td WIDTH=20%><P ALIGN=LEFT><FONT SIZE=2><B>Weight</B></FONT></p></td>"
+   sPn &= " <td WIDTH=50%><P ALIGN=LEFT><FONT SIZE=2>" & txtWeight.text & "Kg</FONT></p></td>"
+   " </tr>"
+   " <tr VALIGN =TOP>"
+   "  <td WIDTH=20%><P ALIGN=LEFT><FONT SIZE=2><B>White blood cell count</B></FONT></p></td>"
+   If txtDateBloodTakenManualResult.text <> "" Then
+      sStr = txtWCCPaper.text
+   Else
+      sSTr = txtWCC.text
+   Endif
+   sPn &= "<td WIDTH=50%><P ALIGN=LEFT><FONT SIZE=2>" & sStr & "</FONT></p></td>"
+   sPn &= "</tr>"
+   " <tr VALIGN =TOP>"
+   "  <td WIDTH=20%><P ALIGN=LEFT><FONT SIZE=2><B>Neutrophil Count</B></FONT></p></td>"
+   If txtDateBloodTakenManualResult.text <> "" Then
+      sStr = txtNeutrophilCountPaper.text & " x10*9/L"
+   Else
+      sSTr = txtNeutrophilCount.text 
+   Endif
+   sPn &= "<td WIDTH=50%><P ALIGN=LEFT><FONT SIZE=2>" & sStr & "</FONT></p></td>"
+   sPN &= "</tr>"
+   " <tr VALIGN =TOP>"
+   " <td WIDTH=20%><P ALIGN=LEFT><FONT SIZE=2><B>Today's Clozapine Dose</B></FONT></p></td>"
+   sPN &= "<td WIDTH=50%><P ALIGN=LEFT><FONT SIZE=2>" & txtCurrentDosage.text & "mg</FONT></p></td>"
+   " </tr>"
+   "  </table>"
+   "<HR>"     
+   Return sPn
+   
+End
+
+Private Function Clozapine_Details_Valid() As Boolean
+   '----------------------------------------------------------------
+   'Check the core 'fixed' details of the clozapine record are valid
+   '----------------------------------------------------------------  
+   
+   Dim sMsg As String
+   
+   If Trim(txtClozapineNumber.text) = "" Then
+      sMsg = "Please enter details of the clozapine number."
+      Goto IncompleteData
+      txtClozapineNUmber.setfocus
+      Return
+   Endif
+   If Trim(txtClozapineDose.text) = "" Then
+      sMsg = "Please enter the usual dose for the clozapine."
+      Goto IncompleteData
+      txtClozapineDose.setfocus
+      Return
+   Endif
+   If Trim(txtClozapineBrand.text) = "" Then
+      sMsg = "Please enter details of the usual brand for the clozapine."
+      Goto IncompleteData
+      txtClozapineBrand.setfocus
+      Return
+   Endif
+   If fk_branch_clozapine_centre = 0 Then
+      sMsg = "Please search for and select the hospital which monitors this patient's clozapine usage."
+      Goto IncompleteData
+      txtHospital.setfocus
+      Return
+   Endif
+   If fk_branch_dispensing_pharmacy = 0 Then
+      sMsg = "Please search for and select the pharmacy which dispenses this patient's clozapine medication."
+      Goto IncompleteData
+      txtCommunityPharmacy.setfocus
+      Return
+   Endif
+   Return True
+IncompleteData:
+   Message.Title = "Missing Information"
+   Message.Info(sMsg)
+   
+End
+
+Private Sub Clozapine_Details_New()
+   
+   If Not IsNull(clozapine_Details) Then
+      Message.Title = "Existing Clozapine Record"
+      Message.Info("You have already created a clozapine details entry for this patient.\n\n"
+      "To Edit this you can either click the 'Edit' button on the main tool bar or "
+      "right mouse click over the columnview and select 'Edit' from the popup menu.")
+      Return
+   Endif
+   EditArea_Clear_Details
+   Vbox_EditArea_Details.Enabled = True 
+   txtClozapineNumber.SetFocus
+   
+End
+
+Public Sub New_Entry()
+   
+   Select Case TabStrip1.Index
+      Case cTab_Details_And_Providers
+         Clozapine_Details_New  
+      Case cTab_Blood_Count_Record_Forms
+         Clozapine_Blood_Count_Form_New
+   End Select
+   
+End
+
+Private Sub Clozapine_Details_Display()
+   
+   EditArea_Clear_Details
+   bExit = True  
+   txtClozapineNumber.text = Clozapine_Details!clozapine_number
+   txtClozapineDose.text = Clozapine_Details!clozapine_dose
+   txtClozapineBrand.text = Clozapine_Details!brand
+   fk_clozapine_details = Clozapine_Details!pk_clozapine_details
+   txtClozapineBrand.text = Clozapine_Details!brand 'eg Clopine (the stem) not clopine 25 or 50
+   txtCentrePharmacyFax.Text = Clozapine_Details!clozapine_centre_pharmacy_fax_number
+   txtClozapineCoordinatorFax.text = Clozapine_Details!clozapine_coordinator_fax_number
+   txtHospital.text = Clozapine_Details!clozapine_centre_organisation
+   fk_branch_clozapine_centre = Clozapine_Details!fk_branch_clozapine_centre
+   tlClozapineCentre.text = Clozapine_Details!clozapine_centre_branch & "<BR>"
+   tlClozapineCentre.text &= Trim(Clozapine_Details!clozapine_centre_street1 & " " & Clozapine_Details!clozapine_centre_street2) & "<BR>"
+   tlClozapineCentre.text &= Clozapine_Details!clozapine_centre_town & " " & Clozapine_Details!clozapine_centre_postcode
+   txtCommunityPharmacy.text = Clozapine_Details!dispensing_pharmacy_organisation
+   fk_branch_dispensing_pharmacy = Clozapine_Details!fk_branch_dispensing_pharmacy
+   tlDispensingPharmacy.text = Clozapine_details!dispensing_pharmacy_branch & "<BR>"
+   tlDispensingPharmacy.text &= Trim(Clozapine_details!dispensing_pharmacy_street1 & " " & Clozapine_Details!dispensing_pharmacy_street2) & "<BR>"
+   tlDispensingPharmacy.text &= Clozapine_Details!dispensing_pharmacy_town & " " & Clozapine_Details!dispensing_pharmacy_postcode
+   bExit = False   
+   
+End
+
+Private Sub Provider_Address_Refresh(branch As Collection, tl As TextLabel)
+   
+   tl.text = branch!branch & "<BR>"
+   tl.text &= Trim(branch!street1 & " " & branch!street2) & "<BR>"
+   tl.text &= branch!town & " " & branch!postcode
+   
+End
+
+Private Sub Clozapine_Details_Edit()
+   
+   Vbox_EditArea_Details.Enabled = True  
+   cvwClozapineDetails.UnselectAll()
+   txtClozapineNumber.SetFocus  
+   
+End
+
+Public Sub Save()
+   
+   Select Case TabStrip1.Index
+      Case cTab_Details_And_Providers
+         Save_Details
+      Case cTab_Blood_Count_Record_Forms
+         Save_Form_And_Consent
+   End Select
+   
+End
+
+Public Sub Save_Form_And_Consent()
+   '------------------------------------------------------------------------------------------
+   ' CREATE TABLE clin_mentalhealth.clozapine_record
+   ' REATE TABLE clin_mentalhealth.clozapine_record
+   ' (
+   '   pk serial NOT NULL,
+   '   fk_clozapine_details integer,
+   '   fk_consult integer NOT NULL,
+   '   fk_progressnote integer NOT NULL,
+   '   fk_document integer NOT NULL, -- points to the document which was faxed/sent to the hospital, pharmacy, clozapine co-ordinator
+   '   weight numeric NOT NULL,
+   '   fk_observation_white_cell_count integer,
+   '   white_cell_count text, -- if not null, then the user has manually typed in the result as opposed to the system pulling it in
+   '   fk_observation_neutrophil_count integer,
+   '   neutrophil_count text, -- if not null, then the user has manually typed in the result as opposed to the system pulling it in
+   '   date_paper_based_fbc date, -- If not null then the date of the paper-based fbc record
+   '   clozapine_dose text NOT NULL,
+   '   latex text NOT NULL,
+   '   deleted boolean DEFAULT false,
+   '   CONSTRAINT clozapine_record_pkey PRIMARY KEY (pk),
+   '   CONSTRAINT clozapine_record_fk_clozapine_details_fkey FOREIGN KEY (fk_clozapine_details)
+   '       REFERENCES clin_mentalhealth.clozapine_details (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT clozapine_record_fk_consult_fkey FOREIGN KEY (fk_consult)
+   '       REFERENCES clin_consult.consult (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT clozapine_record_fk_document_fkey FOREIGN KEY (fk_document)
+   '       REFERENCES documents.documents (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT clozapine_record_fk_progressnote_fkey FOREIGN KEY (fk_progressnote)
+   '       REFERENCES clin_consult.progressnotes (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   '------------------------------------------------------------------------------------------
+   
+   Dim Clozapine_record As CRow  
+   Dim ProgressNote As CRow   
+   Dim Document As CRow 
+   
+   If Vbox_EditArea_Record.Padding = 0 Then Return
+   If Not Clozapine_Form_Valid() Then Return
+   If bPreventSave Then Return
+   ProgressNote = New CRow                                            'First create and save the progress notes
+   If fk_progressnote Then                                            'If the progress note was written on today, we can edit it, otherwise, create a new one
+      ProgressNote.put_unchanged(fk_progressnote, "fk_progressnote")  'am editing todays progress note
+   End If   
+   ProgressNote!fk_audit_action = const.cAuditAction_Insert           'is an insert
+   ProgressNote!fk_consult = currentconsult.GetPK()
+   ProgressNote!notes = ProgressNote_Create()
+   ProgressNote!fk_section = const.cSection_GeneralNotes
+   ProgressNote!problem = "Clozapine Record"
+   ProgressNote.Save("clin_consult.progressnotes", "fk_progressnote")
+   Clozapine_record = New CRow 
+   If fk_clozapine_record Then
+      Clozapine_record.put_unchanged(fk_clozapine_record, "fk_clozapine_record")
+   Endif
+   Clozapine_record!fk_clozapine_details = fk_clozapine_details
+   Clozapine_record!fk_consult = currentconsult.GetPK()
+   Clozapine_record!fk_progressnote = ProgressNote!fk_progressnote
+   Clozapine_record!weight = Val(txtWeight.Text)
+   If Trim(txtDateBloodTakenManualResult.text) = "" Then
+      Clozapine_record!fk_observation_white_cell_count = fk_observation_white_cell_count
+      Clozapine_record!fk_observation_neutrophil_count = fk_observation_neutrophil_count
+      Clozapine_record!date_paper_based_fbc = Null
+      Clozapine_record!white_cell_count = Null
+      Clozapine_record!neutrophil_count = Null
+   Else
+      Clozapine_record!white_cell_count = Trim(txtWCCPaper.text)
+      Clozapine_record!neutrophil_count = Trim(txtNeutrophilCountPaper.text)
+      Clozapine_record!date_paper_based_fbc = Val(txtDateBloodTakenManualResult.text)
+      Clozapine_record!fk_observation_white_cell_count = Null
+      Clozapine_record!fk_observation_neutrophil_count = Null
+   End If   
+   Clozapine_record!clozapine_dose = txtClozapineDose.Text
+   Clozapine_record!latex = Clozapine_Record_Latex()
+   'now save the document which will be sent
+   Document = New CRow  
+   If fk_document_form Then
+      Document.put_unchanged(fk_document_form, "fk_document_form")
+   End If   'yes this is meant to be const.Document_Display_As_Letter I just want the practice fk_sending_entity
+   Document!fk_sending_entity = modInboxDBI.SendingEntity_GetPK(const.Document_Display_As_Letter, "", modDBConnect.currentUser!fk_branch)
+   Document!fk_patient = currentconsult!patient!fk_patient 
+   Document!imported_time = currentconsult.GetConsultDate()
+   Document!date_requested = currentconsult.GetConsultDate()
+   Document!date_created = currentconsult.GetConsultDate()
+   Document!fk_staff_filed_document = modDBConnect.currentUser!fk_staff  
+   Document!originator_reference = "Clozapine Blood Result Form"
+   Document!originator = UCase(modDBConnect.currentUser!organisation) & "." & UCase(modDBConnect.currentUser!branch)
+   Document!fk_staff_destination = modDBConnect.currentUser!fk_staff 
+   Document!comment_on_document = "Clozapine Blood Result Form"
+   Document!patient_access = True
+   Document!concluded = True 
+   Document!deleted = False
+   Document!fk_lu_urgency = const.UrgencyLevelRoutine
+   Document!tag = "Clozapine Blood Result Form"
+   Document!tag_user = Document!tag 
+   Document!fk_lu_display_as = const.Document_Display_As_Form
+   Document!fk_lu_request_type = Null
+   Document!incoming_referral = False
+   Document!data = Clozapine_record!latex           'the  plain latex for the  blood count form
+   Document!fk_lu_data_content_type = const.cData_Type_Latex
+   Document!protected = True                                         'as an audit document, users cannot remove this, needed for medicare
+   Document.Save("documents.documents", "fk_document_form")
+   Clozapine_record!fk_document = Document!fk_document_form          'retrieve the key for the clozapine blood record
+   Clozapine_record.Save("clin_mentalhealth.clozapine_record", "fk_clozapine_record")
+   modDBConnect.CommitTrans()
+   modPrinting.Print_latex_PDF(Clozapine_record!latex)
+   EditArea_Nofify_Data_Change(False)
+   Dec Application.Busy
+   Reload_Record
+Catch
+   
+   Message.Info("An error occured whilst trying to save the clozapine record, please notify your SysAdmin")
+   Dec Application.Busy
+   
+End
+
+Public Sub Save_Details()
+   '----------------------------------------------------------------------------------------
+   ' Create Table clin_mentalhealth.Clozapine_Details
+   ' (pk serial primary key,
+   '  fk_consult integer not null references clin_consult.consult(pk),
+   '  clozapine_number text not null,
+   '  clozapine_dose text not null,
+   '  fk_brand_clozapine text not null,
+   '  fk_branch_clozapine_centre integer not null references contacts.data_branches(pk),
+   '  fk_branch_dispensing_pharmacy integer not null references contacts.data_branches(pk)
+   '  deleted boolean default false 
+   '  clozapine_centre_pharmacy_fax_number,
+   '  clozapine_coordinator_fax_number,
+   '  )
+   '  ;
+   ' ----------------------------------------------------------------------------------------
+   
+   Dim Clozapine_Details As CRow  
+   Dim Clozapine_record As CRow   
+   
+   If Vbox_EditArea_Details.padding = 0 Then Return
+   If Not Clozapine_Details_Valid() Then Return
+   
+   Inc Application.Busy
+   Clozapine_Details = New CRow
+   If fk_clozapine_details Then
+      Clozapine_Details.put_unchanged(fk_clozapine_details, "fk_clozapine_details")
+   Endif
+   Clozapine_Details!fk_consult = currentconsult.GetPK()
+   Clozapine_Details!clozapine_number = Trim(txtClozapineNumber.text)
+   Clozapine_Details!clozapine_dose = Trim(txtClozapineDose.text)
+   Clozapine_Details!brand = Trim(txtClozapineBrand.text)
+   Clozapine_Details!fk_branch_clozapine_centre = fk_branch_clozapine_centre
+   Clozapine_Details!fk_branch_dispensing_pharmacy = fk_branch_dispensing_pharmacy
+   Clozapine_Details!clozapine_centre_pharmacy_fax_number = Trim(txtCentrePharmacyFax.text)
+   Clozapine_Details!clozapine_coordinator_fax_number = Trim(txtClozapineCoordinatorFax.text)
+   Clozapine_Details.Save("clin_mentalhealth.clozapine_details", "fk_clozapine_details")
+   '-----------------------------------------------------------------------------
+   'Now a record if it exists
+   '
+   ' Create table clozapine_record
+   ' (pk serial primary key,
+   '  fk_clozapine_details integer references clin_mentalhealth.Clozapine(pk),
+   '  fk_consult integer not null references clin_consult.consult(pk),
+   '  weight  numeric not null,
+   '  fk_observation_white_cell_count integer,
+   '  fk_observation_neutrophil_count integer,
+   '  clozapine_dose text not null)
+   '  deleted boolean default false
+   ' ;
+   '-----------------------------------------------------------------------------
+   modDBConnect.CommitTrans()
+   EditArea_Nofify_Data_Change(False)
+   Dec Application.Busy
+   Reload_Details
+   
+Catch
+   Message.Info("An error occured whilst trying to save the clozapine core details, please notify your SysAdmin")
+   Dec Application.Busy
+   
+End
+
+Public Sub ColumnView1_KeyPress()
+   
+   If Key.Code = Key.RETURN Then
+      ColumnView1_DblClick()
+   End If
+   
+End
+
+Public Sub ColumnView1_DblClick()
+   '-----------------------------------------------------------
+   'The columnview tag is always a control, usually a textbox
+   'here we read the textbox tag to determine which textbox
+   'poppuped up the columnview
+   '---------------------------------------------------------
+   
+   columnview1.MoveCurrent
+   Select Case Last.tag
+      Case txtClozapineBrand  
+         txtClozapineBrand.text = columnview1.Item.Text
+         txtHospital.SetFocus
+      Case Else
+         Branch_Select(branches[columnview1.Item.key])
+   End Select
+   columnview1.Visible = False
+   
+End
+
+Public Sub Organisation_Get()
+   '------------------------------
+   'Gets list of all organisations
+   '------------------------------
+   
+   Dim sSearchText As String
+   
+   Dim x As Integer
+   
+   With columnview1
+      .Columns.count = 4   
+      .Visible = False
+      .Clear
+   End With
+   If iOrganisation_Search = cFindClozapineCentre Then
+      sSearchText = Trim(txtHospital.text)
+   Else
+      sSearchText = Trim(txtCommunityPharmacy.text)
+   End If   
+   
+   If sSearchText = "" Then Return
+   branches = modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.Organisations_Get(sSearchText))
+   If Not branches.count Then Return
+   '-----------------------------------------------------------------------------------
+   'If branches of an organisation  exist to match the text, auto-select or show a list
+   '-----------------------------------------------------------------------------------
+   For Each branch In branches
+      Columnview1.Add(x, 0)
+      Columnview1[x][0] = Branch!organisation
+      Columnview1[x][1] = Branch!branch
+      Columnview1[x][2] = Trim(Branch!street1 & " " & Branch!street2)
+      Columnview1[x][3] = Branch!suburb & " " & Branch!postcode
+      Inc x
+   Next
+   If branches.count = 1 Then
+      Branch_Select(branch)
+   Else
+      With columnview1
+         .Visible = True
+         .Raise
+         If iOrganisation_Search = cFindClozapineCentre Then
+            .tag = txtHospital
+         Else 
+            .tag = txtCommunityPharmacy
+         End If  
+      End With
+   End If
+   modUtilGUI.Columnview_Columns_Set_Size(columnview1, lblmeasure)
+   
+End
+
+Public Sub Branch_Select(branch As Collection)
+   '-------------------------------------
+   'Selects a branch from the columnview1
+   '-------------------------------------
+   
+   bexit = True
+   
+   If iOrganisation_Search = cFindClozapineCentre Then
+      fk_branch_clozapine_centre = branch!fk_branch
+      txtHospital.text = Branch!organisation
+      Provider_Address_Refresh(branch, tlClozapineCentre)
+      txtCentrePharmacyFax.SetFocus
+   End If   
+   If iOrganisation_Search = cFindPharmacy Then
+      fk_branch_dispensing_pharmacy = branch!fk_branch
+      txtCommunityPharmacy.text = Branch!organisation
+      Provider_Address_Refresh(branch, tlDispensingPharmacy)
+   End If   
+   
+   bexit = False
+   
+End
+
+Public Sub EditArea_txtBox_KeyRelease()
+   
+   Select Case Last.tag
+      Case "brand"
+         clozapine_Brand_Get
+      Case "hospital"
+         iOrganisation_Search = cFindClozapineCentre
+         Organisation_Get
+      Case "pharmacy"
+         iOrganisation_Search = cFindPharmacy
+         Organisation_Get
+   End Select
+   
+End
+
+Public Sub Form_Resize()
+   
+   columnview1.width = txtHospital.Width
+   
+End
+
+Private Sub Clozapine_Brand_Get()
+   '-----------------------------------------------------------------------------
+   'multiple brands eg clopine 25, clopine 50, clopine 100, we only want the stem
+   '-----------------------------------------------------------------------------   
+
+   Dim x As Integer
+   Dim Unique_Brands As String
+   Dim sStr As String
+   Dim space_pos As Integer
+
+   With columnview1
+      .Columns.count = 1
+      .Visible = False  
+      .Clear
+   End With
+   brands = modPrescribingDBI.Brands_for_Generic_no_fk_product("clozapine")
+   For Each Brand In brands
+      space_pos = InStr(Brand!brand, " ")
+      sStr = Lower(Left(brand!brand, InStr(Brand!brand, " ") - 1))
+      If Not InStr(unique_brands, sStr)
+         Unique_Brands &= sstr & " " 
+         Columnview1.Add(x, 0)
+         Columnview1[x][0] = sStr
+         Inc x 
+      Endif
+   Next
+   If brands.count = 1 Then
+      txtClozapineBrand.text = sstr
+   Else
+      With columnview1
+         .Visible = True
+         .Raise
+         .tag = txtClozapineBrand
+      End With
+   End If
+   modUtilGUI.Columnview_Columns_Set_Size(columnview1, lblmeasure)
+   
+End
+
+' Public Sub Clozapine_brand_select(brand As Collection)
+'    
+'    txtClozapineBrand.text = brand!brand
+'    txtHospital.SetFocus
+'    
+' End
+
+Public Sub EditArea_txtBox_Change()
+   
+   If bExit Then Return
+   If Trim(txtHospital.text) = "" Then fk_branch_clozapine_centre = 0
+   If Trim(txtCommunityPharmacy.text) = "" Then fk_branch_dispensing_pharmacy = 0
+   If Trim(txtWeight.text) = "" Then lblWeightDone.text = ""
+   If Trim(txtWCCPaper.text) <> "" Or Trim(txtDateBloodTakenManualResult.text) <> "" Or Trim(txtNeutrophilCountPaper.text) <> "" Then
+      txtDateBloodTaken.text = ""
+      txtWCC.Text = ""
+      txtNeutrophilCount.text = ""
+      fk_observation_neutrophil_count = 0
+      fk_observation_white_cell_count = 0
+      lblwccAbnormal.text = ""
+   Endif
+   EditArea_Nofify_Data_Change(True)
+   
+End
+
+Public Sub cvwClozapineDetails_LostFocus()
+   
+   cvwClozapineDetails.UnselectAll()
+   
+End
+
+Public Sub cvwClozapineDetails_Menu()
+   
+   mnuClozapineDetails.popup()
+   
+End
+
+Public Sub cvwClozapineDetails_Select()
+   
+   cvwClozapineDetails.MoveCurrent()
+   Clozapine_Details_Display
+   
+End
+
+Public Sub Edit()
+   
+   Select Case TabStrip1.Index
+      Case cTab_Details_And_Providers
+         If cvwClozapineDetails.count Then Clozapine_Details_Edit
+      Case cTab_Blood_Count_Record_Forms
+         If cvwClozapineForms.count Then Clozapine_Forms_Edit
+   End Select
+   
+End
+
+Public Sub mnuClozapineDetails_Click()
+   
+   Dim smsg As String
+   
+   Select Case Last.tag
+         
+      Case "font"
+         modUtilGUI.Columnview_SetFont(cvwClozapineDetails, "FClozapine")
+      Case "edit"
+         Clozapine_Details_Edit
+      Case "delete"
+         Message.Title = "Delete Clozapine Information"
+         If Message.Warning("Are you sure you wish to delete this core information about the patient's clozapine management?", "Yes", "No") = 2 Then Return
+         If modMentalHealthDBI.Clozapine_Details_Delete(fk_clozapine_details) Then
+            modDBConnect.CommitTrans
+         Else
+            Message.info("An error occurred trying to delete this clozapine record.")
+         Endif
+      Case "help"
+         modUtilGUI.NotImplemented("Help for entering clozapine details")
+   End Select 
+   
+End
+
+Public Sub VSplit_Clozapine_Resize()
+   
+   Settings["FClozapine/VSplit_Clozapine.Layout"] = VSplit_Clozapine.Layout
+   Settings.Save
+   
+End
+
+Public Sub VSplit_Record_Resize()
+   
+   Settings["FClozapine/VSplit_Record.Layout"] = VSplit_Record.Layout
+   Settings.Save
+   
+End
+
+Public Sub Refresh()
+   
+   If TabStrip1.index = cTab_Blood_Count_Record_Forms Then
+      Electronic_Results_Get
+   End If  
+   
+End
+
+Public Sub Preview()
+   
+   Try FClinical.Editor_ShowPage_External("pdf file", "Clozapine Form", modPrinting.Latex_To_PDF(Clozapine_record[0]!latex))
+   
+End 
+
+Public Sub Clozapine_Form_RePrint()
+   
+   Try modPrinting.Print_latex_PDF(Clozapine_record[0]!latex)
+   
+End
+
+Public Sub Electronic_Results_Get()
+   
+   Dim sMsg As String
+   
+   fk_observation_white_cell_count = 0
+   fk_observation_neutrophil_count = 0
+   wcc = modObservationsDBI.Observation_Get_By_Loinc(const.Loinc_white_cell_count, currentconsult!patient!fk_patient, True)
+   If Not IsNull(wcc) Then
+      txtWCC.text = Str(wcc!value_numeric) & " " & wcc!units & " (" & wcc!reference_range & ")"
+      If wcc!abnormal = "H" Then lblwccAbnormal.text = "**high**"
+      If wcc!abnormal = "L" Then lblwccAbnormal.text &= " **low**"
+      txtDateBloodTaken.text = wcc!observation_date
+      fk_observation_white_cell_count = wcc!pk
+      txtWCCPaper.text = ""
+      EditArea_Nofify_Data_Change(True)
+   Endif
+   neutrophils = modObservationsDBI.Observation_Get_By_Loinc(const.Loinc_neutrophil_count, currentconsult!patient!fk_patient, True)
+   If Not IsNull(neutrophils) Then
+      txtNeutrophilCount.text = Str(neutrophils!value_numeric) & " " & neutrophils!units & " (" & neutrophils!reference_range & ")"
+      If neutrophils!abnormal = "H" Then txtNeutrophilCount.text &= " **high**"
+      If neutrophils!abnormal = "L" Then txtNeutrophilCount.text &= " **low**"
+      txtDateBloodTaken.text = Format(wcc!observation_date, "dd/mm/yyyy")
+      fk_observation_neutrophil_count = neutrophils!pk
+      txtNeutrophilCountPaper.text = ""
+      txtDateBloodTakenManualResult.text = ""
+      txtWeight.SetFocus
+   Endif
+   If DateDiff(wcc!observation_date, Now(), gb.Day) > 14 Then
+      Message.Title = "Out of Date Haematology"
+      sMsg = "This blood count was done on " & txtDateBloodTaken.Text & " and is out of date - "
+      sMsg &= "it is " & Str(DateDiff(wcc!observation_date, Now(), gb.Day)) & " days old.\n\n"
+      sMsg &= "Clozapine patients must have had a blood test done within the last few days of giving them "
+      "their new prescription.\n\n"
+      "Please either rectify this by downloading a current blood count, then clicking the "
+      "'New' Button on the main toolbar, or, if you have  a paper copy, click the 'Enter Details Manually'"
+      If Message.Warning(sMsg, "Enter Manual Details", "Ok") = 1 Then
+         VBox_EditArea_Record_Outer.Enabled = True 
+         Goto EraseData
+         txtDateBloodTakenManualResult.SetFocus
+      Else
+         VBox_EditArea_Record_Outer.Enabled = False   
+         Goto EraseData
+      Endif
+   End If   
+   Return
+EraseData:
+   txtDateBloodTaken.text = ""
+   txtWCC.Text = ""
+   txtNeutrophilCount.text = ""
+   fk_observation_neutrophil_count = 0
+   fk_observation_white_cell_count = 0
+   
+End
+
+Public Sub Clozapine_Blood_Count_Form_New()
+   '---------------------------------------------------------------
+   'User has clicked the 'New' button on the main task bar
+   'If the clozapine encounter is < 1 week, allow editing of this
+   'they should have well and truly faxed the FBC off by > 1 week
+   '---------------------------------------------------------------   
+   
+   Dim sMsg As String
+   
+   If cvwClozapineForms.count Then
+      Message.Title = "New Clozapine Encounter"
+      If DateDiff(Now(), Clozapine_Records[0]!consult_date, gb.day) < 8 Then
+         sMsg = "You have already created a recent clozapine record on " & Format(Clozapine_Records[0]!consult_date, "dd/mm/yyyy") & ".\n\n"
+         "If you want to refresh the data you can at any time click the 'Refresh' button on the main toolbar."
+         Select Case Message.Question(sMsg, "Create New", "Edit Existing")
+            Case 2
+               Clozapine_Forms_Edit 
+               Return
+         End Select
+      Endif
+   End If   
+  bExit = False   
+  Electronic_Results_Get  'if results exist then   EditArea_Nofify_Data_Change(True) triggered
+  bExit = True            'stop triggering logic in  EditArea_txtBox_Change()
+   weight = modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_weight)
+   txtWeight.text = weight!data
+   lblWeightDone.text = "(Measured On " & weight!date & ")" ""
+   txtCurrentDosage.text = Replace(txtClozapineDose.Text, "mg", "")
+   bExit = False  
+   
+End
+
+Public Sub Print_Content()
+   
+   ' modPrinting.Print_latex_PDF(Clozapine_Patient_Consent_Form_Create_Latex())
+   
+End
+
+Public Sub Vbox99_Leave()
+   
+   cvwClozapineDetails.UnselectAll()
+   
+End
+
+Public Function Clozapine_Record_Latex() As String
+   
+   '-----------------------------------------------------------------------
+   'Prepares the LaTeX definition to be with be printed on the actual form
+   'of to saved to the database (always uses overpic)
+   'in FUserPrefernces, the user can elect to print on pre-printed form
+   'The printout can be shifted up/down for each room printer by the user
+   'in FRoomSetup
+   '---------------------------------------------------------------------   
+   
+   Dim templ As CTemplate
+   Dim x As Integer
+   Dim sstring As String
+   Dim filename As String
+   Dim date_components As String[]
+   Dim main_condition As Collection
+   Dim secondary_condition As Collection
+   
+   templ = New CTemplate("clozapine-fbc-record-form", "tex")
+   templ.subst_common(currentconsult)
+   templ.Subst("clozapine-number", Trim(txtClozapineNumber.text))
+   If txtDateBloodTakenManualResult.text <> "" Then
+      templ.Subst("date-blood-taken", txtDateBloodTakenManualResult.text)
+   Else
+      templ.Subst("date-blood-taken", txtDateBloodTaken.text)
+   End If   
+   templ.Subst("weight", Trim(txtWeight.text) & "Kg")
+   If txtWCCPaper.text <> "" Then
+      templ.Subst("wbc", txtWCCPaper.text & " x10*9/L")
+   Else
+      templ.Subst("wbc", txtWCC.text)  
+   Endif
+   If txtNeutrophilCountPaper.text <> "" Then
+      templ.Subst("neutrophils", txtNeutrophilCountPaper.text)
+   Else
+      templ.Subst("neutrophils", txtNeutrophilCount.text)
+   Endif
+   templ.Subst("clozapine-dose", txtCurrentDosage.text & "mg")
+   templ.Subst("clozapine-centre", txtHospital.text)
+   Templ.Subst("mental-health-pharmacy-fax", txtCentrePharmacyFax.text)
+   templ.Subst("clozapine-coordinator-fax", txtClozapineCoordinatorFax.text)
+   templ.Subst("todays-date", Format(Now(), "dd/mm/yyyy"))
+   
+   Return Templ.GetData()
+   
+End
+
+Public Function Clozapine_Patient_Consent_Form_Create_Latex() As String
+   
+   '-----------------------------------------------------------------------
+   'Prepares the LaTeX definition to be with be printed on the actual form
+   'of to saved to the database (always uses overpic)
+   'in FUserPrefernces, the user can elect to print on pre-printed form
+   'The printout can be shifted up/down for each room printer by the user
+   'in FRoomSetup
+   '---------------------------------------------------------------------   
+   
+   Dim templ As CTemplate
+   Dim x As Integer
+   Dim sstring As String
+   Dim filename As String
+   Dim date_components As String[]
+   Dim main_condition As Collection
+   Dim secondary_condition As Collection
+   
+   templ = New CTemplate("clozapine-patient-consent-nsw", "tex")
+   templ.Subst("pdf-path", modUtil.Find_File("templates" &/ "clozapine-patient-consent-nsw-health.pdf"))
+   templ.subst_common(currentconsult)
+   templ.Subst("todays-date", Format(Now(), "dd/mm/yyyy"))
+   templ.Subst("todays-date", Format(Now(), "dd/mm/yyyy"))
+   Return Templ.GetData()
+   
+End
+
+Public Sub cvwClozapineForms_Menu()
+   
+   If cvwClozapineForms.count Then mnuClozapineRecords.Popup
+   
+End
+
+Public Sub cvwClozapineForms_Select()
+   
+   cvwClozapineForms.MoveCurrent()
+   cvwClozapineForms_key = cvwClozapineForms.Item.key
+   
+End
+
+Public Sub Clozapine_Forms_Edit()
+   
+   VBox_EditArea_Record_Outer.Enabled = True 
+   cvwClozapineForms.UnselectAll()
+   txtClozapineDose.SetFocus
+   
+End
+
+Public Sub mnuClozapineRecords_Click()
+   
+   Select Case Last.tag
+      Case "edit"
+         Clozapine_Forms_Edit
+      Case "delete"
+      Case "preview"
+         Try FClinical.Editor_ShowPage_External("pdf file", "Clozapine Form", modPrinting.Latex_To_PDF(Clozapine_record!latex))
+      Case "re-print"
+         Try modPrinting.Print_latex_PDF(Clozapine_record!latex)
+      Case "help"
+         modUtilGUI.NotImplemented("Help for keeping clozapine records.")
+      Case "font"
+         modUtilGUI.Columnview_SetFont(cvwClozapineForms, "FClozapine")
+   End Select 
+   
+End
+
+Public Sub TabStrip1_Click()
+   
+   If Bexit Then Return
+   bexit = True
+   If fk_clozapine_details = 0 Then
+      TabStrip1.Index = 0
+      Message.Title = "Missing Clozapine Details"
+      Message.Info("Please fill in and save the clozapine details before trying to print out the clozapine forms.\n\n"
+      "Please click the 'New' button the main toolbar to start a new clozapine details record.")
+      Bexit = False 
+      Return  
+   Endif
+   If TabStrip1.index = cTab_Blood_Count_Record_Forms Then
+      If cvwClozapineForms.count = 0 Then
+         Clozapine_Blood_Count_Form_New
+      Endif
+   Endif
+   
+End
+
+Public Sub btnPrintConsent_Click()
+   
+   modPrinting.Print_latex_PDF(modMentalHealthDBI.Clozapine_Patient_Consent_Form_Create_Latex(currentconsult))
+   
+End

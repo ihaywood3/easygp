@@ -13,6 +13,14 @@
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '----------------------------------------------------------------------
 
+Public Function Progress_Notes_Images_Get(fk_patient As Integer) As Collection
+   '-----------------------------------------------------------------------
+   'If image hasn't got an md5sum it is not in the progress notes
+   'This only returns images from the progress notes or the patient picture
+   '-----------------------------------------------------------------------
+   Return modDBConnect.exec_query_collection("Select * From blobs.vwPatientImages where fk_patient = " & fk_patient & " and md5sum is not null order by consult_date")
+End
+
 Public Function age_onset(PH As Collection) As String
    '------------------------------------------------------------- 
    'returns string representationt the age onset of the condition
@@ -254,6 +262,67 @@ Public Sub Habits_Make_Latex_Rows(templ As CTemplate, currentconsult As CConsult
          End If
       End If
    Next
+   
+End
+
+Public Sub Selected_Health_Issues_Make_Latex(templ As CTemplate, Issues As Collection)
+   '------------------------------------------------------------------------------------
+   'Create latext for specified health issues
+   'used in GFPMPTCA (ie. extra health issues the user wants a team care member to know)
+   'used in FDiabetesGroupAlliedServices for the same reason
+   '------------------------------------------------------------------------------------  
+   
+   Dim sSTring As String
+   Dim PH As Collection
+   Dim sLaterality As String
+   sString = ""
+   If Issues.count Then   
+      sstring = "\\textbf{\\footnotesize \\underline{HEALTH ISSUES YOU SHOULD KNOW ABOUT}}"
+      For Each PH In Issues
+         Select Case PH!fk_laterality
+            Case const.LateralityBoth
+               sLaterality = "(Bilateral)"
+            Case const.LateralityLeft
+               sLaterality = "(Left)"
+            Case const.LateralityRight
+               sLaterality = "(Right)"
+            Case const.LateralityNone
+               sLaterality = ""
+         End Select
+         sstring &= "\\item[\\footnotesize " & PH!year_onset & "]"
+         sstring &= "\\textbf{\\footnotesize " & UCase(PH!description) & " " & sLaterality & " " & modProgressNotes.age_onset(PH) & "}\\\\"
+         'If the user is using this as a management plan, must have aims, goals and management
+         If Not IsNull(PH!aim_of_plan) Then
+            If Not IsNull(PH!condition_summary) Then    
+               sstring &= "\\textbf{" & "Relevant History: " & "}" & PH!condition_summary & "." & "\\\\"
+            End If  
+            If Not IsNull(PH!health_need) Then  
+               sstring &= "\\textbf{" & "Needs to address: " & "}" & PH!health_need & ". \\\\"
+            End If   
+            sstring &= "\\textbf{" & "Goals                  : " & "}" & PH!aim_of_plan & ". \\\\" & "\\textbf{" & "Plan:    " & "}"  ' & PH!management_summary & "."
+            If Not IsNull(ph!plan_contribution_gp) Then
+               sstring &= "GP will " & ph!plan_contribution_gp & ". "
+            Endif
+            If Not IsNull(PH!plan_contribution_patient) Then
+               sstring &= "Patient will " & PH!plan_contribution_patient & ". "
+            Endif
+            If Not IsNull(Ph!plan_contribution_others) Then
+               sstring &= Ph!plan_contribution_others & "."
+            End If
+         Else
+            sstring &= "\\text{"
+            If Not IsNull(PH!condition_summary) Then 
+               sstring &= PH!condition_summary & ". "
+            Endif
+            If Not IsNull(Ph!management_summary) Then
+               sSTring &= PH!management_summary & "."
+            End If
+         End If
+      Next
+      templ.Subst("additional-health-issues", sstring) 
+   Else
+      templ.Subst("additional-health-issues", "\\relax")
+   Endif      
    
 End
 
@@ -2503,6 +2572,7 @@ End
 
 Public Function AllProgressNotes_Construct_Html_new(currentconsult As CConsult, Optional bIncludeAuditTrail As Boolean, Optional bExcludePastHistory As Boolean, Optional pb As ProgressBar = Null) As String
    '--------------------------------------------------------
+   'don't delete this please  yet
    'first attempt to exclude past history item's themselves
    'Constructs the html for the problem using pk_pasthistory
    'ordered by date and time order.
@@ -2637,7 +2707,7 @@ Public Function AllProgressNotes_Construct_Html_new(currentconsult As CConsult, 
    
 End
 
-Public Function AllProgressNotes_Construct_Html(currentconsult As CConsult, Optional bIncludeAuditTrail As Boolean, Optional bExcludePastHistory As Boolean, Optional pb As ProgressBar = Null) As String
+Public Function AllProgressNotes_Construct_Html(currentconsult As CConsult, Optional bIncludeAuditTrail As Boolean, Optional bExcludePastHistory As Boolean, Optional pb As ProgressBar, Optional single_day As Date) As String
    '--------------------------------------------------------
    'Constructs the html for the problem using pk_pasthistory
    'ordered by date and time order.
@@ -2702,8 +2772,11 @@ Public Function AllProgressNotes_Construct_Html(currentconsult As CConsult, Opti
       progressNotes = currentconsult!progress_notes_audit
       sHtml &= " With Audit Trail"
    Else
-      currentconsult.Refresh("progress_notes")
+      currentconsult.Refresh("progress_notes")  
       progressNotes = currentconsult!progress_notes
+      If Not IsNull(single_day) Then
+         progressNotes = currentconsult!progress_notes_today
+      Endif
    Endif
    sHtml &= "</H3></DIV>"
    For Each progressnote In progressNotes
@@ -2791,6 +2864,26 @@ Private Function Form_Notes_Table(sTable As String, progressnote As Collection, 
    
 End
 
+
+
+' Private Function Form_Notes_Table(sTable As String, progressnote As Collection, progress_notes_codes As Collection) As String
+'    
+'    Select Case progressnote!fk_audit_action
+'       Case 1, 2, 20  ' ordinary notes or imported
+'          sTable = Replace$(sTable, "col2", progressnote!notes)
+'          sTable = Replace$(sTable, "%background-color%", "")
+'       Case 36 ' PCEHR entries
+'          sTable = Replace$(sTable, "col2", progressnote!notes)
+'          sTable = Replace$(sTable, "%background-color%", "bgcolor = '#CCD6ED'")
+'       Case Else
+'          sTable = Replace$(sTable, "%background-color%", "bgcolor = '#FFDCE7'")
+'          sTable = Audit_Create_HTML(sTable, progressnote)
+'    End Select
+'    sTable = Replace(sTable, "col3", Codes_Get(progress_notes_codes, progressnote!pk_progressnote))
+'    sTable = Replace(sTable, "col3", "")
+'    Return sTable
+'    
+' End
 Public Function Audit_Create_HTML(sTable As String, pnotes As Collection) As String
    '-----------------------------------------
    'Inserts audit log consisting of this text

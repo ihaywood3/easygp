@@ -21,6 +21,7 @@
 '            if loinc code and graphable will be graphed
 ' TODO     : EVERYTHING, Including, after a little thought, using
 '            this in FClinical
+'           25Oct15 - a revamp, work in progress
 '---------------------------------------------------------------------
 
 Private currentconsult As CConsult
@@ -28,6 +29,10 @@ Private loinc As String
 Private measurement As String
 Private GraphData As Collection
 Private fk_patient As Integer
+Private Embedded_In_Form As String  'the name of the form this graphing module is embedded int
+Private MeasurementDefaults As Collection
+Private ActiveGraphButton As Toolbutton
+Private bExit As Boolean
 
 Public Sub Form_Open()
    
@@ -36,38 +41,71 @@ Public Sub Form_Open()
    
 End
 
-Public Sub Set_fk_Patient(key As Integer)
-   'sloppy but just mucking around, set from FdiabetesResearch   
-  fk_patient = key 
+Public Sub Set_Embedded_Form(form_name As String)
+   
+   Embedded_In_Form = form_name 
    
 End
 
-Public Function Graph(cons As CConsult, L As String, M As String) As Boolean
-   'fix me just quickly knocked together by RT sick of not being able
-   'to view cumulative graphs in my inbox!!!
+Public Sub Init(Cons As CConsult)
    
-   currentconsult = cons
-   loinc = L
-   measurement = M
-   Return Measurement_Graph(L, M)
-
+   Dim Creatinine_Clearance As String
+   
+   currentconsult = cons 
+   If Embedded_In_Form = "FClinicalLists" Then
+      Measurement_Defaults_Refresh
+      Creatinine_Clearance = modutilGUI.Cockcroft_Gault_CreatinineClearance_Formulae(currentconsult)
+      If Creatinine_Clearance <> 0 Then    
+         lblCreatinineClearance.text = Creatinine_Clearance
+      Else
+         lblCreatinineClearance.text &= ""
+      End If  
+   Else
+     HBox_Add_Delete.Visible = False    
+   Endif
+   Settings_Load  
+   
 End
 
-Public Function Measurement_Graph(loinc As String, Measurement As String) As Boolean
+Public Sub Settings_Load()
+   
+   Try slGraphFontSize.value = Settings["FClinical/Graphs_font.size", 3]
+   
+End
+
+Public Sub chkGraph_MakeDefault_Click()
+   
+   If IsNull(currentconsult) Or IsNull(pbGraphName.Tag) Then Return
+   If Bexit Then Return
+   
+   If Last.value = True Then
+      If Message.Question("Do you wish to make " & pbGraphName.Tag!name & " the default graph for this patient?", "Yes", "No") = 1 Then
+         pbGraphName.tag!display_as_default = True
+         Measurement_Favourites_Update()
+      Else
+         pbGraphName.tag!display_as_default = False
+      End If
+   Endif
+   
+End
+
+Public Sub Measurement_Graph(loinc As String, Measurement As String)
    '-----------------------------------------------------------
    'Graph a measurement
    'if Loinc = "" then measurement is BP, height, weight or PF
    'if Loinc <> "" then graph an observable measurement
    '-----------------------------------------------------------
-
+   
    Dim Interval As Integer = 0
-   Dim GraphableItem_Data As New Collection 
- 
-   If Not IsNull(currentconsult) Then
-        fk_patient = currentconsult!patient!fk_patient
-   End If   
-   GraphData = New Collection 
-   GraphData = modMeasurementsDBI.Make_Graph(fk_patient, loinc, Measurement, pbMeasurementGraph.H, pbMeasurementGraph.W, slGraphFontSize.value, cmbLineStyle.text, interval)
+   Dim GraphableItem_Data As New Collection
+   
+   ' If IsInteger(txtMeasurementShowLastMonths.text) Then  THIS IS NOW ON THE SEPARATE MEASUREMENTS FORM
+   '   interval = Val(txtMeasurementShowLastMonths.text)
+   'End If
+   'fixe me replace 1 with font size tiny, med large
+   GraphData = New Collection
+ '  GraphData = modMeasurementsDBI.Make_Graph(currentconsult!patient!fk_patient, loinc, Measurement, pbMeasurementGraph.H, pbMeasurementGraph.W, slGraphFontSize.value, cmbLineStyle.text, interval)
+   GraphData = modMeasurementsDBI.Make_Graph(currentconsult!patient!fk_patient, Loinc, Measurement, pbMeasurementGraph.H, pbMeasurementGraph.W, slGraphFontSize.value, cmbLineStyle.text, interval)
    GraphData!name = Measurement
    GraphData!fontsize = slGraphFontSize.value
    GraphableItem_Data!loinc = loinc
@@ -76,25 +114,294 @@ Public Function Measurement_Graph(loinc As String, Measurement As String) As Boo
    Try pbMeasurementGraph.picture = Picture.Load(GraphData!graph_filename)
    If Error
       Measurement_Graph_Picture_Clear()
-      Return False
    Else
       pbGraphName.tag = GraphableItem_Data
-      Return True
    End If
    
 End
 
-Public Sub Measurement_Graph_Picture_Clear()
+Public Sub Measurement_Defaults_Refresh()
+   '------------------------------------------------------------------------
+   'Load the patient's measurement defaults
+   'We allow up to three Default buttons, display graph which is the default
+   'If there is not a default one eg hba1c then use BP
+   '------------------------------------------------------------------------
+   
+   Dim MD As Collection
+   Dim hctrl As Control
+   Dim tb As ToolButton
+   
+   currentconsult.Refresh("measurement_defaults")            'remove from cache
+   Measurements_Reset()                                      'remove tags, names, pictures from last patient
+   MeasurementDefaults = currentconsult!measurement_defaults 'load data a-fresh
+   For Each MD In MeasurementDefaults
+      For Each hctrl In HBox_Default_Results.Children        'loop through the three default buttons
+         tb = hctrl
+         If IsNull(tb.tag) Then                              'if not yet used, give it a name
+            tb.text = MD!name
+            tb.tag = MD
+            tb.Visible = True
+            Break
+         Endif
+      Next
+      If MD!display_as_default = True Then                   'display graph which is patient's default
+         ActiveGraphButton = tb                              'this becomes the active graph button
+         Measurement_Graph(MD!loinc, MD!name)
+         bExit = True
+         chkGraph_MakeDefault.Value = True
+         pbGraphName.tag = MD
+         bExit = False
+         
+      End If
+   Next
+   If IsNull(pbMeasurementGraph.Picture) Then                'but if none set, then use BP as default
+      Measurement_Graph("", "blood pressure")
+      ActiveGraphButton = tbInboxResults_BP
+   Endif
+   pbMeasurementGraph.SetFocus
+   
+End
 
+Public Sub pbMeasurementGraph_Menu()
+   
+   mnuGraph.popup
+   
+End
+
+Public Sub mnuGraph_Click()
+    If Last.tag = "copy" Then Clipboard.Copy(pbMeasurementGraph.Picture.Image)   
+
+Catch
+   Return 
+   
+End
+
+Public Sub Measurements_Reset()
+   '----------------------------------------------------------------------------
+   'Remove any measurement things which may have been displayed for last patient
+   'e.g a picture of a graphable measurement
+   'default buttons - I've only allowed two
+   '----------------------------------------------------------------------------
+   
+   Dim hctrl As Control
+   Dim tb As ToolButton
+   
+   Measurement_Graph_Picture_Clear()
+   For Each hctrl In HBox_Default_Results.Children        'loop through the three default buttons
+      tb = hctrl
+      tb.tag = Null
+      tb.text = ""
+      tb.Visible = False
+   Next
+   bexit = True
+   chkGraph_MakeDefault.value = False
+   bExit = False
+   
+End
+
+Public Sub Set_fk_Patient(key As Integer)
+   'sloppy but just mucking around, set from FdiabetesResearch   
+   
+   fk_patient = key 
+   
+End
+
+' Public Function Graph(cons As CConsult, L As String, M As String) As Boolean
+'    'fix me just quickly knocked together by RT sick of not being able
+'    'to view cumulative graphs in my inbox!!!
+'    
+'    currentconsult = cons
+'    loinc = L
+'    measurement = M
+'    Return Measurement_Graph(L, M)
+'    
+' End
+
+Public Sub Measurements_Make_Graph()
+   '----------------------------------------------------------------------------------
+   'Called either by InboxResults_Click - i.e user clicked on a button under graph or
+   '                 FProgressNotesPage.FClinical.Update_graphs()  in which case the
+   '                 currently highlighted graph is updated  when progress notes saved
+   '----------------------------------------------------------------------------------
+   
+   Dim tag As String
+   Dim MD As Collection
+   
+   If IsNull(currentconsult) Then Return
+   bexit = True
+   chkGraph_MakeDefault.value = False
+   bexit = False
+   
+   Try tag = ActiveGraphButton.tag!name
+   If Error Then
+      tag = ActiveGraphButton.tag
+   Endif
+   
+   Select Case tag
+      Case "egfr"
+         Measurement_Graph(const.Loinc_EGFR, "eGFR")
+      Case "blood pressure"
+         Measurement_Graph("", "blood pressure")
+      Case "weight"
+         Measurement_Graph("", "weight")
+      Case "height"
+         Measurement_Graph("", "height")
+      Case "peak flow"
+         
+      Case "add"
+         'Add to favourites, but first, is it already a favourite?
+         If IsNull(pbGraphName.Tag) Then Return
+         For Each MD In MeasurementDefaults
+            If Lower(Md!name) = Lower(pbGraphName.Tag!name) Then Return
+         Next
+         If Message.Question("Do you wish to add " & pbGraphName.Tag!name & " to the favourites?", "Yes", "No") = 1 Then
+            pbGraphName.tag!display_as_default = False
+            Measurement_Favourites_Update()
+         Endif
+         
+      Case "remove"
+         If IsNull(pbGraphName.Tag) Or IsNull(pbGraphName.tag!pk) Then Return  'fixme checkout why pgGraphname.tag!pk etc can be null, no time!
+         If Message.Question("Do you wish to remove " & pbGraphName.Tag!name & " from the favourites?", "Yes", "No") = 1 Then
+            modMeasurementsDBI.Measurement_Default_Mark_Deleted(pbGraphName.tag!pk)
+            modDBConnect.CommitTrans()
+            Measurement_Defaults_Refresh()
+         Endif
+         
+      Case "refresh"
+         '------------------------------------------------------
+         'Reset the measuremnts list to include all measurements
+         '------------------------------------------------------
+         bexit = True
+         
+         'txtInboxResults_Exclude.Text = "" 'FIXME SEE WHAT THIS USED TO DO
+         'txtInboxResults_filter.text = ""
+         bExit = False
+         ' cvwResults_Refresh()   'MAKE FCLINCIALLISTS STATIC TO GET ACCESS TO THIS
+      Case Else
+         '---------------------------------------------------------------
+         'This must be a user-defined button
+         'pbGraphName.tag used to 'store' information about graph default
+         'for want of a better place
+         '---------------------------------------------------------------
+         If IsNull(pbGraphName.Tag) Then Return
+         Measurement_Graph(ActiveGraphButton.tag!loinc, ActiveGraphButton.tag!name)
+         pbGraphName.tag = ActiveGraphButton.tag
+         If ActiveGraphButton.tag!display_as_default = True Then
+            bexit = True
+            chkGraph_MakeDefault.value = True
+            bexit = False
+         End If
+   End Select
+   
+End
+
+Public Sub Measurement_Favourites_Update()
+   
+   pbGraphName.Tag!fk_patient = currentconsult!patient!fk_patient
+   modMeasurementsDBI.Measurements_Default_Save(pbGraphName.Tag)
+   modDBConnect.CommitTrans()
+   Measurement_Defaults_Refresh()
+   
+End
+
+ Public Function Measurement_Graph_INBOX_OLD(loinc As String, Measurement As String) As Boolean
+'    '-----------------------------------------------------------
+'    'Graph a measurement
+'    'if Loinc = "" then measurement is BP, height, weight or PF
+'    'if Loinc <> "" then graph an observable measurement
+'    '-----------------------------------------------------------
+'    
+'    Dim Interval As Integer = 0
+'    Dim GraphableItem_Data As New Collection 
+'    
+'    If Not IsNull(currentconsult) Then
+'       fk_patient = currentconsult!patient!fk_patient
+'    End If   
+'    GraphData = New Collection 
+'    GraphData = modMeasurementsDBI.Make_Graph(fk_patient, loinc, Measurement, pbMeasurementGraph.H, pbMeasurementGraph.W, slGraphFontSize.value, cmbLineStyle.text, interval)
+'    GraphData!name = Measurement
+'    GraphData!fontsize = slGraphFontSize.value
+'    GraphableItem_Data!loinc = loinc
+'    GraphableItem_Data!name = Measurement
+'    
+'    Try pbMeasurementGraph.picture = Picture.Load(GraphData!graph_filename)
+'    If Error
+'       Measurement_Graph_Picture_Clear()
+'       Return False
+'    Else
+'       pbGraphName.tag = GraphableItem_Data
+'       Return True
+'    End If
+'    
+ End
+
+Public Sub Measurement_Graph_Picture_Clear()
+   
    With pbMeasurementGraph
       .picture = Null
       .tag = ""
       .Refresh()
    End With
+   
+End
 
+' Public Sub slGraphFontSize_Change()
+'    
+'    If Loinc = "" Then Return 
+'    Measurement_Graph(Loinc, Measurement)
+'    
+' End
+
+' Public Sub Measurement_Graph_Picture_Clear()
+'    
+'    With pbMeasurementGraph
+'       .picture = Null
+'       .tag = ""
+'       .Refresh()
+'    End With
+'    
+' End
+
+Public Sub pbMeasurementGraph_MouseDrag()
+   
+   Dim Pic As New Picture
+   Dim fname As String
+   Dim params As New Collection
+   
+   If Not IsNull(Last.picture) Then
+      Drag.Icon = Last.Picture
+      '  fname = modPlot.LineGraph(500, 180, GraphData!values, cvwMeasurements.Item.text, "")
+      ' fname = modPlot.LineGraph(500, 180, GraphData!values, GraphData!name, "")
+      fname = modPlot.LineGraph(500, 180, GraphData!values, GraphData!name, GraphData!name, slGraphFontSize.value)
+      '  slGraphFontSize.values
+      params!fname = fname
+      params!H = 180
+      params!W = 500
+      pbMeasurementGraph.tag = params
+      Pic.Load(fname)
+      
+      Last.Drag(Pic.Image)
+      
+   End If
+   
 End
 
 Public Sub slGraphFontSize_Change()
-    If Loinc = "" Then Return 
-     Measurement_Graph(Loinc, Measurement)
+   
+   If IsNull(currentconsult) Then Return
+   Try Measurement_Graph(pbGraphName.Tag!loinc, pbGraphName.Tag!name)   'tag can be null
+   Settings[Embedded_In_Form & "/Graphs_font.size"] = slGraphFontSize.value
+   
+End
+
+Public Sub tbPatientGraphs_Click()
+   '------------------------------------------------------
+   'User has clicked on one of the buttons under the graph
+   'fixme where did this name come from
+   'I suspect originally copied from inbox!
+   '------------------------------------------------------
+   
+   ActiveGraphButton = Last
+   Measurements_Make_Graph()
+   
 End

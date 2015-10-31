@@ -1,0 +1,1063 @@
+' Gambas class file
+
+' Copyright (C) 2008-2015 Dr. Richard Terry
+' Gui screen designs in IDE and at runtime Copyright (C) 2008-2015 Dr. Richard Terry
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/liPath to library filescenses/>.
+'-------------------------------------------------------------------------------------------
+' PURPOSE         Display's lists of either referrals written or  letters received
+' HOW THIS WORKS  Like all modules the cConsult is passed to this module giving acccess to
+'                 currentconsult!letters_received or currentconsult!referrals_written
+' TO DO           Put back in the join code
+'                 Implement multiple deletes
+'                 Implement transfer to GMP, TCA or Forms
+'                 Put in code to send a html letter back to the inbox for re-allocation
+'-------------------------------------------------------------------------------------------
+Private Currentconsult As CConsult
+Private bExit As Boolean
+Private cvwLettersReceived_Key As Integer
+Private cvwReferrals_Key As Integer
+Private Selected_keys As String[]
+Private Deleted_Documents As Collection 
+Private Deleted_Referral As Collection      'single level undelete
+Private bMustUpdateFormsTab As Boolean
+Private form_metadata As FDocumentMetaData
+Private Const cTabstrip_lists_Tab_Results As Integer = 1
+Private Const cTabstrip_lists_Tab_Correspondence As Integer = 2
+Private obs As Observer
+Private Vbox_Graph As VBox
+Private bRefreshData As Boolean = True 
+
+Public Sub _new()
+   
+   Settings_Load 
+   With Form_MetaData = New FDocumentMetaData(Vbox_Metadata)
+      .Set_Embedded_Form_Name("FClinical")
+      .Init("Allocated Documents")
+      .HBox_Save.visible = True                                         'contains the save button in the gui at base of form_metadata
+      .hBox_Urgency.Visible = False                                     'not needed as already in the patients notes 
+      .tbClose.Visible = True                            'only ever used on this form
+   End With
+   obs = New Observer(form_metadata.tbSave) As "form_metadata_tbSave"    'Let FClinical handle the save event"
+   obs = New Observer(form_metadata.txtUserObservationName) As "form_metadata_txtUserObservationName"
+   obs = New Observer(form_metadata.tbClose) As "form_metadata_tbClose"    'Let FClinical handle the save event"
+   
+End
+
+Public Function Current_Consult_Exists() As Boolean
+   
+   If Not IsNull(currentconsult) Then Return True
+   
+End
+
+Public Sub Set_Graph_Vbox(VB As Vbox)
+   'passed the container fo the graph so can hide if necessary if editing the metadata
+   'this subis only accessed once per running instance of EasyGP
+   
+   Vbox_Graph = VB   
+   
+End
+
+Public Sub init(cons As CConsult)
+   
+   Settings_Load 
+   Currentconsult = cons 
+   Deleted_Documents = New Collection 
+   form_metadata.Set_consult(currentconsult)
+   Vbox_Metadata.Visible = False 
+   
+End
+
+Public Sub UnFiled_Document_Metadata_Show(bShow As Boolean)
+   '---------------------------------------------------------
+   'Show or remove the unfiled document metadata gui elements
+   '---------------------------------------------------------
+   
+   If bShow Then
+      Vbox_Graph.Visible = False 
+      VBox_MetaData.height = 16 * 20
+      VBox_MetaData.Visible = True
+      FClinical.Hide_Tasks_And_Problems_Lists(True)
+      VBox_MetaData.Visible = True   
+   Else
+      VBox_MetaData.Visible = False   
+      Vbox_Graph.Visible = True
+      FClinical.Hide_Tasks_And_Problems_Lists(False)
+      VBox_MetaData.Visible = False   
+   Endif
+   
+End
+
+Public Sub Document_Edit_Metadata(D As Collection)
+   '------------------------------------------
+   'Edits the metadata of an existing document
+   '------------------------------------------
+   
+   With form_metadata
+      .Edit(D)        'display metadata for this document
+      .bexit = True
+      .txtUserObservationName.text = cvwLettersReceived[cvwLettersReceived_Key][1]
+      .txtUserObservationName.pos = 0    'ensure start of line showing
+      ' .Document_HTML_Set(sHtml)
+      .txtUserObservationName.pos = 0
+      .txtUserObservationName.SetFocus()
+      .bExit = False
+   End With
+   
+   UnFiled_Document_Metadata_Show(True)                                    'set up FClinical to show form_metadata
+   ' 
+
+End
+
+Public Sub Document_Edit_Metadata_old(documents As Collection, document_key As Integer, Optional sHtml As String) ' As Integer, user_tag As String)
+   '-----------------------------------------------
+   'Edits the metadata of an existing document
+   'If unfiled sHtml is not null
+   'if the document is not showing, then display it
+   'this has become a messy routine
+   'fixme - in July 2014 I added fields to documents.documents
+   ' - the field html ceased to exist all html  moved to:
+   ' - data field which now contains also LaTex
+   ' - to the nomenclature of this code is all mixed up
+   '-----------------------------------------------
+   
+   With Form_MetaData
+      .Edit(documents[document_key])                                    'pass the document collection 
+      ' .HBox_Save.visible = True                                         'contains the save button in the gui at base of form_metadata
+      ' .hBox_Urgency.Visible = False                                     'not needed as already in the patients notes 
+      If shtml <> "" Then
+         .Document_HTML_Set(shtml)
+      End If
+      If Not IsNull(documents[document_key]!data) Then
+         .Document_HTML_Set(documents[document_key]!data)
+      Endif
+      .txtUserObservationName.pos = 0
+      .txtUserObservationName.SetFocus()
+      .visible = True 
+   End With
+   UnFiled_Document_Metadata_Show(True)                                    'set up FClinical to show form_metadata
+   
+End
+
+Public Sub cvwLettersReceived_Display()
+   
+   '    If bexit Then Return
+   '    
+   '    ' Document_Display(currentconsult!letters_received[cvwLettersReceived_Key])  
+   ' Catch
+   '    Log.WarningMsg("cvwLettersReceived_Display: " & Error.Text & " " & Error.Backtrace.Join(" "))
+   '    
+End
+
+Public Sub cvwLettersReceived_Reload(Optional bRefresh As Boolean = False)
+   '------------------------------------------------------------------------------
+   'Show all letters in the inbox, if bRefresh is true then reload them all
+   'If appropriate, filter display according to the document tag or letter author
+   'IAN FIXME: REPLACE ME WITH A RELATIVE ONE-LINER.
+   '-----------------------------------------------------------------------------
+   
+   Dim x As Integer                      'for readability = key
+   Dim letters_received As Collection
+   Dim bSkip As Boolean
+   Dim col_widths As New Integer[3]
+   
+   If IsNull(currentconsult) Then Return
+   With cvwLettersReceived                       '3 columns FIXME MAKE ME CONIGURABEL
+      .Clear()
+      .Columns.count = 3
+   End With
+   '--------------------------------------------------------------
+   'Loop through the collection, the key of the columnview becomes
+   'the primary key of clin_requests.inbox_general
+   'When documents have been filed - user could have inadvertantly
+   'pasted in an invisible CR \n line, which causes the list to
+   'span muliple lines, so fix this
+   '--------------------------------------------------------------
+   If bRefresh Then currentconsult.Refresh("letters_received")
+   For Each letters_received In currentconsult!letters_received
+      bSkip = False
+      x = letters_received!pk_document
+      '---------------------------------------
+      'Does the user want to filter on author?
+      '---------------------------------------
+      If txtLetterFilterAuthor.text <> "" Then  'Or txtDocumentFilterTag.text <> "" Then
+         '---------------------------------------------------------------------------------------------
+         ' Yes: User wants to filter by author, if what they are looking for not found, skip the record
+         '---------------------------------------------------------------------------------------------
+         If Not InStr(Lower(letters_received!originator), Trim(Lower(txtLetterFilterAuthor.text))) Then
+            bskip = True
+         Else
+            '---------------------------------------------------------------------
+            'Have found the author bit, now do they want a particular tag as well?
+            '---------------------------------------------------------------------
+            If txtLetterFilterTag.text <> "" Then
+               If Not InStr(Lower(letters_received!tag_user), Trim(Lower(txtLetterFilterTag.text))) Then
+                  bskip = True
+               Else
+                  bskip = False
+               End If
+            Else
+               bskip = False
+            Endif
+            
+         End If
+      Else
+         '------------------------------------------------------------------
+         'User dosn't want to filter on author - how about just on user tag?
+         '------------------------------------------------------------------
+         If txtLetterFilterTag.text <> "" Then
+            If letters_received!tag_user = "" Then
+               If Not InStr(Lower("unfiled"), Trim(Lower(txtLetterFilterTag.text))) Then
+                  bskip = True
+               Else
+                  bskip = False
+               End If
+            Else
+               If Not InStr(Lower(letters_received!tag_user), Trim(Lower(txtLetterFilterTag.text))) Then
+                  bskip = True
+               Else
+                  bskip = False
+               End If
+            End If
+         Endif
+      End If
+      
+      If bskip = False Then
+         cvwLettersReceived.Add(x, 0)
+         If IsNull(letters_received!date_created) Then   'fixme remove me when bug fixed in FMetadata
+            cvwLettersReceived[x][0] = "?date"
+         Else
+            cvwLettersReceived[x][0] = Format(letters_received!date_created, "dd/mm/yyyy")
+         End If
+         lblmeasure.text = cvwLettersReceived[x][0] & " "
+         col_widths[0] = lblmeasure.Width
+         If letters_received!tag_user = "" Then
+            cvwLettersReceived[x][1] = "** UNFILED LETTER **"
+         Else
+            cvwLettersReceived[x][1] = Replace$(letters_received!tag_user, "\n", "")
+         End If
+         lblmeasure.text = cvwLettersReceived[x][1]
+         col_widths[1] = Max(lblmeasure.Width, col_widths[1])
+         cvwLettersReceived[x][2] = letters_received!originator
+      End If
+   Next
+   cvwLettersReceived.Columns[0].Width = col_widths[0]
+   cvwLettersReceived.Columns[1].Width = col_widths[1]
+   
+End
+
+Public Sub cvwLettersReceived_Select()
+   
+   If bexit Then Return
+   cvwLettersReceived.MoveCurrent
+   If cvwLettersReceived.key = "" Then Return
+   If cvwLettersReceived_Key = cvwLettersReceived.Item.key Then Return
+   cvwLettersReceived_Key = cvwLettersReceived.Item.key
+   If FClinical.WorkspaceEditor_Caption() <> "Referrals" And FClinical.WorkspaceEditor_Caption() <> "Export Wizard" Then
+      '  Document_Display(currentconsult!letters_received[cvwLettersReceived_Key])
+      'Display the document, if and **UNFILED** document, the meta data form is filled
+      'for auto-editing
+      If modArchiveDocumentsDBI.Document_Display(currentconsult!letters_received[cvwLettersReceived_Key], currentconsult,, Form_MetaData) Then
+         
+         ' With form_metadata
+         '    .Edit(D)        'display metadata for this document
+         '    .bexit = True
+         '    .txtUserObservationName.text = cvwLettersReceived[cvwLettersReceived_Key][1]
+         '    .txtUserObservationName.pos = 0    'ensure start of line showing
+         '    .Document_HTML_Set(sHtml)
+         '    .txtUserObservationName.pos = 0
+         '    .txtUserObservationName.SetFocus()
+         '    .bExit = False
+         ' End With
+         UnFiled_Document_Metadata_Show(True)                                   'set up FClinical to show form_metadata
+         ' 
+      Endif
+   End If   
+   
+End
+
+Public Sub cvwLettersReceived_dblClick()
+   '------------------------------------------------------------------
+   'As the letter writer needs the click or select event to allow
+   'user to drag and drop a document copy to the letter being written
+   'viewing letters per-se occurs via the dblclick event if the letter
+   'writer is open otherwise the select event
+   '-------------------------------------------------------------------  
+   
+   cvwLettersReceived_Display()
+   
+End
+
+Public Sub cvwLettersReceived_Click()
+   
+   cvwLettersReceived_Select()
+   
+End
+
+Public Sub cvwLettersReceived_Menu()
+   '--------------------------------------------------
+   'Stuff I hate columnviews!
+   'User has elected to popup a menu over columnview
+   'Problem is they can multi-select this one
+   '--------------------------------------------------
+   
+   Dim document As Collection
+   Dim num_selected As Integer
+   Dim mnu As Menu
+   Dim X As Integer
+   Dim bHaveDeletedLetter As Boolean
+   
+   Selected_keys = cvwLettersReceived.Selection
+   For Each mnu In mnuLettersReceived.Children                                         'default to no items available on menu
+      mnu.Enabled = False
+   Next
+   
+   If Deleted_Documents.count Then    
+      mnuLettersReceived_UndoDelete.Enabled = True                                  ' enable undelete menu option
+      bHaveDeletedLetter = True
+   End If   
+   If Not cvwLettersReceived.count Then                                                'if nothing left on list 
+      If bHaveDeletedLetter = False Then Return                                        'and nothing in undelete then exit                                       
+   End If   
+   If cvwLettersReceived.count Then    
+      cvwLettersReceived.MoveFirst                                                        'see if more than one item has been selected
+      For x = 0 To cvwLettersReceived.count - 1
+         If cvwLettersReceived.Item.Selected = True Then
+            If num_selected > 1 Then
+               Break
+            Endif
+            Inc num_selected
+         Endif
+         cvwLettersReceived.MoveNext
+      Next
+      If num_selected > 1 Then                                                             'multi-select, only allow appropriate options
+         For Each mnu In mnuLettersReceived.Children
+            mnu.Enabled = False
+         Next
+         mnuLettersReceived_SelectAll.Enabled = True
+         mnuLettersReceived_UnSelect.Enabled = True
+         mnuLettersReceived_PrintSelected.Enabled = True
+         mnuLettersReceived_PrintAll.Enabled = True
+         mnuLettersReceived_Fonts.Enabled = True
+         mnuLettersReceived_JoinPDF.Enabled = False 'fixme when I put the code in
+         mnuLettersReceived_Help.Enabled = True
+         With mnuLettersReceived_FileAsForm   '21oct15 putting in code to multiply action selected files
+            .Caption = "File All as Forms"
+            .Enabled = True  
+         End With
+      Else
+         'not multil-selected allow all options except delete if nothing to delete
+         mnuLettersReceived_FileAsForm.Caption = "File as Form"
+         For Each mnu In mnuLettersReceived.Children
+            If mnu.Name = "mnuLettersReceived_UndoDelete" And Deleted_Documents.count = 0 Then  
+               mnuLettersReceived_UndoDelete.Enabled = False   
+            Else  
+               mnu.Enabled = True
+            End If   
+         Next
+         mnuLettersReceived_JoinPDF.Enabled = False                                  'not alot to join!
+         cvwLettersReceived.MoveCurrent()
+         ' mnuLettersReceived_UndoDelete.Enabled = False                                     'assume there is no documents to undelete
+      End If
+      If currentconsult!letters_received[cvwLettersReceived.Selection[0]]!msh_transmitting_entity = "snail mail" Then 'can only send back non-hl7 e.g scanned FIXME, LATER ?IMAGES
+         mnuLettersReceived_ReFile.Enabled = True
+      Else
+         mnuLettersReceived_ReFile.Enabled = False
+      End If
+   End If   
+   mnuLettersReceived.Popup()
+Catch
+   Return 
+   
+End
+
+Public Sub mnuLettersReceived_Click()
+   
+   Dim D As Collection
+   Dim x As Integer
+   Dim pdfs_to_merge As Collection  'if user decides to merge pdfs
+   Dim audit_notes As String
+   Dim pdf_path As String
+   
+   Select Case Last.tag
+      Case "help"                          'show help for this section
+         modUtilGUI.NotImplemented("Help for Letters Recieved Menu")
+      Case "file as form"  'fix me do something about this next sub ?need the audit
+         ' For x = 0 To cvwLettersReceived.Selection.count - 1
+         '    Print currentconsult!letters_received[cvwLettersReceived.Selection[x]]!pk_document
+         '    ' If modArchiveDocumentsDBI.Change_Display_Mode(currentconsult, currentconsult!letters_received[cvwLettersReceived.Selection[x]], const.Document_Display_as_Form, const.cSection_Documents) Then
+         '    modDBConnect.update("documents.documents", Null, ["pk": currentconsult!letters_received[cvwLettersReceived.Selection[x]]!pk_document, "fk_lu_display_as": const.Document_Display_as_Form])
+         '    bMustUpdateFormsTab = True
+         '    modDBConnect.CommitTrans()
+         ' Next
+         ' For x = 0 To Selected_keys.count - 1
+         '    ' If modArchiveDocumentsDBI.Change_Display_Mode(currentconsult, currentconsult!letters_received[cvwLettersReceived.Selection[x]], const.Document_Display_as_Form, const.cSection_Documents) Then
+         '    modDBConnect.update("documents.documents", Null, ["pk": currentconsult!letters_received[Selected_keys[x]]!pk_document, "fk_lu_display_as": const.Document_Display_as_Form])
+         '    bMustUpdateFormsTab = True
+         '    modDBConnect.CommitTrans()
+         ' Next
+         cvwLettersReceived_ReLoad(bRefreshData)
+      Case "external viewer"
+         If Lower(File.Ext(currentconsult!letters_received[cvwLettersReceived_Key]!source_file)) = "pdf" Then   
+            pdf_path = modFiles.Get("document_archiving_directory", currentconsult!letters_received[cvwLettersReceived_Key]!source_file)
+            modArchiveDocumentsDBI.Launch_External_PDF_Viewer(pdf_path)
+         Else
+            If currentconsult!letters_received[cvwLettersReceived_Key]!fk_lu_data_content_type = const.cData_Type_HTML Then
+               pdf_path = modPrinting.Make_PDF_From_Html(currentconsult!letters_received[cvwLettersReceived_Key]!data)
+               modArchiveDocumentsDBI.Launch_External_PDF_Viewer(pdf_path)
+            Endif
+         End If   
+      Case "fonts"                         'adjust and save font"
+         modUtilGUI.Columnview_SetFont(cvwLettersReceived, "FClinLists_Correspondence")
+      Case "transfer to pdfs to join list"                                                                    'joins selected documents into a single pdf
+         ' '-----------------------------------------------------------------------------------------
+         ' 'joining pdf's difficult (not the actual joining)
+         ' 'eg.user could want to or be stupid enough to join disparate pdf's
+         ' 'so some decision needs to be made about the original collection's settings e.g originator
+         ' 'for the moment (experimental) the last document sent to the list (i.e this one) will
+         ' 'be attatched  as the tag of the lvFilesToJoin
+         ' '------------------------------------------------------------------------------------------
+         ' cvwLettersReceived.MoveFirst
+         ' pdfs_to_merge = New Collection
+         ' lvFilesToJoin.Clear()
+         ' txtTagUser.text = ""
+         ' For x = 0 To cvwLettersReceived.Selection.count - 1
+         '    If Lower(File.Ext(currentconsult!letters_received[cvwLettersReceived.Selection[x]]!source_file)) = "pdf" Then
+         '       Try lvFilesToJoin.Add(cvwLettersReceived.Selection[x], currentconsult!letters_received[cvwLettersReceived.Selection[x]]!source_file)
+         '       If Not Error Then
+         '          pdfs_to_merge.Add(currentconsult!letters_received[cvwLettersReceived.Selection[x]], pdfs_to_merge.count) 'needed to delete these later
+         '       End If
+         '    Else
+         '       Message.info("Only pdf files can be joined together, sorry.....")
+         '       cvwResults.UnselectAll()
+         '       Return
+         '    End If
+         ' Next
+         ' lvFilesToJoin.tag = pdfs_to_merge
+         ' VBox_Files_To_Join.Visible = True
+         ' Vbox_MiniGraphs.Visible = False
+      Case "display"                    'show the letter
+         '  cvwLettersReceived.MoveCurrent
+         '   Document_Display(currentconsult!letters_received[cvwLettersReceived_Key])
+         '  modArchiveDocumentsDBI.Document_Display(currentconsult!letters_received[cvwLettersReceived_Key])
+      Case "display in new tab"
+         Document_Display(currentconsult!letters_received[cvwLettersReceived_Key], True)
+      Case "display as result"                'change fk_lu_display as to const.Document_Display_As_Result
+         audit_notes = "Display mode changed from letter to result"
+         If modArchiveDocumentsDBI.Change_Display_Mode(currentconsult, currentconsult!letters_received[cvwLettersReceived_key], const.Document_Display_As_Result, const.cSection_Documents, audit_notes) Then
+            cvwLettersReceived_Reload(bRefreshData)
+            FClinical.Refresh_Section(const.cSection_Lists_Results) 
+         Endif
+      Case "file as plan"
+         '    If modArchiveDocumentsDBI.Change_Display_Mode(currentconsult, currentconsult!letters_received[cvwLettersReceived_key], const.Document_Display_As_GP_Management_Plan, const.cSection_Documents, audit_notes) Then
+         '       cvwLettersReceived_ReLoad(bRefreshData) 
+         '       ' form_gpmp_tca_list.Reload(True)  'refresh and reload the list
+         '       FClinical.Refresh_Section(const.cSection_Lists_GPMP_TCA)
+         '    Endif
+         ' Case "file as tca"
+         '    If modArchiveDocumentsDBI.Change_Display_Mode(currentconsult, currentconsult!letters_received[cvwLettersReceived_key], const.Document_Display_As_Team_Care_Arrangement, const.cSection_Documents, audit_notes) Then
+         '       cvwLettersReceived_Reload(bRefreshData)
+         '       ' form_gpmp_tca_list.Reload(True)   'refresh and reload the list
+         '    Endif
+      Case "delete"                        'mark this as deleted but enforce a reason
+         If currentconsult!letters_received[cvwLettersReceived_key]!protected Then
+            Message.Title = "Protected Document"
+            Message.Info("You may not delete this document.\n\n When it was created it was marked as 'protected' by EasyGP.")
+            Return
+         Endif
+         If modArchiveDocumentsDBI.Delete(currentconsult, currentconsult!letters_received[cvwLettersReceived_key], const.cSection_Documents, const.sAuditAction[const.cAuditAction_MarkDeleted]) Then
+            modDBConnect.CommitTrans()
+            Deleted_Documents.Add(currentconsult!letters_received[cvwLettersReceived_key], cvwLettersReceived_key)
+            cvwLettersReceived_Reload(bRefreshData) 'refresh the collection and reshow the list
+         Else
+            modDBConnect.RollBack
+         End If
+      Case "delete duplicate"             'Delete the letter, but don't enforce a reason
+         If currentconsult!letters_received[cvwLettersReceived_key]!protected Then
+            Message.Title = "Protected Document"
+            Message.Info("You may not delete this document.\n\n When it was created it was marked as 'protected' by EasyGP.")
+            Return
+         Endif
+         If Message.Question("Are you sure this is a duplicate? Sure you want to delete it?", "Yes", "No") = 2 Then Return
+         If modArchiveDocumentsDBI.Delete(currentconsult, currentconsult!letters_received[cvwLettersReceived_key], const.cSection_Documents, const.sAuditAction[const.cAuditAction_DeleteDuplicateDocument]) Then
+            modDBConnect.CommitTrans()
+            Deleted_Documents.Add(currentconsult!letters_received[cvwLettersReceived_key], cvwLettersReceived_key)
+            cvwLettersReceived_Reload(bRefreshData)
+         Else
+            modDBConnect.RollBack
+         End If
+      Case "email documents"
+         ' If Message.Warning("Unless you are Ian or Richard Cancel this immediately, it is developmental code and will not work, worse, if my crash or even eat your hamster", "Ignore warning - don't like my hamster", "Shit - I'm out of here") = 2 Then Return  
+         ' With form_email_documents = New FEmailDocument
+         '    .Init(currentconsult, [modFiles.Get("document_archiving_directory", currentconsult!letters_received[cvwLettersReceived_Key]!source_file)])
+         '    .ShowModal()
+         ' End With
+      Case "undo delete"
+         'find the last deleted letter
+         For Each D In Deleted_Documents
+            If D!fk_lu_display_as = const.Document_Display_As_Letter Then
+               If modArchiveDocumentsDBI.UnDelete(currentconsult, d, const.cSection_Documents) Then
+                  modDBConnect.CommitTrans()
+                  Deleted_Documents.Remove(d!pk_document)
+                  cvwLettersReceived_Reload(bRefreshData)
+                  Break
+               Endif
+            Endif
+         Next
+      Case "edit metadata"       
+         If currentconsult!letters_received[cvwLettersReceived_key]!protected Then
+            Message.Title = "Protected Document"
+            Message.Info("You may not edit this document.\n\n When it was created it was marked as 'protected' by EasyGP.")
+            Return
+         Endif
+         Document_Edit_Metadata(currentconsult!letters_received[cvwLettersReceived_key])
+      Case "print selected"
+         For x = 0 To cvwLettersReceived.Selection.count - 1
+            modPrinting.Document_Print(currentconsult!letters_received[Selected_keys[x]])
+         Next
+         cvwLettersReceived.UnselectAll()
+      Case "print all"
+         For Each D In currentconsult!letters_received
+            modPrinting.Document_Print(D)
+         Next
+      Case "select all"
+         cvwLettersReceived.SelectAll()
+      Case "unselect"
+         cvwLettersReceived.UnselectAll()
+      Case "audit trail"
+         modAudit.Document_AuditTrail_Show(cvwLettersReceived_key) 'key to documents.documents
+      Case "refile document"
+         If currentconsult!letters_received[cvwLettersReceived_key]!protected Then
+            Message.Title = "Protected Document"
+            Message.Info("You may not re-file this document.\n\n When it was created it was marked as 'protected' by EasyGP.")
+            Return
+         Endif
+         'Send back pdf's for refiling, the modDBCommit is done in that routine
+         If Lower(File.Ext(currentconsult!letters_received[cvwLettersReceived_Key]!source_file)) = "pdf" Then
+            If modArchiveDocumentsDBI.Document_SendBack_For_ReFiling(currentconsult, currentconsult!letters_received[cvwLettersReceived_key]) Then
+               cvwLettersReceived_Reload(bRefreshData)
+            Endif
+         End If   
+   End Select
+Catch
+   Log.WarningMsg("FCLinical.mnuLettersReceived_Click: " & Error.Text & " " & Error.Where)
+   Return 
+   
+End
+
+Public Sub Document_Print(fk_document As Integer)
+   '--------------------------------------------------------------
+   'Print a document by its key
+   'All documents have a filename - but they are either PDF or HL7
+   '--------------------------------------------------------------
+   
+   Dim Document As Collection
+   '---------------------------------------------------
+   'Is the document a result?, if not, must be a letter
+   'i.e decide which collection to pull them from
+   '---------------------------------------------------
+   Try Document = currentconsult!results_received[fk_document]         '? a result??
+   If IsNull(document) Then                                            'it wasn't a result?
+      Try Document = currentconsult!letters_received[fk_document]      '? a letter ??
+   End If
+   '----------------------------------------------------------
+   'Having got the document, print according to file extension
+   'All our non scanned documents are html
+   'FIXME: could be printing a picture
+   '----------------------------------------------------------
+   Select Case File.Ext(Document!source_file)
+      Case "pdf"
+         modPrinting.Print_PDF(modFiles.Get("document_archiving_directory", Document!source_file))
+      Case "jpg", "png", "tiff", "jpeg", "bitmap"
+         
+      Case Else
+         Select Case Document!fk_lu_data_content_type
+            Case const.cData_Type_Latex 
+               modPrinting.Print_latex(document!data)
+            Case const.cData_Type_HTML
+               modPrinting.PrintHtml(Document!data)
+            Case Else
+               Message.Info("Unknown document data type - please notify the developers")
+         End Select
+   End Select
+   
+End
+
+Public Sub Gui_Clear()
+   
+   'clears the gui, clear_properly also clear the selection [] which gambas does not
+   rbLettersReceived.Value = True  
+   txtLetterFilterAuthor.text = ""
+   txtLetterFilterTag.text = "" 
+   modUtilGUI.Columnview_Clear_Properly(cvwLettersReceived)
+   modUtilGUI.Columnview_Clear_Properly(cvwReferrals)
+   UnFiled_Document_Metadata_Show(False)           
+   currentconsult = Null
+   
+End
+
+Public Sub cvwLettersReceived_MouseDrag()
+   
+   If Not cvwLettersReceived.count Then Return 
+   If cvwLettersReceived.Selection.count = 0 Then Return   
+   Last.MoveCurrent
+   Drag.icon = Picture.Load("icons/16/referrals_3_1616.png") 'parent.parent.parent.picture
+   Last.Drag(Str(currentconsult!letters_received[cvwLettersReceived.Selection[0]]!pk_document))
+   'Catch
+   'Return   'fixme is possible to get crash here ?whty 
+   
+End
+
+Public Sub rbCorrespondence_click()
+   
+   Select Case Last.tag
+      Case "letters received"
+         cvwReferrals.Visible = False                    'then show letters received
+         cvwLettersReceived.Visible = True
+         cvwLettersReceived_Reload
+         cvwLettersReceived.SetFocus
+      Case "letters written"
+         cvwReferrals.Visible = True                     'and visa-versa
+         cvwLettersReceived.Visible = False
+         cvwReferrals_Load()
+         cvwReferrals.SetFocus()
+   End Select
+   
+End
+
+
+
+Private Sub Settings_Load()
+   
+   cvwReferrals.Font = Font[Settings["FClinLists_Correspondence/cvwReferrals.font", "Arial,9"]]
+   cvwLettersReceived.font = Font[Settings["FClinLists_Correspondence/cvwLettersReceived.font", "Arial,9"]]
+   
+End
+
+Public Sub cvwReferrals_Select()
+   '---------------------------------------------------------------
+   'display the referral letter written which was clicked on
+   'This would usually be on the click event but the drag event
+   'takes precendence over cvwReferrals_click when referrals showing
+   '----------------------------------------------------------------
+   
+   cvwReferrals.MoveCurrent()
+   cvwReferrals_key = cvwReferrals.Item.Key
+   Referral_Letter_Display()
+Catch
+   Return 
+   
+End
+
+Public Sub cvwReferrals_Menu()
+   '--------------------------------------------------------------
+   'Pop up a menu over the list of referrals the user has written
+   '-------------------------------------------------------------
+   '------------------------------------------------------------------------
+   'If there is a deleted referral, enable that menu item, otherwise disable
+   '------------------------------------------------------------------------
+   
+   Dim menuitem As Menu
+   
+   If Not IsNull(deleted_referral) Then
+      If Not IsNull(deleted_referral!pk_referral) Then
+         mnuReferrals.Children[6].Enabled = True
+      End If   
+   Else
+      mnuReferrals.Children[6].Enabled = False
+   Endif
+   '----------------------------------------------------------------------------
+   'if no letters but a deleted letter exists, must have deleted the last letter
+   'So disable all menu items except undo-delete
+   '----------------------------------------------------------------------------
+   If cvwReferrals.count = 0 Then
+      If mnuReferrals.Children[6].Enabled = True Then
+         For Each menuitem In mnuReferrals.Children
+            menuitem.Enabled = False
+         Next
+         mnuReferrals.Children[6].Enabled = True
+      Else
+         Return
+      End If
+   Else
+      For Each menuitem In mnuReferrals.Children
+         menuitem.Enabled = True
+      Next
+      If Not IsNull(deleted_referral) Then   
+         If IsNull(deleted_referral!pk_referral) Then
+            mnuReferrals.Children[6].Enabled = False
+         Endif
+      End If   
+   End If
+   mnuReferrals.Popup()
+   
+End
+
+Public Sub cvwReferrals_Load()
+   '-------------------------------------------------------------
+   'NAME     : cvwReferrals_Refresh()
+   'PURPOSE  : Displays the patients outgoing referral letters
+   '           in a list
+   'CALLED BY: TabStrip_Lists_MouseUp()
+   'WARNING  : All the lists contained on the gui-element TabStrip_Lists
+   '           are members of the tabbedlists group.There is no
+   '           cvwReferrals_events() per se, its events are under
+   '           TabbedLists_events()
+   'TOFIX    : Smarter column sizing
+   '--------------------------------------------------------------
+   
+   Dim x As Integer                      'for readability = key
+   Dim sString As String
+   Dim referral As Collection
+   
+   With cvwReferrals
+      .Clear()
+      .Columns.count = 2
+   End With
+   lblMeasure.font = cvwReferrals.Font
+   '--------------------------------------------------------------
+   'Loop through the collection, the key of the columnview becomes
+   'the primary key of clin_referrals.inbox
+   '--------------------------------------------------------------
+   For Each referral In currentconsult!referrals_written
+      x = referral!pk_referral                      'readability
+      If referral!surname Then
+         sString = referral!wholename
+      Else
+         sString = referral!organisation
+      End If
+      cvwReferrals.Add(x, 0)                                                  'add new row
+      cvwReferrals[x][0] = Format(referral!date_referral, "dd/mm/yyyy")
+      If sSTring = "" Then
+         cvwReferrals[x][1] = referral!tag
+      Else
+         cvwReferrals[x][1] = sSTring & " - " & referral!tag
+      End If
+      If referral!finalised = False Then
+         cvwReferrals[x][1] &= " (** UNFINISHED LETTER **)"
+      Endif
+   Next
+   
+End
+
+Public Sub mnuReferrals_Click()
+   
+   Dim inclusions As Collection
+   Dim inclusion As Collection
+   Dim referral As Collection
+   
+   cvwReferrals.MoveCurrent()
+   referral = currentconsult!referrals_written[cvwReferrals_key]  'do not remove cvwReferrals_key <> cvwREferrals.item.key once popup menu has fired. otherwise "edit" etc will not work and the columview resets to the wrong line and edits wrong letter
+   Select Case Last.tag
+      Case "edit"
+         If referral!fk_consult <> currentconsult.GetPK() Then
+            FClinical.Editor_ShowPage_External("Referrals", "Referrals", "")
+            FReferrals.Edit_As_New_Referral(referral)
+         Endif
+      Case "delete"
+         Referral_Delete(referral)
+      Case "undo delete"
+         Referral_UnDelete
+      Case "print no inclusions"         'single copy no included documents
+         modArchiveDocumentsDBI.Re_Print_Letter(referral!letter_html)
+      Case "print with inclusions"      ' single copy including original documents sent.
+         modArchiveDocumentsDBI.Re_Print_Letter(referral!letter_html)
+         Inclusions = modReferralsDBI.Inclusions_Get(currentconsult!patient!fk_patient, False, False, referral!pk_referral) 
+         For Each Inclusion In Inclusions
+            modArchiveDocumentsDBI.Document_Print(currentconsult, inclusion!fk_document) '
+         Next
+      Case "email"
+         modUtilGUI.NotImplemented("Email Referral")
+      Case "new tab"
+         Referral_Letter_Display(True)
+      Case "sort by letter tag"
+         modUtilGUI.NotImplemented("Sorting by letter tag")
+      Case "fonts"
+         modUtilGUI.Columnview_SetFont(cvwReferrals, "FClinLists_Correspondence")
+      Case "help"
+         modUtilGUI.NotImplemented("Help for referrals section")
+   End Select
+Catch
+   Return 
+   
+End
+
+Public Sub Referral_Letter_Display(Optional bNewTab As Boolean = False)
+   '------------------------------------------------------------------------
+   ' Display a previously written referral or letter on new tab in workspace
+   '------------------------------------------------------------------------
+   
+   Dim sTag As String
+   Dim ref As Collection
+   Dim sHtml As String
+   Dim bIsLaTex As Boolean
+   
+   ref = currentconsult!referrals_written[cvwReferrals_key]
+   If IsNull(ref) Then Return
+   If ref!finalised = False Then
+      stag = ref!tag & " (** UNFINISHED **)"
+   Else
+      sTag = ref!tag
+   Endif
+   sHtml = ref!letter_html
+   If ref!letter_html Begins "\\documentclass" Then
+      bIsLaTex = True
+   Else
+      sHtml = modConsultDBI.Images_Get(sHtml)
+   Endif
+   If bIsLaTex Then
+      FClinical.Editor_ShowPage_external("pdf file", sTag, modPrinting.Latex_To_PDF(sHtml))
+   Else
+      If bNewTab Then
+         FClinical.Editor_ShowPage_external("browser", sTag, sHtml)
+      Else
+         FClinical.Editor_ShowPage_external("letters written", stag, shtml, "html")
+      Endif
+   Endif
+   
+End
+
+Public Sub Referral_Delete(referral As Collection)
+   '------------------------------------------------------------------------------------------------   
+   'Deletes the selected referral letter written from the list 
+   'Then updates the referrals list
+   'If the referral was written today and FReferrals is open, the deletes this from that modules gui
+   '------------------------------------------------------------------------------------------------
+   
+   If modReferralsDBI.Referral_Delete(currentconsult, referral) Then
+      Deleted_Referral = referral
+      currentconsult.Refresh("referrals_written")
+      cvwReferrals_Load
+      Try FReferrals.Refresh_Referrals_Written_Today()     'Try as FReferrals could be null
+   Endif
+   
+End
+
+Public Sub Referral_UnDelete()
+   '----------------------------------------------------------
+   'Single level un-delete of a the last deleted letter written
+   'remove the audit notes and strike through of the text
+   '-----------------------------------------------------------
+   
+   Dim sHtml As String
+   Dim fk_progressnote As Integer
+   Dim fk_referral As Integer
+   Dim pn As Collection
+   Dim charpos As Integer
+   
+   fk_progressnote = deleted_referral!fk_progressnote
+   fk_referral = deleted_referral!pk_referral
+   sHtml = deleted_referral!letter_html
+   For Each PN In currentconsult!progress_notes
+      If PN!pk_progressnote = fk_progressnote Then
+         If PN!fk_consult = currentconsult.GetPK() Then           'undelete the progress note of the letter
+            modDBConnect.update("clin_consult.progressnotes", Null, ["pk": fk_progressnote, "deleted": False])
+         Else                                                     'more complex, remove the strikethrough
+            charpos = InStr(pn!notes, "</TABLE>")
+            pn!notes = Left(pn!notes, charpos + 7)
+            pn!notes = Replace$(pn!notes, "BGCOLOR='#CFCFCF'", "")
+            pn!notes = Replace$(pn!notes, "<strike>", "")
+            pn!notes = Replace$(pn!notes, "</strike>", "")
+            pn!notes = "<P>" & pn!notes & "</P>"
+            modDBConnect.update("clin_consult.progressnotes", Null, ["pk": fk_progressnote, "notes": pn!notes])
+         End If
+         modDBConnect.update("clin_referrals.referrals", Null, ["pk": fk_referral, "deleted": False])
+         'Mark the inclusions as un-deleted,
+         ' could be inaccurate for example they may have marked one as deleted when letter written
+         '  FIXME IN THIS CASE PERMANANTLY REMOVE FROM THE BACKEND IN FREFERRALS.DELETE ROUTINES
+         modDBConnect.exec_query("update clin_referrals.inclusions set deleted = False WHERE fk_referral = " & fk_referral)
+         modDBConnect.CommitTrans()
+         Deleted_Referral = New Collection
+       '  FClinical.Refresh_AllPreviousNotes()
+         FClinical.Refresh_Section(const.cSection_Referrals)
+         Try FReferrals.Refresh_Referrals_Written_Today()
+         Break
+      Endif
+   Next
+   
+End
+
+Public Sub Document_Display(D As Collection, Optional bNewtab As Boolean)
+   '---------------------------------------------------------------------------------
+   'Displays a document currently in central area until IAN does the emulated browser
+   'If document metadata is not complete, prompt user by showing the metadata
+   '---------------------------------------------------------------------------------
+   
+   Dim filename As String
+   Dim currentobservations As Collection
+   Dim sHtml As String
+   '  Dim documents As Collection = currentconsult!letters_received
+   Dim latex As String
+   Dim charpos As Integer
+   
+   filename = D!source_file
+   UnFiled_Document_Metadata_Show(False)                                     'remove this it could be showing if not completed from previous document
+   
+   '-----------------------------------------------------------------------------------------------------
+   'If there is no tag_user, then this is an unfiled document - i.e document can't be filed without a tag
+   '-----------------------------------------------------------------------------------------------------
+   If Not IsNull(D!tag_user) Then
+      Select Case File.Ext(filename)
+         Case "pdf"
+            If bNewtab Then 
+               FClinical.Editor_ShowPage_External("pdf document", D!tag_user & ":" & Str(D!pk_document), filename)
+               
+            Else
+               FClinical.Editor_ShowPage_External("document", D!tag_user & ":" & Str(D!pk_document), filename, "pdf")
+            End If   
+         Case "jpg", "png", "bmp", "jpeg", "tiff"
+            If bNewtab Then   
+               FClinical.Editor_ShowPage_External("image", D!tag_user, D!source_file, "An Extra Tag")
+            Else
+               FClinical.Editor_ShowPage_External("document", D!tag_user, D!source_file, "image")
+            End If  
+            ' Case Else 'must be html or latex FIXME temporary I've been saving the GPMP latex into the thml field
+            '    If InStr(documents[cvwLettersReceived_Key]!html, "\\documentclass") Then
+            '       Editor_ShowPage("pdf file", documents[cvwLettersReceived_Key]!tag_user, modPrinting.Latex_To_PDF(documents[cvwLettersReceived_Key]!html))
+            '    Else
+            '       If bNewTab Then   
+            '          Editor_ShowPage("browser", documents[cvwLettersReceived_Key]!tag_user, documents[cvwLettersReceived_Key]!html, documents[cvwLettersReceived_Key]!originator)
+            '       Else
+            '          Editor_ShowPage("document", documents[cvwLettersReceived_Key]!tag_user, documents[cvwLettersReceived_Key]!html, "html")
+            '       End If 
+            '    End If     
+         Case Else
+            Select Case D!fk_lu_data_content_type
+               Case const.cData_Type_Latex 
+                  Print D!data
+                  If InStr(D!data, "!pdf-path") Then
+                     latex = D!data    'file need to find for overpic is {!pdf-path:the-pdf-name.pdf}
+                     charpos = InStr(latex, "!pdf-path")
+                     filename = Mid$(latex, charpos + 10, InStr(latex, "}", charpos + 10) - charpos - 10)
+                     latex = Replace(latex, "!pdf-path:" & filename, modUtil.Find_File("templates" &/ filename))
+                     filename = modPrinting.Latex_To_PDF(latex)
+                     FClinical.Editor_ShowPage_External("pdf file", D!tag_user, filename)
+                  Else
+                     FClinical.Editor_ShowPage_External("pdf file", D!tag_user, modPrinting.Latex_To_PDF(D!data))
+                  End If   
+               Case const.cData_Type_HTML
+                  If bNewTab Then   
+                     FClinical.Editor_ShowPage_External("browser", D!tag_user, D!data, D!originator)
+                  Else
+                     FClinical.Editor_ShowPage_External("document", D!tag_user, D!data, "html")
+                  End If 
+               Case Else
+                  Message.Info("FClinical.Document_Display:Unknown document data type - please notify the developers")
+            End Select
+      End Select
+   Else
+      '------------------------------------------------------------------------------
+      'tag_user is null construct the page tag along with a date eg FBC (01/02/2010)
+      'Now determine if this has actually been viewed and filed by the doctor
+      'if it has, then there will be a user tag
+      'If not, then show the metadata for this document
+      '-------------------------------------------------------------------------------
+      Select Case File.Ext(filename)
+         Case "pdf"
+            FClinical.Editor_ShowPage_External("document", "UNFILED", filename, "pdf")
+         Case Else
+            If IsNull(D!data) Then        'Null = unfiled, construct this from backend
+               CurrentObservations = modDBConnect.exec_query_collection("Select  * from documents.observations where fk_document =" & cvwLettersReceived_Key & " ORDER BY observations.observation_date, set_id")
+               shtml = modHL7Process.Construct_HTML(currentconsult!patient, D, currentobservations, True, True, D!fk_lu_display_as)
+            Else
+               shtml = D!data
+            End If
+            FClinical.Editor_ShowPage_External("browser", "UNFILED", sHTML, D!originator)
+      End Select
+      With form_metadata
+         .Edit(D)        'display metadata for this document
+         .bexit = True
+         .txtUserObservationName.text = cvwLettersReceived[cvwLettersReceived_Key][1]
+         .txtUserObservationName.pos = 0    'ensure start of line showing
+         .Document_HTML_Set(sHtml)
+         .HBox_Save.visible = True                                           'contains the save button
+         .hBox_Urgency.Visible = False                                       'not needed as already in the patients notes
+         .bExit = False
+      End With
+      UnFiled_Document_Metadata_Show(True)                                   'set up FClinical to show form_metadata
+   End If
+   
+End
+
+Public Sub form_metadata_txtUserObservationName_Activate()
+   '------------------------------------------------------------------------------------------
+   'This over-rides the event on this textbox in the form_metadata
+   'For ease of use, when user hits enter here, File doc and roll on to next one automatically
+   '------------------------------------------------------------------------------------------
+   
+   Stop Event
+   If Last.tag = "user name" Then
+      form_metadata_tbSave_Click()
+   Endif
+   
+End
+
+Public Sub form_metadata_tbSave_Activate()
+   '------------------------------------------------------------
+   'Detects if user clicked <enter> on the form_metadata save button
+   'overrides this event and saves. I've done this so that
+   'I can then remove the metadata form and re-arrange the screen
+   'from this form
+   '------------------------------------------------------------
+   
+   Stop Event
+   If key.code = key.Return Then
+      form_metadata_tbSave_Click()
+   Endif
+   
+End
+
+Public Sub form_metadata_tbSave_Click()
+   '-----------------------------------------------------------------------
+   'User is modifying a document's metadata
+   'Apply the changes, remove the metadata gui and re-load the results list
+   'this observor over-rides the click on the form_metadata form 
+   'i.e the instance of FDocumentMetaData we are using
+   '-----------------------------------------------------------------------
+   
+   Stop Event
+   If form_metadata.txtUserObservationName.text = "" Then
+      With form_metadata
+         .txtUserObservationName.SetFocus
+         .txtUserObservationName.Background = Color.rgb(95, 255, 175)
+      End With
+      Return
+   Endif
+   If form_metadata.txtDocumentDate.text = "" Then
+      With form_metadata
+         .txtDocumentDate.SetFocus
+         .txtDocumentDate.Background = Color.rgb(95, 255, 175)
+      End With
+      Return
+   Endif
+   form_metadata.Save()                           'successful
+   modDBConnect.CommitTrans()                     'save transaction
+   UnFiled_Document_Metadata_Show(False)          'remove the gui components
+   cvwLettersReceived_Reload(bRefreshData)
+  
+   If FInbox.Is_Same_Patient(currentconsult!patient!fk_patient) Then
+      FInbox.Reload_Inbox_External
+   Endif
+   
+End
+
+Public Sub DocumentFilter_KeyRelease()
+   '-------------------------------------------------------------------------
+   'User wants to filter document on either tag or who sent them 'originator'
+   '-------------------------------------------------------------------------
+   
+   If bexit Then Return
+   cvwLettersReceived_ReLoad()
+   
+End
+

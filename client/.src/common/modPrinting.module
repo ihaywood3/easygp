@@ -18,7 +18,43 @@
 Private printerlist As String[]
 
 
-
+Public Sub Document_Print(document As Collection)
+   '--------------------------------------------------------------
+   'Print a document by its key
+   'All documents have a filename - but they are either PDF or HL7
+   '--------------------------------------------------------------
+   
+  ' Dim Document As Collection
+   '---------------------------------------------------
+   'Is the document a result?, if not, must be a letter
+   'i.e decide which collection to pull them from
+   '---------------------------------------------------
+   ' Try Document = currentconsult!results_received[fk_document]         '? a result??
+   ' If IsNull(document) Then                                            'it wasn't a result?
+   '    Try Document = currentconsult!letters_received[fk_document]      '? a letter ??
+   ' End If
+   '----------------------------------------------------------
+   'Having got the document, print according to file extension
+   'All our non scanned documents are html
+   'FIXME: could be printing a picture
+   '----------------------------------------------------------
+   Select Case File.Ext(Document!source_file)
+      Case "pdf"
+         modPrinting.Print_PDF(modFiles.Get("document_archiving_directory", Document!source_file))
+      Case "jpg", "png", "tiff", "jpeg", "bitmap"
+         
+      Case Else
+         Select Case Document!fk_lu_data_content_type
+            Case const.cData_Type_Latex 
+               modPrinting.Print_latex(document!data)
+            Case const.cData_Type_HTML
+               modPrinting.PrintHtml(Document!data)
+            Case Else
+               Message.Info("Unknown document data type - please notify the developers")
+         End Select
+   End Select
+   
+End
 Public Sub Print_PDF(pdf_path As String, Optional printertype As Integer = const.Paper_Plain, number_copies As Integer = 1)
    
    Dim cmd As String
@@ -141,7 +177,42 @@ Catch
    
 End
 
-Public Sub Print_latex_PDF(latex As String, Optional printertype As Integer = const.Paper_Plain, number_copies As Integer = 1)
+Public Function Print_latex_PDF(latex As String, Optional printertype As Integer = const.Paper_Plain, number_copies As Integer = 1, Optional bPreserve_pdf As Boolean) As String
+   '----------------------------------------------------------------------------
+   'prints a laTeX file using overpic with pdf images up to number_copies copies
+   '----------------------------------------------------------------------------
+   
+   Dim stem As String
+   Dim f As File
+   Dim cmd As String
+   
+   stem = Temp$("printl")
+   f = Open stem & ".tex" For Write Create
+   Print #f, latex
+   Close #f
+   cmd = modUtil.FindProgram("latex", "texlive-latex-base")
+   If IsNull(cmd) Then Return
+   Inc Application.Busy
+   cmd = "cd `dirname " & stem & "` ; "
+   cmd &= modUtil.FindProgram("pdflatex", "pdflatex") & " printl.tmp.tex;"
+   Log.DebugMsg("Printing using command " & cmd)
+   Shell cmd Wait
+   Print_PDF(stem & ".pdf")
+Finally
+   Try Kill stem & ".tex"
+  ' Try Kill stem & ".pdf"
+   Try Kill stem & ".aux"
+   Try Kill stem & ".log"
+   If bPreserve_pdf Then
+      Return stem & ".pdf"
+   Endif
+   Dec Application.Busy
+Catch
+   Message.Error(Error.Text, "OK")
+   
+End
+
+Public Sub Print_latex_PDF_old(latex As String, Optional printertype As Integer = const.Paper_Plain, number_copies As Integer = 1)
    '----------------------------------------------------------------------------
    'prints a laTeX file using overpic with pdf images up to number_copies copies
    '----------------------------------------------------------------------------
@@ -172,7 +243,6 @@ Catch
    Message.Error(Error.Text, "OK")
    
 End
-
 Public Sub Print_Image(sImagePath As String)
    '----------------------------------------
    'Prints an image by embedding it in html

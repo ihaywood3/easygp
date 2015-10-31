@@ -76,8 +76,14 @@ Public Function Referral_Delete(currentconsult As CConsult, Referral As Collecti
    Dim fk_reason As Integer
    Dim reason As String
    Dim audit_notes As String
+   Dim bReferralWrittenToday As Boolean
    
-   If Message.Warning("Are you sure you wish to delete this referral", "Yes", "No") = 2 Then Return
+   Print referral
+   If Not modUtil.IsSameDay(referral!date_referral, currentconsult.GetConsultDate()) Then 'didn't use currentconsults.GetconsultDate() on purpose
+      If Message.Warning("Are you sure you wish to delete this referral", "Yes", "No") = 2 Then Return
+   Else
+      bReferralWrittenToday = True  
+   End If   
    fk_progressnote = referral!fk_progressnote
    fk_referral = referral!pk_referral
    sHtml = referral!letter_html
@@ -108,18 +114,20 @@ Public Function Referral_Delete(currentconsult As CConsult, Referral As Collecti
             audit_notes &= " was deleted."
             pn!notes = Replace(pn!notes, "</TABLE>", "</TABLE><small><B><I>Audit note:</B> this referral letter was deleted by " & modDBConnect.currentUser!wholename & " on " & Format(Now, "dd/mm/yyyy") & ". See audit trail on that date for the reason.</I></small>")
             modDBConnect.update("clin_consult.progressnotes", Null, ["pk": fk_progressnote, "notes": pn!notes])             'strike through the letter in progress notes
+            Break
          End If
-         modDBConnect.update("clin_referrals.referrals", Null, ["pk": fk_referral, "deleted": True])                        'mark the referral as deleted
-         modDBConnect.exec_query("update clin_referrals.inclusions set deleted = True WHERE fk_referral = " & fk_referral)  'Mark the inclusions as deleted
-         If Not modAudit.MakeAudit(currentconsult, "mark deleted", "clin_referrals.referrals", fk_referral, const.cSection_Referrals, audit_notes) Then
-            modDBConnect.RollBack
-            Return
-         Else
-            modDBConnect.CommitTrans
-            Return True
-         End If   
-      Endif
-   Next
+      End If   
+   Next 
+   modDBConnect.update("clin_referrals.referrals", Null, ["pk": fk_referral, "deleted": True])                        'mark the referral as deleted
+   modDBConnect.exec_query("update clin_referrals.inclusions set deleted = True WHERE fk_referral = " & fk_referral)  'Mark the inclusions as deleted
+   If bReferralWrittenToday = False Then                                                                              'only enforce audit if the letter wasn't written today
+      If Not modAudit.MakeAudit(currentconsult, "mark deleted", "clin_referrals.referrals", fk_referral, const.cSection_Referrals, audit_notes) Then
+         modDBConnect.RollBack                                                                                        'user cancelled?
+         Return
+      End If    
+   End If   
+   modDBConnect.CommitTrans              'success, with or without an audit, commit the trans
+   Return True
    
 Catch
    Return 
@@ -198,10 +206,13 @@ Public Function UnDelete(pk_referral As Integer)
    
 End
 
-Public Function Inclusions_Get(fk_patient As Integer, Optional bdeleted As Boolean = False, Optional bThisConsult As Boolean = False, Optional fk_referral As Integer = 0) As Collection 
-   '-----------------------------------------------------------------------------------------------------------------------
+Public Function Inclusions_Get(fk_patient As Integer, Optional bdeleted As Boolean = False, Optional bThisConsult As Boolean = False, Optional fk_referral As Integer = 0, Optional consult_date As Date = Now()) As Collection 
+   '-------------------------------------------------------------------------------------------------------------------------------
    'Gets inclusions as keys for patients referrals, either the entire collection or optionally only for current day of consultation
-   '-----------------------------------------------------------------------------------------------------------------------
+   'For historical reasons this is a bit screwed. As it is possible (For Ian) to edit the last consult that date <> today
+   'and in this situation current_consult!consult_date <> Now()
+   'this sub is wrongish, needs checking all instances and re-writing.
+   '-------------------------------------------------------------------------------------------------------------------------------
    
    Dim sql As String
    
@@ -211,38 +222,19 @@ Public Function Inclusions_Get(fk_patient As Integer, Optional bdeleted As Boole
    Else
       sql &= "False" 
    Endif
-   If bThisConsult Then
-      sql &= " AND date(consult_date) = '" & Format(Now, "dd/mm/yyyy") & "'::date "
-   Endif
-   If fk_referral Then   'limit inclusions to a single referral
-      sql &= " AND fk_referral = " & fk_referral  
-   Endif
+   If fk_referral Then
+      sql &= " AND fk_referral = " & fk_referral 
+   Else    'this convulted crap below is a rush job, fixme and fix all calling routines
+      If bThisConsult And modUtil.IsSameDay(Now(), consult_date) Then
+         sql &= " AND date(consult_date) = '" & Format(Now, "dd/mm/yyyy") & "'::date "
+      Else
+         sql &= " AND date(consult_date) = '" & Format(consult_date, "dd/mm/yyyy") & "'::date "
+      Endif
+   End If 
+   
    Return modDBConnect.exec_query_collection(sql)
    
 End
-' 
-' Public Function Inclusions_Get(fk_patient As Integer, Optional bdeleted As Boolean = False, Optional bThisConsult As Boolean = False, Optional fk_referral As Integer = 0) As Collection 
-'    '-----------------------------------------------------------------------------------------------------------------------
-'    'Gets inclusions for patients referrals, either the entire collection or optionally only for current day of consultation
-'    '-----------------------------------------------------------------------------------------------------------------------
-'    
-'    Dim sql As String
-'    
-'    sql = "Select * from clin_referrals.vwInclusions where fk_patient = " & fk_patient & "  AND deleted = " 
-'    If bdeleted Then
-'       sql &= "True"
-'    Else
-'       sql &= "False" 
-'    Endif
-'    If bThisConsult Then
-'       sql &= " AND date(consult_date) = '" & Format(Now, "dd/mm/yyyy") & "'::date "
-'    Endif
-'    If fk_referral Then   'limit inclusions to a single referral
-'       sql &= " AND fk_referral = " & fk_referral  
-'    Endif
-'    Return modDBConnect.exec_query_collection(sql)
-'    
-' End
 
 Public Function Save(currentconsult As CConsult, old_pk As Integer, referral As Collection, inclusions As Collection) As Integer 
    '----------------------

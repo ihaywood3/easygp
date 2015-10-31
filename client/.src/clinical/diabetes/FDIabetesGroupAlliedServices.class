@@ -25,11 +25,14 @@ Private currentconsult As CConsult
 Private bExit As Boolean
 Private ReferenceHboxForTopColumnview As Hbox               'used if split moves to reposition columnview
 Private Persons As Collection
+Private person As Collection
 Private fk_employee As Integer
 Private fk_organisation As Integer
 Private fk_address As Integer
 Private fk_branch As Integer
 Private fk_person As Integer
+Private pk_diabetes_group_allied_health_services As Integer 'key to chronic_disease_management.diabetes_group_allied_health_services
+Private fk_progressnote As Integer                          'key to clin_consult.progressnotes if not 0 then points to progress note for this form
 Private PersonWritingTo As Collection
 Private branches As Collection
 Private branch As Collection
@@ -37,9 +40,17 @@ Private Active_Health_Issues As Collection
 Private Health_Issues_To_Add As Collection
 Private HI As Collection
 Private bStopSearch As Boolean
-Private fk_gahs_referral_form As Integer
+Private fk_document_history_items As Integer             'key to documents.documents for the Latex of any additional history sent to provider 
+Private fk_document_form As Integer                      'ditto for that of the form itself
+Private diabetes_referral_forms As Collection
+Private diabetes_referral_form As Collection
+Private cvwDiabetesGroupAlliedReferrals_key As Integer
+Private lvHealthIssues_Key As Integer
+Private sSupportHeading As String = "Diabetes Allied Health Group Services"
 
 Public Sub Init(cons As CConsult)
+   
+   Dim tl As TextLabel
    
    currentconsult = cons 
    lblmeasure.text = "Relevant Information   "
@@ -54,8 +65,14 @@ Public Sub Init(cons As CConsult)
       End If  
    Next
    cmbIncludeHealthIssue.Index = -1
+   With cvwDiabetesGroupAlliedReferrals
+      .Columns.count = 2
+   End With
    Settings_Load
-   Decision_Support
+   If Not modAdminDBI.Has_User_Seen_Tip("FDiabetesGroupAlliedServices." & sSupportHeading) Then 
+      Decision_Support
+   End If  
+   textlabel1.text = Reply_instructions()
    Reload
    
 End
@@ -64,6 +81,8 @@ Private Sub Settings_Load()
    
    HSplit_GroupServices.Layout = Settings["FDiabetesGroupAlliedServices/HSplit_GroupServices", modUtilGUI.HSplit([1, 1])]
    VSplit_GroupServices.Layout = Settings["FDiabetesGroupAlliedServices/VSplit_GroupServices", modUtilGUI.HSplit([1, 1])]
+   cvwDiabetesGroupAlliedReferrals.font = Font[Settings["FDiabetesGroupAlliedServices/cvwDiabetesGroupAlliedReferrals.font", "DejaVu Sans,9"]]
+   lvHealthIssues.font = Font[Settings["FDiabetesGroupAlliedServices/lvHealthIssues.font", "DejaVu Sans,9"]]
    
 End
 
@@ -72,113 +91,284 @@ Public Sub Decision_Support()
    ' Display decisison support on the extreme right of the screen
    ' ------------------------------------------------------------   
    
-   Dim sSupportHeading As String = "Diabetes Allied Health Group Services"
-   
-   If modAdminDBI.Has_User_Seen_Tip("FDiabetesGroupAlliedServices." & sSupportHeading) Then Return
    modUtilGUI.Decision_Support_Help_Show(Decision_Support_Text(), sSupportHeading, "FDiabetesGroupAlliedServices." & sSupportHeading)
+   
+End
+
+Private Function Reply_instructions() As String
+   
+   Return "" 
+   "The GP responds with a normal referral letter written in the normal referrals section which must specify:"
+   "<UL><LI> The delegation of up to 8 allied health group sessions"
+   "<LI>These can be be spread over:<UL><LI>Exercise Physiology(item 81115)<LI>Diabetes Education(item 81105)<LI>Dietician "
+   "(item 81125)</UL>"
+   "<LI>The sessions do not have to be spread they can be all be a single modality "
+   "If that is what is needed e.g all exercise physiology."
+   "</UL>"
+   "<P>Like all referral letters written, a record of this will be embedded in the progress notes for auditing purposes.</P>"
    
 End
 
 Private Function Decision_Support_Text() As String
    
-   Return "<P><B>Sequence of Events</B></P><UL>"
-   " <LI> GP writes or reviews a Management Plan (GP or Aged Care Plan)  and completes the details below and a "
-   "referral form for Group Allied Health Services under Medicare for T2 "
-   "Diabetes will be printed - Send with patient to the allied health provider."
-   ""
-   "<LI>The  Alllied Health Provider conducts an initial assessment (item 81110, 1 "
+   Return "<P><B>Eligibility</B></P>"
+   "<P>The patient must be a diabetic and eligible patients may access Medicare rebates for <b><I>one</I></B> asessment for group services item in a calandar year. Indicate the name of the "
+   "practitioner (diabetes educator, exercise physiologist or dietitian) or the allied health practice you wish to refer the patient to for this assessment. The assessment "
+   "must be done before the patient can access group services.<P>"
+   "<P><B>Sequence of Events</B></P><UL>"
+   "<LI>GP writes or reviews a Management Plan (GP or Aged Care Plan) and completes the details below and a "
+   "referral form for Group Allied Health Services under Medicare for Type 2 "
+   "diabetes will be printed - send with patient to the allied health provider."
+   "<LI>The  Allied Health Provider conducts an initial assessment (item 81110, 1 "
    "per year) and writes a report and recommendations back to GP."
-   ""
-   "<LI> GP responds with a referral that specifies the delegation of up to "
+   "<LI>GP responds with a normal referral letter that specifies the delegation of sessions: up to "
    "8 allied health group sessions which can be spread over Exercise "
    "Physiology (item 81115), Diabetes Education (item 81105) and Dietician "
    "(item 81125). The sessions do not have to be spread they can be all "
    "Exercise Physiology if that is what is needed."
-   ""
-   "<LI>Once the 2nd referral is received by the Allied Health professional"
-   "group sessions can begin. <B><I>There is no special form for the 2nd "
-   "referral it can just be ordinary referral letter sent with the patient.</I></B>"
-   ""
-   "<LI>The Alllied Health Provider writes a final report back to the GP once all "
-   "allocated sessions have been completed by the patient. (a legal requirement)" 
-   "<LI>Please advise patients that Medicare rebates <B>and </B> Private Health Insurance benefits "
-   "cannot <B>both</B> be claimed for this service."
-   "<li>Note:Generally, residents of an aged care facility rely on the facility for assistance to manage their type 2 diabetes. "
+   "<LI>Once the 2nd referral is received by the Allied Health professional "
+   "group sessions can begin."
+   "<LI>The Allied Health Provider writes a final report back to the GP once all "
+   "allocated sessions have been completed by the patient (a legal requirement)." 
+   "</UL>"
+   "<P><B>Special Notes</B></P>"
+   "<UL>"
+   "<LI>Please advise patients that Medicare rebates and Private Health Insurance benefits "
+   "cannot both be claimed for this service."
+   "<li>Generally, residents of an aged care facility rely on the facility for assistance to manage their type 2 diabetes. "
    "Therefore, residents may not need to be referred for allied health group services as the self management approach may not be appropriate."
-   "<LI></B>Eligible patients may acess Medicare rebates for <b><I>one</I></B> asessment for group services item in a calandar year. Indicate the name of the "
-   "practitioner (diabetes educator, exercise physiologist or dietitian) or the allied health practice you wish to refer the patient to for this assessment. The assessment "
-   "must be done before the patient can access group services"
+   "<li>You should include relevant health information such from the drop down combo-box of this patients health issues, where it may affect "
+   "the assessment or group work, for example 'osteoarthritic knee' or 'balance problem'. Of course you must include information about their diabetes."
    "</UL>"
    
 End
 
+
+
 Public Sub Save()
    '------------------------------------------------------------------------------------
-   ' Create table chronic_disease_management.group_allied_health_services
-   ' (pk serial primary key,
-   '  fk_consult integer not null,
-   '  confirm_diabetic boolean default false,
-   '  gpmp_new  boolean default false,
-   '  gpmp_review  boolean default false,
-   '  age_care_plan_review  boolean default false,
-   '  latex_form text not null,
-   '  health_issue_keys text default null, 
-   '  fk_branch integer default null,
-   '  fk_employee integer default null,
-   '  fk_person integer default null,
-   '  CONSTRAINT group_allied_health_services_fk_consult_fkey FOREIGN KEY (fk_consult)
+   ' CREATE TABLE chronic_disease_management.diabetes_group_allied_health_services
+   ' (
+   '   pk serial NOT NULL,
+   '   fk_consult integer NOT NULL,
+   '   confirm_diabetic boolean DEFAULT false, -- user has positively affirmed that this patient is diabetic, a medicare requirement
+   '   gpmp_new boolean DEFAULT false, -- the doctor has  referred the patient whilst doing a new gp management plan
+   '   gpmp_review boolean DEFAULT false, -- the doctor has referred the patient whilst claiming a gp management plan review
+   '   age_care_plan_review boolean DEFAULT false, -- the doctor has contributed to or reviewed an aged care facility management plan
+   '   latex_form text NOT NULL, -- the LaTeX definition of the group alllied  health services form, this is kept as a 'backup' strictly not needed
+   '   health_issue_keys text, -- If not null, this field contains | (pipe) delimited keys to a patient's relevant health issues
+   '   fk_branch integer, -- key to contacts.data_branches if not null then points to the branch hence the organisation
+   '   fk_employee integer, -- key to contacts.data_employees if not null then points to the employee in the branch/organisation who is a sole trader
+   '   fk_person integer, -- key to contacts.data_persons if not null then points to the person who is a sole trader
+   '   sessions_dietitian integer, -- the number of group sessions allocated to the dietitian
+   '   sessions_exercise integer, -- the number of group sessions allocated to the exercise physiologist
+   '   sessions_education integer, -- the number of group sessions allocated to the diabetic educator
+   '   include_allergies    boolean DEFAULT true, -- if true then the allergies are included on the information sent to the provider
+   '   include_medications boolean DEFAULT true, -- if true then the patient's medications are included on the information sent to the provider
+   '   special_notes text, -- any extra information to pass on to the provider(s) of diabetic group services
+   '   CONSTRAINT diabetes_group_allied_health_services_pkey PRIMARY KEY (pk),
+   '   CONSTRAINT diabetes_group_allied_health_services_fk_consult_fkey FOREIGN KEY (fk_consult)
    '       REFERENCES clin_consult.consult (pk) MATCH SIMPLE
-   '       ON UPDATE NO ACTION ON DELETE NO ACTION
-   '       );
-   
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
    '------------------------------------------------------------------------------------       
    
-   Dim GAHS_Referral As Crow
+   Dim DGAHS_Form As Crow
+   Dim PH As Collection
+   Dim keys As String
+   Dim Document_Diabetic_Group_Allied_Health_Form As CRow
+   Dim Document_Additional_Health_Issues As CRow 
+   Dim LaTexes_to_print As Collection   'of latex - if save successful we will print these
+   Dim latex_to_print As String
+   Dim Additional_history_latex As String
+   Dim Filename As String
+   Dim md5Output As String
+   Dim ProgressNote As CRow   
    
    If VBox_EditArea_Outer.padding = 0 Then Return 'no data to save
    If Not Diabetes_Group_Allied_Service_Valid() Then Return
-   
+   If bExit Then Return
+   bExit = True   
    Inc Application.Busy
-   GAHS_Referral = New CRow  
-   If fk_gahs_referral_form Then
-      GAHS_Referral.put_unchanged(fk_gahs_referral_form, "fk_gahs_referral_form")
+   DGAHS_Form = New CRow 
+   ProgressNote = New CRow  'If the progress note was written on today, we can edit it, otherwise, create a new one
+   If fk_progressnote And txtDate.text = Format(currentconsult.GetConsultDate(), "dd/mm/yyyy") Then  'if originally entered on today
+      ProgressNote.put_unchanged(fk_progressnote, "fk_progressnote")            'am editing todays progress note
+      ProgressNote!fk_audit_action = const.cAuditAction_Insert                  'is an insert
+   Else     
+      ProgressNote!fk_audit_action = const.cAuditAction_Edit
+   End If   
+   ProgressNote!fk_consult = currentconsult.GetPK()
+   ProgressNote!notes = Progress_Notes_Create()
+   ProgressNote!fk_section = const.cSection_GeneralNotes
+   ProgressNote!problem = "Diabetes Group Referral"
+   ProgressNote.Save("clin_consult.progressnotes", "fk_progressnote")
+   DGAHS_Form!fk_progressnote = progressnote!fk_progressnote
+   
+   '-------------------------------------------------------------------------------------------------------------------------
+   'Create the cRow for all information about the form
+   'Note that as a backup I've kept the LaTex for the overpic of the pdf, really not necessary
+   'The PDF is saved into the filesystem
+   'the fk_document_dgah_history  = documents.documents.pk pointing to LaTex of history items added later on in sub
+   'the fk_document_dgah_form = points to the document as a true file.. created and added later down the sub
+   'the LaTex of the additional health information is saved in documents.documents and shown as a pdf on the fly in FClinical
+   '-------------------------------------------------------------------------------------------------------------------------
+   If pk_diabetes_group_allied_health_services Then
+      DGAHS_Form.put_unchanged(pk_diabetes_group_allied_health_services, "pk_diabetes_group_allied_health_services")
    Endif
-   GAHS_Referral!fk_consult = currentConsult.GetPK()
-   GAHS_Referral!confirm_diabetic = True
-   GAHS_Referral!gpmp_new = CBool(rbDGAS_NewGPMP.value)
-   GAHS_Referral!gpmp_review = CBool(rbDGAS_ReviewGPMP.value)
-   GAHS_Referral!age_care_plan_review = CBool(rbDGAS_AgedCareResident.value)
-   GAHS_Referral!latex = Diabetes_Group_Allied_Services_Latex()
-   If fk_branch <> 0 Then
-      GAHS_Referral!fk_branch = fk_branch
+   DGAHS_Form!fk_consult = currentConsult.GetPK()
+   DGAHS_Form!confirm_diabetic = True
+   DGAHS_Form!gpmp_new = CBool(rbDGAS_NewGPMP.value)
+   DGAHS_Form!gpmp_review = CBool(rbDGAS_ReviewGPMP.value)
+   DGAHS_Form!age_care_plan_review = CBool(rbDGAS_AgedCareResident.value)
+   If Health_Issues_To_Add.count Then             'these keys to clin_history.past_history reused when TCA edited
+      DGAHS_Form!health_issue_keys = Health_issues_Keys()
    Else
-      GAHS_Referral!fk_branch = Null
+      DGAHS_Form!health_issue_keys = Null
+   End If     
+   DGAHS_Form!latex_form = Diabetes_Group_Allied_Services_Latex_Form() 'see note above
+   DGAHS_Form!latex_history_items = Diabetes_Group_Allied_Services_Latex_History_Items()
+   If fk_branch <> 0 Then
+      DGAHS_Form!fk_branch = fk_branch
+   Else
+      DGAHS_Form!fk_branch = Null
    Endif
    If fk_employee <> 0 Then
-      GAHS_Referral!fk_employee = fk_employee
+      DGAHS_Form!fk_employee = fk_employee
    Else 
-      GAHS_Referral!fk_employee = Null
+      DGAHS_Form!fk_employee = Null
    Endif
    If fk_person <> 0 Then
-      GAHS_Referral!fk_person = fk_person
+      DGAHS_Form!fk_person = fk_person
    Else
-      GAHS_Referral!fk_person = Null
+      DGAHS_Form!fk_person = Null
    Endif
-   GAHS_Referral.Save("chronic_disease_management.group_allied_health_services", fk_gahs_referral_form)
+   If txtNumberDietitian.text <> "" Then
+      DGAHS_Form!sessions_dietitian = Val(txtNumberDietitian.text)
+   Else
+      DGAHS_Form!sessions_dietitian = Null
+   Endif
+   If txtNumberDietitian.text <> "" Then
+      DGAHS_Form!sessions_exercise = Val(txtNumberExercise.text)
+   Else
+      DGAHS_Form!sessions_exercise = Null
+   Endif
+   If txtNumberEducation.text <> "" Then
+      DGAHS_Form!sessions_education = Val(txtNumberEducation.text)
+   Else
+      DGAHS_Form!sessions_education = Null
+   Endif
+   DGAHS_Form!include_medications = CBool(chkIncludeMedications.value)
+   DGAHS_Form!include_allergies = CBool(chkIncludeAllergies.value)
+   DGAHS_Form!special_notes = Trim(txtSpecialNotes.text)
+   'Now save the latex for history items as a document so it can be displayed in the clinical tab with the TCA/GPMP stuff
+   Document_Additional_Health_Issues = New CRow  
+   If fk_document_history_items Then
+      Document_Additional_Health_Issues.put_unchanged(fk_document_history_items, "fk_document_history_items")
+   End If   
+   Document_Additional_Health_Issues!fk_sending_entity = modInboxDBI.SendingEntity_GetPK(const.Document_Display_As_Letter, "", modDBConnect.currentUser!fk_branch)
+   Document_Additional_Health_Issues!fk_patient = currentconsult!patient!fk_patient 
+   Document_Additional_Health_Issues!source_file = Null
+   Document_Additional_Health_Issues!imported_time = currentconsult.GetConsultDate()
+   Document_Additional_Health_Issues!date_requested = currentconsult.GetConsultDate()
+   Document_Additional_Health_Issues!date_created = currentconsult.GetConsultDate()
+   Document_Additional_Health_Issues!fk_staff_filed_document = modDBConnect.currentUser!fk_staff  
+   Document_Additional_Health_Issues!originator_reference = "Diabetes Group Allied Health Patient History"
+   Document_Additional_Health_Issues!originator = UCase(modDBConnect.currentUser!organisation) & "." & UCase(modDBConnect.currentUser!branch)
+   Document_Additional_Health_Issues!fk_staff_destination = modDBConnect.currentUser!fk_staff 
+   Document_Additional_Health_Issues!comment_on_document = "Additional health issues to send to provider"
+   Document_Additional_Health_Issues!patient_access = True
+   Document_Additional_Health_Issues!concluded = True 
+   Document_Additional_Health_Issues!deleted = False
+   Document_Additional_Health_Issues!fk_lu_urgency = const.UrgencyLevelRoutine
+   Document_Additional_Health_Issues!tag = "Diabetes Group Allied Health - Health Issues "
+   If Trim(txtPractitioner.text) <> "" Then     
+      Document_Additional_Health_Issues!tag &= Trim(txtPractitioner.text)
+   Else
+      Document_Additional_Health_Issues!tag &= Trim(txtOrganisation.text)
+   End If   
+   Document_Additional_Health_Issues!tag_user = Document_Additional_Health_Issues!tag 
+   Document_Additional_Health_Issues!md5sum = Null
+   Document_Additional_Health_Issues!fk_lu_display_as = const.Document_Display_As_Team_Care_Arrangement
+   Document_Additional_Health_Issues!fk_lu_request_type = Null
+   Document_Additional_Health_Issues!incoming_referral = False
+   Document_Additional_Health_Issues!data = DGAHS_Form!latex_history_items            'the non overpic plain latex for the additional health items info
+   Document_Additional_Health_Issues!fk_lu_data_content_type = const.cData_Type_Latex
+   Document_Additional_Health_Issues!protected = True                                         'as an audit document, users cannot remove this, needed for medicare
+   Document_Additional_Health_Issues.Save("documents.documents", "fk_document_history_items")
+   DGAHS_Form!fk_document_history_items = Document_Additional_Health_Issues!fk_document_history_items
+   'Now the document for the form itself
+   Document_Diabetic_Group_Allied_Health_Form = New CRow 
+   If fk_document_form Then
+      Document_Diabetic_Group_Allied_Health_Form.put_unchanged(fk_document_form, "fk_document_form")
+   End If 
+   Document_Diabetic_Group_Allied_Health_Form!fk_sending_entity = modInboxDBI.SendingEntity_GetPK(const.Document_Display_As_Letter, "", modDBConnect.currentUser!fk_branch)
+   Document_Diabetic_Group_Allied_Health_Form!fk_patient = currentconsult!patient!fk_patient 
+   Document_Diabetic_Group_Allied_Health_Form!imported_time = currentconsult.GetConsultDate()
+   Document_Diabetic_Group_Allied_Health_Form!date_requested = currentconsult.GetConsultDate()
+   Document_Diabetic_Group_Allied_Health_Form!date_created = currentconsult.GetConsultDate()
+   Document_Diabetic_Group_Allied_Health_Form!fk_staff_filed_document = modDBConnect.currentUser!fk_staff  
+   Document_Diabetic_Group_Allied_Health_Form!originator_reference = "Diabetes Group Allied Health Form"
+   Document_Diabetic_Group_Allied_Health_Form!originator = UCase(modDBConnect.currentUser!organisation) & "." & UCase(modDBConnect.currentUser!branch)
+   Document_Diabetic_Group_Allied_Health_Form!fk_staff_destination = modDBConnect.currentUser!fk_staff 
+   Document_Diabetic_Group_Allied_Health_Form!comment_on_document = "Diabetes Group Allied Health Form"
+   Document_Diabetic_Group_Allied_Health_Form!patient_access = True
+   Document_Diabetic_Group_Allied_Health_Form!concluded = True 
+   Document_Diabetic_Group_Allied_Health_Form!deleted = False
+   Document_Diabetic_Group_Allied_Health_Form!fk_lu_urgency = const.UrgencyLevelRoutine
+   Document_Diabetic_Group_Allied_Health_Form!tag = "Diabetes Group Allied Health Form"
+   If Trim(txtPractitioner.text) <> "" Then     
+      Document_Diabetic_Group_Allied_Health_Form!tag &= Trim(txtPractitioner.text)
+   Else
+      Document_Diabetic_Group_Allied_Health_Form!tag &= Trim(txtOrganisation.text)
+   End If   
+   Document_Diabetic_Group_Allied_Health_Form!tag_user = Document_Diabetic_Group_Allied_Health_Form!tag 
+   Document_Diabetic_Group_Allied_Health_Form!fk_lu_display_as = const.Document_Display_As_Team_Care_Arrangement
+   Document_Diabetic_Group_Allied_Health_Form!fk_lu_request_type = Null
+   Document_Diabetic_Group_Allied_Health_Form!incoming_referral = False
+   Document_Diabetic_Group_Allied_Health_Form!data = DGAHS_Form!latex_form           'the  overpic plain latex for the additional health items info
+   Document_Diabetic_Group_Allied_Health_Form!fk_lu_data_content_type = const.cData_Type_Latex
+   Document_Diabetic_Group_Allied_Health_Form!protected = True                                         'as an audit document, users cannot remove this, needed for medicare
+   Document_Diabetic_Group_Allied_Health_Form.Save("documents.documents", "fk_document_form")
+   DGAHS_Form!fk_document_form = Document_Diabetic_Group_Allied_Health_Form!fk_document_form
+   DGAHS_Form.Save("chronic_disease_management.diabetes_group_allied_health_services", "pk_diabetes_group_allied_health_services")
    modDBConnect.CommitTrans()
+   modPrinting.Print_latex_PDF(DGAHS_Form!latex_form)     'uses overpic
+   modPrinting.Print_latex(DGAHS_Form!latex_history_items) 'prints plain latex
+   bExit = False
+   VBox_EditArea_Outer.Padding = 0
+   FClinical.Refresh_Section(const.cSection_CarePlan) 'force update of lists in this section
    Reload()
    
 End
 
 Public Sub Reload()
    
-   'EditArea_Clear 
+   Dim x As Integer
+   
+   VBox_EditArea_Outer.Enabled = False   
+   EditArea_Clear
+   cvwDiabetesGroupAlliedReferrals.Clear 
+   diabetes_referral_forms = modUtil.Copy_Collection_Keyed_Sequentially(modDACCDBI.Diabetes_Group_Allied_Services_Get(currentconsult!patient!fk_patient))
+   For Each diabetes_referral_form In diabetes_referral_forms
+      cvwDiabetesGroupAlliedReferrals.add(x, 0)
+      cvwDiabetesGroupAlliedReferrals[x][0] = Format(diabetes_referral_form!consult_date, "dd/mm/yyyy")
+      If Not IsNull(diabetes_referral_form!wholename) Then  
+         cvwDiabetesGroupAlliedReferrals[x][1] = diabetes_referral_form!wholename  
+      End If   
+      If Not IsNull(diabetes_referral_form!organisation_summary) Then
+         cvwDiabetesGroupAlliedReferrals[x][1] &= " " & diabetes_referral_form!organisation_summary
+      Endif
+      Inc X
+   Next
    
 End
 
 Public Sub rbEditArea_Click()
    
-   Print Last.value, Last.tag
    If Bexit Then Return
    bExit = True
    Select Case Last.tag
@@ -193,20 +383,76 @@ Public Sub rbEditArea_Click()
          rbDGAS_NewGPMP.Value = Not Last.value
    End Select
    bExit = False  
+   EditArea_Notify_DataChange(True)
    
 End
 
 Public Sub HSplit_GroupServices_Resize()
    
    Settings["FDiabetesGroupAlliedServices/HSplit_GroupServices"] = HSplit_GroupServices.Layout
+   Settings.Save
    
 End
 
 Public Sub VSplit_GroupServices_Resize()
    
    Settings["FDiabetesGroupAlliedServices/VSplit_GroupServices"] = VSplit_GroupServices.Layout
+   Settings.Save
    
 End
+
+Public Sub Person_By_Occupation_Get()
+   '----------------------------------------------------------------------------------
+   ' Gets a list of categories of persons by occupation, presented in a list like this
+   ' category .... persons name i.e
+   ' cardiologist      Dr Big heart
+   ' If > one found popup a list, otherwise auto-accept the single one
+   ' of course they may be simple old people not persons FIXME
+   '-----------------------------------------------------------------------------------
+   
+   Dim address As String
+   Dim x As Integer
+   
+   With columnview1
+      .Visible = False
+      .Clear
+   End With
+   If Trim(txtOccupation.text) = "" Then Return
+   txtOccupation.ReadOnly = True                                                          'prevent further typing
+   persons = modutil.Copy_Collection_Keyed_Sequentially(modReferralsDBI.Persons_Get_By_Occupation(Trim(txtOccupation.text)))      'get list of persons/persons
+   If persons.count <> 0 Then                                                         'if have one or more load to columnvie
+      For Each person In persons
+         columnview1.Add(x, 0)
+         columnview1[x][0] = person!occupation
+         columnview1[x][1] = person!wholename
+         If Not IsNull(person!organisation) Then
+            columnview1[x][2] = person!organisation & " " & person!branch
+         Else
+            columnview1[x][2] = ""
+         Endif
+         Try address = Trim(person!street1 & " " & person!street2)
+         Try address &= person!town & " " & person!postcode
+         columnview1[x][3] = address
+         Inc x
+      Next
+      If persons.count = 1 Then                                                      'only one?, just display this instance
+         Person_Select
+         Goto Unlock_Textbox
+      Else
+         modUtilGUI.Columnview_Columns_Set_Size(columnview1, lblmeasure) 'otherwise popup the columnview.
+         With columnview1
+            .Visible = True
+            .Raise
+            .tag = txtOccupation
+         End With
+      End If
+   End If
+   Goto Unlock_Textbox
+   
+Unlock_Textbox:
+   txtOccupation.ReadOnly = False
+   
+End  
 
 Public Sub Person_Get()
    '-------------------------------------------------------------
@@ -215,7 +461,6 @@ Public Sub Person_Get()
    
    Dim address As String
    Dim x As Integer
-   Dim person As Collection
    
    With columnview1
       .Visible = False
@@ -248,7 +493,9 @@ Public Sub Person_Get()
       Next
       If columnview1.count Then 
          If persons.count = 1 Then                              'auto-select single person
-            Person_Select(person)
+            Print person
+            Print person!wholename   
+            Person_Select
          Else                                                  'otherwise show a list with resized column widths
             modUtilGUI.Columnview_Columns_Set_Size(columnview1, lblmeasure)
             With columnview1
@@ -262,7 +509,7 @@ Public Sub Person_Get()
    
 End
 
-Public Sub Person_Select(person As Collection)
+Public Sub Person_Select()
    '-----------------------------------------------------------------------------------------
    'User selects person to send letter to from popup list
    'Remembering that the view contains person with addresses in organisations or sole traders
@@ -271,26 +518,21 @@ Public Sub Person_Select(person As Collection)
    'FIXME same code as FReferrals
    '------------------------------------------------------------------------------------------
    
-   PersonWritingTo = New Collection
    bExit = True
-   txtPractitioner.Text = person!wholename
-   'txtOccupation.text = person!occupation
+   txtPractitioner.Text = person!title & " " & person!wholename
+   Try txtOccupation.text = person!occupation
    fk_person = person!fk_person
    Try fk_employee = person!fk_employee
    Try fk_organisation = person!fk_organisation
    Try fk_address = person!fk_address
    Try fk_branch = person!fk_branch
-   PersonWritingTo!firstname = person!firstname
-   PersonWritingTo!surname = person!surname
-   PersonWritingTo!title = person!title
-   PersonWritingTo!provider_number = person!provider_number
-   ' Try stored_state = person!state
    Try txtOrganisation.text = person!organisation
    Try txtBranch.text = person!branch
    Try txtStreet1.text = person!street1
    Try txtStreet2.text = person!street2
    Try txtSuburb.text = person!town
    Try txtPostcode.text = person!postcode
+   Try txtOccupation.text = person!occupation
    'this is a bit arbitrary fixme test me
    ' If fk_branch Then Branch_Comms_Get()
    '  If IsNull(comms) Then
@@ -328,7 +570,7 @@ Public Sub Organisation_Get()
    Next
    
    If branches.count = 1 Then
-      Branch_Select(branch)
+      Branch_Select
    Else
       modUtilGUI.Columnview_Columns_Set_Size(columnview1, lblmeasure)
       columnview1.Visible = True
@@ -338,7 +580,7 @@ Public Sub Organisation_Get()
    
 End
 
-Public Sub Branch_Select(branch As Collection)
+Public Sub Branch_Select()
    '--------------------
    ' Displays the branch
    '--------------------
@@ -350,9 +592,7 @@ Public Sub Branch_Select(branch As Collection)
    txtstreet2.text = branch!street2
    txtSuburb.text = branch!town
    txtPostcode.text = branch!postcode
-   '  txtCategory.text = branch!category
    fk_branch = branch!fk_branch
-   'stored_state = branch!state
    fk_organisation = branch!fk_organisation
    ' Branch_Comms_Get()
    bexit = False
@@ -377,9 +617,11 @@ Public Sub ColumnView1_DblClick()
    columnview1.MoveCurrent()
    Select Case Last.Tag.tag
       Case "branch", "organisation"
-         branch_select(branches[columnview1.Item.key])
-      Case "practitioner"
-         Person_Select(persons[columnview1.Item.key])
+         branch = branches[columnview1.Item.key]
+         branch_select
+      Case "practitioner", "occupation"
+         person = persons[columnview1.Item.key]
+         Person_Select
    End Select
    columnview1.Visible = False
 Catch
@@ -401,9 +643,11 @@ Public Sub EditArea_TxtBox_KeyRelease()
    bStopSearch = True   
    Select Case Last.tag
       Case "practitioner"
-         Person_Get()
+         Person_Get
       Case "organisation"
-         Organisation_Get()
+         Organisation_Get
+      Case "occupation"
+         Person_By_Occupation_Get
    End Select
    bStopSearch = False  
    
@@ -430,8 +674,12 @@ Public Sub EditArea_TxtBox_Change()
             txtStreet2.Text = ""
             txtSuburb.text = ""
             txtPostcode.text = ""
+            txtPractitioner.text = ""
+            txtOccupation.text = ""
             '   lvworgcontacts.Clear()
             '   cvwPersonContacts.Clear()
+            branch = Null
+            person = Null
             bexit = False
             
          Endif
@@ -449,17 +697,33 @@ Public Sub EditArea_TxtBox_Change()
             fk_branch = 0
             fk_employee = 0
             fk_person = 0
-            '  txtOccupation.text = ""
+            txtOccupation.text = ""
             txtOrganisation.text = ""
             txtBranch.Text = ""
             txtStreet1.Text = ""
             txtStreet2.Text = ""
             txtSuburb.text = ""
             txtPostcode.text = ""
+            person = Null
+            branch = Null
             bExit = False
          End If
    End Select
    EditArea_Notify_DataChange(True)
+   
+End
+
+Public Function EditAreaTextbox_ExcludeKeys(keycode As Integer, tag As String) As Boolean
+   
+   Dim bKeyValid As Boolean
+   
+   Select Case tag
+      Case "number dietitian", "number exercise", "number education"
+         bKeyValid = modUtilGUI.AllowKeys(const.AllowKeys_NumbersOnly, keycode)
+      Case Else
+         bKeyValid = True
+   End Select
+   Return bKeyValid
    
 End
 
@@ -470,14 +734,14 @@ Public Sub EditArea_TxtBox_KeyPress()
    ' -------------------------------------------------------------------------------
    
    If bExit Then Return
-   ' If Not EditAreaTextbox_ExcludeKeys(key.code, Last.tag) Then
-   '    Stop Event
-   '    Return
-   ' End If
+   If Not EditAreaTextbox_ExcludeKeys(key.code, Last.tag) Then
+      Stop Event
+      Return
+   End If
    Select Case Key.Code
       Case Key.Down
          Select Case Last.tag
-            Case "practitioner", "organisation"
+            Case "practitioner", "organisation", "occupation"
                If columnview1.Visible Then
                   columnview1.MoveFirst()
                   columnview1.SetFocus()
@@ -486,8 +750,16 @@ Public Sub EditArea_TxtBox_KeyPress()
          End Select
       Case Key.Return, Key.Tab
          Select Case Last.tag
+            Case "occupation"
+               txtPractitioner.SetFocus
             Case "practitioner"
                txtOrganisation.SetFocus()
+            Case "branch"
+               txtOrganisation.SetFocus
+            Case "number dietitian"
+               txtNumberExercise.SetFocus
+            Case "number exercise"
+               txtNumberEducation.SetFocus
          End Select
    End Select
    
@@ -500,7 +772,7 @@ Public Sub EditArea_TxtBox_GotFocus()
    Last.BackGround = Color.rgb(95, 255, 175)
    ReferenceHboxForTopColumnview = Last.parent.Parent
    Select Case Last.tag
-      Case "practitioner"
+      Case "practitioner", "occupation", "organisation"
          With columnview1
             .top = Last.parent.parent.top + Last.Height
             .width = Last.Width - 5
@@ -508,14 +780,14 @@ Public Sub EditArea_TxtBox_GotFocus()
             .left = Last.parent.Left + Vbox_EditArea.Padding
             .columns.count = 4 '0=name,surname 1= occupation 2= organisation/branch 3=address
          End With
-      Case "organisation"
-         With columnview1
-            .top = Last.parent.parent.top + Last.Height
-            .width = Last.width - 5
-            .left = Last.parent.Left + Vbox_EditArea.Padding
-            .height = 150
-            .columns.count = 4 'branch, street, suburb
-         End With
+         ' Case "organisation"
+         '    With columnview1
+         '       .top = Last.parent.parent.top + Last.Height
+         '       .width = Last.width - 5
+         '       .left = Last.parent.Left + Vbox_EditArea.Padding
+         '       .height = 150
+         '       .columns.count = 4 'branch, street, suburb
+         '    End With
    End Select
    
 End
@@ -527,12 +799,12 @@ Public Sub EditArea_Notify_DataChange(flag As Boolean)
    '--------------------------------------------------
    
    If Bexit Then Return
+   If VBox_EditArea_Outer.Enabled = False Then Return    
    If flag Then
       Vbox_EditArea_Outer.Padding = 1
    Else
       Vbox_EditArea_Outer.Padding = 0
-   End If
-   
+   End If    
 End
 
 Public Sub New_Entry()
@@ -563,6 +835,20 @@ Public Sub cmbIncludeHealthIssue_Click()
    
 End
 
+Private Sub Health_Issues_To_Add_Reload()
+   '----------------------------------------------------------- 
+   'Reloads health issues to the listview when added or deleted
+   '-----------------------------------------------------------
+   
+   Dim HI As Collection
+   
+   lvHealthIssues.Clear
+   For Each HI In Health_Issues_To_Add
+      lvHealthIssues.Add(HI!pk_pasthistory, HI!description)
+   Next
+   
+End
+
 Private Function Diabetes_Group_Allied_Services_Latex() As String
    
    Dim Templ As New CTemplate("diabetes-group-allied-services", "tex")
@@ -576,24 +862,98 @@ Private Function Diabetes_Group_Allied_Services_Latex() As String
    
 End
 
-Public Sub Button1_Click()
+Public Function Diabetes_Group_Allied_Services_Latex_History_Items() As String
+   '---------------------------------------------------------------
+   'Prepares the LaTeX definition of notes which accompany the form
+   '---------------------------------------------------------------  
+   
+   Dim templ As New CTemplate("diabetes-group-services-history", "tex")
+   Dim x As Integer
+   Dim sstring As String
+   Dim sAllocations As String
+   Dim iTypesOfSessions As Integer
+   
+   templ.subst_common(currentconsult)
+   templ.Subst("heading", "DIABETES GROUP SERVICES \\\\PATIENT HISTORY")
+   If Not IsNull(person) Then
+      sstring = person!wholename & "\\\\"
+      sstring &= person!organisation & "\\\\"
+      If person!branch <> "" Then
+         sstring &= person!branch & "\\\\"
+      End If
+      sstring &= person!street1 & " " & person!steet2 & "\\\\"
+      sstring &= person!town & " " & person!postcode
+      templ.Subst("dear-recipient", "Dear " & person!firstname)
+   Else
+      templ.Subst("dear-recipient", "\\relax")
+   Endif
+   If Not IsNull(branch) Then
+      sstring &= branch!organisation & "\\\\" 
+      If branch!branch <> "" Then 
+         sstring &= branch!branch & "\\\\"
+      End If   
+      sstring &= branch!street1 & " " & branch!steet2 & "\\\\"
+      sstring &= branch!town & " " & branch!postcode
+   Endif
+   templ.Subst("provider", sstring & "\\\\") 
+   If Trim(txtNumberDietitian.text) <> "" Then
+      sAllocations = "Dietitian: " & txtNumberDietitian.text & ","
+      Inc iTypesOfSessions
+   Endif
+   If Trim(txtNumberExercise.text) <> "" Then
+      sAllocations &= " Exercise Physiologist: " & txtNumberExercise.text & ","
+      Inc iTypesOfSessions
+   Endif
+   If Trim(txtNumberEducation.text) <> "" Then
+      sAllocations &= " Diabetic Educator: " & txtNumberEducation.text & ","
+      Inc iTypesOfSessions
+   Endif
+   If iTypesOfSessions = 1 Then
+      sAllocations = "is " & sAllocations
+   Else
+      sAllocations = "are " & sAllocations
+   Endif
+   templ.Subst("session-allocation-suggestions", sAllocations)
+   templ.Subst("special-notes", modUtil.Ucase_Word_First_Letter(Trim(txtSpecialNotes.text)))
+   modProgressNotes.Selected_Health_Issues_Make_Latex(templ, Health_Issues_To_Add) 'display any additional issues the provider should know about
+   modProgressNotes.Medications_Make_Latex_Table(templ, currentConsult)   'medications generic/strength/instruction/why prescribed
+   modProgressNotes.Allergies_Make_Latex(templ, currentconsult)           'unknown, nil or atc details
+   Return templ.GetData()
+   
+End
+
+
+Public Function Diabetes_Group_Allied_Services_Latex_Form() As String
+   '---------------------------------------------------------------
+   'Prepares the LaTeX definition to be printed on the actual form
+   '---------------------------------------------------------------   
    
    Dim templ As New CTemplate("diabetes-group-allied-services", "tex")
    Dim x As Integer
-
+   Dim sstring As String
+   Dim filename As String
+   
    templ.subst_common(currentconsult)
    templ.Subst("postcode", "\\relax")
-   templ.Subst("pdf-path", modUtil.Find_File("templates" &/ "diabetes-group-allied-health-services.ps"))
- 
-   Print templ.getdata()
+   templ.Subst("pdf-path", modUtil.Find_File("templates" &/ "diabetes-group-allied-health-services.pdf"))
    If chkPatientHasNIDDM.Value = True Then
       templ.Subst("patient-has-diabetes", "X")
    Endif
-   ' If chkMDCP.value = True Then
-   '    templ.Subst("residential-facility-plan", "X")
-   ' Else
-   '    templ.Subst("residential-facility-plan", "\\relax")
-   ' Endif
+   If rbDGAS_NewGPMP.value = True Then
+      templ.Subst("gpmp-new", "X")
+   Else
+      templ.Subst("gpmp-new", "\\relax")
+   Endif
+   If rbDGAS_ReviewGPMP.value = True Then
+      templ.Subst("gpmp-review", "X")
+   Else
+      templ.Subst("gpmp-review", "\\relax")
+   Endif
+   If rbDGAS_AgedCareResident.value = True Then
+      templ.Subst("review-care-plan-facility", "X")
+   Else
+      templ.Subst("review-care-plan-facility", "\\relax")
+   Endif
    ' the provider number
    For x = 1 To 22
       If x < 10 Then
@@ -609,11 +969,12 @@ Public Sub Button1_Click()
          templ.Subst("provider-number" & Str(x), "")
       End If
    Next
-  
-   templ.Subst("provider-name", "The name")
-   templ.Subst("provider-address", "The address")
-   Print templ.GetData()
-   modPrinting.Print_latex(templ.GetData())
+   
+   sstring = Trim(Trim(txtPractitioner.text) & " " & Trim(txtBranch.text))
+   templ.Subst("health-care-provider-name", Trim(Trim(txtPractitioner.text) & " " & Trim(txtOrganisation.text & " " & Trim(txtBranch.text))))
+   templ.Subst("health-care-provider-address", Trim(txtStreet1.text & " " & txtStreet2.text & " " & txtSuburb.text & " " & txtPostcode.text))
+   templ.Subst("date-referral", txtDate.text)
+   Return Templ.GetData()
    
 End
 
@@ -621,6 +982,9 @@ Private Function Diabetes_Group_Allied_Service_Valid() As Boolean
    'Ensure adequate data before saving
    
    Dim smsg As String
+   Dim iTotalSessions As Integer
+   Dim HI As Collection
+   Dim bDiabetesIncluded As Boolean 'if True the user has included the health issue diabetes
    
    Dec Application.Busy
    Message.Title = "Invalid Data"
@@ -628,6 +992,20 @@ Private Function Diabetes_Group_Allied_Service_Valid() As Boolean
       sMsg = "Please indicate that the patient is a diabetic"
       Message.Warning(smsg, "OK")
       chkPatientHasNIDDM.SetFocus
+      Return
+   Endif
+   If Health_Issues_To_Add.count = 0 Then
+      Goto Advice_Health_Issues
+      Return
+   Else  
+      For Each HI In Health_Issues_To_Add
+         If InStr(Lower(HI!term), "diabetes") Then 'use the coded term, not the free text field 'description e.g could be NIDDM
+            bDiabetesIncluded = True
+         Endif
+      Next
+   Endif
+   If Not bDiabetesIncluded Then
+      Goto Advice_Health_Issues
       Return
    Endif
    If rbDGAS_NewGPMP.value = False And rbDGAS_ReviewGPMP.value = False And rbDGAS_AgedCareResident.value = False Then   
@@ -658,18 +1036,309 @@ Private Function Diabetes_Group_Allied_Service_Valid() As Boolean
          Return
       End If   
    Endif
+   If Len(Trim(txtNumberDietitian.text & txtNumberExercise.text & txtNumberEducation.text)) = 0 Then
+      Message.title = "Allocation of Sessions"
+      sMsg = "It is suggested that you make an allocation of how many sessions for each type of modality you would like the patient to attend"
+      Message.Info(sMsg)
+      Return
+   Else
+      Try iTotalSessions = Val(txtNumberDietitian.text)
+      Try iTotalSessions = iTotalSessions + Val(txtNumberEducation.text)
+      Try iTotalSessions = iTotalSessions + Val(txtNumberExercise.text)
+      If iTotalSessions > 8 Then
+         Message.Warning("You have exceeded the maximum allowed number of sessions which is 8")
+         Return   
+      Endif
+   Endif
    Return True
+Advice_Health_Issues:
+   smsg = "You need at a minimum to select the health issue for this patients diabetes.\n\n"
+   "You are encouraged to also include relevant health information from the drop down combo-box of this patients health issues, where the problem may affect "
+   "the assessment or the undertaking of group work, for example 'osteoarthritic knee' or 'balance problem."
+   Message.Info(sMsg, "Ok")
+   
+End
+
+Public Function Progress_Notes_Create() As String
+   'creates progress notes to insert into today's notes, returns the string   
+   
+   Dim sPN As String
+   Dim HI As Collection
+   Dim sHealthNotes As String
+   
+   sPN = "<P><B>Diabetes Group Allied Services Referral Form</B></P>"
+   "<UL>"
+   "<LI> Patient is confirmed as diabetic"
+   If rbDGAS_NewGPMP.value = True Then
+      sPN &= "<LI>A new GP management plan has been prepared"
+   Endif
+   If rbDGAS_ReviewGPMP.value = True Then
+      sPN &= "<LI>An existing GP management plan has been reviewed"
+   Endif
+   If rbDGAS_AgedCareResident.value = True Then
+      sPN &= "<LI> An existing aged care plan has been reviewed or contributed to"
+   Endif
+   
+   sPN &= "<LI><P>The referral was made to:<p>"
+   If Trim(txtPractitioner.text) <> 0 Then
+      sPN &= Trim(txtPractitioner.text) 
+      If Trim(txtOccupation.text) <> "" Then
+         sPN &= " (" & Trim(txtOccupation.text) & ")"
+      Endif
+      sPN &= "<BR>"
+   Endif
+   If Trim(txtOrganisation.text) <> "" Then
+      sPN &= Trim(txtOrganisation.text) & "<br>"
+   Endif
+   sPN &= txtStreet1.text & " " & txtStreet2.text & "<BR>"
+   sPN &= txtSuburb.text & " " & txtPostcode.Text
+   If lvHealthIssues.count Then
+      sPN &= "<LI>Health summary information was included for "
+      For Each HI In Health_Issues_To_Add
+         sHealthNotes &= HI!description & ", "
+      Next
+      sHealthNotes = modUtilGUI.Strip_Last_Character(sHealthNotes) 'fixme remove last ',' and put in ' and ' to make it read better
+      sPN &= sHealthNotes
+   Endif
+   sPN &= "<LI>Suggested session allocation is for: "
+   If Trim(txtNumberDietitian.text) <> "" Then
+      sPN &= "Dietitian " & txtNumberDietitian.Text & ", " 
+   Endif
+   If Trim(txtNumberExercise.text) <> "" Then
+      sPN &= "Exercise Physiologist " & txtNumberExercise.Text & ", " 
+   Endif
+   If Trim(txtNumberEducation.text) <> "" Then
+      sPN &= "Diabetic Educator " & txtNumberEducation.text & ", " 
+   Endif
+   sPN = modUtilGUI.Strip_Last_Character(sPN)
+   If Trim(txtSpecialNotes.text) <> "" Then
+      sPN &= "<LI>Additional notes: " & Trim(txtSpecialNotes.text)
+   End If  
+   sPN &= "</UL>" 
+   Return sPN
+   
+End
+
+Public Sub EditArea_Clear()
+   
+   bExit = True
+   modEditAreaHelpers.EditArea_Clear(VBox_EditArea)
+   lvHealthIssues.Clear()
+   pk_diabetes_group_allied_health_services = 0
+   fk_document_form = 0
+   fk_document_history_items = 0
+   fk_progressnote = 0
+   fk_branch = 0
+   fk_organisation = 0
+   fk_employee = 0
+   fk_person = 0
+   pk_diabetes_group_allied_health_services = 0
+   bExit = False  
    
 End
 
 Public Sub Diabetes_Group_Allied_Service_New()
    
+   EditArea_Clear
    txtDate.text = Format(Now, "dd/mm/yyyy")
    Health_Issues_To_Add = New Collection
+   branch = Null
+   Person = Null
    Vbox_EditArea_Outer.Enabled = True 
    txtPractitioner.SetFocus
    chkIncludeAllergies.value = True
    chkIncludeMedications.value = True
-   fk_gahs_referral_form = 0 
+   EditArea_Notify_DataChange(False)
    
 End
+
+Public Sub Diabetes_Group_Allied_Service_Delete()
+   
+   Dim sMsg As String
+   Dim DGAHS_Form As CRow  
+   
+   If bexit Then Return
+   Message.title = "Delete Diabetic Group Referral"
+   sMsg = "Are you sure you want to delete this referral form?"
+   If Message.Question(smsg, "Yes", "No") = 2 Then Return
+   bexit = True  
+   Inc Application.Busy
+   DGAHS_Form = New CRow   
+   DGAHS_Form.put_unchanged(pk_diabetes_group_allied_health_services, "pk_diabetes_group_allied_health_services")
+   DGAHS_Form!deleted = True  
+   DGAHS_Form.Save("chronic_disease_management.diabetes_group_allied_health_services", pk_diabetes_group_allied_health_services)
+   modDBConnect.CommitTrans  
+   Dec Application.Busy
+   bExit = False  
+   
+Catch
+   Dec Application.Busy
+   bexit = False 
+   
+End
+
+Public Sub Diabetes_Group_Allied_Service_Display()
+   '------------------------------------------------------------------ 
+   'Display's the currently highlighted referral form in the edit area
+   '------------------------------------------------------------------ 
+   
+   Dim PH As Collection
+   Dim PH_Keys As String[] 
+   Dim PH_Key As String
+   
+   bExit = True   
+   diabetes_referral_form = diabetes_referral_forms[cvwDiabetesGroupAlliedReferrals_key]
+   pk_diabetes_group_allied_health_services = diabetes_referral_form!pk_diabetes_group_allied_health_services
+   fk_progressnote = diabetes_referral_form!fk_progressnote 
+   fk_document_form = diabetes_referral_form!fk_document_form
+   fk_document_history_items = diabetes_referral_form!fk_document_history_items
+   If Not IsNull(diabetes_referral_form!health_issue_keys) Then
+      PH_Keys = Split(diabetes_referral_form!health_issue_keys, "|", "", True)
+   End If   
+   txtDate.text = Format(diabetes_referral_form!consult_date, "dd/mm/yyyy")
+   chkPatientHasNIDDM.value = True  
+   chkIncludeAllergies.value = diabetes_referral_form!include_allergies
+   chkIncludeMedications.value = diabetes_referral_form!include_medications
+   Try txtOccupation.text = diabetes_referral_form!occupation  
+   Try fk_branch = diabetes_referral_form!fk_branch
+   Try fk_person = diabetes_referral_form!fk_person   
+   Try fk_employee = diabetes_referral_form!fk_employee 
+   Try txtPractitioner.text = diabetes_referral_form!wholename
+   Try txtOrganisation.text = diabetes_referral_form!organisation
+   Try txtBranch.text = diabetes_referral_form!branch
+   Try txtstreet1.text = diabetes_referral_form!street1
+   Try txtStreet2.Text = diabetes_referral_form!street2
+   Try txtSuburb.text = diabetes_referral_form!town   
+   Try txtPostcode.text = diabetes_referral_form!postcode   
+   Try txtNumberDietitian.text = diabetes_referral_form!sessions_dietitian
+   Try txtNumberEducation.text = diabetes_referral_form!sessions_education
+   Try txtNumberExercise.text = diabetes_referral_form!sessions_exercise
+   Try txtSpecialNotes.text = diabetes_referral_form!special_notes
+   If diabetes_referral_form!gpmp_new = True Then rbDGAS_NewGPMP.Value = True 
+   If diabetes_referral_form!gpmp_review = True Then rbDGAS_ReviewGPMP.Value = True
+   If diabetes_referral_form!age_care_plan_review = True Then rbDGAS_AgedCareResident.value = True 
+   'reload the past history items
+   Health_Issues_To_Add = New Collection  
+   For Each ph_Key In PH_Keys
+      For Each PH In currentconsult!past_history
+         If PH!pk_pasthistory = Val(ph_key) Then
+            Health_Issues_To_Add.Add(PH, Ph!pk_pasthistory)
+            lvHealthIssues.Add(PH!pk_pasthistory, PH!description)
+            Break 
+         Endif
+      Next
+   Next
+   bExit = False  
+   
+End
+
+Public Function Health_issues_Keys() As String
+   'Creates pipe delimited string of keys eg 102|888|2012
+   'used in Save() and  Diabetes_Group_Allied_Service_Delete()
+   
+   Dim PH As Collection
+   Dim keys As String
+   
+   For Each PH In Health_Issues_To_Add
+      keys &= PH!pk_pasthistory & "|"
+   Next
+   keys = modUtilGUI.Strip_Last_Character(keys)
+   Return keys
+   
+End
+
+Public Sub Health_issue_Delete()
+   'Delete a health issue, don't prompt, not needed, too annoying
+   
+   Dim db_record As New CRow  
+   Dim sMsg As String
+   
+   Health_Issues_To_Add.Remove(lvHealthIssues_Key)
+   Health_Issues_To_Add_Reload()
+   db_record.put_unchanged(pk_diabetes_group_allied_health_services, "pk_diabetes_group_allied_health_services")
+   db_record!health_issue_keys = Health_issues_Keys()
+   db_record.Save("chronic_disease_management.diabetes_group_allied_health_services", "pk_diabetes_group_allied_health_services")
+   modDBConnect.CommitTrans()
+   EditArea_Notify_DataChange(True)
+   
+End
+
+Public Sub Diabetes_Group_Allied_Service_Edit()
+   
+   VBox_EditArea_Outer.Enabled = True   
+   
+End
+
+Public Sub cvwDiabetesGroupAlliedReferrals_Select()
+   
+   cvwDiabetesGroupAlliedReferrals.MoveCurrent()
+   cvwDiabetesGroupAlliedReferrals_key = cvwDiabetesGroupAlliedReferrals.Item.Key
+   Diabetes_Group_Allied_Service_Display  
+   
+End
+
+Public Sub cvwDiabetesGroupAlliedReferrals_Menu()
+   
+   If Last.count Then
+      mnuForms.Popup()
+   Endif
+   
+End
+
+Public Sub mnuForms_Click()
+   
+   Select Case Last.tag
+      Case "re-print history"
+         Try modPrinting.Print_latex(diabetes_referral_form!latex_history_items)
+      Case "re-print group services form"
+         modPrinting.Print_latex_PDF(diabetes_referral_form!latex_form)  
+      Case "preview history"
+         Try FClinical.Editor_ShowPage_External("pdf file", "Diabetes Group History", modPrinting.Latex_To_PDF(diabetes_referral_form!latex_history_items))
+      Case "preview group services form"
+         Try FClinical.Editor_ShowPage_External("pdf file", "Diabetes Group History", modPrinting.Latex_To_PDF(diabetes_referral_form!latex_form))
+         
+      Case "edit"
+         Diabetes_Group_Allied_Service_Edit
+      Case "delete"
+         Diabetes_Group_Allied_Service_Delete
+      Case "help"
+         modUtilGUI.NotImplemented("Help for Diabetes Group Allied Health Services")
+      Case "font"
+         modUtilGUI.Columnview_SetFont(cvwDiabetesGroupAlliedReferrals, "FDiabetesGroupAlliedServices")        'allow use to change the font, save to settings
+   End Select 
+   
+End 
+
+Public Sub lvHealthIssues_Menu()
+   
+   If Last.count Then
+      mnuHealthIssues.Popup()
+   Endif
+   
+End
+
+Public Sub mnuHealthIssues_Click()
+   
+   Select Case Last.tag
+      Case "delete"
+         Health_issue_Delete
+      Case "font"
+         modUtilGUI.Columnview_SetFont(lvHealthIssues, "FDiabetesGroupAlliedServices")        'allow use to change the font, save to settings
+   End Select 
+   
+End
+
+Public Sub lvHealthIssues_Select()
+   
+   lvHealthIssues.MoveCurrent()
+   lvHealthIssues_Key = lvHealthIssues.Item.Key
+   
+End
+
+Public Sub chkEditArea_Click()
+   
+   EditArea_Notify_DataChange(True)
+   
+End
+
+

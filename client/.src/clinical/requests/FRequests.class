@@ -98,6 +98,20 @@ Private cProgressNote_Section As Integer
 Private Deleted_Forms As Collection
 Private Form_Copy_To As FCopyTo
 
+Static Private form_requests As FRequests
+
+Static Public Sub Requests_Today_Refresh()
+   
+   form_requests.Requests_This_Consult_Show
+   
+End
+
+Public Sub _new()
+
+   form_requests = Me
+
+End
+
 Public Sub Set_Embedded(flag As Boolean, Embedded_in_form As String)
    
    bEmbedded = flag
@@ -131,8 +145,8 @@ Public Sub Init(cons As CConsult)
       .Columns[0].width = 80
       .Columns[1].width = 120
       .Columns[2].width = 150
-    '  .Columns[3].width = 120
-    '  .Columns[4].width = 120
+      '  .Columns[3].width = 120
+      '  .Columns[4].width = 120
    End With
    Deleted_Forms = New Collection
    If modAdminDBI.Config_Get("user_can_add_requests", False, Null, modDBConnect.currentUser!fk_clinic) = True Then
@@ -158,6 +172,8 @@ End
 Public Sub Reload()
    
    Requests_This_Consult_Show()                                 'Display any existing forms written this consult
+   FClinical.Refresh_Section(const.cSection_Requests)           'refresh lists on main screen FClinical
+   ' FClinical.Refresh_AllPreviousNotes()                         'refresh progress notes in FClinical
    RequestForm_New()                                            'Default to wanting  a new form
    
 End
@@ -308,8 +324,11 @@ Public Sub Save()
    Endif
    modDBConnect.CommitTrans()
    modPrinting.Print_latex(request_form!latex)
-   FClinical.Refresh_Section(const.cSection_Requests)           'refresh lists on main screen FClinical
-   FClinical.Refresh_AllPreviousNotes()                         'refresh progress notes in FClinical
+   FClinical.Refresh_Section(const.cSection_Requests)                   'refresh lists on main screen FClinical
+   '  FClinical.Refresh_AllPreviousNotes()                              'refresh progress notes in FClinical
+   If FInbox.Is_Same_Patient(currentconsult!patient!fk_patient) Then    'refresh requests list in inbox
+      Try FInbox.ReLoad_Requests_External
+   Endif
    Vbox100.Padding = 0
    Reload() 'reload all data default to new request
    
@@ -384,6 +403,8 @@ End
 Public Sub RequestForm_Delete()
    '----------------------------------------------------
    'Deletes a request form when written this consulation
+   'Reload() will also get FClinical to update the
+   'request lists on the tabs
    '----------------------------------------------------
    
    modRequestsDBI.RequestForm_Delete(currentconsult, currentRequestForm) 'deletes form and updates FClinical
@@ -393,9 +414,11 @@ Public Sub RequestForm_Delete()
 End
 
 Public Sub RequestForm_UnDelete()
-   '---------------------------------------
+   '-----------------------------------------------
    'Undeletes the last deleted request form
-   '---------------------------------------
+   'Reload() will also get FClinical to update the
+   'request lists on the tabs
+   '------------------------------------------------
    
    modRequestsDBI.RequestForm_UnDelete(currentconsult, Deleted_Forms[Deleted_Forms.count - 1])
    Deleted_Forms.Remove(Deleted_Forms.count - 1)
@@ -751,41 +774,17 @@ Public Sub EditAreaTextBox_GotFocus()
    Select Case Last.tag
       Case "search"
          With Columnview1
-            ' .top = Hbox_Items.Top + txtRequest.Height + Vbox_Main.Padding
-            ' .top = Hbox_RequestList.top + VBox_EditArea_Inner.Padding '+ txtFindRequest.height ' + Vbox_Main.Padding
-            ' .left = Last.Parent.Left + VBox_EditArea_Inner.Padding
             .left = lvwRequests.Left
             .top = lvwRequests.Top
             .width = lvwRequests.Width
             .height = lvwRequests.Height
          End With
-         ' If Len(txtRequest.text) Then
-         '    request_items_text = Trim(txtRequest.text)
-         '    sSearchText = ""
-         '    txtRequest.pos = Len(request_items_text)
-         '    lastpos = Len(request_items_text)
-         ' End If
-         
-      Case "notes"
-         ' With Columnview1
-         '    .top = Hbox_notes.Top + txtnotes.Height + Vbox_Main.Padding
-         '    .left = Last.parent.Left + VBox_EditArea_Inner.Padding
-         '    .Width = txtnotes.Width
-         ' End With
-         ' If Len(txtNotes.text) Then
-         '    request_notes_text = Trim(txtNotes.text)
-         '    sSearchText = ""
-         '    txtnotes.pos = Len(request_notes_text)
-         '    lastpos = Len(request_notes_text)
-         ' End If
-         ' bexit = False 'bad bug fix, don't know why this is set to true here
       Case "medications"
          With listview1
             .top = Hbox_Medications.Top + txtMedications.Height + Vbox_Main.Padding + 5
             .left = txtnotes.Left + Vbox_Main.Padding + VBox_EditArea_Inner.Padding
             .Width = txtMedications.Width
          End With
-         
          If Len(txtMedications.text) Then
             medications_text = Trim(txtMedications.text)
             sSearchText = ""
@@ -803,10 +802,6 @@ Public Sub EditAreaTextBox_LostFocus()
    If listview1.Visible And listview1.count = 0 Then
       listview1.Visible = False
    End If
-   Select Case Last.tag
-      Case "notes"
-         
-   End Select
    
 End
 
@@ -815,8 +810,6 @@ Public Sub EditAreaTextBox_KeyRelease()
    Select Case Last.tag
       Case "request", "search"
          RequestItem_Selection("get")
-      Case "notes"
-         '  Notes_Selection("get") currrently not used
    End Select
    
 End
@@ -841,20 +834,12 @@ Public Sub EditAreaTextBox_KeyPress()
          Return
       End If
    End If
-   
    Selected_text = ""            'set if user has selected part of text in textbox
-   
    bkeyvalid = EditAreaTextBox_ExcludeKeys(key.code, Last.tag)
    If bkeyvalid = False Or key.code = key.insert Then
       Stop Event
       Return
    End If
-   
-   ' If Last.pos < Lastpos And key.code <> key.delete And Last.tag = "request" Then
-   '    Stop Event
-   '    Return
-   ' End If
-   ' 
    Select Case Key.Code
       Case Key.Return, key.Tab
          Select Case Last.tag
@@ -862,7 +847,6 @@ Public Sub EditAreaTextBox_KeyPress()
                modEditAreaHelpers.Calculate_Date_From_Interval(txtDate, currentconsult.GetConsultDate())
             Case "provider type"
                txtProvider.SetFocus()
-            Case "provider"
             Case "search"
                If Len(Trim(Last.text)) = 0 Then   
                   columnview1.Visible = False
@@ -872,7 +856,7 @@ Public Sub EditAreaTextBox_KeyPress()
                If Not InStr(txtNotes.text, ";", Len(txtNotes.text) - 1) Then
                   bExit = True
                   txtNotes.text &= ";"
-                  Notes_Select_bySemicolon()
+                  ' Notes_Select_bySemicolon()
                   bexit = False
                Else
                   If Trim(txtNotes.text) = ";" Then
@@ -934,25 +918,6 @@ Catch
    
 End
 
-Public Sub mnuHealthIssues_Click()
-   
-   ' Select Case Last.tag
-   '    Case "general notes", "remove link"
-   '       txtHealthIssue.text = "General Notes"
-   '       fk_pasthistory = 0
-   '       cProgressNote_Section = const.cSection_GeneralNotes
-   '    Case Else
-   '       txtHealthIssue.text = currentconsult!past_history[Last.tag]!description
-   '       fk_pasthistory = Last.tag
-   '       cProgressNote_Section = const.cSection_Requests
-   ' End Select
-   ' txtHealthIssue.pos = 0
-   ' EditArea_Notify_DataChange(True)
-   'Catch
-   Return 
-   
-End
-
 Public Sub EditAreaButtons_Click()
    
    If Last.tag = "new term" Then
@@ -967,22 +932,6 @@ Public Sub EditAreaTextBox_Change()
       Return
    End If
    Select Case Last.tag
-      Case "request"
-         ' ' ' If Last.text = "" Then
-         ' ' '    sSearchText = ""
-         ' ' '    lastpos = 0
-         ' ' '    request_items_text = ""
-         ' ' '    requests_summary = ""
-         ' ' '    currentFormsRequests = New Collection
-         ' ' '    currentRequest = New Collection
-         ' ' ' Else
-         ' ' '    requests_summary = Trim(Last.Text)
-         ' ' ' End If
-         ' ' ' If currentFormsRequests.count <> 0 Then
-         ' ' '    Hbox_Items.BackGround = Color.White
-         ' ' '    Hbox_Items.Padding = 0
-         ' ' ' End If
-         
       Case "notes"
          If Not Last.text Then
             sSearchText = ""
@@ -1002,7 +951,6 @@ Public Sub EditAreaTextBox_Change()
          If Trim(Last.text) = "" Then
             columnview1.Visible = False
          Endif
-         
       Case "medications"
          If Not Last.text Then
             sSearchText = ""
@@ -1024,8 +972,6 @@ Public Sub ColumnView1_DblClick()
    Select Case Last.tag.tag
       Case "request", "search"  'the requeset tag is old code fixme
          RequestItem_Selection("accept")
-      Case "notes"
-         '  Notes_Selection("accept")
    End Select
    columnview1.Visible = False
 Catch
@@ -1044,31 +990,6 @@ End
 Public Sub columnview1_Select()
    
    iCurrentKey = columnview1.Item.Key
-   
-End
-
-Public Sub Notes_Select_bysemicolon()
-   'currently not used
-   
-   Dim bDuplicate As Boolean
-   
-   Return
-   If columnview1.Visible Then
-      columnview1.MoveFirst()
-      For Each Note In Notes_Fetched
-         If Lower(sSearchText) = Lower(note!note) Then
-            Notes_selection("accept")
-            Break
-         End If
-         columnview1.MoveNext
-      Next
-   Else
-      bDuplicate = Notes_CheckDuplicates()
-      Requests_notes.Add(sSearchText, Requests_notes.count)
-      request_notes_text = txtNotes.text
-      txtNotes.pos = Len(request_notes_text)
-      lastpos = Len(request_notes_text)
-   End If
    
 End
 
@@ -1121,9 +1042,7 @@ Public Sub Get_Default_Provider() As Boolean
          "Would you like to read the more extensive help on this subject?"
          Message.Title = "Setting Default Request Providers"
          If Message.warning(smsg, "Yes", "No") = 1 Then
-            '    shtml = modHTML.Help_HTML_Get("global-request-ordering.html")
             FClinical.Editor_ShowPage_External("browser", "Help on Setting Up Requests", modHTML.Help_HTML_Get("global-request-ordering.html"))
-            
          Endif
          cmbRequestTypes.index = -1
          Return False
@@ -1165,7 +1084,6 @@ Public Sub Comms_Display()
    lvwOrgContacts_HeadOffice.Clear()
    lvwOrgContacts_Branch.Clear()
    default_branch_comms = New Collection
-   
    For Each br In branches
       If br!head_office = True Then
          i = 0
@@ -1246,7 +1164,6 @@ Public Sub Requests_This_Consult_Show()
          cvwRequestForms[pk_view][1] = requestform!type & " "
          cvwRequestForms[pk_view][2] = requestform!organisation & " "
          cvwRequestForms[pk_view][3] = requestform!requests_summary & " "
-       '  cvwRequestForms[pk_view][4] = requestform!notes_summary & " "
       End If
    Next
    
@@ -1255,7 +1172,6 @@ End
 Public Sub EditArea_Resize_Labels()
    
    modEditAreaHelpers.Resize_labels(Vbox_EditArea, lblmeasure)
-   ' lblSpacerLeftOfButtons.width = lblMeasure.Width
    
 End
 
@@ -1309,7 +1225,6 @@ Public Sub EditAreaTextBox_Clear()
    'create the popup health issues menu but default to general notes
    '----------------------------------------------------------------
    modEditAreaHelpers.mnuHealthIssues_Refresh(currentconsult, mnuHealthIssues, Me)
-   
    request_notes_text = ""
    requests_summary = ""
    request_items_text = ""
@@ -1322,7 +1237,6 @@ Public Sub EditAreaTextBox_Clear()
    
    bPreviewingPrintedForm = False
    cProgressNote_Section = const.cSection_GeneralNotes
-   ' txtHealthIssue.text = "general notes"
    Vbox100.Enabled = False
    Form_Copy_To.Reset()
    bExit = False
@@ -1369,7 +1283,6 @@ Public Sub RequestForm_Preview()
       Reset_Keys()
       
       fk_lu_request_type = currentRequestForm!fk_lu_request_type
-      
       default_provider = modRequestsDBI.Request_Provider_Get(currentRequestForm!fk_request_provider)
       fk_organisation = default_provider!fk_organisation
       Branches_Comms_Get()
@@ -1490,14 +1403,11 @@ Public Function RequestForm_LaTeX_Construct(RequestForm As Variant) As CTemplate
    If currentRequestFormPictures.count Then
       For x = 0 To currentRequestFormPictures.count - 1
          sImagePath = currentRequestFormPictures[x]!path
-         
          cmd = "cd `dirname " & sImagePath & "` ; "
          cmd &= "convert " & File.Name(sImagePath) & " " & "test.eps"
          Shell cmd Wait
-         
          sString &= templ.MakeImage(File.Dir(sImagePath) & "/test.eps")
       Next
-      
    End If
    templ.Subst("diagrams-pictures", sString)
    If requestform!urgent = True Then
@@ -1540,7 +1450,6 @@ Public Function RequestForm_LaTeX_Construct(RequestForm As Variant) As CTemplate
    Next
    templ.Subst_HTML("copyto", sString)
    templ.Subst("form-date", Format(RequestForm!date, "dd/mm/yyyy"))
-   
    Return templ
    
 End
@@ -1628,8 +1537,6 @@ Private Sub Settings_Load()
       Try HSplit_EditArea.Layout = Settings["FRequests_Embedded_" & Embedded_form & "/HSplit_EditArea_Layout", modUtilGUI.HSplit([868, 0, 341])]
       Try VSplit_Contacts.Layout = Settings["FRequests_Embedded_/VSplit_Contacts.Layout", modUtilGUI.HSplit([110, 110, 110])]
       cvwRequestForms.Font = Font[Settings["FRequests_Embedded_/cvwRequestForms.font", "DejaVu Sans,9"]]
-      
-      ' Try modUtilGUI.columnSizes_Get(Settings["Requests_Embedded_/cvwRequestForms.column_sizes"], cvwRequestForms)
    Else
       VSplit_Requests.Layout = Settings["FRequests/VSplit_Requests", modUtilGUI.VSplit([513, 161])]
       VSplit_EditArea.Layout = Settings["FRequests/VSplit_EditArea_Layout", modUtilGUI.VSplit([459, 129])]
@@ -1667,26 +1574,6 @@ Public Sub EditAreaTextBox_DblClick()
    
 End
 
-Public Sub chkCopyPatient_Click()
-   
-   ' Dim requestCopyTo As New CRequestCopyTo
-   ' Dim existingRequestCopyTo As CRequestCopyTo
-   '
-   ' If Last.value = True Then
-   '    requestCopyTo = New CRequestCopyTo
-   '    requestCopyTo.copyto = "patient"
-   ' '   Form_Copy_To.CopyTos.Add(requestCopyTo, cvwCopyTo.count)
-   '    cvwCopyTo_Refresh()
-   '    txtCopyTo.text = ""
-   '    txtCopyTo.SetFocus()
-   ' End If
-   
-End
-
-' Public Sub CopyTo_Patient(check_value As Boolean)
-'
-' End
-
 Public Sub chkEditArea_Click()
    
    Dim med As Collection
@@ -1717,9 +1604,7 @@ End
 Public Sub Medications_Get()
    
    If InStr(txtMedications.text, ";") Then
-      
       sSearchText = Trim(Right(txtMedications.text, Len(txtMedications.text) - lastpos))
-      
    Else
       sSearchText = Trim(txtMedications.Text)
    End If
@@ -1735,7 +1620,6 @@ Public Sub Medications_Select()
    currentRequestMedication.medication = listview1.item.text
    medications.Add(currentRequestMedication, medications.count)
    medications_text = medications_text & listview1.item.text & ";"
-   
    txtMedications.text = medications_text
    txtMedications.pos = Len(medications_text)
    lastpos = Len(medications_text)
@@ -1798,7 +1682,6 @@ Public Sub mnuRequestForms_Click()
    
    Dim x As Integer
    
-   ' cvwRequestForms.MoveCurrent()
    Try currentRequestForm = modUtil.Copy_Collection(RequestForms[sCurrentForm_Key])
    Select Case Last.tag
       Case "undelete"
@@ -1875,7 +1758,6 @@ Public Sub EditAreaButtons_KeyPress()
          Case "preview"
             If Not Valid_RequestForm() Then Return
             RequestForm_Fill_Collection()
-            
       End Select
    End If
    
@@ -1896,7 +1778,6 @@ End
 Public Sub EmbeddedForm_Close()
    
    Fdraw.Close()
-   ' Hbox_CloseDrawEditor.Visible = False
    Vbox_EditArea.Visible = True
    Vbox_CopyTo.Visible = True
    VBox_Communications.Show()
@@ -1955,7 +1836,6 @@ Public Sub Picture_Import()
    If Dialog.OpenFile() Then Return
    FImageGet.$hImage = Image.Load(Dialog.Path)
    FImageGet.ShowModal()
-   
    Insert_Picture("clipboard")
    
 End
@@ -2032,7 +1912,6 @@ Public Sub Insert_Picture(sSource As String)
             Return
          End If
    End Select
-   
    currentRequestFormPicture = New Collection
    currentRequestFormPicture!path = Tempfile
    With PicBox
@@ -2063,7 +1942,6 @@ End
 Public Sub DrawEditor_Hide()
    
    FDraw.Hide()
-   ' Hbox_CloseDrawEditor.visible = False
    Vbox_EditArea.Visible = True
    VBox_Communications.Show()
    
@@ -2371,13 +2249,6 @@ Public Sub mnuRequests_Click()
    EditArea_Notify_DataChange(True)
 Catch
    Return
-   
-End
-
-Public Sub lvwRequests_Reload()
-   '----------------------------------------------------- 
-   'Used when editing, reloads requests into the listview
-   '----------------------------------------------------- 
    
 End
 

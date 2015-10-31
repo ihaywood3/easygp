@@ -1,0 +1,3160 @@
+' Gambas class file
+
+' Copyright (C) 2008-2015 Dr. Richard Terry
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'----------------------------------------------------------------------
+' PURPOSE   Provides the main clinical toolbar for FClinical
+'----------------------------------------------------------------------
+Private SpellChecker As ClskSpell
+Private occupations As Collection 
+Private Patients_Seen As Collection             'the patients seen by a staff member today
+Private health_insurance_companies As Collection   
+Private bKeyValid As Boolean                     'used where textboxes need to validate key presses
+Private bEditing As Boolean                      'if true we are editing an entire consult on a different date
+Private bExit As Boolean                         'general flag used to prevent recursion into routine
+Private consultationtypes As Collection          'eg at surgery, home, on phone
+Public EditorPages As Collection                 'all pages which are stuck onto the workspace
+Public bShowEditLastConsultButton As Boolean
+Public bProgressNotesEnforceCoding As Boolean     'If True then user forced to code progress notes do not make this private
+Private obs As Observer                           'Observer used when FHelp is being shown, to detect the help close button
+Private Toolbuttons As Collection                 'buttons which user selects to have on the toolbar
+Private Warning_Icons As Collection               'icons used to warn user about patient e.g breast feeding, pregnant, anger issues, alcoholic
+Private currentconsult As CConsult
+Private form_clinical As FClinical_New
+Private form_select As FPatientsSelect
+Static Private form_clinical_toolbar As FClinicalToolbar        
+
+Public Sub _new()
+   
+   form_clinical_toolbar = Me                        'allows toolbar Access from anywhere  = Me -see Init()       
+   Init_Gui                                          'initialise lists, combo's observers etc
+   
+End 
+
+Static Public Sub patient_load_record_external(patient As Collection, bPhotoConfirmed As Boolean, P As Picture)
+   'called from another form
+   
+   form_clinical_toolbar.patient_load_record(patient, bPhotoConfirmed, P)
+   
+End
+
+Static Public Sub tbHealthSummary_Update_Caption()
+   
+   With form_clinical_toolbar.tbHealthSummary
+      .Caption = "View GPMP"
+      .tag = "GPMP"
+   End With
+   
+End
+
+Static Public Sub ToolBar_Reminders_Refresh()
+   
+   form_clinical_toolbar.tlReminders_Refresh 
+   
+End
+
+Static Public Function Help_Show(sPath As String, heading As String, flag As Boolean)
+   '--------------------------------------------
+   'shows help or whatever in the webkit browser
+   '--------------------------------------------
+   
+   modUtilGUI.NotImplemented("Displaying help files", "Health Issues")
+   Return
+   form_clinical_toolbar.vBoxWorkSpace.Visible = Not Flag
+   form_clinical_toolbar.FHelp.Visible = flag
+   If flag Then
+      form_clinical_toolbar.FHelp.Help_Show(sPath)
+   End If
+   
+End
+
+Static Public Sub ProgressNotesEnforceCoding_UpdateFlag(bflag As Boolean)
+   '-------------------------------------------------------------------------
+   'Called by FStaffPreferences if enforcing progress notes coding is changed
+   '-------------------------------------------------------------------------  
+   
+   form_clinical_toolbar.bProgressNotesEnforceCoding = bFlag   'bug here fix me 'how come at end there is a  illegal function in the IDE
+   
+End
+
+Static Public Sub EditLastConsultButton_Display(bflag As Boolean)
+   'User has changed visibility of the button to allow editing last consult
+   
+   With form_clinical_toolbar
+      .bShowEditLastConsultButton = bFlag
+      .tbEditLastConsult.visible = bFlag
+   End With
+   
+End
+
+Static Public Function Smoking_Nofication_Update(flag As Integer, Optional qualifier As String)
+   
+   If InStr(form_clinical_toolbar.lblAlert.text, "PREGNANT") Then
+      form_clinical_toolbar.lblAlert.text = "PREGNANT"
+   Else
+      form_clinical_toolbar.lblAlert.TEXT = ""
+   End If
+   
+   Select Case flag
+      Case 0
+         form_clinical_toolbar.lblAlert.TEXT &= " NEVER SMOKED "
+      Case 1
+         form_clinical_toolbar.lblAlert.TEXT &= " EX-SMOKER " & qualifier
+      Case 2
+         form_clinical_toolbar.lblAlert.TEXT &= " CURRENT SMOKER "
+   End Select
+   
+End
+
+Static Public Function Enable_Edit_Button(flag As Boolean)
+   
+   form_clinical_toolbar.tbEdit.Enabled = flag
+   
+End
+
+Static Public Function Enable_Save_Button(flag As Boolean)
+   
+   form_clinical_toolbar.tbSave.Enabled = flag
+   
+End
+
+Static Public Function active_medication_list_get_external() As Collection 'fixme look at where this is used and shift it out
+   '------------------------------------
+   'returns a list of active medications
+   '------------------------------------
+   
+   Return FClinical.active_medication_list()
+   
+End
+
+Public Function active_medication_list() As Collection  'fixme look at where this is used and shift it out
+   
+   Return modPrescribingDBI.active_medication_list(currentconsult)
+   
+End
+
+Public Function get_medication_sort_order() As String
+   
+   Return form_clinical_toolbar.medication_sort_order
+   
+End
+
+Static Public Sub RefreshExternal_ImageList()
+   '---------------------------------------------------------------------------------
+   'If the images tab is showing, this will have been called from FProgressNoteEditor
+   'and an image would have just been saved in the current progress note
+   '----------------------------------------------------------------------------------
+   
+   form_clinical_toolbar.Images_Refresh(True)
+   
+End
+
+Static Public Sub Reload_Tab_External(cSection As Integer)
+   '-------------------------------------------------------
+   'Reloads data on a tab, called from another form eg
+   'If psycho-social history is showing then reloads then
+   'data on this pertaining to phone numbers if the contact
+   'is also a patient
+   '-------------------------------------------------------  
+   
+   form_clinical_toolbar.Reload_Tab(cSection)
+   
+End
+
+Static Public Sub Editor_ShowPage_External_old(page_name As String, page_tag As String, page_data As Variant)
+   '-------------------------------------------------------------
+   'Adds a page to the workspace editor, called from another form
+   '-------------------------------------------------------------
+   
+   form_clinical_toolbar.Editor_ShowPage(page_name, page_tag, page_data)
+   
+End
+
+Static Public Sub Editor_ShowPage_External(page_name As String, page_tag As String, page_data As Variant, Optional additional_page_tag As String = "")
+   '-------------------------------------------------------------
+   'Adds a page to the workspace editor, called from another form
+   '-------------------------------------------------------------
+   
+   form_clinical_toolbar.Editor_ShowPage(page_name, page_tag, page_data, additional_page_tag)
+   
+End
+
+Static Public Sub Pregnancy_Notify()
+   '-------------------------------------------------------------------------
+   'Is user has added a new pregnancy in the FPregnancies then update the gui
+   'with a prominant notice that the patient is pregnant
+   '-------------------------------------------------------------------------
+   
+   form_clinical_toolbar.Patient_Show_Pregnant
+   
+End
+
+Static Public Sub Set_URL(url As String)
+   
+   form_clinical_toolbar.txtURL.text = url
+   
+End
+
+Static Public Function ProgressNotePage_MedicationsList_Update()
+   
+End
+
+Static Public Function EditorPage_Get(sName As String) As Form
+   
+   Return form_clinical_toolbar.EditorPages[sName]
+   
+End
+
+Static Public Sub Notifications_Refresh_External()
+   
+   form_clinical_toolbar.Notifications_Refresh
+   
+End
+
+Static Public Sub Toolbar_Reload()
+   
+   form_clinical_toolbar.Refresh_Toolbar()
+   
+End
+
+Static Public Sub Warning_Panel_Reload()
+   
+   form_clinical_toolbar.Refresh_Warning_Panel() 
+   
+End
+
+Static Public Function Display_Coding_System()
+   'Form may not be loaded, so try
+   
+   Try form_clinical_toolbar.lblCodingSystem.text = "Coding System:" & modCodingDBI.coding_system!system
+   
+End
+
+Static Public Sub Update_graphs()
+   
+   Try form_clinical_toolbar.Measurements_Make_Graph()
+   
+End
+
+Public Sub tbHelp_close_Click()
+   
+   Stop Event
+   Help_Show("", "", False)
+   
+End
+
+Static Public Function Editor_RemovePage(sKey As Variant, Optional bCloseAll As Boolean = False)
+   '-------------------------------------------------------------------------------------------------
+   'Removes 1 or all pages  from the EditorPages collection and its associated workspace tab
+   'The key of the hWindow can be integer if past history progress notes page or a string eg "Travel"
+   'If we are implicitly calling this page (ie - it is not being shut down by the user closing a tab
+   'or the program exiting - then cancel the save of information on this page
+   'For example - we use this when the user may have deleted a past history item, whilst still having
+   'unsaved progress notes on this item in a progress notes editor.
+   '-------------------------------------------------------------------------------------------------
+   
+   Dim Page As FLinkContainer
+   Dim hCtrl As Control
+   Dim frmConsult As FProgressNotePage
+   
+   form_clinical_toolbar.WorkspaceEditor.Lock()
+   For Each page In form_clinical_toolbar.WorkspaceEditor.Windows
+      If bCloseAll Then
+         page.Close()
+      Else
+         If page.tag = sKey Then
+            '------------------------------------------------------------------------------------
+            'Found a specific page  if this is a progress notes page, stop it saving its contents
+            'when frmConsult.form_close() is called, it attempts to save the editor contents
+            '------------------------------------------------------------------------------------
+            form_clinical_toolbar.EditorPages.Remove(skey)
+            For Each hctrl In page.VBoxEditor.Children
+               If hctrl Is Form Then
+                  Select Case hctrl.Name
+                     Case "FProgressNotePage"
+                        frmConsult = hctrl
+                        frmConsult.bCancelSave = True
+                        Goto Unlock_Editor 'don't allow progress note page to close
+                        ' Break
+                  End Select
+               End If
+            Next
+            page.Close
+            Break
+         End If
+      End If
+   Next
+   Goto Unlock_Editor
+   
+Unlock_Editor:
+   form_clinical_toolbar.WorkspaceEditor.Unlock()
+   
+End
+
+Static Public Function WebBrowser_IsVisible() As Boolean
+   '---------------------------------------------------------------------------------------
+   'Returns true if the central web browser control is visible
+   'USAGE:  e.g if another form is using the central web browser and has updated something
+   'fixme ?used
+   '---------------------------------------------------------------------------------------
+   
+   Try Return form_clinical_toolbar.vBoxWebBrowser.Visible
+   
+End
+
+Static Public Sub WorkspaceEditor_Show()
+   '-------------------------------------------------------------------------------------------
+   'WorkSpaceEditor is a workspace control - currently until replaced by the 'emulated browser'
+   'the main control on FClinical which has all the tabs for example clincal notes, or any
+   'section loaded by Editor_ShowPage()
+   '-------------------------------------------------------------------------------------------
+   
+   form_clinical_toolbar.WorkSpaceEditor.Visible = True
+   
+End
+
+Static Public Sub WebBrowser_Show(sData As String, Optional heading As String)
+   '------------------------------------------------------------------
+   'Displays html in the central webbrowser
+   'If the data is a filename, load file, otherwise load raw html
+   '------------------------------------------------------------------
+   
+   FClinical.Editor_ShowPage_External("browser", heading, sData)
+   
+End
+
+Public Sub FDecision_Support_tbClose_Click()
+   
+   Stop Event
+   'Form_Decision_Support.Settings_Save
+   '  Layout_Right_Side_Screen
+   DecisionSupport_Show("", False)
+   
+End
+
+Static Public Sub DecisionSupport_Show(Optional Heading As String, flag As Boolean, Optional help_section As String = "")
+   '----------------------------------------------------------------------------
+   'There is a texteditor contained in Vbox_Decision_Support, which is hidden on
+   'the right hand side of the screen. In any section of EasyGP needing simple
+   'decision support, this is shown, whilst what's usually on top is hidden
+   'for example of implementation see the Mental Health module
+   '-----------------------------------------------------------------------------
+   
+   form_clinical_toolbar.VboxActiveProblemList.Visible = Not flag
+   form_clinical_toolbar.Vbox_PatientTasks.Visible = Not flag
+   form_clinical_toolbar.VSplit_TabbedListsGraph.Visible = Not flag
+   form_clinical_toolbar.Vbox_Decision_Support.Visible = Flag
+   If heading <> "" Then form_clinical_toolbar.Form_Decision_Support.lblDecisionSupport.text = Heading
+   If help_section <> "" Then form_clinical_toolbar.Form_Decision_Support.Set_Help_Section(help_section)
+   
+End
+
+Static Public Sub DecisionSupport_SetHTML(sHtml As String)
+   
+   form_clinical_toolbar.Form_Decision_Support.WebView1.HTML = shtml
+   
+End
+
+Public Sub Form_Open()
+   '--------------------------------------------------------------------
+   'Most forms have Init(), even when no form_open, often this Init() is
+   'called when the form is loaded, but externally, so to keep the code
+   'consistant when browsing it to find what's done first, put it here
+   '--------------------------------------------------------------------
+   
+   Init()
+   
+End
+
+Public Sub Refresh_Warning_Panel()
+   '--------------------------------------------------------
+   'Refreshes the icons on the warning panel for this patient
+   '--------------------------------------------------------- 
+   '----------------------------------------------------------------------
+   'Refreshes the toolbar buttons.
+   'Toolbar always has a 'general notes page' after that its up for grabs
+   'load the users defaults 
+   'There is a 2 pixel vertical box in the pnlToolbuttons which act
+   'an acro-prop to keep this auto-expanding toolbar 'open' if all 
+   'buttons are removed, hence test if a button                    
+   '-----------------------------------------------------------------------
+   
+   Dim warning_icon As Collection
+   
+   lblwarnings.text = ""
+   modEditAreaHelpers.Warnings_Panel_Clear(pnlWarnings)
+   warning_icons = modPatientWarnings.Warning_Icons_Get_For_Patient(currentconsult!patient!fk_patient) 'Get users warning icons
+   If warning_icons.count Then  
+      For Each warning_icon In warning_icons
+         modEditAreaHelpers.Warning_image_Create(pnlWarnings, warning_icon!icon_path, warning_icon!pk_module, 24, warning_icon!name, Me)
+      Next
+   Else
+      lblwarnings.text = "Click to add warnings"  
+   End If
+   
+End
+
+Public Sub Refresh_Toolbar()
+   '----------------------------------------------------------------------
+   'Refreshes the toolbar buttons.
+   'Toolbar always has a 'general notes page' after that its up for grabs
+   'load the users defaults 
+   'There is a 2 pixel vertical box in the pnlToolbuttons which act
+   'an acro-prop to keep this auto-expanding toolbar 'open' if all 
+   'buttons are removed, hence test if a button                    
+   '-----------------------------------------------------------------------
+   
+   Dim btn As Collection
+   Dim hCtrl As Control
+   
+   For Each hCtrl In pnlToolButtons.Children
+      If hCtrl.tag <> "New General Notes" And hctrl Is ToolButton Then hCtrl.Delete()
+   Next
+   Toolbuttons = modAdminDBI.Clinical_Toolbuttons_Get(modDBConnect.currentUser!fk_staff) 'Get users toolbuttons
+   For Each btn In Toolbuttons
+      modEditAreaHelpers.ToolButton_Create(pnltoolButtons, btn!icon_path, btn!pk_module, 32, btn!name, Me)
+   Next
+   
+End
+
+Public Sub Toolbar_Pregnancy_Button_Enable_Disable(bFlag As Boolean)     
+   '--------------------------------------------------------------------
+   'There is a 2 pixel vertical box in the pnlToolbuttons which acts like
+   'an acro-prop to keep this auto-expanding toolbar 'open' if all the
+   'buttons are removed, hence test if a button
+   '---------------------------------------------------------------------
+   
+   Dim hctrl As Control
+   
+   For Each hctrl In pnlToolButtons.Children
+      If hctrl Is Toolbutton Then   
+         If const.Clinical_Toolbuttons[hctrl.tag]!name = "Pregnancy" Then 
+            hctrl.Enabled = bFlag 
+            Return  
+         Endif
+      End If   
+   Next
+   
+End  
+
+Public Sub Init()
+   '--------------------------------------------------------------------------------
+   'form_clinical_toolbar used when other forms need to 'find' this form to update something
+   '--------------------------------------------------------------------------------
+   ' form_clinical = New FClinical(VBox_Clinical)
+   
+End
+
+Public Sub Init_Gui()
+   '---------------------------------- 
+   'loads lists, sets up observers etc
+   '---------------------------------- 
+   
+   Refresh_Toolbar                                         'Refreshes the toolbar buttons.
+   lblMedicareNumber.width = tlPatientComms.width
+   lblMeasure.text = "Notes without patient present   "
+   cmbConsultationType.width = lblMeasure.Width
+   '  obs = New Observer(Form_Decision_Support.tbClose) As "FDecision_Support_tbClose"
+   ' obs = New Observer(FClinical.listview1) As "Listview1"
+   
+   With SpellChecker = New ClskSpell
+      .EditorControlToCheck = teForSpelling
+      .TempFileForSpelling = User.home &/ "myspelltemp.txt"  'FIXME
+      .TempFileForErrors = User.home &/ "myspellerrors.txt"
+   End With
+   With gvAllergies
+      .Columns.count = 1
+   End With
+   form_clinical = New FClinical_New(VBox_Clinical)
+   Settings_Load
+   pnlToolButtons.tag = 24
+   mnuDecisionSupport_K10.Visible = True
+   With mnuDecisionSupport_Dass
+      .visible = True
+      .Enabled = False  
+   End With
+   mnuDecisionSupport_Chads.Visible = True
+   lblMeasure.text = "  Cumulative   "
+   If modAdminDBI.Config_Get_Staff_Member("show-edit-last-consult-button", False, Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff) Then
+      bShowEditLastConsultButton = True
+   Endif
+   tbEditLastConsult.Visible = bShowEditLastConsultButton
+   If modAdminDBI.Config_Get_Staff_Member("progress_notes_enforce_coding", False, Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff) Then
+      bProgressNotesEnforceCoding = True 'defaults to false to keep Ian Sane
+   Endif
+   If modAdminDBI.Config_Get("user_can_add_requests", False, Null, modDBConnect.currentUser!fk_clinic) = True Then
+      mnuSections_RequestNames.Enabled = True
+   Else
+      mnuSections_RequestNames.Enabled = False   
+   Endif
+   Health_Funds_Menu_Create
+   consultationtypes = modUtilGUI.LoadCombo(cmbConsultationType, modConsultDBI.consult_get_types(True), "type") 'True = user selectable
+   cmbConsultationType.index = cmbConsultationType.Find("At consulting rooms")
+   txtConsultDate.text = Format(Now, "dd/mm/yyyy")   
+   
+End
+
+Public Sub patient_load_record(patient As Collection, bPhotoConfirmed As Boolean, P As Picture)
+   '----------------------------------------------------------------------------
+   'PURPOSE   : Loads the minimal necessary patient record
+   
+   '---------------------------------------------------------------------------
+   
+   mnuView.Visible = True
+   mnuSections.Visible = True
+   mnuDecisionSupport.Visible = True
+   mnuHelp.visible = True
+   mnuView_AllNotes.Enabled = True  'enable appropriate menus
+   mnuView_ByProblem.Enabled = True
+   mnuSections.Enabled = True
+   mnuDecisionSupport_K10.Enabled = True
+   mnuDecisionSupport_Dass.Enabled = True
+   mnuDecisionSupport_Chads.Enabled = True
+   Try PicPatient.Picture = P
+   '---------------------------------------------------------------------------
+   'Has there been a consulation today already?, if yes, then re-use fk_consult
+   'then show all previous notes and general notes, reloading these if a
+   'continuation from a previous consult, and user dosn't want a new consult
+   '---------------------------------------------------------------------------
+   currentconsult = New CConsult(patient, consultationtypes[cmbConsultationType.Index]!pk)
+   Patient_Demographics_Display()            'display name address phone, pregnancy status
+   form_clinical.Init(currentconsult)
+   
+   '  GPMP_Reload                               'reload GPMP and change toolbutton headings/tag
+   Refresh_Warning_Panel                     'display patient specific warnings
+   ' form_clinical.Workspace_Load_Minimal_Panels             'all progress notes and general notes
+   Wait                                      'AND LOADING PATIENT IS IMPOSSIBLE
+   If currentconsult!recreationaldrugs.count Then
+      lblAlert.text &= " " & modRecreationalDrugs.SmokingStatus_string(currentconsult)
+      If currentconsult!patient!age_numeric > 17 And lblAlert.text = "" Then
+         lblAlert.text &= " ?? SMOKER ??"
+      End If
+   Else
+      If currentconsult!patient!age_numeric > 17 Then
+         lblAlert.text &= " ?? SMOKER ??"
+      End If
+   End If
+   Allergies_Sensitivities_Refresh()                 'Get all allergies, display on toolbar
+   ' With form_clinical_toolbarLists
+   '    .bExit = False 
+   '    .Init(Currentconsult)           'create the lists and init the medications list
+   '    .TabStrip_Lists.Enabled = True   
+   ' End With
+   '    Form_Patient_Tasks.Init(currentconsult)           'Show a list of outstanding tasks
+   Notifications_Refresh                             'the notifications label on the  task bar
+   tlReminders_Refresh                               'list of recalls or reminders for patient
+   '    Pasthistory_Refresh_lists                         'the lists on the lower right hand side of screen
+   
+End
+
+Static Public Function IsSamePatient(fk_patient As Integer) As Boolean
+   '-------------------------------------------------------------------
+   ' returns true if fk_patient is the same as the currently loaded patient
+   ' in FClinical. false if no patient loaded.
+   ' Ian, this will crash if no FClincal is loaded.
+   '-------------------------------------------------------------------
+   
+   Try Return form_clinical_toolbar.IsSamePatient_Instance(fk_patient)
+   
+End
+
+Public Function IsSamePatient_Instance(fk_patient As Integer) As Boolean
+   
+   Dim fk As Integer
+   
+   Try fk = currentconsult!patient!fk_patient
+   If Error Then Return False
+   If fk = fk_patient Then
+      Return True
+   Else
+      Return False
+   Endif
+   
+End
+
+Static Public Sub Patient_Picture_Refresh(filepath As String)
+   
+   form_clinical_toolbar.PicPatient.Picture = Picture.Load(filepath)
+   ' End If
+   
+End
+'these routines all over the place and illogical fixme
+'meant to update the demographics on this form, called from e.g contacts database
+
+Static Public Sub Patient_Demographics_Refresh()
+   
+   form_clinical_toolbar.Demographics_Refresh()
+   
+End
+
+Public Sub Demographics_Refresh()
+   'Refresh the patients demographics from outside Fclinical
+   'fixme (everywhere) what if patient > 1 address > > 1 record
+   '
+   
+   Dim patient As Collection
+   
+   patient = modContactsDBI.Patient_Get_Using_PK(currentconsult!patient!fk_patient)
+   currentconsult.SetData("patient", patient)
+   Patient_Demographics_Display()
+   
+End
+
+Static Public Sub Refresh_Section(section As Integer)
+   
+   Try form_clinical_toolbar.Refresh_Section_Instance(section)
+   If Error Then
+      Message.Title = "Updating Clinical Section"
+      Message.warning("Error trying to update a section")
+   End If
+   
+End
+
+Public Sub Layout_Form()
+   '------------------------------------------------------------------------
+   'These labels in the IDE have identifying text (just so you can see them)
+   'remove this at runtime
+   '------------------------------------------------------------------------
+   
+   consultationtypes = modUtilGUI.LoadCombo(cmbConsultationType, modConsultDBI.consult_get_types(True), "type") 'True = user selectable
+   cmbConsultationType.index = cmbConsultationType.Find("At consulting rooms")
+   txtConsultDate.text = Format(Now, "dd/mm/yyyy")
+   
+End
+
+Public Sub FormFonts_Adjust()
+   '------------------------------------------------------------------------
+   'first attempt to globally change the label sizes on all forms edit areas
+   'when global font is changed
+   '------------------------------------------------------------------------
+   
+   Dim i As Object
+   
+   If IsNull(EditorPages) Then Return
+   Inc application.Busy
+   
+   For Each i In EditorPages
+      Try Object.Call(i, "EditArea_Resize_Labels")
+   Next
+   Dec application.Busy
+Catch
+   Application.Busy = 0
+   
+End
+
+Public Sub Settings_Save()
+   
+   Dim i As Object
+   
+   '------------------------------------------------------------------
+   'Try and save the settings for all pages in the FClinical Workspace
+   'Note that Settings_Save() on each form must be public
+   '------------------------------------------------------------------
+   
+   ' For Each i In EditorPages
+   '    Try Object.Call(i, "Settings_Save")
+   ' Next
+   Settings["FClinical/Hsplit_Toolbar.Layout"] = Hsplit_ToolBar.Layout                                'horizontal splitter containing all the toolbar sub-panels and splitters
+   Settings["FClinical/HSplit_Comms_Birthdate.Layout"] = HSplit_Comms_Birthdate.layout
+   modAdminDBI.Clinical_Toolbuttons_Save(pnlToolButtons, modDBConnect.currentUser!fk_staff, Toolbuttons)
+   
+End
+
+Public Sub VSplit_Main_Resize()
+   
+   Settings["FClinicalToolbar/Vsplit_Main.layout"] = Vsplit_Main.layout
+   Settings.Save
+   
+End
+
+Private Sub Settings_Load()
+   
+   Dim main_height As Integer
+   
+   main_height = HBox_ConsultDetails.height + HBox_Sections.Height + HBox_Buttons1.height + HBox_Buttons2.Height + separator2.height + separator5.height + separator6.height
+   Hsplit_ToolBar.Layout = Settings["FClinical/Hsplit_Toolbar.Layout", modUtilGUI.HSplit([311, 480, 197, 77, 148])]
+   HSplit_Comms_Birthdate.layout = Settings["FClinical/HSplit_Comms_Birthdate.Layout", modUtilGUI.HSplit([1, 1])]
+   tlReminders.font = Font[Settings["FClinical/tlReminders.font", "Arial,7"]]
+   gvAllergies.font = Font[Settings["FClinical/gvAllergies.font", "Arial,9"]]
+   Vsplit_Main.Layout = Settings["FClinicalToolbar/Vsplit_Main.layout", modUtilGUI.VSplit([1, 5])]
+   
+End Sub
+
+Public Sub Consult_Save()
+   '------------------------------------------------------------------------------------------
+   'Saves any outstanding data for the consultation in the progress note editor
+   'As the progress notes view can be 'saved' as a pdf via the same Save button on the toolbar
+   'don't auto-save this, not needed except explicitly when user wants to export the notes 
+   'If no notes are in the progress note editor, codes will not be saved as there will be
+   'no fk_progress note to link to.
+   '------------------------------------------------------------------------------------------
+   
+   '    Dim i As Object
+   '    
+   '    If IsNull(currentconsult) Then Return  'do not remove this
+   '    If Consult_Time_Check_Valid() = False Then Return  
+   '    Inc Application.Busy
+   '    
+   '    For Each i In EditorPages
+   '       If i.name <> "FProgressNotesViewer" Then  
+   '          Try Object.Call(i, "Save")
+   '       End If   
+   '    Next
+   '    Application.Busy = 0
+   ' Catch
+   '    Application.busy = 0
+   '    Return
+   
+End
+
+Public Function Consult_Is_Coded() As Boolean
+   '----------------------------------------------------
+   'Ensures that the consult is coded, or at least tries
+   'to bully the user into doing so
+   'Returns True if consult is coded or they refuse
+   '----------------------------------------------------
+   
+   '    Dim sMsg As String
+   '    
+   '    currentconsult.Refresh("progress_notes")                      'ensure progress notes up to date
+   '     If Not ProgressNotesPage.Progress_Notes_Codes_Get().count Then   
+   '       Application.Busy = -1
+   '       Message.title = "Coding Consultations"
+   '       sMsg = "It is recommended that you code all your consultations, in fact it is probably a requirement of your practice accreditation.\n\n"
+   '       "Do you wish to code this consultation now?"
+   '       If Message.Question(smsg, "Yes", "No") = 1 Then         'If they do want to code
+   '          Editor_ShowPage("New General Notes")                 'make sure general notes tab showin
+   '          FGeneralNotesEditor.txtReasonEncounter.SetFocus      'focus to the text entry for codes
+   '          Return
+   '       End If
+   '    Endif
+   '    Return True                                                   'all is well, they've at least coded something
+   ' Catch                                                       'have enountered bug here ?nature
+   '    Return
+   '    
+End
+
+Public Sub Patients_Find(Optional fk_patient As Integer)
+   '-----------------------------------------------------------------------------
+   'Attemps to find patients according to criteria entered in cmbSearch
+   'of by patient key if picked from list of patients seen that day
+   'If none found , resets focus to cmbsearch
+   'Otherwise creates an empty patient object
+   'If only one name and address auto-load that patient to currentconsult
+   'If multiple names/addresses, popup a modal for choice
+   'which returns a patient object which becomes currentconsult
+   'fixme - implement the patient stack
+   '-----------------------------------------------------------------------------
+   
+   Dim AllPatients As New Collection
+   Dim patient As Collection
+   Dim sql_in_english As String
+   Dim P As Picture
+   Dim bPhotoConfirmed As Boolean = False
+   
+   If BExit Then Return
+   bExit = True
+   
+   Inc Application.Busy
+   
+   If fk_patient Then
+      patient = modContactsDBI.Patient_Get_Using_PK(fk_patient)
+   Else
+      AllPatients = modContactsDBI.patients_get_firstname_surname(cmbSearch.text, mnuView_IncludeDeceasedPatients.value,, mnuView_IncludeInactivePatients.value)
+      sql_in_english = AllPatients!sql_in_english
+      AllPatients.Remove("sql_in_english")
+   End If
+   If AllPatients.count = 0 And If IsNull(patient) Then
+      cmbSearch.SetFocus()
+      cmbSearch.Enabled = True
+      Dec application.Busy
+      bExit = False
+      Return
+   Else
+      '----------------------------------------------------
+      'One or more patients.
+      'If one, get their photo if it exists and load record
+      '----------------------------------------------------
+      If AllPatients.count = 1 Then
+         '----------------------------------------------------
+         'no way in gambas to get a key without an iteraction
+         'get first key
+         '----------------------------------------------------
+         For Each patient In AllPatients
+         Next
+         
+      Endif
+      If Not IsNull(patient) Then
+         If Not IsNull(patient!image.data) Then
+            P = modGraphics.Blob_Convert_To_Picture(patient!image)!picture
+         Else
+            P = Picture.Load("icons/misc/no_photo.png")
+         End If
+         '--------------------------------------------------------------------------
+         'Don't bug the user AKA don't bug Ian with confirming the patients identity
+         '--------------------------------------------------------------------------
+         If modAdminDBI.Config_Get_Staff_Member("clinical_enforce_confirm_id", False, Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff) = True Then
+            FConfirmPatient.Init(P, patient!wholename)
+            If Not FConfirmPatient.ShowModal() Then
+               cmbSearch.Enabled = True
+               Dec application.Busy
+               bExit = False
+               cmbSearch.SetFocus()
+               Return
+            End If
+         End If
+         patient_load_record(patient, bPhotoConfirmed, P)
+      Else
+         '---------------------
+         'more than one patient
+         '---------------------
+         mnuView.Visible = False
+         mnuSections.Visible = False
+         mnuDecisionSupport.Visible = False
+         mnuHelp.visible = False
+         Dec Application.Busy
+         VSplit_Main.Visible = False
+         form_select = New FPatientsSelect(Me)
+         obs = New Observer(form_select.btnCancel) As "SelectPatient"
+         form_select.Init(AllPatients, sql_in_english, "FClinical") 'was Me
+         form_select.Visible = True
+      Endif
+   End If
+   bExit = False
+   cmbSearch.Enabled = True
+   Dec application.Busy
+   
+End
+
+Public Sub Allergies_Sensitivities_Refresh()
+   '---------------------------------------------------------------
+   'Fetch the patients allergies and sensitivities from the backend
+   'If the allergy is non-drug show the allergen
+   'If the allergy is generic specific show the generic
+   'If no allergy and no 'no allergies known'
+   'then prompt user with prominant comment 'PATIENT NOT ASKED'
+   'If any sensitivites exist then by definition the module has been
+   'accessed and allergies will have been queried, user will be
+   'informed sensitivities exist they will not be listed.
+   '---------------------------------------------------------------
+   
+   Dim allergy As Collection
+   Dim allergies As Collection
+   Dim meds_prescribed_today As Collection 
+   Dim med As Collection
+   Dim allergy_class_code As Collection 
+   Dim sMsg As String
+   
+   With gvAllergies
+      .Clear()
+      .Rows.count = 0
+      .Rows.Height = -1
+      .Columns.count = 2
+      .columns[0].width = 20
+   End With
+   currentconsult.Refresh("allergies")
+   allergies = Modutil.Copy_Collection_Keyed_Sequentially(currentconsult!allergies)
+   If allergies.count Then                              'have either allergies or sensitivities
+      For Each allergy In currentconsult!allergies    
+         If allergy!nil_allergies_sensitivities Then           'First acertain if has ever been asked 
+            Inc gvAllergies.Rows.Count
+            With gvAllergies[gvAllergies.Rows.Count - 1, 1]
+               .Text = "Asked - No Known Allergies"
+               .Foreground = Color.Red
+               .Alignment = Align.Center
+            End With
+            Return 
+         Endif
+         Inc gvAllergies.Rows.Count 
+         If allergy!fk_lu_reaction_type = const.ReactionType_Allergy Then  'exists ?is an allergy
+            With gvAllergies[gvAllergies.Rows.Count - 1, 0]
+               .text = "A"
+               .Foreground = Color.red
+               .Alignment = Align.TopLeft
+            End With 
+         Else
+            With gvAllergies[gvAllergies.Rows.Count - 1, 0]
+               .text = "S"
+               .Foreground = Color.Black
+               .Alignment = Align.TopLeft
+            End With 
+         End If   
+         With gvAllergies[gvAllergies.Rows.Count - 1, 1]
+            If allergy!specificity = "g" Then
+               .text = allergy!generic
+            Else If allergy!specificity = "b" Then 
+               .text = allergy!brand
+            Else
+               .Text = Trim(allergy!class_name & " " & allergy!allergen) 'only one will appear
+            End If   
+            .Alignment = Align.TopLeft
+            If allergy!fk_lu_reaction_type = const.ReactionType_Allergy Then
+               .Foreground = Color.Red
+            Else
+               .Foreground = Color.Black
+            End If 
+            .WordWrap = True
+         End With
+         gvAllergies.Rows[gvAllergies.Rows.Count - 1].height = -1
+      Next
+   End If  
+   If gvAllergies.Rows.count = 0 Then   
+      Inc gvAllergies.Rows.Count
+      With gvAllergies[gvAllergies.Rows.Count - 1, 1]
+         .WordWrap = True
+         .RICHText = "No record of patient being asked about allergies"
+         .Foreground = Color.Red
+         .Alignment = Align.Center
+      End With
+      gvAllergies.rows[0].Height = -1
+   End If
+   
+   '------------------------------------------------------------------------------------------------------------------
+   'Check that nothing has been prescribed today (and saved) to which we are allergic, warn user, lay down audit trail
+   '------------------------------------------------------------------------------------------------------------------
+   For Each med In currentconsult!prescriptions_written  '= prescriptions written today
+      For Each allergy_class_code In currentconsult!allergy_class_codes
+         If allergy_class_code!class_code = Left(med!atccode, Len(allergy_class_code!class_code)) Then
+            sMsg = modAllergyDBI.Allergy_Warning(currentconsult, med, allergy_class_code!class_code)
+            sMsg &= "\n\nIt seems this drug has already been prescribed today.\n\nYou should check the prescription is not a mistake."
+            Message.Warning(sMsg, "Ok")
+            sMsg = "The user was presented with a warning message about danger with a currently prescribed medication and viewed and clicked OK in the popup dialog box.<BR><BR>" & sMsg 
+            If modAudit.MakeAudit(currentconsult, "warning to user", "clin_prescribing.prescribed", med!prescribed!pk, const.cSection_Prescriptions, sMsg) Then
+               modDBConnect.CommitTrans()
+            Endif
+            Break
+         End If  
+      Next
+   Next
+   '-------------------------------------------------------------------
+   'Now check that nothing has been prescribed but not printed or saved
+   '-------------------------------------------------------------------
+   ' If Not IsNull(PrescriptionPage) Then  'fixme invalid object
+   '    If Not IsNull(PrescriptionPage.script_items) Then  
+   '       For Each med In PrescriptionPage.script_items
+   '          If med!prescribed.Exist("pk") = False Then   'on list but not yet saved or printed
+   '             For Each allergy_class_code In currentconsult!allergy_class_codes
+   '                If allergy_class_code!class_code = Left(med!atccode, Len(allergy_class_code!class_code)) Then
+   '                   sMsg = modAllergyDBI.Allergy_Warning(currentconsult, med, allergy_class_code!class_code)
+   '                   sMsg &= "\n\nIt seems this drug has already been prescribed today but not printed.\n\nYou should check the prescription is not a mistake."
+   '                   Message.Warning(sMsg, "Ok")
+   '                   sMsg = "The user was presented with a warning message about danger with a currently prescribed medication which has not yet been printed, and viewed and clicked OK in the popup dialog box.<BR><BR>" & sMsg 
+   '                   If modAudit.MakeAudit(currentconsult, "warning to user", Null, 0, const.cSection_Prescriptions, sMsg) Then
+   '                      modDBConnect.CommitTrans()
+   '                   Endif
+   '                   Break
+   '                End If  
+   '             Next
+   '          End If  
+   '       Next
+   '    End If   
+   ' End If   
+   
+   ' Catch 
+   '   Return
+   
+End
+
+Public Sub gvAllergies_Select()
+   '-------------------------------------------
+   'Popup dialog box to display allergy details
+   '-------------------------------------------
+   
+   Dim allergy As Collection
+   Dim sMsg As String
+   
+   Return 
+   If gvAllergies.row = -1 Then Return 
+   allergy = modutil.Copy_Collection_Keyed_Sequentially(currentconsult!allergies)[gvAllergies.row]
+   If allergy!specificity = "g" Then
+      sMsg = "Generic Specific "
+   Else If allergy!specificity = "c" Then 
+      sMsg = "Class Specific" 
+   Else If allergy!specificity = "b" Then 
+      sMsg = "Brand Specific " 
+   Endif
+   
+   Message.Title = "Reaction Details"
+   sMsg &= modutil.Ucase_Word_First_Letter(allergy!reaction_type) & "\n\n"
+   sMsg &= "Reaction       : " & allergy!details & "\n"
+   If Not IsNull(allergy!class_name) Then sMsg &= "Drug Class    : " & modutil.Ucase_Word_First_Letter(allergy!class_name) & "\n"
+   If Not IsNull(allergy!generic) Then sMsg &= "Drug Generic: " & modutil.Ucase_Word_First_Letter(allergy!generic) & "\n"
+   Message.info(sMsg)
+   
+End
+
+' Public Sub cvwReferrals_Select()
+'    '---------------------------------------------------------------
+'    'display the referral letter written which was clicked on
+'    'This would usually be on the click event but the drag event
+'    'takes precendence over cvwReferrals_click when referrals showing
+'    '----------------------------------------------------------------
+'    
+'    cvwReferrals.MoveCurrent()
+'    cvwReferrals_key = cvwReferrals.Item.Key
+'    Referral_Letter_Display()
+' Catch
+'    Return 
+'    
+' End
+
+' Public Sub cvwReferrals_Menu()
+'    '--------------------------------------------------------------
+'    'Pop up a menu over the list of referrals the user has written
+'    '-------------------------------------------------------------
+'    '------------------------------------------------------------------------
+'    'If there is a deleted referral, enable that menu item, otherwise disable
+'    '------------------------------------------------------------------------
+'    
+'    Dim menuitem As Menu
+'    
+'    If Not IsNull(deleted_referral!pk_referral) Then
+'       mnuTabbedListReferral.Children[6].Enabled = True
+'    Else
+'       mnuTabbedListReferral.Children[6].Enabled = False
+'    Endif
+'    '----------------------------------------------------------------------------
+'    'if no letters but a deleted letter exists, must have deleted the last letter
+'    'So disable all menu items except undo-delete
+'    '----------------------------------------------------------------------------
+'    If cvwReferrals.count = 0 Then
+'       If mnuTabbedListReferral.Children[6].Enabled = True Then
+'          For Each menuitem In mnuTabbedListReferral.Children
+'             menuitem.Enabled = False
+'          Next
+'          mnuTabbedListReferral.Children[6].Enabled = True
+'       Else
+'          Return
+'       End If
+'    Else
+'       For Each menuitem In mnuTabbedListReferral.Children
+'          menuitem.Enabled = True
+'       Next
+'       If IsNull(deleted_referral!pk_referral) Then
+'          mnuTabbedListReferral.Children[6].Enabled = False
+'       Endif
+'    End If
+'    mnuTabbedListReferral.Popup()
+'    
+' End
+
+' Public Sub cvwReferrals_Fill()
+'    '-------------------------------------------------------------
+'    'NAME     : cvwReferrals_Refresh()
+'    'PURPOSE  : Displays the patients outgoing referral letters
+'    '           in a list
+'    'CALLED BY: TabStrip_Lists_MouseUp()
+'    'WARNING  : All the lists contained on the gui-element TabStrip_Lists
+'    '           are members of the tabbedlists group.There is no
+'    '           cvwReferrals_events() per se, its events are under
+'    '           TabbedLists_events()
+'    'TOFIX    : Smarter column sizing
+'    '--------------------------------------------------------------
+'    
+'    Dim x As Integer                      'for readability = key
+'    Dim sString As String
+'    Dim referral As Collection
+'    
+'    With cvwReferrals
+'       .Clear()
+'       .Columns.count = 2
+'    End With
+'    lblMeasure.font = cvwReferrals.Font
+'    '--------------------------------------------------------------
+'    'Loop through the collection, the key of the columnview becomes
+'    'the primary key of clin_referrals.inbox
+'    '--------------------------------------------------------------
+'    For Each referral In currentconsult!referrals_written
+'       x = referral!pk_referral                      'readability
+'       If referral!surname Then
+'          sString = referral!wholename
+'       Else
+'          sString = referral!organisation
+'       End If
+'       cvwReferrals.Add(x, 0)                                                  'add new row
+'       cvwReferrals[x][0] = Format(referral!date_referral, "dd/mm/yyyy")
+'       If sSTring = "" Then
+'          cvwReferrals[x][1] = referral!tag
+'       Else
+'          cvwReferrals[x][1] = sSTring & " - " & referral!tag
+'       End If
+'       If referral!finalised = False Then
+'          cvwReferrals[x][1] &= " (** UNFINISHED LETTER **)"
+'       Endif
+'    Next
+'    
+' End
+
+Public Sub Patient_Demographics_Display()
+   '--------------------------------------------------------
+   'Display core demographics,
+   'name, address, sex, age
+   'comms limited to (FIXME) user defined list
+   'medicare number or other clerical FIXME when implemented
+   '--------------------------------------------------------
+   
+   Dim com As Collection
+   
+   If Not modFiles.Dir_Working("document_archiving_directory") Then
+      Message.Title = "WARNING"
+      Message.Info("EasyGP was not able to detect a valid directory containing the archived documents, hence you will not be able to view any" 
+      "results or letters for this patient which are archived in the pdf format.\n\n You should speak to your system administrator about correcting this.\n\n "
+      "You will of course be able to use the other clinical function.")
+   Endif
+   
+   bExit = True
+   cmbSearch.text = currentconsult!patient!firstname & " " & currentconsult!patient!surname & " " & Trim(currentconsult!patient!street1 & " " & currentconsult!patient!street2) & " " & currentconsult!patient!town
+   cmbSearch.text &= " " & currentconsult!patient!postcode
+   cmbSearch.pos = 1
+   txtAge.text = "Age " & currentconsult!patient!age_display & " "
+   If Not IsNull(currentconsult!patient!fund) Then
+      tlHealthFund.text = currentconsult!patient!fund
+   Else
+      tlHealthFund.text = "No Health Fund"
+   Endif
+   tlHealthFund.Visible = True  
+   If Not IsNull(currentconsult!patient!occupation) Then
+      txtOccupation.Text = UCase(Left(currentconsult!patient!occupation, 1)) & Right(currentconsult!patient!occupation, Len(currentconsult!patient!occupation) - 1)
+      If currentconsult!patient!retired Then
+         txtOccupation.text &= " (Retired)"
+         txtOccupation.pos = 0
+      End If
+      lblMeasure.text = txtOccupation.text & "  "
+      VBox_Occupation_Birthdate.width = lblMeasure.Width
+   Else
+      txtOccupation.text = "Occupation?"
+   Endif
+   
+   If Not IsNull(currentconsult!patient!veteran_number) Then
+      lblMedicareNumber.text = currentconsult!patient!veteran_number
+   Else
+      lblMedicareNumber.text = modutil.Medicare_Number_Format(currentconsult!patient!medicare_number)  
+      If Not IsNull(currentconsult!patient!medicare_ref_number) Then 
+         lblMedicareNumber.text &= " Pos:" & currentconsult!patient!medicare_ref_number
+      End If   
+   Endif
+   
+   txtOccupation.Enabled = True
+   cmbSearch.Tag = currentconsult!patient!firstname & " " & currentconsult!patient!surname & "\n"
+   '----------------------------------------------------------------
+   'On the top toolbar, show a list containing dob, medicare number,
+   'and some basic contact numbers
+   '---------------------------------------------------------------
+   With lblBirthdate
+      .text = Format(currentconsult!patient!birthdate, "dd/mm/yyyy")
+      .visible = True  
+   End With
+   If modUtil.Is_Birthday(currentconsult!patient!birthdate) Then
+      '  Message.Info("Today is the patient's birthday.\n\nIt would be really nice to wish them 'happy birthday!'")
+      lblHappyBirthday.Visible = True 
+      
+   Endif
+   
+   '---------------------------------------------
+   'Display comms with abbreviated prefix in list
+   '---------------------------------------------
+   currentconsult.Refresh("comms") 'refreshed because can be called from outside of this module eg FPersons
+   tlPatientComms.text = ""
+   For Each com In currentconsult!comms
+      tlPatientComms.text &= const.CommModalityTextBrief[com!fk_type] & ":" & com!value
+      If com!note <> "" Then
+         tlPatientComms.Text &= " (" & com!note & ") "
+      Endif
+      If com!preferred_method Then
+         tlPatientComms.Text &= "<span style=\"color: blue;\">" & String.Chr(&H2605) & "</span>"  'star
+      Endif
+      If com!confidential Then
+         tlPatientComms.Text &= "<span style=\"color: red; font-weight: bold; font-size: small;\">[PRIVATE]</span>"
+      Endif
+      tlPatientComms.text &= "<BR>"
+   Next
+   If tlPatientComms.text = "" Then tlPatientComms.text = "Contact Numbers"
+   LBLID.text = "ID:" & currentconsult!patient!fk_patient 'show database ID under photo"
+   If currentconsult!patient!fk_sex = const.cSexFemale Then
+      Patient_Show_Pregnant 'check if patient pregnant
+      Toolbar_Pregnancy_Button_Enable_Disable(True)
+   Else
+      Toolbar_Pregnancy_Button_Enable_Disable(False)
+   End If   
+   bExit = False
+   
+End
+
+Public Sub Patient_Show_Pregnant()
+   '---------------------------------------------------------------
+   'If the patient is pregnant, make a prominant notice to the user
+   '---------------------------------------------------------------
+   
+   Dim gestation As String
+   
+   If currentconsult!patient!age_numeric > 12 And currentconsult!patient!age_numeric < 60 Then
+      gestation = modPregnancyDBI.Patient_Is_Pregnant(currentconsult!patient!fk_patient)
+      If gestation Then
+         If Not InStr(lblAlert.text, "PREGNANT") Then
+            lblAlert.text = "PREGNANT " & gestation & "<BR>" & lblAlert.Text
+         Endif
+      Endif
+   Endif
+   
+End
+
+Public Sub cmbSearch_KeyPress()
+   
+End
+
+Public Sub cmbSearch_Activate()
+   
+   If bExit Then Return
+   If Len(Trim(cmbSearch.text)) > 0 Then
+      '--------------------------------------------------------
+      'Try and find a patient as per the text in the search box\
+      'If this fails, then focus is res-set to the search box
+      'If finds 1 patient, loads their records
+      'If finds > 1 patient, popup multiple choice list
+      'which is instance for FPatientsSelect
+      '--------------------------------------------------------
+      cmbSearch.Enabled = False
+      patients_find()
+   End If
+   
+End
+
+Public Sub cmbSearch_LoadPatients()
+   '------------------------------------
+   'Loads combo with patients seen today
+   '------------------------------------
+   
+   Dim Patient_Seen As Collection
+   Dim fk_last_patient As Integer
+   Dim x As Integer
+   
+   bExit = True
+   cmbSearch.Clear()
+   Patients_Seen = New Collection
+   For Each Patient_seen In modAppointmentsDBI.Patients_Seen(Format(Now, "dd/mm/yyyy"), modDBConnect.currentUser!fk_staff)
+      If fk_last_patient <> Patient_Seen!fk_patient And Patient_Seen!fk_type = const.consult_type_at_Surgery Then
+         fk_last_patient = Patient_Seen!fk_patient
+         cmbSearch.add(Patient_Seen!wholename)
+         Patients_Seen.Add(Patient_Seen, x)
+         Inc x
+      End If
+   Next
+   bExit = False
+   cmbSearch.SetFocus
+   
+End
+
+Public Sub Gui_Clear()
+   '------------------------------------------------
+   'Removes all patient data from the user interface
+   'clears all visible lists
+   'clears all visible graphs
+   'clears the patients tasks gridview
+   '------------------------------------------------
+   
+   bExit = True
+   bediting = False  
+   Inc application.busy
+   lblHappyBirthday.Visible = False
+   With tlHealthFund
+      .Visible = False 
+      .text = "Never Asked"
+   End With
+   With tbHealthSummary
+      .text = "View Health Summary"
+      .tag = "Health Summary"
+   End With
+   currentconsult = Null
+   '----------------------------------------------------------
+   'Clear patient related textboxes and labels on main toolbar
+   '----------------------------------------------------------
+   With lblWarningEditingConsult
+      .Foreground = Color.Background 'hide the text, don't resize the label
+      .Background = Color.Background
+   End With
+   HBox_ConsultDetails.Background = Color.Background
+   With lblConsult
+      .Background = Color.Background
+      .Foreground = Color.Black
+      .text = " Consult Date "
+   End With
+   With DateBox1
+      .Background = Color.White
+      .Foreground = Color.Black
+      .value = Now()
+      .Visible = True  
+   End With
+   cmbSearch.text = ""
+   lblMedicareNumber.text = ""
+   txtAge.text = ""
+   lblAlert.text = ""
+   lblID.text = ""
+   lblBirthdate.Visible = False  
+   gvAllergies.Clear()
+   tlReminders.text = ""
+   tlPatientComms.text = ""
+   lblBirthdate.text = ""
+   tlNotifications.text = ""
+   With txtOccupation
+      .text = ""
+      .Enabled = False
+   End With
+   tbEdit.enabled = False
+   mnuSections.Enabled = False
+   mnuView_AllNotes.Enabled = False
+   mnuView_ByProblem.Enabled = False
+   cmbConsultationType.index = cmbConsultationType.Find("At consulting rooms")
+   Patient_Picture_Clear()
+   bExit = False                                 '?still need this
+   '   DecisionSupport_Show("", False)              'remove right hand side decision support panel (could be showing)
+   application.busy = 0                        'ensure have no hourglass
+   modEditAreaHelpers.Warnings_Panel_Clear(pnlWarnings)
+   lblwarnings.text = "Click to add warnings"
+   
+End
+
+Public Sub cmbSearch_GotFocus()
+   '----------------------------------------------------------------
+   'User has clicked on the cmbSearch combo box in the text part
+   'i.e they want to end the consultation and find another patient
+   'First check there is no un-saved data - save that, then make
+   'sure the consultation is coded if user has added notes
+   'then clear all patient specific data from the gui
+   're-setting the lists, notification labels etc
+   'See FStaffPreferencesClinical for the config option for coding
+   '----------------------------------------------------------------
+   
+   Dim PN As Collection
+   
+   If bexit Then Return
+   ' With form_clinicaLists
+   '    .bexit = True  
+   '    .TabStrip_Lists.Enabled = False  
+   ' End With
+   If Not IsNull(currentconsult) Then                   'no consult, no save
+      cmbSearch.Enabled = False                         'stop clicking again until finished database accessing
+      ' Consult_Save                             'loop through all  open forms and call 'Save'
+      currentconsult.Refresh("progress_notes_today")    'Is there actually a reason to code?, maybe there are no notes
+      If currentconsult!progress_notes_today.count Then 'If we have progress notes 
+         For Each PN In currentconsult!progress_notes_today
+            If PN!problem = "New General Notes" Then    'If there are general notes (i.e ones user has typed in)
+               teForSpelling.RichText = PN!notes        'this can contain html construct with no actual notes FIXME - examine this situation
+               If Trim(Replace(teForSpelling.text, "\n", "")) <> "" Then    
+                  If bProgressNotesEnforceCoding Then       'this global user preference was loaded in init from the backend.
+                     If Not Consult_Is_Coded() Then         'then enforce coding, if not done and they want to do so
+                        cmbSearch.Enabled = True            'get  ouf of here
+                        Return                              'now
+                     End If     
+                  End If
+               End If   
+               Break
+            End If   
+         Next
+      End If       
+   End If   
+   Gui_Clear()                                  'clear the input area
+   cmbSearch.Enabled = True                     'allow user to click on combo again.
+   cmbSearch.SetFocus
+   
+End
+
+Public Sub cmbSearch_LostFocus()
+   '--------------------------------------------------
+   'Ensure that the patient's name at least is showing
+   '--------------------------------------------------
+   
+   '  Last.pos = 0
+   
+End
+
+Public Sub Patient_Picture_Clear()
+   '---------------------------------------------
+   ' Clears the picture from the main picture box
+   ' puts back in the default
+   '---------------------------------------------
+   
+   With PicPatient
+      .Picture = Picture.Load("icons/misc/no_photo.png")
+   End With
+   Wait        'otherwise, visually, picture won't disappear
+   
+End
+
+Public Sub Workspace_Load_Minimal_Panels()
+   
+   ' WorkspaceEditor.Lock()                    'DO NOT REMOVE THE LOCK/UNLOCK
+   ' Editor_ShowPage("All Previous Notes")     'Always show all previous notes
+   ' Editor_ShowPage("New General Notes")      'Default to general notes tab.
+   ' WorkspaceEditor.Unlock()                  'OR THE GUI WILL RE-SET ITSELF
+   
+End
+
+Public Sub WorkspaceEditor_Clear()
+   'Purpose: removes all existing child tabs from the workspace editor
+   ' 
+   ' Dim hWindow As Window
+   ' 
+   ' WorkspaceEditor.Lock()
+   ' For Each hWindow In WorkspaceEditor.Windows
+   '    hWindow.Close()
+   ' Next
+   ' WorkspaceEditor.Unlock()
+   ' EditorPages = New Collection
+   
+End
+
+Public Sub Health_Summary_Display_HTML()
+   
+   ' FClinical.WebBrowser_Show(modProgressNotes.Health_Summary_Construct_html(currentconsult), "HEALTH SUMMARY")
+   
+End
+
+Public Sub Health_Summary_Display()
+   
+   ' Dim templ As CTemplate
+   ' 
+   ' Inc Application.Busy
+   ' templ = modProgressNotes.Health_Summary_Construct_LaTex(currentconsult)
+   ' If Not IsNull(templ) Then
+   '    Editor_ShowPage("pdf file", "Health Summary", modPrinting.Latex_To_PDF(templ.GetData()))
+   ' End If
+   ' 
+   ' Dec application.Busy
+   
+End
+
+Public Sub tlReminders_Refresh()
+   '    '---------------------------------------------------------------
+   '    'display the outstanding recalls on the toolbar
+   '    '--------------------------------------------------------------
+   '    
+   
+   Dim x As Integer                      'for readability = key
+   Dim rows As String
+   Dim sColText As String
+   Dim sTableStart As String = "<TABLE WIDTH=100% BORDER=0 CELLPADDING=0 CELLSPACING=0 >"
+   Dim recall_due As Collection
+   
+   Dim sRow As String = ""
+   
+   "<TR>"
+   "<TD WIDTH=60><FONT COLOR='%color%'>"
+   "%col1%</FONT>"
+   "</TD>"
+   "<TD>"
+   "%col2%"
+   "</TD>"
+   "</TR>"
+   currentconsult.Refresh("recalls_logged")
+   tlReminders.text = ""
+   rows = ""
+   For Each recall_due In currentconsult!recalls_logged
+      rows &= srow
+      '---------------------------------------------------
+      'Display these recalls as reminders at top of screen
+      '---------------------------------------------------
+      If DateDiff(Now, recall_due!due, gb.Month) < 0 Then
+         Rows = Replace(Rows, "%color%", "#800000")
+         sColtext = "Overdue:"
+         Rows = Replace(rows, "%color%", "#FFFFFF")
+      Else
+         sColtext = "Due in:"
+      End If
+      sColText &= Abs(DateDiff(Now, recall_due!due, gb.Month)) & "M "
+      rows = Replace(rows, "%col1%", sColText)
+      rows = Replace(rows, "%col2%", recall_due!reason)
+   Next
+   '    'FIXME this list is potentially invisible if user has re-sized it to nothing.
+   If currentconsult!recalls_logged.count Then
+      tlReminders.Richtext = sTableStart & rows & "</TABLE>"
+   Else
+      tlReminders.Richtext = "Recalls & Reminders - Nil"
+   End If
+   '    
+   
+End
+
+Public Sub mnuDecisionSupport_Click()
+   
+   If IsNull(Currentconsult) Then Return
+   If InStr(Last.tag, "immunisation_schedule.pdf") Then
+      ' Editor_ShowPage("Immunisation Schedule", "Immunisation Schedule", Last.tag)
+      Return
+   Endif
+   ' Editor_ShowPage(Last.tag)
+   
+End
+
+Public Sub ProgressNotesMenu_Refresh()
+   '------------------------------------------------------------------
+   'Refreshes the progress notes menu on the main toolbar
+   'Clears all existing entries as user could have added new problems
+   'rebuilds the menu with menu's for
+   '*show all notes
+   '*general notes
+   '*major problems as submenu
+   '*significant active problems as submenu
+   '*inactive problems as submenu
+   '-------------------------------------------------------------------
+   
+   Dim mnu As Menu
+   Dim mnu_major As Menu
+   Dim mnu_active As Menu
+   Dim mnu_inactive As Menu
+   Dim PastHistoryCondition As Collection
+   Dim bNeedSeparator As Boolean = True
+   Dim bNoMainMenu As Boolean = True
+   
+   If Not currentconsult Then Return
+   '----------------------------------------------------------------
+   'Clear menu, even if exit this sub, don't want the last patient's
+   'menu items on the list
+   '----------------------------------------------------------------
+   popupMenuProgressNotes.Children.Clear()
+   '-----------------------------------------------------------
+   'Clear all children from the popup menu then add two entries
+   'one for general notes, one for show all notes
+   '-----------------------------------------------------------
+   
+   mnu = New Menu(popupMenuProgressNotes) As "popupMenuProgressNotes"
+   mnu.name = "Show All Notes"
+   mnu.caption = "Show All Notes"
+   mnu.tag = "show all notes"
+   mnu = New Menu(popupMenuProgressNotes) As "popupMenuProgressNotes"
+   mnu.name = "General Notes"
+   mnu.caption = "General Notes"
+   mnu.tag = "general notes"
+   If currentconsult!past_history.count = 0 Then Return
+   '---------------------------------------------------------
+   'Next add all the major conditions followed by a separator
+   '---------------------------------------------------------
+   currentconsult.Refresh("past_history")
+   For Each PastHistoryCondition In currentconsult!past_history
+      If PastHistoryCondition!major Then
+         If bNeedSeparator Then
+            mnu = New Menu(popupMenuProgressNotes)
+            mnu.name = "separator_1"
+            mnu.caption = ""
+            bNeedSeparator = False
+         End If
+         If bNoMainMenu Then
+            mnu_major = New Menu(popupMenuProgressNotes) As "popupMenuProgressNotes"
+            mnu_major.name = "popupMenuProgressNotes_Major"
+            mnu_major.caption = "Major Health Issues"
+            mnu_major.tag = "major"
+            bNoMainMenu = False
+         End If
+         
+         mnu = New Menu(mnu_major) As "popupMenuProgressNotes"
+         mnu.name = PastHistoryCondition!description
+         mnu.caption = PastHistoryCondition!description
+         mnu.tag = PastHistoryCondition!pk_pasthistory
+      End If
+   Next
+   
+   bNeedSeparator = True
+   bNoMainMenu = True
+   '---------------------------------------------------------------
+   'Next add all the significant conditions followed by a separator
+   '---------------------------------------------------------------
+   For Each PastHistoryCondition In currentconsult!past_history
+      If PastHistoryCondition!active = True Then
+         If bNeedSeparator Then
+            mnu = New Menu(popupMenuProgressNotes)
+            mnu.name = "separator_2"
+            mnu.caption = ""
+            bNeedSeparator = False
+         End If
+         If bNoMainMenu Then
+            mnu_active = New Menu(popupMenuProgressNotes) As "popupMenuProgressNotes"
+            mnu_active.name = "popupMenuProgressNotes_Significant"
+            mnu_active.caption = "Significant Issues"
+            mnu_active.tag = "significant"
+            bNoMainMenu = False
+         End If
+         mnu = New Menu(mnu_active) As "popupMenuProgressNotes"
+         mnu.name = PastHistoryCondition!description
+         mnu.caption = PastHistoryCondition!description
+         mnu.tag = PastHistoryCondition!pk_pasthistory
+      End If
+   Next
+   bNeedSeparator = True
+   bNoMainMenu = True
+   '--------------------------------------------------------------
+   'Lastly add all the inactive conditions followed by a separator
+   '--------------------------------------------------------------
+   For Each PastHistoryCondition In currentconsult!past_history
+      If PastHistoryCondition!active = False And PastHistoryCondition!major = False
+         If bNeedSeparator Then
+            mnu = New Menu(popupMenuProgressNotes)
+            mnu.name = "separator_3"
+            mnu.caption = ""
+            bNeedSeparator = False
+         End If
+         If bNoMainMenu Then
+            mnu_inactive = New Menu(popupMenuProgressNotes) As "popupMenuProgressNotes"
+            mnu_inactive.name = "popupMenuProgressNotes_Significant"
+            mnu_inactive.caption = "Inactive Issues"
+            mnu_inactive.tag = "inactive"
+            bNoMainMenu = False
+         End If
+         mnu = New Menu(mnu_inactive) As "popupMenuProgressNotes"
+         mnu.name = PastHistoryCondition!description
+         mnu.caption = PastHistoryCondition!description
+         mnu.tag = PastHistoryCondition!pk_pasthistory
+      End If
+   Next
+   
+End
+
+Public Sub popupMenuProgressNotes_Click()
+   '----------------------------------------------------------------------------
+   'Show either all notes, general notes only, or those for a health issue alone
+   '----------------------------------------------------------------------------
+   
+   Dim fk_section As Integer
+   Dim shtml As String
+   Dim page_heading As String
+   
+   If Not currentconsult Then Return
+   Select Case Last.tag
+      Case "show all notes"
+         ' Editor_ShowPage("All Previous Notes")
+         Return
+      Case "general notes"
+         fk_section = const.cSection_GeneralNotes
+         page_heading = "GENERAL NOTES"
+         shtml = modProgressNotes.ConstructHTML_SingleProblem(currentconsult, 0, fk_section)
+      Case Else
+         fk_section = const.cSection_PastHistory
+         shtml = modProgressNotes.ConstructHTML_SingleProblem(currentconsult, Last.tag, fk_section)
+         page_heading = UCase(currentconsult!past_history[Last.tag]!description)
+   End Select
+   
+End
+
+Public Function Consult_Time_Check_Valid() As Boolean
+   '-----------------------------------------------------------------------------------------------
+   'inserted because if creating a new consult in the past user may have forgotten the consult time
+   '-----------------------------------------------------------------------------------------------   
+   
+   If Right(Format(datebox1.Value, "dd/mm/yyyy hh:nn"), 5) = "00:00" Then
+      Message.Warning("Please ensure the consultation time exists before saving any cinical information")
+      Return 
+   Endif
+   Return True
+   
+End
+
+Public Sub MainToolbar_Click()
+   
+   Dim Vb As VBox
+   Dim Page As FLinkContainer
+   Dim form_About As FAbout
+   Dim i As Object
+   
+   If Not currentconsult Then Return
+   Select Case Last.tag
+      Case "New_Entry", "Preview", "Refresh", "Edit", "Save", "Decision_Support", "Help"
+         '---------------------------------------------------------------------------------------------------
+         'These buttons are designed to operate on any tab in the editor with appropriately named subroutines
+         'eg in Referrals "Save" will save the referral etc. If the form on the tab dosn't have a sub-routine
+         'like these names it simply trips out
+         'Edit only applies to forms without an editing area.
+         '---------------------------------------------------------------------------------------------------
+         If Consult_Time_Check_Valid() = False Then Return
+         Inc Application.Busy
+          For Each page In form_clinical.WorkspaceEditor.Windows
+             If page = form_clinical.WorkspaceEditor.ActiveWindow Then
+                Try Object.Call(page.VBoxEditor.Children[0], Last.tag)
+             End If
+          Next
+         Dec application.Busy
+      Case "New General Notes", "Demographics", "Edit Last Consult"
+         form_clinical.Editor_ShowPage(Last.tag)
+      Case "tex summary"
+         form_clinical.Health_Summary_Display
+      Case "health summary", "GPMP"
+         form_clinical.Health_Summary_Display
+      Case "export pdf"
+         form_clinical.Export_Records()
+      Case "zoom_in", "zoom_out"
+        form_clinical.Zoom(Last.tag)
+      Case "print_content"
+         'The tag of the button = the name of the subroutine in the object
+         'note we can't user "Print" as this is a gambas word and it gets confused.
+         ' VB = WorkspaceEditor.ActiveWindow.Children[0]   'this is VBox containing the form
+         ' i = VB.Children[0]
+         ' Object.Call(i, Last.tag)
+         ' 
+      Case "general notes"
+         '--------------------------------------------------------
+         'If all tabs are closed, allow getting back general notes
+         '--------------------------------------------------------
+         If currentconsult Then
+            form_clinical.Editor_ShowPage("New General Notes")
+         End If
+      Case "about"
+         form_About = New FAbout
+         form_About.ShowModal()
+      Case "all previous notes"
+         form_clinical.Editor_ShowPage("All Previous Notes")
+   End Select
+Catch
+   Application.busy = 0   
+   modUtilGUI.ReportError(Error.Text, Error.Backtrace)
+   
+End
+
+Public Sub Zoom(zoom As String)
+   '------------------------------------------------------------------------------
+   'Called by either the Form key press event to emulated eg Firefox Ctrl+/- Zoom
+   'or the zoom buttons on the main toolbar MainToolbar_click()
+   '------------------------------------------------------------------------------
+   
+   Dim Vb As VBox
+   Dim i As Object
+   
+   ' VB = WorkspaceEditor.ActiveWindow.Children[0]   'this is VBox containing the form
+   ' i = VB.Children[0]
+   ' 
+   ' Try Object.Call(i, zoom)
+   ' Catch
+   '    Return
+   
+End
+
+Public Sub Export_Records()
+   '------------------------------------------------------
+   'Allow user to export as little or as much as they want
+   '------------------------------------------------------
+   
+   ' WorkspaceEditor.Visible = False
+   ' Editor_ShowPage("Export File")
+   ' 
+   ' Return
+   ' With Form_ExportClinical
+   '    .Init(currentconsult)
+   '    .Form_PDF.BtOpen.Visible = False
+   '    .Visible = True
+   '    .Raise
+   ' End With
+   
+End
+
+Public Sub Form_KeyPress()
+   
+   Dim CtrlDown As Boolean
+   Dim FnDown As Boolean
+   Dim ShiftDown As Boolean
+   Dim AltDown As Boolean
+   
+   Select Case Key.Code
+      Case key.F12
+         Consult_Save()
+   End Select
+   Try CtrlDown = Key.Control
+   Try AltDown = Key.Alt
+   If CtrlDown Then
+      Select Case Key.code
+         Case Asc("=")
+            Zoom("zoom_in")
+         Case Asc("-")
+            Zoom("zoom_out")
+      End Select
+   End If
+   If AltDown Then
+      ' Select Case Key.Code
+      '       
+      '    Case Asc("C")
+      '       '    Editor_ShowPage("Care Planning")
+      '    Case Asc("D")
+      '       Editor_ShowPage("Diabetes Cycle of Care")
+      '    Case Asc("F")
+      '       Editor_ShowPage("Family History")
+      '    Case Asc("A")
+      '       Editor_ShowPage("Allergies")
+      '    Case Asc("T")
+      '       Editor_ShowPage("Travel")
+      '    Case Asc("S")
+      '       Editor_ShowPage("Scripts")
+      '    Case Asc("H")
+      '       Editor_ShowPage("Past History")
+      '    Case Asc("R")
+      '       Editor_ShowPage("Recalls")
+      '    Case Asc("O")
+      '       Editor_ShowPage("Occupational History")
+      '    Case Asc("L") 'is for 'letter writer..
+      '       Editor_ShowPage("Referrals")
+      '    Case Asc("W")
+      '       Editor_ShowPage("Workcover")
+      '    Case Asc("M")
+      '       Editor_ShowPage("Mental Health Plan")
+      '    Case Asc("I")
+      '       Editor_ShowPage("Vaccinations")
+      '    Case Asc("P")
+      '       Editor_ShowPage("Psycho-Social History")
+      ' End Select
+   End If
+   
+End
+
+Public Sub Notifications_Refresh()
+   '---------------------------------------------------
+   'Refreshes outstanding notifications for the patient
+   '---------------------------------------------------
+   
+   currentconsult.Refresh("patient_tasks_outstanding")
+   If currentconsult!patient_tasks_outstanding.count Then  'To get the users attention hightlight these
+      ' Vbox_Notifications.Background = Color.red
+      tlNotifications.Text = "<TABLE WIDTH=100% BORDER=0 CELLPADDING=2>"
+      "<COL WIDTH=256*>"
+      "<TR>"
+      "<TD WIDTH=100% VALIGN=TOP>"
+      tlNotifications.Text &= "<B>"
+      If currentconsult!patient_tasks_outstanding.count = 1 Then
+         tlNotifications.Text &= "1 task needs attention</B>"
+      Else
+         tlNotifications.Text &= Str(currentconsult!patient_tasks_outstanding.count) & " tasks need attention</B>"
+      Endif
+      tlNotifications.Text &= "</TD></TR></TABLE>"
+   Else
+      tlNotifications.Text = ""
+      ' Vbox_Notifications.Background = VBox_Notifications.Parent.Background
+   Endif
+   ' Vbox_Notifications.height = tlNotifications.height + Vbox_Notifications.padding * 2
+   
+End
+
+Public Sub tbPatientPicture_Menu()
+   
+   mnuPatientPhoto.Popup()
+   
+End
+
+Public Sub mnuPatientPhoto_Click()
+   
+   Select Case Last.tag
+      Case "acquire"
+         PatientPhoto_Acquire()
+      Case "import"
+         PatientPhoto_Import()
+      Case "edit"
+         PatientPhoto_Edit()
+      Case "save"
+         PatientPhoto_Save()
+   End Select
+Catch
+   Return
+   
+End
+
+Public Sub PatientPhoto_Acquire()
+   
+   Message.info("Photo Acquisition is not implemented yet")
+   
+End
+
+Public Sub PatientPhoto_Import()
+   
+   Message.info("Photo Import is not implemented yet")
+   
+End
+
+Public Sub PatientPhoto_Edit()
+   
+   Message.info("Photo Editing is not implemented yet")
+   
+End
+
+Public Sub PatientPhoto_Save()
+   
+   Message.info("Photo Saving is not implemented yet")
+   
+End
+
+Public Sub tbSections_Menu()
+   
+   If IsNull(Currentconsult) Then Return
+   mnuToolButtons_Delete.Picture = picture.Load(const.Clinical_Toolbuttons[Last.tag]!icon_path)   'bug here, the tag was 'health summary, the collection was numerical
+   mnuToolButtons_Delete.Caption = "Delete " & const.Clinical_Toolbuttons[Last.tag]!name & " button?"
+   mnuToolButtons.Popup()
+Catch
+   Return 
+   
+End
+
+Public Sub mnuToolButtons_Click()
+   '------------------------------------------------------------------------
+   'There is really only one option for the popup menu over the toolbuttons
+   'namely delete, allowing user to delete a button
+   'This checks the caption on the menu e.g "Delete Pregnancy button"
+   'and deletes the appropriate button - probably an easier way!
+   '----------------------------------------------------------------------
+   
+   Dim hCtrl As Control
+   Dim tb As ToolButton
+   
+   Select Case Last.tag
+      Case "delete"
+         For Each hctrl In pnlToolButtons.Children
+            If hctrl Is ToolButton Then
+               tb = hctrl
+               If Not IsNull(const.Clinical_Toolbuttons[tb.tag]) Then  'some are not user configurable not in collection
+                  If InStr(Last.caption, const.Clinical_Toolbuttons[tb.tag]!name) Then
+                     If Not IsNull(Toolbuttons[tb.tag]) Then        'if not yet saved this will be null
+                        If Message.Question(Last.caption, "Yes", "No") = 2 Then Return
+                        modAdminDBI.Clinical_Toolbuttons_Remove(Toolbuttons[tb.tag]!fk_staff_clinical_toolbar)
+                        Toolbuttons = modAdminDBI.Clinical_Toolbuttons_Get(modDBConnect.currentUser!fk_staff) 'Get users toolbuttons
+                     End If
+                     tb.Delete()
+                     Break
+                  Endif
+               End If
+            End If
+         Next
+   End Select
+Catch
+   Return
+   
+End
+
+Public Sub tbSections_Click()
+   '------------------------------------------------------------------------
+   'Shows the relevant section e.g Family History, as the central webbrowser
+   'could have been visible, remove it
+   '------------------------------------------------------------------------
+   
+   Dim templ As CTemplate
+   
+   If Not currentconsult Then Return
+   If const.Clinical_Toolbuttons.Exist(Last.tag) Then
+       form_clinical.Editor_ShowPage(const.Clinical_Toolbuttons[Last.tag]!name)
+   Else If Last.tag = "GPMP" Then  
+       Templ = modProgressNotes.Health_Summary_Construct_LaTex(currentconsult, form_clinical.GP_Management_Plan)
+        Try form_clinical.Editor_ShowPage("pdf file", "GPMP", modPrinting.Latex_To_PDF(templ.GetData()))    'templ is null (couldn't be found)
+      If Error Then Return    
+   Else If Last.tag = "Health Summary" Then
+      Templ = modProgressNotes.Health_Summary_Construct_LaTex(currentconsult)
+      form_clinical.Editor_ShowPage("pdf file", "Health Summary", modPrinting.Latex_To_PDF(templ.GetData()))
+   Else If Last.tag = "Edit Last Consult" Then
+      Consult_Edit_Last()
+   Else
+      Try form_clinical.Editor_ShowPage(Last.tag, Last.tag)
+   Endif
+    Try form_clinical.Control_For_Focus.SetFocus()                 'DO NOT REMOVE THIS SEE DECLARATION SECTION AT THE TOP
+   
+End
+
+Public Sub ActiveWindow_Get_Name() As String
+   
+   ' Dim hCtrl As Control
+   ' Dim page As FLinkContainer
+   ' 
+   ' For Each page In WorkspaceEditor.Windows
+   '    If page = WorkspaceEditor.ActiveWindow Then
+   '       For Each hctrl In page.VBoxEditor.Children
+   '          If hctrl Is Form Then
+   '             Return hCtrl.Name
+   '          Endif
+   '       Next
+   '    End If
+   ' Next
+   ' 
+End
+
+Public Sub WorkspaceEditor_Activate()
+   '----------------------------------------------------------------------------------
+   'User has clicked on an editor page or an editor page loaded
+   'If it contains progress notes, as these could have been updated in another section
+   'enable or disable the core new-edit-save-print-preview-refresh buttons
+   'according to the various forms needs.
+   '----------------------------------------------------------------------------------
+   
+   ' Dim hCtrl As Control
+   ' Dim page As Variant
+   ' 
+   ' For Each page In WorkspaceEditor.Windows
+   '    If page = WorkspaceEditor.ActiveWindow Then
+   '       If page Is FLinkContainer Then
+   '          For Each hctrl In page.VBoxEditor.Children
+   '             WorkspaceEditor_Activate_Each(hctrl)
+   '          Next
+   '       Else
+   '          WorkspaceEditor_Activate_Each(page)
+   '       Endif
+   '    Endif
+   ' Next
+   ' 
+End
+
+Private Sub WorkspaceEditor_Activate_Each(hctrl As Control)
+   '------------------------------------------------------------------
+   'When a button on the main toolbar is clicked on to load a form
+   'enable or disable apppropriate buttons and change button tooltips
+   '------------------------------------------------------------------
+   
+   ' Dim frmConsult As FProgressNoteEditor
+   ' 
+   ' If Not hctrl Is Form Then Return
+   ' 'Disable all - will be enabled as needed
+   ' tbPreview.Enabled = False
+   ' tbPreview.Tooltip = ""
+   ' tbSave.ToolTip = ""
+   ' tbSave.Enabled = False
+   ' tbNew.tooltip = ""
+   ' tbNew.Enabled = False
+   ' tbPrint.Tooltip = ""
+   ' tbPrint.Enabled = False
+   ' tbRefresh.Enabled = False
+   ' tbRefresh.Tooltip = ""
+   ' tbEdit.Enabled = False
+   ' tbEdit.Tooltip = ""
+   ' tbDecisionSupport.Enabled = False   
+   ' Select Case hctrl.Name
+   '    Case "FDocumentViewer"
+   '       tbPrint.Enabled = True
+   '    Case "FPictureViewer"
+   '       tbPrint.Enabled = True
+   '       tbPrint.Tooltip = "Print Image"
+   '    Case "FPregnancy"
+   '       tbNew.Enabled = True
+   '       tbNew.Tooltip = "Add new pregnancy"
+   '       tbSave.Enabled = True
+   '       tbPrint.Enabled = False
+   '       tbSave.Tooltip = "Save pregnancy"
+   '       tbRefresh.Enabled = True
+   '       tbRefresh.Tooltip = "RefreshPregnancy"
+   '    Case "FRecreationalDrugs"
+   '       tbNew.Enabled = True
+   '       tbNew.Tooltip = "Add new habit"
+   '       tbSave.Enabled = True
+   '       tbPrint.Enabled = False
+   '       tbSave.Tooltip = "Save Habits"
+   '       tbRefresh.Enabled = False
+   '       tbRefresh.Tooltip = "Refresh Habits"
+   '    Case "FAllergy"
+   '       tbNew.Enabled = True
+   '       tbNew.Tooltip = "Add new allergy"
+   '       tbSave.Enabled = True
+   '       tbSave.Tooltip = "Save Allergy"
+   '       tbRefresh.Enabled = True
+   '       tbRefresh.Tooltip = "Refresh Allergies"
+   '    Case "FInr"
+   '       tbNew.Enabled = True
+   '       tbNew.Tooltip = "Add new INR"
+   '       tbSave.Enabled = True
+   '       tbSave.Tooltip = "Save INR"
+   '       tbEdit.Enabled = True
+   '       tbEdit.Tooltip = "Edit INR Plan"
+   '    Case "FPsychoSocialHistory"
+   '       tbSave.ToolTip = "Save Social History"
+   '       tbSave.Enabled = True
+   '    Case "FExportClinical"
+   '       ' tbPrint.Tooltip = "Print PDF to be exported"
+   '       ' tbPrint.Enabled = True
+   '       ' tbPreview.Enabled = True
+   '       ' tbPreview.Tooltip = "Generate and Preview PDF of notes to export"
+   '       ' tbRefresh.Enabled = True
+   '       ' tbRefresh.Tooltip = "Reload data to export"
+   '       ' tbSave.ToolTip = "Save file to be exported"
+   '       ' tbSave.Enabled = True
+   '       tbNew.Enabled = True
+   '       tbNew.Tooltip = "Reset Export Options"
+   '    Case "FHtmlViewer"
+   '       tbPrint.Tooltip = "Print Text"
+   '       tbPrint.Enabled = True
+   '    Case "FPDF"
+   '       tbPrint.Tooltip = "Print PDF"
+   '       tbPrint.Enabled = True
+   '    Case "FProgressNotesViewer"
+   '       '------------------------------------------------------------------------
+   '       'This is wherever the user is reading previously generated progress notes
+   '       'either 'all progress notess' or specific to a condition
+   '       '------------------------------------------------------------------------
+   '       tbPrint.Tooltip = "Print Notes"
+   '       tbSave.Enabled = True   
+   '       tbSave.Tooltip = "Save Notes as PDF"
+   '       tbPrint.Enabled = True
+   '       tbPreview.Enabled = True
+   '       tbPreview.Tooltip = "Preview PDF of the progress notes"
+   '    Case "FProgressNoteEditor"
+   '       tbSave.Tooltip = "Save Progress Note"
+   '       tbSave.Enabled = True
+   '       tbPrint.Enabled = True
+   '       tbPrint.Tooltip = "Print Today's Progress Notes"
+   '       tbPreview.Enabled = True
+   '       tbPreview.Tooltip = "Preview pdf of Today's Progress Notes"
+   '    Case "FPastHistory"
+   '       tbSave.ToolTip = "Save Healt  'lblsection.text =h Issue"
+   '       tbSave.Enabled = True
+   '       tbNew.tooltip = "New Health Issue"
+   '       tbNew.Enabled = True
+   '       tbDecisionSupport.Enabled = True 
+   '    Case "FVaccinations"
+   '       tbSave.ToolTip = "Save Vaccination"
+   '       tbSave.Enabled = True
+   '       tbNew.tooltip = "New Vaccination"
+   '       tbNew.Enabled = True
+   '       tbPrint.tooltip = "Print Vaccination List"
+   '       tbPrint.Enabled = True
+   '    Case "FRestlessLegs"
+   '       tbNew.tooltip = "Clear Questionaire"
+   '       tbNew.Enabled = True
+   '    Case "FRequests"
+   '       tbPreview.Enabled = True
+   '       tbPreview.Tooltip = "Preview Request Form"
+   '       tbSave.ToolTip = "Save Request Form"
+   '       tbNew.tooltip = "New Request Form"
+   '       tbNew.Enabled = True
+   '       tbPrint.Tooltip = "Print Request Form"
+   '       tbPrint.Enabled = True   'print will save
+   '    Case "FGPMPTCA"
+   '       tbPrint.Tooltip = "Print GPMP or TCA"
+   '       tbPrint.Enabled = True
+   '       tbSave.Tooltip = "Save GPMP or TCA"
+   '       tbSave.Enabled = True   
+   '       tbNew.Enabled = True 
+   '       tbNew.Tooltip = "Start a New GP Management Plan"
+   '       tbEdit.Enabled = True
+   '       tbEdit.Tooltip = "Edit the current GP Management Plan Claim"
+   '       tbDecisionSupport.Enabled = True
+   '       tbRefresh.Enabled = True
+   '       tbRefresh.tag = "Refresh"
+   '       With tbPreview
+   '          .Enabled = True   
+   '          .tooltip = "Preview GPMP or TCA"
+   '       End With
+   '    Case "FReferrals"
+   '       If modAdminDBI.Config_Get_Staff_Member("referrals_allow_save_unfinished_letters", False, Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff) Then
+   '          tbSave.ToolTip = "Save referral without finalising (not printed or sent via HL7)"
+   '          tbSave.Enabled = True
+   '       End If
+   '       tbNew.tooltip = "New Referral"
+   '       tbNew.Enabled = True
+   '       tbPrint.Tooltip = "Print Referral or send via HL7 and finalise"
+   '       tbPrint.Enabled = True
+   '       tbPreview.Tooltip = "Preview Referral"
+   '       tbPreview.Enabled = True
+   '    Case "FClozapine"
+   '       tbRefresh.tooltip = "Add or edit clozapine details"
+   '       tbSave.Enabled = True
+   '       tbSave.Tooltip = "Save clozapine details"
+   '       tbPrint.Enabled = True
+   '       tbPrint.Tooltip = "Print Clozapine Forms"
+   '       tbNew.Tooltip = "New clozapine Details"
+   '       tbNew.Enabled = True
+   '       tbPreview.Enabled = False
+   '       tbPreview.Tooltip = ""
+   '       tbEdit.Enabled = True
+   '       tbEdit.Tooltip = "Edit clozapine details"
+   '       tbDecisionSupport.Enabled = True 
+   '       tbRefresh.Enabled = True
+   '       tbRefresh.Tooltip = "Refresh Electronic Results"
+   '    Case "FDiabetes"
+   '       tbRefresh.Enabled = True
+   '       Select Case Form_Diabetes.TabStrip1.Index
+   '          Case 0 'DACC
+   '             tbRefresh.tooltip = "Refresh DACC Components"
+   '             tbSave.Enabled = True
+   '             tbSave.Tooltip = "Save and Print DACC"
+   '             tbPrint.Enabled = True
+   '             tbPrint.Tooltip = "Re-Print DACC"
+   '             tbNew.Tooltip = "New DACC"
+   '             tbNew.Enabled = True
+   '             tbPreview.Enabled = True
+   '             tbPreview.Tooltip = "View Summary of the DACC"
+   '             tbEdit.Enabled = True
+   '             tbEdit.Tooltip = "Edit DACC"
+   '             tbDecisionSupport.Enabled = True 
+   '          Case 1 'group services
+   '             tbRefresh.tooltip = ""
+   '             tbSave.Enabled = True
+   '             tbSave.Tooltip = "Save and Print Allied Health Referral Form"
+   '             tbPrint.Enabled = True
+   '             tbPrint.Tooltip = "Re-Print Allied Health Referral Form"
+   '             tbNew.Tooltip = "New  Allied Health Referral Form"
+   '             tbNew.Enabled = True
+   '             tbPreview.Enabled = True
+   '             tbPreview.Tooltip = "View  Allied Health Referral Form"
+   '             tbEdit.Enabled = True
+   '             tbEdit.Tooltip = "Edit  Allied Health Referral Form"
+   '             tbDecisionSupport.Enabled = True
+   '       End Select
+   '    Case "FDACC"
+   '       tbRefresh.Enabled = True
+   '       tbRefresh.tooltip = "Refresh DACC Components"
+   '       tbSave.Enabled = True
+   '       tbSave.Tooltip = "Save and Print DACC"
+   '       tbPrint.Enabled = True
+   '       tbPrint.Tooltip = "Re-Print DACC"
+   '       tbNew.Tooltip = "New DACC"
+   '       tbNew.Enabled = True
+   '       tbPreview.Enabled = True
+   '       tbPreview.Tooltip = "View Summary of the DACC"
+   '       tbEdit.Enabled = True
+   '       tbEdit.Tooltip = "Edit DACC"
+   '    Case "FFamilyHistory"
+   '       tbSave.ToolTip = "Save Family History"
+   '       tbSave.Enabled = True
+   '       tbNew.tooltip = "New Family Member"
+   '       tbNew.Enabled = True
+   '    Case "FProgressNotesImages"
+   '       tbSave.ToolTip = "Save Image"
+   '       tbSave.Enabled = True
+   '       tbNew.tooltip = ""
+   '       tbNew.Enabled = False
+   '    Case "FRecalls"
+   '       tbSave.ToolTip = "Save Recall"
+   '       tbSave.Enabled = True
+   '       tbNew.tooltip = "New Recall"
+   '       tbNew.Enabled = True
+   '    Case "FOccupation"
+   '       tbNew.Tooltip = "New Occupation"
+   '       tbNew.Enabled = True
+   '       tbSave.Tooltip = "Save Occupation"
+   '       tbSave.Enabled = True
+   '    Case "FWorkCover", "FWorkcoverNSW"
+   '       tbNew.Tooltip = "New Workcover Form"
+   '       tbNew.Enabled = True
+   '       tbPrint.Enabled = True  
+   '       tbPrint.Tooltip = "Print Workcover Form"
+   '       tbPreview.Tooltip = "Preview Workcover Form"
+   '       tbPreview.Enabled = True
+   '    Case "FMentalHealth"
+   '       tbNew.Tooltip = "New Mental Health Plan"
+   '       tbNew.Enabled = True
+   '       tbSave.Tooltip = "Save Mental Health Plan"
+   '       tbSave.Enabled = True
+   '       tbPreview.Tooltip = "Preview Mental Health Plan"
+   '       tbPreview.Enabled = True
+   '       tbPrint.tooltip = "Print Mental health Plan"
+   '       tbPrint.Enabled = False
+   '       tbDecisionSupport.Enabled = True 
+   '    Case "FCertificates"
+   '       Select Case FCertificates.TabStrip1.Index
+   '          Case 0 'medical
+   '             tbNew.Tooltip = "New Medical Certificate"
+   '             tbNew.Enabled = True
+   '             tbSave.Tooltip = "Save Medical Certificate"
+   '             tbSave.Enabled = True
+   '             tbPreview.Tooltip = "Preview Medical Certificate"
+   '             tbPreview.Enabled = True
+   '             tbPrint.tooltip = "Print Medical Certificate"
+   '             tbPrint.Enabled = True
+   '             tbDecisionSupport.Enabled = True 
+   '          Case 1 'centrelink
+   '             tbNew.Tooltip = "New Centrelink Certificate"
+   '             tbNew.Enabled = True
+   '             tbSave.Tooltip = "Save Centrelink Certificate"
+   '             tbSave.Enabled = True
+   '             tbPreview.Tooltip = "Preview Centrelink Certificate"
+   '             tbPreview.Enabled = True
+   '             tbPrint.tooltip = "Print Centrelink Certificate"
+   '             tbPrint.Enabled = True
+   '             tbDecisionSupport.Enabled = True 
+   '          Case 2 'workcover 
+   '             ' tbNew.Tooltip = "New Centrelink Certificate"
+   '             ' tbNew.Enabled = True
+   '             ' tbSave.Tooltip = "Save Centrelink Certificate"
+   '             ' tbSave.Enabled = True
+   '             ' tbPreview.Tooltip = "Preview Centrelink Certificate"
+   '             ' tbPreview.Enabled = True
+   '             ' tbPrint.tooltip = "Print Centrelink Certificate"
+   '             ' tbPrint.Enabled = True
+   '             ' tbDecisionSupport.Enabled = True 
+   '       End Select
+   '       
+   '    Case "FPrescriptions"
+   '       tbNew.Tooltip = "New Script Item"
+   '       tbNew.Enabled = True
+   '       tbPrint.tooltip = "Print all scripts"
+   '       tbPrint.Enabled = True
+   ' End Select
+   
+End
+
+Public Sub mnuSections_Click()
+   
+   If Last.tag <> "Ignore" Then
+      form_clinical.Editor_ShowPage(Last.tag)
+   End If
+Catch
+   Return
+   
+End
+
+Public Sub tbDecisionSupport_Click()
+   
+   DecisionSupport_Show("", False)
+   
+End
+
+Public Sub cmbConsultationType_Click()
+   
+   If currentconsult Then
+      currentconsult.Set(consultationtypes[cmbConsultationType.Index]!pk, "")
+   End If
+   
+End
+
+Public Sub mnuHelp_Click()
+   
+   Select Case Last.tag
+      Case "about"
+         FAbout.ShowModal()
+      Case "get help online"
+      Case "report a problem"
+   End Select
+Catch
+   Return  
+   
+End
+
+Public Sub pnlToolButtons_Drop()
+   
+   Dim hCtrl As Control
+   
+   For Each hctrl In Last.Children
+      If hCtrl.Tag = Drag.Source.Tag Then
+         Message.info("can't drop - it already exists")
+      Endif
+   Next
+   
+   modEditAreaHelpers.ToolButton_Create(Last, Drag.icon, Drag.Source.tag, Last.Children[0].height, Me)
+   const.Clinical_Toolbuttons_Refresh()
+   
+End
+
+Public Sub SelectPatient_click()
+   '-------------------------------------------------------------------
+   'User has cancelled patient selection in popup patient selector form
+   '-------------------------------------------------------------------
+   
+   If Last.tag = "cancel" Then Stop Event
+   ' form_select.Visible = False
+   ' VSplit_Main.Visible = True
+   ' mnuView.Visible = False
+   ' mnuSections.Visible = False
+   ' mnuDecisionSupport.Visible = False
+   ' mnuHelp.visible = False
+   ' cmbSearch.SetFocus()
+   
+End
+
+Public Sub pnlToolButtons_Menu()
+   
+   Dim form_config_toolbar As FConfigToolbar
+   
+   With form_config_toolbar = New FConfigToolbar
+      .Init("FClinical", Toolbuttons)
+      .Expand = False
+      .ShowModal
+   End With
+   
+End
+
+Public Sub pnlWarnings_Menu()
+   
+   Dim form_config_warnings As FConfigWarnings
+   
+   If IsNull(currentconsult) Then Return
+   
+   With form_config_warnings = New FConfigWarnings
+      .Init(currentconsult!patient!fk_patient, Warning_Icons)
+      .Expand = False
+      .ShowModal
+   End With
+   
+End
+
+Public Sub lblwarnings_MouseDown()
+   
+   pnlWarnings_Menu
+   
+End
+
+Public Sub mnuView_Click()
+   
+   Select Case Last.tag
+      Case "patients seen"
+         FPatientsSeen.Init()
+         FPatientsSeen.ShowModal()
+      Case "all previous notes"
+         '   Editor_ShowPage("All Previous Notes")
+      Case "view by problem"
+         '    Case "include deceased patients"
+         '       If mnuView_IncludeDeceasedPatients.value = True Then
+         '          Settings["FClinical/mnuView_IncludeDeceasedPatients.value"] = True
+         '       Else
+         '          Settings["FClinical/mnuView_IncludeDeceasedPatients.value"] = False
+         '       Endif
+         '    Case "include inactive patients"
+         '       If mnuView_IncludeInactivePatients.value = True Then
+         '          Settings["FClinical/mnuView_IncludeInactivePatients.value"] = True
+         '       Else
+         '          Settings["FClinical/mnuView_IncludeInactivePatients.value"] = False
+         '       Endif
+   End Select
+Catch
+   Return 
+   
+End
+
+Public Sub webview_menu()
+   ' '--------------------------------------------------------------
+   ' 'User has clicked over a webview browser eg used in FHTMLViewer
+   ' 'to display results and letters, create a popup menu so user
+   ' 'can do things like auto-copy back into the progress notes
+   ' 'with appropriate annotation.
+   ' '--------------------------------------------------------------
+   ' 
+   ' Dim hCtrl As Control
+   ' Dim page As FLinkContainer
+   ' Dim mnu As Menu
+   ' 
+   ' For Each page In WorkspaceEditor.Windows
+   '    If page = WorkspaceEditor.ActiveWindow Then
+   '       For Each hctrl In page.VBoxEditor.Children
+   '          If hctrl Is Form Then
+   '             If hctrl.name = "FHtmlViewer" Then
+   '                FCurrentHTMLViewer = hctrl
+   '                FCurrentHTMLViewer.mnuWebView.Children.Clear()
+   '                mnu = New Menu(FCurrentHTMLViewer.mnuWebview) As "mnuWebview"
+   '                mnu.name = "mnuWebView_Copy"
+   '                mnu.caption = "Copy"
+   '                mnu.tag = "copy"
+   '                mnu = New Menu(FCurrentHTMLViewer.mnuWebview) As "mnuWebview"
+   '                mnu.name = "separator_1"
+   '                mnu.caption = ""
+   '                mnu = New Menu(FCurrentHTMLViewer.mnuWebview) As "mnuWebview"
+   '                mnu.name = "mnuWebView_Insert_Into_Notes"
+   '                mnu.caption = "Insert into notes"
+   '                mnu.tag = "insert into notes"
+   '                mnu = New Menu(FCurrentHTMLViewer.mnuWebview) As "mnuWebview"
+   '                mnu.name = "mnuWebView_Insert_And_Switch"
+   '                mnu.caption = "Insert into notes and switch back to editor"
+   '                mnu.tag = "insert into notes and switch back"
+   '                FCurrentHTMLViewer.mnuWebView.Popup()
+   '                Return
+   '             Endif
+   '          End If
+   '       Next
+   '    End If
+   ' Next
+   ' 
+   
+End
+
+Public Sub mnuWebView_Click()
+   '--------------------------------------------------------------------------------------
+   'This is experimental, but I've got sick of copy/paste from a result back to the notes
+   'So there are two menu options - just to insert, so one can keep reading the result and
+   'then just switch back by onself, or copy and insert with auto-switch back. The text is
+   'also rendered in small italics to demonstrate it is not part of the users narrative
+   'and is outlined with horizontal rulers. I'll test this and see how it goes.
+   'FIXME THE insert into notes without switch back does switch back
+   '--------------------------------------------------------------------------------------
+   '    
+   '    Dim sText As String
+   '    
+   '    Stop Event
+   '    If IsNull(Last.tag) Then Return
+   '    
+   '    Select Case Last.tag
+   '       Case "insert into notes", "insert into notes and switch back"
+   '          sText = "<HR><small><B>" & FCurrentHTMLViewer.Get_Document_Details() & "</B></small><BR>"
+   '          sText &= "<small><i>" & FCurrentHTMLViewer.WebView1.SelectedText & "<i></small>"
+   '          sText &= "<HR><BR>"
+   '          sText = Replace(stext, "\n", " ")
+   '          If Not Editor_PageExists("New General Notes", "") Then 'user could have closed the progress note page
+   '             Editor_ShowPage("New General Notes")
+   '          Endif
+   '          FGeneralNotesEditor.teNotes.Insert(".sometext")
+   '          FGeneralNotesEditor.teNotes.richtext = Replace$(FGeneralNotesEditor.teNotes.richtext, ".sometext", sText)
+   '          ' If Last.tag = "insert into notes and switch back" Then
+   '          '    Editor_ShowPage("New General Notes")
+   '          ' Endif
+   '    End Select
+   ' Catch
+   '    Return 
+   
+End
+
+Public Sub tbPreview_Click()
+   ' 
+   ' Editor_ShowPage("Edit Notes")
+   ' Message.info("Richard Stop and check FClinical tbPreview_click")
+   
+End
+
+Public Sub mnuImages_Click()
+   '----------------------------------------------------
+   'this is the popup menu over the patient's photograph
+   '-----------------------------------------------------  
+   
+   Dim fk_image As Integer
+   Dim NewImage As Image
+   Dim tempfile As String
+   
+   Select Case Last.tag
+      Case "paste image"
+         If Clipboard.type = Clipboard.Image Then
+            NewImage = Clipboard.Paste()                                                   'retrieve the image
+            tempfile = Temp() & ".png"                                                     'create file to save image to
+            Goto SavePatientPicture                                                        'Save the picture
+         Else
+            Message.Info("Sorry, the clipboard does not seem to contain image data")
+         End If
+      Case "brightness"
+         With FImageGet
+            .btnOK.Caption = "Save Changes"
+            .tbGetPicture.Visible = False 
+            .HBox_ImageSize.Enabled = False  
+            .Hbox_Quality.Enabled = False 
+         End With
+         Try FImageGet.Set_Image(PicPatient.Picture.Image)                                 'load picture to Image Manipulator
+         If Not Error Then
+            FImageGet.ShowModal()
+            NewImage = Clipboard.Paste()                                                   'retrieve the image
+            tempfile = Temp() & ".png"                                                     'create file to save image to
+            Goto SavePatientPicture                                                        'Save the picture
+         End If   
+      Case "delete"
+         If Message.Question("Are you sure you want to delete this patient's picture?", "Yes", "No") = 2 Then Return
+         modDBConnect.exec_query("Update contacts.data_persons set fk_image =  null WHERE pk=" & currentconsult!patient!fk_person)
+         modDBConnect.CommitTrans()
+         PicPatient.Picture = Picture.Load("icons/misc/no_photo.png")
+      Case "patient picture"
+         ' PatientPicture = Currentconsult!progress_notes_images[lcImages.children[lcImages.index].tag]
+         ' fk_image = Currentconsult!progress_notes_images[lcImages.children[lcImages.index].tag]!pk
+         ' '    PersonPicture!path = CurrentThumb.Tag
+         ' '     P!fk_image = modContactsDBI.Image_Save(PersonPicture, currentconsult.GetPK())
+         ' '    If Not Error Then
+         ' sql = "Update contacts.data_persons set fk_image = " & fk_image & " WHERE pk=" & currentconsult!patient!fk_person
+         ' modDBConnect.exec_query(sql)
+         ' modDBConnect.CommitTrans()
+         ' Try PicPatient.Picture = Picture.Load(PatientPicture!path)
+         ' '    Endif
+         
+   End Select
+   Return
+SavePictureToFile:
+   
+SavePatientPicture:
+   NewImage.Save(Tempfile)                                                        'create a filepath
+   fk_image = modConsultDBI.Image_Save(Tempfile, Currentconsult.GetPK(), modUtil.Calc_md5sum_File(Tempfile))                           'save to backend
+   modDBConnect.exec_query("Update contacts.data_persons set fk_image = " & fk_image & " WHERE pk=" & currentconsult!patient!fk_person) 'link to the person
+   modDBConnect.CommitTrans()
+   Try PicPatient.Picture = Picture.Load(Tempfile)                     'show the picture
+Catch
+   Return   
+   
+End
+
+Public Sub txtOccupation_DblClick()
+   '---------------------------------------------------------------------------
+   'User has doubled clicked on Occupation? and wants to enter a new occupation
+   '---------------------------------------------------------------------------
+   
+   With txtOccupation
+      .Background = Color.White
+      .pos = 0
+      .ReadOnly = False
+      If .text = "Occupation?" Then
+         .text = ""
+      End If
+      .SetFocus
+   End With
+   
+End '
+
+Public Sub txtOccupation_keypress()
+   '-----------------------------------------------------------
+   'User typing in a new occupation, only allow a-z key presses
+   '-----------------------------------------------------------
+   
+   ' If modUtilGUI.AllowKeys(const.AllowKeys_Letters, key.code) = False Then
+   '    Stop Event
+   '    Last.SetFocus
+   ' End If
+   If Key.code = Key.down And FClinical.listview1.visible Then
+      With FClinical.listview1
+         .MoveFirst
+         .Item.Selected = True
+         .SetFocus
+      End With
+   Endif
+   
+End
+
+Public Sub txtOccupation_LostFocus()
+   '---------------------------------------------------------------
+   'User has given focus to txtOccupation and now clicked elsewhere
+   'Save the occupation if it is not an empty string
+   '---------------------------------------------------------------
+   
+   With txtOccupation
+      .Background = txtAge.Background
+      .pos = 0
+      .ReadOnly = True
+      If .text = "" Then
+         .text = "Occupation?"
+      End If
+   End With
+   bExit = True    'prevents re-entry when spell checking   
+   Occupation_Save
+   bExit = False  
+   
+End
+
+Public Sub Occupation_Save()
+   '-------------------------------------------------------------------------------------
+   'Saves the patient's occupation... quite complex to make the task quick for the user
+   'FIXME put all the spelling stuff somewhere else across all modules
+   '*Allows entry of an occupation
+   '*Auto-spell checks this - pops up dialog if mistakes
+   '*Checks if occupation exists in occupational history
+   '*Asks if user wants to make this the default if it does, otherwise becomes default
+   '*Changes appropriate back-end flags to make all other occupations not main or current
+   'Returns true if occupation was changed.
+   '-------------------------------------------------------------------------------------
+   
+   Dim OH As Collection
+   Dim OC As Collection
+   Dim occupational_history As CRow
+   Dim fk_occupation As Integer
+   Dim sMsg As String
+   
+   If Bexit Then Return
+   If Trim(txtOccupation.text) <> "" Then
+      SpellCheck_TextBox(txtOccupation)                                  'popup spelling correction dialog if needed
+      OC = modCommonDBI.Occupation_Get(Trim(txtOccupation.text))         'check if occupation is in the database
+      If Not IsNull(OC) Then                                             'if it is retrieive the key
+         fk_occupation = OC!pk
+      Else
+         smsg = "The occupation:\n\n " & Trim(txtOccupation.text) & "\n\nwas not found in the database.\n\n"
+         "Please check the spelling and if ok confirm you wish to add this occupation to the database.\n\n"
+         "Note also that this occupation will be registered as the current and main occupation. You can "
+         "always go back and change any  of this in the occupations module."
+         If Message.Question(sMsg, "Yes - Add Occupation", "Cancel") = 2 Then
+            txtOccupation.text = ""
+            txtOccupation.SetFocus
+            Return
+         Else
+            fk_occupation = modCommonDBI.Occupation_Save(Lower(Trim(txtOccupation.text)))
+         End If
+      Endif
+      '---------------------------------------------------------------------- 
+      'Check this occupation is not already in  the patient's occupations list
+      '-----------------------------------------------------------------------
+      For Each OH In currentconsult!occupational_history
+         If OH!fk_occupation = fk_occupation Then  
+            sMsg = "The patient already is listed as having the occupation you have entered: '"
+            sMsg &= Trim(txtOccupation.text) & "'\n\n"
+            sMsg &= "Do you wish to have this occupation displayed as the patient's current and main occupation?"
+            Message.Title = "Occupation exists in patient's record"
+            Select Case Message.Question(sMsg, "Yes", "No")
+               Case 1  'Yes, have to make all the others inactive  
+                  modOccupationalHistoryDBI.Patient_Occupations_Mark_NotCurrentOrMain(currentconsult)
+                  modOccupationalHistoryDBI.Patient_Occupation_Make_Current_And_Main(OH!fk_occupational_history)
+                  modContactsDBI.Person_Set_occupation(currentconsult!patient!fk_person, fk_occupation)
+                  modDBConnect.CommitTrans()
+                  Try FGPMPTCA.GPMP_Update                 'If care planning module loaded update the LaTex
+               Case 2 'No, then reset the default occupation in the patients view.
+                  If Not IsNull(currentconsult!patient!occupation) Then
+                     txtOccupation.Text = UCase(Left(currentconsult!patient!occupation, 1)) & Right(currentconsult!patient!occupation, Len(currentconsult!patient!occupation) - 1)
+                     If currentconsult!patient!retired Then
+                        txtOccupation.text &= " (Retired)"
+                        txtOccupation.pos = 0
+                     End If
+                  End If
+            End Select
+            Return
+         Endif
+      Next
+      '------------------------------------------------------------------------------------------------------
+      'Ok, not in their history
+      'First, mark all other occupations in their occupational history as not current and not main occupation
+      '------------------------------------------------------------------------------------------------------
+      modOccupationalHistoryDBI.Patient_Occupations_Mark_NotCurrentOrMain(currentconsult)
+      '--------------------------------------------------------------------------
+      'Now save the new occupation for this patient
+      'Bizaare as it may seem the occupation is kept in two places. argue with me
+      'and you can then fix the code base (historical)
+      '--------------------------------------------------------------------------
+      modContactsDBI.Person_Set_occupation(currentconsult!patient!fk_person, fk_occupation)
+      sMsg = "New occupation noted:" & modStrings.Capitalise_Words_In_String(Trim(txtOccupation.text))
+      occupational_history = New CRow   
+      occupational_history!fk_occupation = fk_occupation
+      occupational_history!fk_consult = currentconsult.GetPK()
+      occupational_history!current = True
+      occupational_history!main_occupation = True  
+      occupational_history!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sMsg, const.cSection_OccupationalHistory, -1, "occupations", 0, False)
+      occupational_history.Save("clin_history.occupational_history", "fk_occupational_history")
+      modDBConnect.CommitTrans()
+      Try FGPMPTCA.GPMP_Update                                         'If care planning module loaded update the LaTex
+      Refresh_Section(const.cSection_HealthSummary)                    'if health summary showing then refresh that
+      currentconsult!patient!fk_occupation = fk_occupation
+      currentconsult!patient!occupation = modStrings.Capitalise_Words_In_String(txtOccupation.text)
+      currentconsult.Refresh("occupational_history")                                
+      With Last
+         .Background = txtAge.Background
+         .ReadOnly = True
+         .pos = 0
+      End With
+      Try FOccupation.Occupations_Reload   'if this form is open reload the occupations list
+   Else
+      If Not IsNull(currentconsult!patient!occupation) Then 'txtOccupation is blank, try and replace with existing one
+         txtOccupation.text = currentconsult!patient!occupation
+      Else
+         txtOccupation.text = "Occupation?"
+      Endif
+   End If
+   FClinical.Refresh_Section(const.cSection_HealthSummary) 
+   
+End
+
+Public Sub txtOccupation_Enter()
+   
+   txtOccupation.border = True   
+   
+End
+
+Public Sub txtOccupation_Leave()
+   
+   txtOccupation.border = False
+   txtOccupation.ReadOnly = True
+   txtOccupation.Background = txtAge.Background
+   
+End
+
+Public Sub txtOccupation_Activate()
+   '--------------------------------------------------------
+   'User has pressed <enter> key Save the current occupation
+   '--------------------------------------------------------
+   
+   Occupation_Save()
+   
+End
+
+Public Sub Hsplit_ToolBar_Lists_Resize()
+   
+   If Not IsNull(currentconsult) Then Allergies_Sensitivities_Refresh()
+   
+End
+
+Public Sub txtConsultDate_Activate()
+   
+   Consult_Edit
+   
+End
+
+Public Sub txtConsultDate_KeyPress()
+   
+   If Not modUtilGUI.AllowKeys(const.AllowKeys_DateFormat, Key.code) Then
+      Stop Event
+   Endif
+   
+End
+
+Public Sub Consult_Edit_Last()
+   '------------------------------------------------------------
+   'Allow editing of a consultation with full audit trail   
+   'if bLastConsult = true the pull in the last consultation
+   'called by tbSections_Click
+   'and whatever mechanism I set up to edit the others FIXME
+   'see also FuserPreferences where this preference is set up
+   '-------------------------------------------------------------
+   
+   Dim new_date As Date
+   Dim now_no_time As Date
+   Dim date_diff As Integer
+   Dim R As Result
+   Dim PN As Collection
+   Dim last_consult As Collection
+   Dim sMsg As String
+   
+   If Not Consult_Edit_Show_Tip() Then Return
+   bEditing = True             ' fixme ? need this Now
+   last_consult = modConsultDBI.fk_consult_get_for_date_and_staff_and_consult_type(currentconsult!patient!fk_patient, consultationtypes[cmbConsultationType.Index]!pk)
+   If IsNull(last_consult) Then
+      Message.info("no consult found")
+      Return
+   Endif
+   new_date = last_consult!consult_date   
+   now_no_time = modUtil.Make_Date_From_String(Format(Now(), "dd/mm/yyyy"))
+   date_diff = DateDiff(New_date, now_no_time, gb.day)
+   If date_diff < 0 Then
+      sMsg = "You can only edit consultation that has a date before today!"
+      Message.Info(smsg)
+      txtConsultDate.text = Format(Now(), "dd/mm/yyyy")
+      Return
+   End If  
+   Consult_Edit(last_consult)
+   
+End
+
+Public Function Consult_Edit_Show_Tip() As Boolean
+   
+   Dim sMsg As String
+   
+   If Not modAdminDBI.Has_User_Seen_Tip("FClinical.EditLastConsult") Then        'give them the blurb if they've not banished it previously
+      sMsg = "<P><B>Very important things to understand</B></P>"
+      "<UL><LI>You can only ever edit your own consultations as your staff ID will be used to retrieve the data"
+      "<LI>The entire consultation content from that date will be re-loaded back into EasyGP"
+      "<LI>You may continue adding new notes today for that previous consultation"
+      "<LI>Those notes will of course be saved back to the previous consultation date." 
+      "<LI>At the moment only 'at consultating room consultations' i.e those done in the surgery are accessible from this button. "
+      "<LI>If you want to edit other dates not of this type you can do so by clicking the calander button next to the consult date and selecting a date, or by typing in the date in the date text box." 
+      "</UL>"
+      "<P><B>Be aware that auditing will be conducted as follows:</B><P> "
+      "<UL>"
+      "<LI>The entire contents of your <U><I>previous consultation notes <B>before</B> you add new notes</U></I>  will be archived as part of an audit trail"
+      "<LI>These will always be available for medico-legal audit and will visibly show up in the 'All Progress Notes' section when the 'Include Audit Trail option is checked"
+      "<LI>Whatever you write today will entirely replace those notes archived to the audit trail"
+      "</UL>"
+      With FUsageTip
+         .Init("Editing the Last Consultation", "FClinical.EditLastConsult", sMsg)
+         If Not .ShowModal() Then Return
+      End With  
+   End If 
+   Return True 
+   
+End
+
+Public Sub Consult_Edit(consult_to_edit As Collection)
+   '------------------------------------------------------------------------------------------- 
+   ' Sets up easygp so that today = previous date
+   ' i.e the consult of a previous date is reloaded and an appropriate audit trail will be kept
+   ' ------------------------------------------------------------------------------------------ 
+   
+   WorkspaceEditor_Clear()             'remove all tabs from workspace
+   cmbConsultationType.index = cmbConsultationType.Find(consult_to_edit!consult_type)
+   With lblWarningEditingConsult       'vividlyi signal to user this what's happening
+      .Foreground = Color.Red
+      .Background = Color.Yellow
+      If IsNull(consult_to_edit!fk_consult) Then
+         .text = "NEW CONSULTATION"
+      Else
+         .texT = "EDIT LAST CONSULT"
+      Endif
+   End With
+   HBox_ConsultDetails.Background = Color.Yellow
+   With lblConsult
+      .Background = Color.Yellow
+      .Foreground = Color.Red
+      If IsNull(consult_to_edit!fk_consult) Then
+         .text = " on "
+      Else
+         .text = " from "
+      Endif
+   End With
+   With datebox1
+      .Background = Color.Yellow
+      .Foreground = Color.Red
+      .value = consult_to_edit!consult_date
+      .Visible = True   
+   End With
+   If IsNull(consult_to_edit!fk_consult) Then
+      currentconsult = New CConsult(currentconsult!patient, consultationtypes[cmbConsultationType.Index]!pk, True) 'force new consult 
+   Else
+      currentconsult.Set_pk(consult_to_edit!fk_consult)
+   Endif
+   currentconsult.Set_date(consult_to_edit!consult_date) 
+   FClinical.Editor_ShowPage_External("All Previous Notes")
+   FClinical.Editor_ShowPage_External("New General Notes")
+   
+End
+
+Public Sub picPatient_Menu()
+   
+   If IsNull(currentconsult) Then Return 
+   mnuImages.Popup()
+   
+End
+
+Public Sub gvAllergies_Menu()
+   '-------------------------------------------------------------------------------
+   'popup a menu over the allergies list on the toolbar
+   'Even if no allergies or sensitivities exist there will be
+   'one row in the grid saying:
+   'NO RECORD OF PATIENT BEING ASKED ABOUT ALLERGIES
+   '(see Allergies_Sensitivities_Refresh()
+   'if no allergies exist then give the user a quick option toadd to the allergies
+   'table and record that they have asked patient and 'nil known' will be shown
+   'i.e expose the menu option that allows this
+   '---------------------------------------------------
+   
+   If currentconsult!allergies.count Then                                 'have at least an allergy or sensitivity
+      mnuToolbarAllergies_NoAllergiesSensitivities.Enabled = False       'don't need the quick 'nil known allergies/sensitivities menu option
+   Endif
+   If gvAllergies.Rows.count And currentconsult!allergies.count = 0 Then   'nothing recorded yet?
+      mnuToolbarAllergies_NoAllergiesSensitivities.Enabled = True       'allow the quick add 'nil known' menu option
+   End If   
+   mnuToolbarAllergies.Popup                                               'popup the menu
+   
+End
+
+Public Sub mnuToolbarAllergies_Click()
+   '------------------------------------------------------------------------- 
+   'User has clicked on the popup menu over the allergies grid on the toolbar
+   'Either change the font, if quick-insert 'nil known'
+   'see the FIXME comments regarding the font
+   '------------------------------------------------------------------------- 
+   
+   Dim allergy As CRow  
+   Dim ProgressNote As CRow   
+   
+   Select Case Last.tag
+      Case "font"                                               'change the default font **Bug will not refresh until program restarts FIND THIS FIXME
+         modUtilGUI.Columnview_SetFont(gvAllergies, "FClinical")
+      Case "nil known"
+         Message.title = "Auto-Enter No Known Allergies"
+         If Message.Question("Please confirm that you have asked the patient they have no known allergies or sensitivites.\n\nOnce done you may click 'Confirm' to automatically save this information.", "Confirm - No Known Allergies", "Cancel") = 2 Then Return   
+         allergy = New CRow
+         allergy!fk_consult = currentconsult.GetPK()
+         allergy!nil_allergies_sensitivities = True
+         ProgressNote = New CRow 
+         ProgressNote!fk_consult = currentconsult.GetPK()
+         ProgressNote!notes = "Allergies: patient questioned and reports nil known."
+         ProgressNote!fk_section = const.cSection_allergies
+         ProgressNote!fk_audit_action = const.cAuditAction_Insert                 
+         ProgressNote!problem = "Allergies"
+         ProgressNote.Save("clin_consult.progressnotes", "fk_progressnote")
+         allergy!fk_progressnote = progressnote!fk_progressnote
+         allergy.Save("clin_allergies.allergies", "fk_allergy")
+         modDBConnect.CommitTrans()
+         Allergies_Sensitivities_Refresh                        'reload the allergies/grid
+         FClinical.Refresh_Section(const.cSection_HealthSummary) 'Refresh the health summary if showing
+         Try FAllergy.Allergies_Reload_External                 'If the allergy module showing, reload the allergies list there
+         Try FGPMPTCA.GPMP_TCA_Reload_Latex                     'reload latex if working on care planning
+   End Select
+Catch
+   Return 'weird gambas bug where message box not yet displayed, user clicks on button again > bombs.
+   
+End
+
+Public Sub SpellCheck_TextBox(tb As TextBox)
+   
+   bexit = True    'fixme shouldn't need this flag - check all category spell checking throughout program
+   teForSpelling.text = tb.text
+   bexit = False
+   
+   SpellChecker.init(tb)
+   SpellChecker.StartSpelling()
+   
+End
+
+Public Sub txtOccupation_Menu()
+   
+   mnuToolBar_Occupations.Popup
+   
+End
+
+Public Sub mnuToolBar_Occupations_Click()
+   
+   'User has selected edit the occupation
+   txtOccupation_DblClick() 
+Catch
+   Return 
+   
+End
+
+Public Sub Occupation_Select(occupation As Collection)
+   '----------------------------------------
+   'Select an occupation from the popup list
+   'called by Listview1_dblclick() 
+   '-----------------------------------------   
+   
+   bexit = True   
+   txtOccupation.Text = occupation!occupation
+   bexit = False
+   Occupation_Save
+   
+Catch
+   Return
+   
+End
+
+Public Sub txtOccupation_KeyRelease()
+   '--------------------------------------------------------
+   'Pop up a list of occupations for the user to choose from
+   '--------------------------------------------------------
+   
+   occupations = modCommonDBI.Occupations_Get(FClinical.listview1, txtOccupation)
+   If Not IsNull(occupations) Then
+      FClinical.listview1.height = Min(txtOccupation.height * occupations.Count, FClinical.vBoxWorkSpace.height)
+   End If   
+   
+End
+
+Public Sub ListView1_KeyPress()
+   
+   If Key.code = Key.return Then
+      FClinical.ListView1_DblClick()
+   Endif
+   
+End   
+
+Public Sub ListView1_DblClick()
+   
+   FClinical.listview1.Visible = False  
+   Wait
+   FClinical.listview1.MoveCurrent
+   Occupation_Select(occupations[FClinical.listview1.Item.key])
+   
+End
+
+Public Sub txtOccupation_GotFocus()
+   
+   With FClinical.listview1
+      .top = txtOccupation.top + txtOccupation.Height + pnlComms_Birthdate_Occupation.top
+      .left = VBoxDemographicDetails.left + VBox_Occupation_Birthdate.left + VBox_Occupation_Birthdate.padding 
+      .Visible = False
+   End With
+   
+End
+
+Public Sub ListView1_Leave()
+   
+   Last.visible = False
+   
+End
+
+Public Sub tlReminders_Menu()
+   
+   mnuToolbarRecallsDue.Popup()
+   
+End
+
+Public Sub mnuToolbarRecallsDue_Click()
+   
+   modUtilGUI.Columnview_SetFont(tlReminders, "FClinicalToolbar")
+   
+End
+
+Public Sub DateBox1_Activate()
+   '-------------------------------------------------------
+   'This is the datebox containing the consultation date
+   'attempt to load in edit mode the requested consult date
+   '-------------------------------------------------------  
+   
+   Dim SC As New Collection
+   Dim sMsg As String 
+   Dim now_no_time As Date = modUtil.Make_Date_From_String(Format(Now(), "dd/mm/yyyy"))
+   
+   If Not Consult_Edit_Show_Tip() Then Return
+   SC = Currentconsult!staff_members_consults
+   If Not SC.Exist(Format(DateBox1.value, "dd/mm/yyyy")) Then
+      sMsg = "There was no consultation found that you have entered notes for on the selected date: " & Format(DateBox1.value, "dd/mm/yyyy") & ".\n\n"
+      smsg &= "As we all forget to write up consultations sometimes, or, may see a patient after hours or at weekends, "
+      sMsg &= "EasyGP will allow you do create a new consultation but will  create an audit trail and annote the notes that the consultation was written up "
+      sMsg &= "on today's date, not the date the consultation took place.\n\n"
+      sMsg &= "You will need to enter the time using 24hr time format into the consultation date box on the toolbar before saving this past consultation.\n\n"
+      smsg &= "Would you like to insert a consultation into the notes for that date?\n\n"
+      If Message.Question(smsg, "Yes - Insert a Consultation", "No") = 2 Then Return
+      If DateDiff(modUtil.Make_Date_From_String(Format(DateBox1.value, "dd/mm/yyyy")), now_no_time, gb.day) < 0 Then
+         sMsg = "You can only create a consultation that has a date before today!"
+         Message.Info(smsg)
+         Return
+      Endif
+      Consult_Edit(["consult_date": modUtil.Make_Date_From_String(Format(DateBox1.value, "dd/mm/yyyy")), "consult_type": cmbConsultationType.Text])
+      datebox1.SetFocus
+   Else
+      Consult_Edit(SC[Format(DateBox1.value, "dd/mm/yyyy")])
+   Endif
+   
+End
+
+Public Sub DateBox1_Click()
+   
+   DateBox1_Activate()
+   
+End
+
+Public Sub Health_Funds_Add_Click()
+   
+   Dim smsg As String
+   Dim fk_fund As Integer
+   
+   Message.title = "Change Health Fund"
+   Select Case Last.tag
+      Case 1
+         smsg = "The patient will now be recorded as not being in a fund.\n\n"
+         fk_fund = 1
+      Case Else
+         sMsg = "The new health fund will be:" & Last.text & "\n\n"
+         fk_fund = health_insurance_companies[Last.tag - 1]!pk
+   End Select
+   sMsg &= "Do you wish to save the changed fund details to the database?"
+   If Message.Question(sMsg, "Yes - Save Changes", "Cancel") = 1 Then
+      tlHealthFund.text = Last.text
+      modDBConnect.exec_query("Update clerical.data_patients set fk_lu_private_health_fund = " & fk_fund & " WHERE pk=" & currentconsult!patient!fk_patient)
+      modDBConnect.CommitTrans
+   Endif
+   
+End
+
+Public Sub Health_Funds_Menu_Create()
+   
+   Dim fund As Collection
+   Dim mnu As Menu
+   
+   health_insurance_companies = modUtil.Copy_Collection_Keyed_Sequentially(modBillingDBI.Health_Funds_Get()) 
+   mnuHealthFunds_Add.Children.Clear
+   For Each Fund In health_insurance_companies
+      With mnu = New Menu(mnuHealthFunds_Add) As "Health_funds_add" 
+         .name = fund!fund
+         .text = Fund!fund
+         .tag = Fund!pk
+      End With
+      
+   Next
+   
+End
+
+Public Sub tlHealthFund_Menu()
+   
+   mnuHealthFunds.popup
+   
+End
+
+Public Sub lblAlert_Menu()
+   
+   'User has right mouse clicked on the alerts menu
+   If InStr(Lower(lblAlert.text), "never") Or InStr(Lower(lblAlert.text), "past") Or InStr(Lower(lblAlert.text), "current") Then
+      mnuToolBarSmoking_Never.enabled = False  
+   Else
+      mnuToolBarSmoking_Never.enabled = True 
+   Endif
+   If Not InStr(Lower(lblAlert.text), "smoke") Or lblAlert.text = "?? SMOKER ??" Then 
+      mnuToolBarSmoking.Popup
+   End If 
+   
+End
+
+Public Sub mnuToolBarSmoking_Click()
+   
+   Select Case Last.tag
+      Case "never smoked"
+         Message.Title = "Smoking Information"
+         If Message.Question("Are you sure the patient has never smoked.", "Yes", "No") = 2 Then Return
+         modRecreationalDrugs.Never_Smoked(currentconsult)
+      Case "smoking detail"
+         FClinical.Editor_ShowPage_External("Habits")
+   End Select 
+   
+End

@@ -175,7 +175,7 @@ CREATE OR REPLACE VIEW clin_certificates.vwcentrelinkcertificates AS
  SELECT centrelink_medical_certificates.pk AS pk_certificate,
     consult.consult_date,
     consult.fk_patient,
-    data_patients.patient_at_practice_since
+    data_patients.patient_at_practice_since,
     consult.fk_staff,
     centrelink_medical_certificates.fk_consult,
     centrelink_medical_certificates.fk_progressnote,

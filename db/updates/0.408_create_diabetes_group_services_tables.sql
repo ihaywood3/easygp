@@ -1,4 +1,4 @@
-﻿drop table chronic_disease_management.diabetes_group_allied_health_services cascade;
+﻿-- drop table chronic_disease_management.diabetes_group_allied_health_services cascade;
 
 Create table chronic_disease_management.diabetes_group_allied_health_services
 (pk serial primary key,

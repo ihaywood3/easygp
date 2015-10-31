@@ -8,7 +8,7 @@ Create Table clin_mentalhealth.Clozapine_Details
  fk_consult integer not null references clin_consult.consult(pk),
  clozapine_number text not null,
  clozapine_dose text not null,
- brand text not null;
+ brand text not null,
  fk_branch_clozapine_centre integer not null references contacts.data_branches(pk),
  fk_branch_dispensing_pharmacy integer not null references contacts.data_branches(pk),
  clozapine_centre_pharmacy_fax_number text default null,

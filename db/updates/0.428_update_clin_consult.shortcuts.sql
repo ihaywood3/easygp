@@ -63,4 +63,4 @@ from
 ALTER TABLE clin_consult.vwshortcuts    OWNER TO easygp;
 GRANT SELECT ON TABLE clin_consult.vwshortcuts TO staff;
 
-update db.lu_version set lu_minor=427;
+update db.lu_version set lu_minor=428;

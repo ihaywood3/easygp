@@ -14,7 +14,7 @@ download URL and file names.
 This script is provided under the terms of the GPL license version 3.0 by Dr H. Herb
 """
 import xml.etree.ElementTree as ET
-import psycopg2 as DBAPI
+import pg8000 as DBAPI
 import urllib
 import zipfile
 import os.path

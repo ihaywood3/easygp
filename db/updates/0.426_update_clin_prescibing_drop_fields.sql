@@ -19,6 +19,20 @@ CREATE OR REPLACE VIEW clin_prescribing.vwprescribedforhabits AS
 ALTER TABLE clin_prescribing.vwprescribedforhabits   OWNER TO easygp;
 GRANT ALL ON TABLE clin_prescribing.vwprescribedforhabits TO staff;
 
+CREATE OR REPLACE VIEW clin_prescribing.vwinstructionhabits AS 
+ SELECT instruction_habits.pk AS pk_instruction_habit,
+    instruction_habits.fk_instruction,
+    instruction_habits.fk_generic_product,
+    instruction_habits.fk_staff,
+    instruction_habits.weighting,
+    instructions.instruction
+   FROM clin_prescribing.instruction_habits,
+    clin_prescribing.instructions
+  WHERE instruction_habits.fk_instruction = instructions.pk;
+
+ALTER TABLE clin_prescribing.vwinstructionhabits   OWNER TO easygp;
+GRANT ALL ON TABLE clin_prescribing.vwinstructionhabits TO staff;
+
 alter table clin_prescribing.instructions drop column fk_lu_units;
 alter table clin_prescribing.instructions drop column  am ;
 alter table clin_prescribing.instructions drop column lunch;

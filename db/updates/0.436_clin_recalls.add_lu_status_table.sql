@@ -17,6 +17,7 @@ INSERT INTO  clin_recalls.lu_status(status) VALUES('repeat same interval');
 COMMENT ON COLUMN recalls.fk_status IS 'key to lu_status table, ie things like not due, finalised, refused
 corresponds to e.g gvar.RecallNotDue constants
 this defaults to 1 = not due';
+update clin_recalls.lu_recall_intervals set fk_interval_unit = 8 where fk_interval_unit = 0; 'fix for previousi bug';
 
 ALTER TABLE clin_recalls.recalls add constraint "recalls_fk_status_fkey" foreign key (fk_status) references  clin_recalls.lu_status(pk);
 

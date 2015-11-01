@@ -1,4 +1,4 @@
-insert into common.lu_ethnicity (pk,ethnicity) values (1, 'Not specified');
+﻿insert into common.lu_ethnicity (pk,ethnicity) values (1, 'Not specified');
 update clin_requests.lu_requests set fk_laterality = null where fk_laterality=0;
 
 
@@ -448,7 +448,7 @@ ALTER TABLE clin_requests.vwrequestproviders OWNER TO easygp;
 
 
 alter table clin_referrals.referrals alter COLUMN fk_pasthistory drop default ;
-alter table contacts.data_employees drop constraint "fk_branchLfkey";
+-- alter table contacts.data_employees drop constraint "fk_branchLfkey";
 alter table contacts.data_employees add constraint "fk_branch_fkey" FOREIGN KEY (fk_branch) REFERENCES contacts.data_branches(pk);
 
 ALTER TABLE clin_workcover.claims add constraint "claims_fk_person_fkey" foreign key (fk_person) references contacts.data_persons (pk);

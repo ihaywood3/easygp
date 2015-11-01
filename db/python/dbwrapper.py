@@ -104,7 +104,9 @@ class DBWrapper:
 
     def column_type(self,tbl,col):
         """Type name of a particular column"""
-        return self.query("select typname from pg_type,pg_attribute, pg_class, pg_namespace where relnamespace = pg_namespace.oid and pg_class.oid = attrelid and pg_type.oid = atttypid and nspname || '.' || relname = %s and attname = %s",(tbl,col))[0]['typname']
+        q= self.query("select typname from pg_type,pg_attribute, pg_class, pg_namespace where relnamespace = pg_namespace.oid and pg_class.oid = attrelid and pg_type.oid = atttypid and nspname || '.' || relname = %s and attname = %s",(tbl,col))
+        if len(q) == 0: return None
+        return q[0]['typname']
 
     def each_foreign_constraint(self):
         """list all foreign key constraints in the DB, dict keyed by table, dict keyed by column"""
@@ -165,6 +167,7 @@ pg_class c2, pg_namespace n2, pg_attribute a2
         items = kwargs.get('items',[])
         payments = kwargs.get('payments',[])
         cur = self.cursor()
+        if not 'online' in kwargs: kwargs['online'] = True
         if 'items' in kwargs: del kwargs['items']
         if 'payments' in kwargs: del kwargs['payments']
         if 'fk_staff' in kwargs: 

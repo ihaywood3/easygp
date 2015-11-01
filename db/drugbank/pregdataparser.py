@@ -116,12 +116,14 @@ def help(progname):
 		print "this script imports pregnancy drug codes/data into easygp's drug reference database"
 		print "USAGE: %s -p,--password=<password>" % progname
 		print "Optional parameters:"
-		print "-s, --server=<postgres ip/url, eg 'localhost', '192.168.0.1'>. Default is 'localhost'"
+		print "-s, --server=<postgres ip/url, eg 'localhost', '192.168.0.1'>. Default is '127.0.0.1'"
 		print "-d, --database=<name of postgres database>. Default is 'easygp'"
 		print "-u, --user=<postgres user>. Default is 'easygp'"
 		print
+		print "Drugs not found in the database will be written to stderr"
+		print
 		print "Example: %s -p mypassword" % progname
-		print "or       %s -s 192.168.0.1 -d drugref -u admin -p mypassword" % progname
+		print "or       %s -s 192.168.0.1 -d drugref -u admin -p mypassword  2>notfounddrugs.txt" % progname
 		
 
 if __name__ == "__main__":

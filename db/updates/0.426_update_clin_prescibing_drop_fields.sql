@@ -1,5 +1,6 @@
 ﻿alter table clin_prescribing.prescribed_for drop column fk_code cascade;
 alter table clin_prescribing.prescribed_for_habits drop column fk_brand cascade;
+alter table clin_prescribing.instruction_habits drop column fk_brand;
 
 CREATE OR REPLACE VIEW clin_prescribing.vwprescribedforhabits AS 
  SELECT 

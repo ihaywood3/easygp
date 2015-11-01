@@ -101,7 +101,7 @@ def parsedata(con, filename=PREGDATA_FILENAME):
 			updateOrInsertDrugPregnancyData(con, fk_drug, code, safety)
 			counter += 1
 		else:
-			print "ERROR: could not find drug %s" % drugname
+			sys.stderr.write("%s" % drugname)
 		l = f.readline().strip()
 		#skip last line
 		if l.endswith("};}"):
@@ -165,6 +165,7 @@ if __name__ == "__main__":
 		print "File %s not found, aborting program" % PREGDATA_FILENAME
 		sys.exit(1)
 
+	print """Trying to connect to database %s on server %s, for user %s with password %s""" % (db, host, user, password)
 	con= pgconnection(host=host, dbname=db, user=user, password=password)
 	parsedata(con, filename)
 	con.commit()

@@ -1,6 +1,6 @@
 ﻿alter table clin_prescribing.prescribed_for drop column fk_code cascade;
 alter table clin_prescribing.prescribed_for_habits drop column fk_brand cascade;
-alter table clin_prescribing.instruction_habits drop column fk_brand;
+alter table clin_prescribing.instruction_habits drop column fk_brand cascade;
 
 CREATE OR REPLACE VIEW clin_prescribing.vwprescribedforhabits AS 
  SELECT 
@@ -125,4 +125,4 @@ CREATE OR REPLACE VIEW clin_prescribing.vwprescribeditems AS
 ALTER TABLE clin_prescribing.vwprescribeditems   OWNER TO easygp;
 GRANT SELECT ON TABLE clin_prescribing.vwprescribeditems TO staff;
 
-update db.lu_version set lu_minor=425;
+update db.lu_version set lu_minor=426;

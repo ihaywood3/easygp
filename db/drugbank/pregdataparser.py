@@ -138,7 +138,7 @@ if __name__ == "__main__":
 		sys.exit(1)
 
 	
-	options, reminder = getopt.getopt(params, 'hs:d:u:p:', ['help', 'server=', 'database=', 'user=', 'password='])
+	options, reminder = getopt.getopt(params, 'h:s:d:u:p:', ['help', 'server=', 'database=', 'user=', 'password='])
 
 	for opt,arg in options:
 		if opt in ('-h', '--help'):

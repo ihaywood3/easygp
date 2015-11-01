@@ -17,12 +17,13 @@ This script is provided under the terms of the GPL license version 3.0 by Dr H. 
 """
 
 import sys, getopt
-import psycopg2 as DBAPI
+import pg8000 as DBAPI
 import urllib
 import os.path
 import json
 
-DOWNLOAD_URL= """http://www.tga.gov.au/webfiles/medicinesInPregnancyData.js"""
+# DOWNLOAD_URL= """http://www.tga.gov.au/webfiles/medicinesInPregnancyData.js"""
+DOWNLOAD_URL= """http://www.tga.gov.au/sites/all/libraries/tga_resources/medicines_database/medicinesInPregnancyData.js"""
 PREGDATA_FILENAME = """medicinesInPregnancyData.js"""
 
 
@@ -58,14 +59,27 @@ def find_drug(con, drugname):
 	cur = con.cursor()
 	cur.execute(SQL, (drugname,))
 	res=cur.fetchone()
-	if res is not None:
+	if res is not None:  #still needs handling of multiple return values and substrings
 		pk = res[0]
 	return pk
+
+def updateOrInsertDrugPregnancyData(con, fk_drug, code, safety):
+	cur = con.cursor()
+	cur.execute("""select * from drugbank.pregnancy_code where fk_drug=%s""", (fk_drug,))
+	res=cur.fetchone()
+	if res is None:  #no pregnancy data for that drug yet in database
+		print ">>> inserting data for", fk_drug
+		SQL = """insert into drugbank.pregnancy_code(code, safety, fk_drug) values(%s, %s, %s)"""
+	else:	#data already exists, update to newest
+		print ">>> UPDATE data for", fk_drug
+		SQL = """UPDATE drugbank.pregnancy_code SET code = %s, safety = %s WHERE fk_drug= %s"""
+	cur.execute(SQL, (code, safety, fk_drug,))
+	cur.close()
+	
 
 def parsedata(con, filename=PREGDATA_FILENAME):
 	"""con is an already opened postgresql connection"""
 	counter = 0
-	SQL = """insert into drugbank.pregnancy_code(fk_drug, code, safety) values(%s, %s, %s)"""
 	try:
 		f = open(filename)
 	except:
@@ -73,7 +87,6 @@ def parsedata(con, filename=PREGDATA_FILENAME):
 		sys.exit(1)
 	l = f.readline()  #discard the "function loadSearchData() { return {" part
 	l = f.readline()
-	cur = con.cursor()
 	while l:
 		drug, rest = l.split(':',1)
 		rest, crap = rest.split(']', -1)
@@ -85,7 +98,7 @@ def parsedata(con, filename=PREGDATA_FILENAME):
 		drugname = dr.encode('utf8')
 		fk_drug = find_drug(con, drugname.strip())
 		if fk_drug is not None:
-			cur.execute(SQL, (fk_drug, code, safety))
+			updateOrInsertDrugPregnancyData(con, fk_drug, code, safety)
 			counter += 1
 		else:
 			print "ERROR: could not find drug %s" % drugname
@@ -95,9 +108,7 @@ def parsedata(con, filename=PREGDATA_FILENAME):
 			print "finished, pregnancy categories allocated for %d drugs" % counter
 			l = '' 
 	f.close()
-	con.commit()
-	cur.close()
-	con.close()
+
 	
 
 def help(progname):
@@ -156,4 +167,5 @@ if __name__ == "__main__":
 
 	con= pgconnection(host=host, dbname=db, user=user, password=password)
 	parsedata(con, filename)
-
+	con.commit()
+	con.close()

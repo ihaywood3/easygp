@@ -23,7 +23,7 @@
 
 import dbwrapper
 import pdb
-db = dbwrapper.DBWrapper({'database':'easygp2','db_user':'ian','host':'','port':None,'password':None},True)
+db = dbwrapper.DBWrapper({'database':'30oct15-6','db_user':'richard','host':'','port':None,'password':None},True)
 others= {'fk_consult':'clin_consult.consult','fk_patient':'clerical.data_patients','fk_employee':'contacts.data_employees','fk_person':'contacts.data_persons','fk_staff':'admin.staff','fk_branch':'contacts.data_branches','fk_address':'contacts.data_addresses','fk_progressnote':'clin_consult.progressnotes','fk_pasthistory':'clin_history.past_history','fk_clinic':'admin.clinics','fk_occupation':'common.lu_occupations','fk_generic_product':'drugs.product','fk_document':'documents.documents','fk_coding_system':'coding.lu_systems'}
 
 def convert_all_uuid():

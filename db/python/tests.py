@@ -1,3 +1,41 @@
+# this is an auto-generated file using the xl spread sheet provided by medicare for all the tests we need to do
+# what some slave has to do is to go through every test def and write the python code to get the test done.
+# as an example:
+
+# fk_invoice = d.db.insert_invoice(visit_date=yester(1),fk_staff=2,fk_branch=1,items=['36'],fk_patient=2,result_code=PRIVATE_WAITING)
+# error_code, claim_id = d.mo.upload_private_invoice(fk_invoice)
+# generating the report... o= open the file to write > put in thes stuff, close the file
+# print >>o, "Private bill claim\nClaim ID: %s\nResult code: %s\n" % (claim_id,error_code)
+#
+# in otherwords, need to cut and past code like this and put it after the def bit.
+# ignore Create a claim for a consultation with Not Normal Aftercare
+# This can only be done the GUI client, its here for reference
+
+# for example pick one to do eg bulk billing one:use sample code
+# the def will deine the item number to use
+# cut and past into the print>>o part of the text and the last \n
+# it must end up looking like e.g this:  print >>o, "4.1.1 \n-----\n Submit a 23 bulk-bill\nClaim ID: %s" % claims[0]['claim_id']
+# print >>o, "4.1.1 \n-----\n 
+# to run the test on the comamnd line type the def number followed by wildcard e.g python mo_test.py 4.1.1*
+# the 4.1 are all bulk biling for cretins like richard the clue is in the 'mae a claim'
+# when trying these always change the day otherwise medicare will crack the shits and won't allow the service on same day 
+# To set special flags as per example 4_1_4  instead of a simple string have to have a python dictionary {}
+# and to items in the dictionary are keyed to billing.items_billed e.g 
+#When doing a specialist billing, must include the referral info all fields in invoices table
+#    i) referrer_providernumber
+#   ii) referral_date
+#  iii) referral_duration (no defaults) in montths
+# fake doctors GP who can write  12 months referrals: provider_number = 2054781W 
+# fake specialsit who can write 3 month referrals 2121331W
+
+import datetime
+
+BULK_BILL_WAITING=4003 #magic code belonging to Ian which he made up means invoices waiting to be uploaded for bulk billing
+PRIVATE_WAITING=4005   #magic code belonging to Ian which he made up means a private invoice waiting to upload
+
+def create_date_x_days_in_past(n): # so many days in the past from today's date
+    return datetime.date.fromordinal(datetime.date.today().toordinal()-n)
+
 
 def test_3_3_14_prelim(o,d):
     """
@@ -7,7 +45,7 @@ The expiry date is displayed correctly.
     print >>o, "3.3.14\n------\n"
 
 
-
+# This can only be done the GUI client, its here for reference
 def test_3_4_2_prelim(o,d):
     """
 Enter a valid provider number.
@@ -16,7 +54,7 @@ The provider number is accepted.
     print >>o, "3.4.2\n-----\n"
 
 
-
+# This can only be done the GUI client, its here for reference
 def test_3_4_4_prelim(o,d):
     """
 Enter a valid referring provider number.
@@ -25,7 +63,7 @@ The referring provider number is accepted.
     print >>o, "3.4.4\n-----\n"
 
 
-
+# This can only be done the GUI client, its here for reference
 def test_3_6_1_prelim(o,d):
     """
 Update the Medicare Benefit Schedule (MBS) used in the PMS
@@ -35,74 +73,101 @@ The user was successfully able to update the MBS. (Please provide screen shots o
 
 
 
-def test_4_1_1_prelim(o,d):
+def test_4_1_1_prelim(o,d): #done and seems to test ok
     """
 Create a claim for a standard consultation with a Date of Service MORE than 6 months PAST from todays date but LESS than 2 years PAST from TODAYS DATE. (Item 23)
 The claim is transmitted successfully and a statement is printed correctly.
     """
-    print >>o, "4.1.1\n-----\n"
+    d.db.insert_invoice(visit_date=create_date_x_days_in_past(202),fk_staff=2,fk_branch=1,items=['23'],fk_patient=2,result_code=BULK_BILL_WAITING,fk_lu_bulk_billing_type=1)
+    claims = d.mo.prepare_bb_reports()
+    d.mo.transmit_claim(claims[0])
+    print >>o, "4.1.1 \n-----\n Submit a 23 bulk-bill\nClaim ID: %s" % claims[0]['claim_id']
 
 
 
-def test_4_1_3_prelim(o,d):
+def test_4_1_3_prelim(o,d): #done and seems to test ok
     """
 Create a claim for a standard consultation with service text applied that is greater than 50 characters. (Item 23)
 The PMS should not allow more than 50 characters to be TRANSMITTED as service text. More than 50 characters can be displayed on the statement.
     """
-    print >>o, "4.1.3\n-----\n"
+   
+    d.db.insert_invoice(visit_date=create_date_x_days_in_past(203),
+			fk_staff=2,fk_branch=1,items=['23'],
+			fk_patient=2,result_code=BULK_BILL_WAITING,
+			fk_lu_bulk_billing_type=1,
+			notes="the quick brown fox jumped over the lazy dog and tripped on a branch this must be longer than 50 chars")
+    claims = d.mo.prepare_bb_reports()
+    d.mo.transmit_claim(claims[0])
+    print >>o, "4.1.3 \n-----\n Submit a 23 bulk-bill\nClaim ID: %s" % claims[0]['claim_id']
 
 
 
-def test_4_1_4_prelim(o,d):
+def test_4_1_4_prelim(o,d): #done and seems to test ok
     """
 Create a claim for a consultation (Item 23) and items 30061 and 30071.  Set the RestrictiveOverrideCde to SP (separate sites).
 The claim is transmitted successfully and the accompanying statement is printed correctly.   
 Data Elements to be included in transmission:                                                                                                                                                                                                               The RestrictiveOverrideCde = SP
     """
-    print >>o, "4.1.4\n-----\n"
+    d.db.insert_invoice(visit_date=create_date_x_days_in_past(202),fk_staff=2,fk_branch=1,items=['23',{'item':'30061','separate_sites':True},{'item':'30071','separate_sites':True}],fk_patient=2,result_code=BULK_BILL_WAITING,fk_lu_bulk_billing_type=1)
+    claims = d.mo.prepare_bb_reports()
+    d.mo.transmit_claim(claims[0])
+    print >>o, "4.1.4\n-----\n Submit a 23 and items 30061 and 30071 bulk-bill RestrictiveOverrideCde to SP\nClaim ID: %s" % claims[0]['claim_id']
 
 
 
-def test_4_1_5_prelim(o,d):
+def test_4_1_5_prelim(o,d):  #done and seems to test ok
     """
 Create a claim using item 723 for patient Leif Glynis, Medicare card number 3950039702 (IRN 1), use the generalist provider from your test data, set the RestrictiveOverrideCde to NR (Not Related care plan). (DOB 24061959)
 The claim is successfully transmited and the accompanying statement is printed correctly.
 Data Elements to be included in transmission:                                                                                                                                                                                                               The RestrictiveOverrideCde - NR
     """
-    print >>o, "4.1.5\n-----\n"
+    d.db.insert_invoice(visit_date=create_date_x_days_in_past(202),fk_staff=2,fk_branch=1,items=[{'item':'723','not_related':True}],fk_patient=26,result_code=BULK_BILL_WAITING,fk_lu_bulk_billing_type=1)
+    claims = d.mo.prepare_bb_reports()
+    d.mo.transmit_claim(claims[0])
+    print >>o, "4.1.5\n-----\n Submit a 723 RestrictiveOverrideCde to NR (Not Related care plan)\nClaim ID: %s" % claims[0]['claim_id']
 
-
-
-def test_4_1_7_prelim(o,d):
+def test_4_1_7_prelim(o,d):  #done and seems to test ok
     """
 Create a claim for a consultation with Not Normal Aftercare flagged
 (Item 23)
 A statement is printed with 'NNAC' next to the service.
 Data Elements to be included in transmission:                                                                                                                                                                                                               AfterCareOverrideInd=Y
     """
-    print >>o, "4.1.7\n-----\n"
+    d.db.insert_invoice(visit_date=create_date_x_days_in_past(202),fk_staff=2,fk_branch=1,items=[{'item':'23','aftercare':True}],fk_patient=2,result_code=BULK_BILL_WAITING,fk_lu_bulk_billing_type=1)
+    claims = d.mo.prepare_bb_reports()
+    d.mo.transmit_claim(claims[0])
+    print >>o, "4.1.7\n-----\n Submit a Create a claim for a consultation with Not Normal Aftercare\nClaim ID: %s" % claims[0]['claim_id']
 
 
 
-def test_4_1_10_prelim(o,d):
+
+def test_4_1_10_prelim(o,d): #not done
     """
 Create a claim with a multiple attendance item (4) with the number of patients seen (12).
 A statement is printed with the number of patients printed next to the service.
 Data Elements to be included in transmission:                                                                                                                                                                                                               ServiceTypeCde  = O
 NoOfPatientsSeen = 12
+In our DB vwItemsAndInvoices has a field number_of_patients which comes from vwItemsBilled which comes from fee.schedule
+Ian to fix the python code
     """
-    print >>o, "4.1.10\n------\n"
+    d.db.insert_invoice(visit_date=create_date_x_days_in_past(7),fk_staff=2,fk_branch=1,items=[{'item':'4'}],fk_patient=2,result_code=BULK_BILL_WAITING,fk_lu_bulk_billing_type=1)
+    claims = d.mo.prepare_bb_reports()
+    d.mo.transmit_claim(claims[0])
+    print >>o, "4.1.10\n-----\n Submit a multiple attendance item (4) with the number of patients seen (12)\nClaim ID: %s" % claims[0]['claim_id']
 
 
-
-def test_4_1_13_prelim(o,d):
+def test_4_1_13_prelim(o,d): # done and checked
     """
 Create a claim for a hyperbaric therapy service (Item 13025) with the time in minutes set (270 mins).
 A statement is printed with the total time against the item 13025.
 Data Elements to be included in transmission:                                                                                                                                                                                                               ServiceTypeCde  = O
 TimeDuration = 270
     """
-    print >>o, "4.1.13\n------\n"
+    d.db.insert_invoice(visit_date=create_date_x_days_in_past(7),fk_staff=2,fk_branch=1,items=[{'item':'13025','procedure_duration':270}],fk_patient=2,result_code=BULK_BILL_WAITING,fk_lu_bulk_billing_type=1)
+    claims = d.mo.prepare_bb_reports()
+    d.mo.transmit_claim(claims[0])
+    print >>o, "4.1.13\n-----\n hyperbaric therapy service (Item 13025) with the time in minutes set (270 mins)\nClaim ID: %s" % claims[0]['claim_id']
+
 
 
 
@@ -111,7 +176,11 @@ def test_4_2_1_prelim(o,d):
 Create a claim for an initial specialist consultation with a  Date of Service MORE than 6 months PAST from todays date but LESS than 2 years PAST from TODAYS DATE (Item 104)
 The claim is transmitted successfully and a statement is printed correctly.
     """
-    print >>o, "4.2.1\n-----\n"
+  
+    d.db.insert_invoice(visit_date=create_date_x_days_in_past(200),fk_staff=2,fk_branch=1,referral_date=create_date_x_days_in_past(300), referral_duration=12, referrer_provider_number='2054781W',items=[{'item':'104'}],fk_patient=2,result_code=BULK_BILL_WAITING,fk_lu_bulk_billing_type=1)
+    claims = d.mo.prepare_bb_reports()
+    d.mo.transmit_claim(claims[0])
+    print >>o, "4.2.1\n-----\ninitial specialist consultation with a  Date of Service MORE than 6 months PAST from todays date but LESS than 2 years PAST from TODAYS DATE (Item 104)\nClaim ID: %s" % claims[0]['claim_id']
 
 
 
@@ -124,7 +193,7 @@ Data Elements to be included in transmission:                                   
 ReferralIssueDate
 ReferringProviderNum
 ReferralPeriodTypeCde = N
-Service Text = ‘4 Months’
+Service Text = "4 Months"
     """
     print >>o, "4.2.4\n-----\n"
 
@@ -148,7 +217,7 @@ def test_4_2_7_prelim(o,d):
     """
 Create a claim with an Initial specialist consultation with an emergency referral.
 (Item 104)
-‘Emergency Referral’ will be printed on the statement. This is not transmitted as service text.
+"Emergency Referral" will be printed on the statement. This is not transmitted as service text.
 Data Elements to be included in transmission:                                                                                                                                                                                                                                                                                                                                                                                                           ServiceTypeCde  = S
 ReferralOverrideTypeCde=E
     """
@@ -175,7 +244,7 @@ FieldQuantity= 2
 
 def test_4_2_12_prelim(o,d):
     """
-Using a ‘Specialist’ for the Servicing Provider, create a claim with 2 services:
+Using a "Specialist" for the Servicing Provider, create a claim with 2 services:
 - a referred consultation (item 104) with referral details and
 - a non requested item 57524 with LSPN (14) without supporting request details
 Referral details and LSPN will be printed on the statement.
@@ -193,7 +262,7 @@ Item = 57524
 
 def test_4_2_13_prelim(o,d):
     """
-Using a ‘Specialist’ for the Servicing Provider, create a claim 
+Using a "Specialist" for the Servicing Provider, create a claim 
 - a referred consultation (item 104) with referral details and
 - a requested diagnostic item 55252 with LSPN (14) and supporting request details
 Referral, Request and LSPN details will be printed on the statement. Two vouchers will need to be submitted.
@@ -479,8 +548,8 @@ The text explaining why the service has had the multiple procedure override rule
 
 def test_14_1_12_prelim(o,d):
     """
-Create a claim where an in hospital item is transmitted in the same voucher as an out of hospital (Item 32177 – in hospital)
-(Item 37 – home visit)
+Create a claim where an in hospital item is transmitted in the same voucher as an out of hospital (Item 32177 in hospital)
+(Item 37 home visit)
 The claim is accepted.  A statement is printed with an * next to item 32177 only
 Item = 32177
 HospitalInd = Y
@@ -507,7 +576,7 @@ FieldQuantity= 2
 
 def test_14_1_15_prelim(o,d):
     """
-Create a claim for a hyperbaric therapy service (Item 13025) with the time in minute’s specified (270 mins).
+Create a claim for a hyperbaric therapy service (Item 13025) with the time in minute"s specified (270 mins).
 A statement is printed with the number of minutes against the item 13025.
 TimeDuration = 270
     """
@@ -734,7 +803,7 @@ ClaimErrorLevel =
 ClaimErrorCode =
 ServiceErrorLevel = A
 ServiceErrorCode = xxxx
-The Medicare Reason Code and it’s description is displayed to the user.
+The Medicare Reason Code and it"s description is displayed to the user.
 The claim is able to be accepted.
     """
     print >>o, "14.9.5\n------\n"
@@ -752,7 +821,7 @@ ClaimErrorLevel = A
 ClaimErrorCode =
 ServiceErrorLevel = A
 ServiceErrorCode = xxxx
-The Medicare Reason Code and it’s description is displayed to the user.
+The Medicare Reason Code and it"s description is displayed to the user.
 The claim is able to be accepted.
 A Lodgement Advice is printed.
     """
@@ -814,7 +883,7 @@ The claim will be deleted
 def test_14_11_3_prelim(o,d):
     """
 Attempt to delete a PCI claim that has been sent to pend.
-Error will return – 9645 The claim identified for deletion has a status other than Paid Same Day
+Error will return 9645 The claim identified for deletion has a status other than Paid Same Day
     """
     print >>o, "14.11.3\n-------\n"
 

@@ -72,7 +72,8 @@ class MedicareOnline:
             exit(1)
         logging.info("starting Java slave process hiconline.sender={} hiconline.location_id={} java path {} cryptostore {}".format(self.sender,self.location_id,self.java_path,cryptostore_path))
         # run java as a background process, passing in configs.
-        self.pro = subprocess.Popen(["/usr/bin/java",
+        self.pro = subprocess.Popen(["/usr/lib/jvm/java-7-openjdk-i386/jre/bin/java",
+				     "-d32",
                                      "-classpath","lib:lib/*:dist/*",
                                      "-Djava.library.path=lib",
                                      "-Dhiconline.sender={}".format(self.sender),
@@ -412,6 +413,9 @@ class MedicareOnline:
                 self.set(item_path,"NoOfPatientsSeen",str(item['number_of_patients']))
             inv_service_text = inv_service_text.strip()
             if inv_service_text != "":
+		# Medicare do not allow more than 50 chars in the ServiceText field
+		if len(inv_service_text) > 50:
+		  inv_service_text = inv_service_text[:50] # truncate to 50 chars
                 self.set(item_path,"ServiceText",inv_service_text)
                 inv_service_text = ""
     

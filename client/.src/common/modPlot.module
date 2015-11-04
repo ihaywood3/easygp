@@ -17,7 +17,7 @@
 '----------------------------------------------------------------------
 
 
-Public Function Gnuplot_Run(width As Integer, height As Integer, gnuplot As String, data As Result, Optional font_size As Integer = 3) As String
+Public Function Gnuplot_Run(width As Integer, height As Integer, gnuplot As String, data As Result, Optional font_size As Integer = 3, Optional data_file As Boolean = True) As String
 
    Dim sGraphFontSize As String
    Dim gs_path As String
@@ -27,7 +27,8 @@ Public Function Gnuplot_Run(width As Integer, height As Integer, gnuplot As Stri
    Dim dfn As String
    Dim i As ResultField
    Dim d1 As Date
-   
+   Dim gnuplot_errors As String
+   Dim l As String
    If data.Count < 1 Then
       Return "insufficient_data.png"
    End If
@@ -42,34 +43,45 @@ Public Function Gnuplot_Run(width As Integer, height As Integer, gnuplot As Stri
       Case 4 
          sGraphFontSize = "large"
    End Select
-   
-   Let dfn = Temp$("data1")
-   datafile = Open dfn For Output Create
-   For Each data
-      For Each i In data.Fields
-         If i.Type = gb.Date Then
-            d1 = data[i.Name]
-            Print #datafile, Format$(d1, "dd/mm/yy"); " ";
-         Else
-            Print #datafile, data[i.Name]; " ";
-         Endif
-      Next
-      Print #datafile  
-   Next
-   Close #datafile
-   
+   If data_file Then   
+     Let dfn = Temp$("data1")
+     datafile = Open dfn For Output Create
+     For Each data
+       For Each i In data.Fields
+          If i.Type = gb.Date Then
+             d1 = data[i.Name]
+           Print #datafile, Format$(d1, "dd/mm/yy"); " ";
+          Else
+             Print #datafile, data[i.Name]; " ";
+          Endif
+        Next
+       Print #datafile  
+     Next
+     Close #datafile
+   Endif
    Let tempfile = Temp() & ".png"
+   Let gnuplot_errors = Temp("err")
    Let gs_path = modUtil.FindProgram("gnuplot", "gnuplot")
    If IsNull(gs_path) Then Return Null
-   Let pro = Exec [gs_path] For Write
+   Let pro = Shell gs_path & " 2> " & gnuplot_errors For Write
    Print #pro, "set terminal png transparent nocrop enhanced " & sGraphFontSize & " size " & width & ", " & height & "\n"
    Print #pro, "set output '" & tempfile & "'\n"
    Let gnuplot = Replace$(gnuplot, "data.dat", dfn)
    Print #pro, gnuplot
+   Print #pro, "quit"
    Close #pro
    pro.Wait()
-   Try Kill dfn
+   If Not Exist(tempfile) Then
+      If Exist(gnuplot_errors) Then
+         Error.Raise(File.Load(gnuplot_errors))
+      Else
+         Error.Raise("gnuplot failed unknown reason")
+      Endif
+   Endif
    Return tempfile
+   Finally
+      Try Kill gnuplot_errors
+      Try Kill dfn
 
 End
 
@@ -120,6 +132,70 @@ Public Function LineGraph(width As Integer, height As Integer, data As Result, O
    
 End
 
+Public Function ScatterPlot(data As Result, Optional title As String) As String
+   
+  Dim s As String = ""
+  
+  s &= "set ylabel \"" & data.Fields[1].Name & "\"\n"
+  s &= "set xlabel \"" & data.Fields[0].Name & "\"\n"
+  If Not IsNull(title) 
+      s &= "set title \"" & title & "\"\n"
+  Endif
+  s &= "f(x) = a*x + b\n"
+       "fit f(x) 'data.dat' using 1:2 via a, b\n"
+       "title_func(a,b) = sprintf('f(x) = %.2fx + %.2f', a, b)\n"
+  s &= "plot 'data.dat' using 1:2 with points notitle, f(x) title title_func(a,b)\n" 
+  Return s 
+   
+End
+
+
+
+Public Function PieChart(data As Result) As String
+   
+  Dim s As String
+  Dim n As Integer = 0
+  Dim labels As New Collection
+  Dim values As New Collection
+  Dim total As Float = 0
+  Dim start_deg As Float = 0
+  Dim end_deg As Float
+  Dim i As Integer
+  Dim colours As String[]
+  
+  colours = ["red", "blue", "green", "magenta", "orange", "pink", "purple", "black", "royalblue", "dark-red", "aquamarine", "goldenrod"]
+  s = "reset\n"
+      "set size square\n"
+      "set style fill solid 1.0 border -1\n"
+  n = 0
+  For Each data
+     values[n] = data[1]
+     labels[n] = data[0]
+     total += data[1]
+     n += 1
+  Next
+  start_deg = 0
+  For i = 0 To n - 1
+     end_deg = start_deg + (values[i] / CFloat(total) * 360)
+     s &= Subst$("set object &1 circle at screen 0.4, 0.5 size screen 0.2 arc[&2: &3] fillcolor rgb \"&4\" front\n", i + 1, start_deg, end_deg, colours[i])
+     start_deg = end_deg
+  Next
+
+  start_deg = 0.95
+  For i = 0 To n - 1
+     s &= Subst$("set label &1 \"&2\" at screen 0.95, &3 right tc rgb \"&4\" front\n", i + 1, labels[i], start_deg, colours[i])
+    start_deg -= 0.08
+  Next
+    s &= "show label\n#plot a white Line , i.e., plot nothing\n"
+      "unset border\n"
+      "unset tics\n"
+      "unset key\n"
+      "plot x with lines lc rgb \"#ffffff\"\n"
+  Return s
+End
+
+
+
 Public Function Gnuplot_BoxGraph(data As Result, Optional style As String = "rowstacked") As String
    ' generates gnuplot for a boxed graph
    ' styles can be rowstacked or cluster gap NN
@@ -137,14 +213,12 @@ Public Function Gnuplot_BoxGraph(data As Result, Optional style As String = "row
    s &= "set xlabel \"" & data.Fields[0].Name & "\" textcolor lt 1\n" 
    's &= "set yrange[0: 200]"
    s &= "plot "
-   Let df = "data.dat"
    Let j = 1
    While j < data.Fields.Count - 1
-      s &= "'" & df & "' using " & (j + 1) & " t \"" & data.Fields[j].Name & "\", "
-      Let df = ""
+      s &= "\"data.dat\" using " & (j + 1) & " t \"" & data.Fields[j].Name & "\", "
       Inc j
    Wend
-   s &= "'" & s & "' using " & (j + 1) & ":xtic(1) t \"" & data.Fields[j].Name & "\"\n"
+   s &= "\"data.dat\" using " & (j + 1) & ":xtic(1) t \"" & data.Fields[j].Name & "\"\n"
    Return s
 
 End

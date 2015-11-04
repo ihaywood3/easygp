@@ -178,21 +178,23 @@ Commands:
             logging.warn("hi service driver not found")
         # Medicare Online
         self.mo = None
-        if os.path.exists(os.path.join(self.config["drivers"],'lib','au.gov.hic.psi.crypto.jar')):
-            import mo # python component is FOSS so this will always work
-            if not self.config.has_key("mo_passphrase"):
-                logging.error("mo_passphrase must be set in config file")
-            elif not self.config.has_key("mo_sender"):
-                logging.error("mo_sender must be set in config file")       
-            else:
-                mox = mo.MedicareOnline(self.config["drivers"],self.config["mo_passphrase"],self.config["mo_sender"],self.db.get_location_id())
-                self.mo = mox
-                self.evts.mo = mox
-                self.mo.db = self.db
-                self.db.listen("invoice",self.evts.invoice)
-                self.db.listen("same_day_delete",self.mo.same_day_delete)
+        can_load = True
+        import mo # python component is FOSS so this will always work
+        if not self.config.has_key("mo_passphrase"):
+            logging.error("mo_passphrase must be set in config file, not loading Medicare Online")
+            can_load = False
+        if self.config.has_key("mo_sender"):
+            mo_sender = self.config['mo_sender']
         else:
-            logging.warn('Medicare Online JAR not found in %s so MO module not loaded' % self.config['drivers'])
+            logging.warn("mo_sender is not sent, using default 'test.location222@humanservices.gov.au'")
+            mo_sender = 'test.location222@humanservices.gov.au'
+        if can_load:
+            mox = mo.MedicareOnline(self.config["drivers"],self.config["mo_passphrase"],self.config["mo_sender"],self.db.get_location_id())
+            self.mo = mox
+            self.evts.mo = mox
+            self.mo.db = self.db
+            self.db.listen("invoice",self.evts.invoice)
+            self.db.listen("same_day_delete",self.mo.same_day_delete)
         # Personally Controlled Electronic Record
         # pcehr.py will always be available as FOSS code, look for NASH keys instead
         pcehr_key = os.path.join(self.config["keydir"],'pcehr.key')

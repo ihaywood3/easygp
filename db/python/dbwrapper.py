@@ -176,12 +176,17 @@ pg_class c2, pg_namespace n2, pg_attribute a2
         if not 'fk_staff_invoicing' in kwargs: kwargs['fk_staff_invoicing'] = kwargs['fk_staff_provided_service']
         pk = self.insert_table('billing.invoices',kwargs,cur)
         for i in items:
-            if type(i) is str:
+            if type(i) is str: # like string '23'
                 i = {'item':i,'type':'Schedule Fee'}
             i['fk_invoice'] = pk
             if 'item' in i:
                 if not 'type' in i: i['type'] = 'Schedule Fee'
-                cur.execute("select fk_lu_billing_type,price,fk_fee_schedule from billing.vwfees where mbs_item=%s and fee_type=%s",(i['item'],i['type']))
+                query = "select fk_lu_billing_type,price,fk_fee_schedule from billing.vwfees where mbs_item=%s and fee_type=%s"
+                if 'number_of_patients' in i:
+                    query += " and number_of_patients=%d" % i['number_of_patients']
+                else:
+                    query += " and number_of_patients=0"
+                cur.execute(query,(i['item'],i['type']))
                 x = cur.fetchone()
                 del i['item']
                 if 'type' in i: del i['type']

@@ -3,7 +3,6 @@
 require 'rexml/document'
 require 'rexml/formatters/pretty'
 require 'csv'
-require 'pg'
 
 def load_xml()
 	return REXML::Document.new(File.new("/home/ian/Downloads/2012-11-XML.xml"))
@@ -19,10 +18,6 @@ def create_mbs_item(fh,item)
 end
 
 def run(doc)
-  conn = PGconn.open(:dbname => "easygp")
-  pp = REXML::Formatters::Pretty.new
-  update_script = File.open("mbs_update.sql","w")
-  create_script = File.open("mbs_create.sql","w")
   doc.each_element("MBS_XML/Data") do |data|
     item = {}
     data.each_element("Description") { |e| item['descriptor'] = e.text }

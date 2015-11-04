@@ -57,23 +57,36 @@ class MedicareOnline:
         """
         Start the Java process (a program written by a contracted programmer for EasyGP, that in 
         turn interfaces with Medicare) not open-source"""
+        # check the java path
+        java_path = None
+        for f in [self.java_path,"/usr/lib/easygp/drivers",os.path.expanduser("~/mol_java"),os.path.expanduser("~/easygp-secret/trunk/java")]:
+            if os.path.exists(os.path.join(f,'lib','au.gov.hic.psi.crypto.jar')):
+                java_path = f
+                break
+        if java_path is None:
+            logging.panic("AARGH! I can't find the Medicare java files")
+            exit(1)
         # start looking for the cryptostore
         cryptostore_path = None
         for i in [os.path.expanduser("~/hic.psi"),"/etc/hic.psi","/var/lib/easygp/hic.psi",os.path.join(self.java_path,"hic.psi")]:
-            if os.path.exists(i):
+            if os.access(i,os.R_OK):
                 cryptostore_path = i
                 break
         if cryptostore_path is None:
-            logging.panic("AARGH! I can't find the Medicare cryptostore: I looked in ~/hic.psi, /etc/hic.psi and {}/hic.psi".format(self.java_path))
+            logging.panic("AARGH! I can't read the Medicare cryptostore: I looked in ~/hic.psi, /etc/hic.psi and {}/hic.psi".format(self.java_path))
             exit(1)
         logicpack_dir = os.path.join(self.java_path,"logicpacks")
         if not os.path.exists(logicpack_dir):
             logging.panic("AARGH! I can't find the Medicare Online logic packs (a set of java files provided by Medicare). I looked in {}".format(logicpack_dir))
             exit(1)
+        java_exec = "/usr/lib/jvm/java-7-openjdk-i386/jre/bin/java"
+        if not os.access(java_exec,os.X_OK):
+            logging.panic("Java 32-bit not found. Use apt-get install openjdk-7-jre-headless:i386")
+            exit(1)
         logging.info("starting Java slave process hiconline.sender={} hiconline.location_id={} java path {} cryptostore {}".format(self.sender,self.location_id,self.java_path,cryptostore_path))
         # run java as a background process, passing in configs.
-        self.pro = subprocess.Popen(["/usr/lib/jvm/java-7-openjdk-i386/jre/bin/java",
-				     "-d32",
+        self.pro = subprocess.Popen([java_exec,
+                                    "-d32",
                                      "-classpath","lib:lib/*:dist/*",
                                      "-Djava.library.path=lib",
                                      "-Dhiconline.sender={}".format(self.sender),
@@ -413,9 +426,9 @@ class MedicareOnline:
                 self.set(item_path,"NoOfPatientsSeen",str(item['number_of_patients']))
             inv_service_text = inv_service_text.strip()
             if inv_service_text != "":
-		# Medicare do not allow more than 50 chars in the ServiceText field
-		if len(inv_service_text) > 50:
-		  inv_service_text = inv_service_text[:50] # truncate to 50 chars
+                # Medicare do not allow more than 50 chars in the ServiceText field
+                if len(inv_service_text) > 50:
+                    inv_service_text = inv_service_text[:50] # truncate to 50 chars
                 self.set(item_path,"ServiceText",inv_service_text)
                 inv_service_text = ""
     

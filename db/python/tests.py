@@ -28,7 +28,7 @@
 # fake doctors GP who can write  12 months referrals: provider_number = 2054781W 
 # fake specialsit who can write 3 month referrals 2121331W
 
-import datetime
+import datetime, os
 
 BULK_BILL_WAITING=4003 #magic code belonging to Ian which he made up means invoices waiting to be uploaded for bulk billing
 PRIVATE_WAITING=4005   #magic code belonging to Ian which he made up means a private invoice waiting to upload
@@ -36,6 +36,22 @@ PRIVATE_WAITING=4005   #magic code belonging to Ian which he made up means a pri
 def create_date_x_days_in_past(n): # so many days in the past from today's date
     return datetime.date.fromordinal(datetime.date.today().toordinal()-n)
 
+def make_invoice_bulk_bill_pdf(pk_invoice,name_of_test):
+    """
+    Fires up the EasyGP client on the command line to create a PDF from an 
+    bulk-bill invoice already in the backend.
+    Saves as name_of-test.pdf in the current directory
+    """
+    os.system("cd ../../client && gbx3 -- --username bass --host unix --dbname moltest --run modBillingDBI.Print_Bulk_Bill_Direct {} \\\"{}\\\"".format(pk_invoice,os.getcwd()+'/printout-'+name_of_test+'.pdf'))
+
+
+def make_invoice_private_pdf(pk_invoice,name_of_test):
+    """
+    Fires up the EasyGP client on the command line to create a PDF from an 
+    private invoice already in the backend.
+    Saves as name_of-test.pdf in the current directory
+    """
+    os.system("cd ../../client && gbx3 -- --username bass --host unix --dbname moltest --run modBillingDBI.Print_Bulk_Bill_Direct {} \\\"{}\\\"".format(pk_invoice,os.getcwd()+'/printout-'+name_of_test+'.pdf'))
 
 def test_3_3_14_prelim(o,d):
     """
@@ -78,10 +94,11 @@ def test_4_1_1_prelim(o,d): #done and seems to test ok
 Create a claim for a standard consultation with a Date of Service MORE than 6 months PAST from todays date but LESS than 2 years PAST from TODAYS DATE. (Item 23)
 The claim is transmitted successfully and a statement is printed correctly.
     """
-    d.db.insert_invoice(visit_date=create_date_x_days_in_past(202),fk_staff=2,fk_branch=1,items=['23'],fk_patient=2,result_code=BULK_BILL_WAITING,fk_lu_bulk_billing_type=1)
+    pk_invoice = d.db.insert_invoice(visit_date=create_date_x_days_in_past(202),fk_staff=2,fk_branch=1,items=['23'],fk_patient=2,result_code=BULK_BILL_WAITING,fk_lu_bulk_billing_type=1)
     claims = d.mo.prepare_bb_reports()
     d.mo.transmit_claim(claims[0])
-    print >>o, "4.1.1 \n-----\n Submit a 23 bulk-bill\nClaim ID: %s" % claims[0]['claim_id']
+    make_invoice_bulk_bill_pdf(pk_invoice,"4.1.1")
+    print >>o, "4.1.1 \n-----\n Submit a 23 bulk-bill\nPK Invoice: %d\nClaim ID: %s" % (pk_invoice, claims[0]['claim_id'])
 
 
 

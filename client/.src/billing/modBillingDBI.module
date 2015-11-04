@@ -774,7 +774,6 @@ Public Function Find_Referrer(fk_patient As Integer, Optional consult_date As Da
    " where ((vd.fk_employee_branch = vpe.fk_employee and vd.fk_sender_branch = vpe.fk_branch" 
    " and vd.fk_employee_branch <> 0) or (vd.fk_sender_person = vpe.fk_person and vd.fk_employee_branch = 0)) and "
    " vd.fk_patient = &1 and vd.incoming_referral CONSULT )"
-   "select *,date_created+(months*interval '1 month') as expiry from base order by indefinite desc, expiry desc limit 1 "
    If IsNull(consult_date) Then
       sql = Replace$(sql, "CONSULT", "")
       Return modDBConnect.exec_query_first(sql, [fk_patient])
@@ -1136,6 +1135,30 @@ Public Sub Get_Invoice_PK(fk_invoice As Integer) As CRow
    
 End
 
+' during testing, we want to be able to print out invoices from the command line
+' do bluk-billing
+' puts PDF As / tmp / invoice - X.pdf where X Is Invoice PK
+Public Sub Print_Bulk_Bill_Direct(pk_invoice As Integer, pdf_output_file As String)
+   
+  Dim latex As String
+  
+  latex = Print_Invoice(pk_invoice, False, True) 
+  modPrinting.Latex_To_PDF(latex, pdf_output_file)
+   
+End
+
+' do private online billing
+' again puts pdf as /tmp/invoice-X.pdf
+Public Sub Print_Private_Direct(pk_invoice As Integer, pdf_output_file As String)
+   
+  Dim latex As String
+
+  latex = Generate_Online_Latex(pk_invoice) 
+  modPrinting.Latex_To_PDF(latex, pdf_output_file)
+
+End
+
+
 ' takes a CRow from billing.invoices, from either from Make_Invoice or Invoices_Get, and prints it
 ' also updates the row on the DB as appropriate
 ' ' cc is the current consult object. If not provided a new one will be loaded using th invoices's fk_patient.
@@ -1320,6 +1343,18 @@ Private Sub Load_Template_Specialist(templ As Ctemplate, invoice As Crow, referr
    
 End
 
+
+' little convience fucntion for adding extra rows of data containing further comments on the item
+Private Sub Extra_Line(templ, As Ctemplate, extra_row_text As String)
+   Dim s As String
+   
+   
+   s = "\\multicolumn{6}{p{140mm}}{ \\footnotesize " & extra_row_text & "}"
+   templ.Row(s)
+   
+End
+
+
 ' prepares the template with stuff for GP-type invoices (actually common to specialists too)
 Private Sub Load_Template_GP(invoice As Crow, templ As CTemplate, doctor As Collection, items As Collection, payments As Collection, cc As CConsult, Optional mo_result As Boolean = False)
    
@@ -1388,17 +1423,22 @@ Private Sub Load_Template_GP(invoice As Crow, templ As CTemplate, doctor As Coll
    ' now do the actual items
    For Each i In items
       s = i!descriptor_brief
-      If i!number_of_patients > 0 Then
-         s &= " (Number of patients: " & i!number_of_patients & ")"
+      If Not s Then
+         s = i!descriptor
       Endif
-      templ.Row(Format$(invoice!visit_date, "dd/mm/yy"), i!common_item, "\\multicolumn{2}{p{6cm}}{" & s & "}", i!amount, "")
+      If Len(s) > 60 Then
+         s = Left$(s, 60)
+      Endif
+      If i!number_of_patients > 0 Then
+         Extra_Line(templ, "Number of patients: " & i!number_of_patients)
+      Endif
+      
       If mo_result And If Not IsNull(i!description) Then
          s = "(" & i!reason_code & ") " & i!description
          If Not IsNull(i!comment) Then
             s &= " " & i!comment
          Endif
-         s = "\\multicolumn{6}{p{140mm}}{ \\footnotesize {\bf Medicare Reason Code: } " & s & "}"
-         templ.Row(s)
+         Extra_Line(templ, s)
       Endif
    Next
    If Not IsNull(payments) Then

@@ -1,12 +1,11 @@
 # a test system for Medicare Online
 # this file can be run directly from the command-line to do Medicare Online testing.
 # if you change this file make sure it is indented properly a python hates bad indentations
-import daemon,  mo, dbwrapper, datetime, pdb, sys, fnmatch, logging, datetime
+import daemon,  mo, dbwrapper, datetime, pdb, sys, fnmatch, logging, datetime, re, os
 
 def create_date_x_days_in_past(n): # so many days in the past from today's date
     return datetime.date.fromordinal(datetime.date.today().toordinal()-n)
 
-o = open("report.txt","w") # open the file to write
 
 BULK_BILL_WAITING=4003 #magic code belonging to Ian which he made up means invoices waiting to be uploaded for bulk billing
 PRIVATE_WAITING=4005   #magic code belonging to Ian which he made up means a private invoice waiting to upload
@@ -20,22 +19,40 @@ match = match.replace('.','_')
 d = daemon.Daemon()
 d.setup_test()
 
-d.db.wipe_invoices()
+
 fmt = logging.Formatter(fmt='%(asctime)s\t%(levelname)s\t%(message)s')
 
-# import all the tests
-import tests
-# run the tests as specified on the command line
-for function_name in dir(tests):                                         
-    if fnmatch.fnmatch(function_name,'test_'+match):
-        # pdb.set_trace()
-	log_file_name = function_name.replace('_','.')
-	hdr = logging.FileHandler(log_file_name+'.log','w')
-	hdr.setFormatter(fmt)
-	logging.getLogger().addHandler(hdr)
-	getattr(tests,function_name)(o,d)
-	logging.getLogger().removeHandler(hdr)
-	hdr.close()
+
+if match == "reports":
+    # grab a whole bunch of processing reports and print them
+    for line in sys.stdin.readlines():
+        m = re.match("^([0-9]+\\.[0-9]+\\.[0-9]+)", line)
+        if m:
+            test_name = m.group(1)
+        m = re.match("^Claim ID: ([A-Z][0-9]+.*)", line)
+        if m:
+            claim_id = m.group(1)
+            print "\n\n\n**** Bulk-billing processing report for test {} claim ID {}".format(test_name,claim_id)
+            pprint.pprint(d.mo.get_bb_processing_report(d.db.get_claim(claim_id)))
+            print "\n\n\n**** Bulk-billing payment report for test {} claim ID {}".format(test_name,claim_id)
+            pprint.pprint(d.mo.get_bb_payment_report(d.db.get_claim(claim_id)))
+else:
+    o = open("report.txt","w") # open the file to write
+    # wipe out all pre-existing invoices
+    d.db.wipe_invoices()
+    # import all the tests
+    import tests
+    # run the tests as specified on the command line
+    tests_to_do = [i for i in dir(tests) if fnmatch.fnmatch(i,"test_"+match)]
+    tests_to_do = sorted(tests_to_do,key=lambda x: [int(i) for i in x.split('_')[1:4]])
+    for function_name in tests_to_do:
+        log_file_name = function_name.replace('_','.')
+        hdr = logging.FileHandler(log_file_name+'.log','w')
+        hdr.setFormatter(fmt)
+        logging.getLogger().addHandler(hdr)
+        getattr(tests,function_name)(o,d)
+        logging.getLogger().removeHandler(hdr)
+        hdr.close()
 
 # basic exmaple bulk-billing
 #d.db.insert_invoice(visit_date=create_date_x_days_in_past(0),fk_staff=2,fk_branch=1,items=['23'],fk_patient=2,result_code=BULK_BILL_WAITING,fk_lu_bulk_billing_type=1)

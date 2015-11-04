@@ -1,0 +1,155 @@
+' Gambas class file
+
+Private query As CRow
+Private queries As Collection
+Private loaded As String = "sql"
+
+Private picture_file As String
+
+
+Public Sub rbText_Click()
+
+   If IsNull(query) Then Return
+   
+   query[loaded] = taText.Text
+   If Last.Tag = "SQL" Then
+      loaded = "sql"
+      taText.Text = query!sql
+   Endif
+   If Last.tag = "Gnuplot" Then
+      loaded = "gnuplot"
+      taText.Text = query!gnuplot
+   Endif
+
+End
+
+Public Sub Form_Open()
+   Settings_Load()
+   
+  queries = modUtil.Copy_Collection_Keyed_Sequentially(modResearchDBI.Load_Queries())
+  rbSQL.Value = True
+  Refresh() 
+  query = New CRow
+  query!sql = Null
+  query!gnuplot = Null
+  
+   
+End
+
+Private Sub Refresh()
+   
+  Dim i As CRow
+  
+  lbQueries.Clear()
+  For Each i In queries
+     lbQueries.Add(i!title)
+  Next
+   
+   
+End
+
+
+Public Sub bNew_Click()
+
+   query = New CRow
+   query!gnuplot = Null
+   query!sql = Null
+   taText.Clear()
+   tbTitle.Clear()
+
+End
+
+Public Sub bSave_Click()
+
+   query[loaded] = taText.Text
+   query!title = tbTitle.Text
+   query.Save("research.queries", "pk")
+   modDBConnect.CommitTrans()
+   Run_Query()
+
+End
+
+Private Sub Run_Query()
+   
+   Dim pic As Picture
+   Dim res As Result
+   Dim gnuplot As String
+   
+   If Not IsNull(picture_file) Then Try Kill picture_file
+   res = modDBConnect.exec_query(query!sql)
+   If IsNull(query!gnuplot) Or If query!gnuplot = "" Then
+      ' try some default gnuplots
+      If res.Fields.Count = 2 Then
+         If res.Fields[0].Type = db.String Then
+           If res.Count < 10 Then
+             ' pie chart time!
+             gnuplot = modPlot.PieChart(res)
+           Else 
+             ' bar chart
+             gnuplot = modPlot.Gnuplot_BoxGraph(res)
+           Endif
+         Else
+            gnuplot = modPlot.ScatterPlot(res)
+         Endif
+      Else
+         If res.Fields[0].Type = db.String Then
+            gnuplot = modPlot.Gnuplot_BoxGraph(res)
+         Endif
+      Endif
+   Endif 
+   Debug gnuplot
+   picture_file = modPlot.Gnuplot_Run(PictureBox1.Width, PictureBox1.Height, gnuplot, res)
+   pic = Picture.Load(picture_file)
+   PictureBox1.Background = Color.White
+   PictureBox1.Picture = pic
+   
+   Catch
+      Message.Error(Error.Text)
+End
+
+
+Public Sub lbQueries_Click()
+
+   Dim i As CRow
+   
+   For Each i In queries
+      If i!title = lbQueries.Text Then
+         query = i
+      Endif
+   Next
+   loaded = "sql"
+   taText.Text = query!sql
+   rbSQL.Value = True
+   tbTitle.Text = query!title
+   
+End
+
+Public Sub Settings_Load()
+   
+   HSplit1.Layout = Settings["FQueries/HSplit1.Layout", modUtilGUI.HSplit([1, 4])]
+ '  VSplit1.Layout = Settings["FQueries/VSplit1.Layout", modUtilGUI.VSplit([1, 6])]
+End
+
+
+Public Sub HSplit1_Resize()
+
+   Settings["FQueries/HSplit1.Layout"] = HSplit1.Layout
+
+End
+
+Public Sub VSplit1_Resize()
+
+ '  Settings["FQueries/VSplit1.Layout"] = VSplit1.Layout
+
+End
+
+Public Sub tbSaveImage_Click()
+
+   If Not IsNull(picture_file) Then
+      Dialog.Filter = ["*.png", "PNG Files"]
+      Dialog.SaveFile()
+      If Not IsNull(Dialog.Path) Then Try Move picture_file To Dialog.Path
+
+   Endif
+
+End

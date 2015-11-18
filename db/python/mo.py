@@ -584,17 +584,22 @@ class MedicareOnline:
         """
         Send a given invoice as a private-billing claim (usually time of consultation)
         Private billing is always one invoice at a time
+        Can accept a list of invoices to complete some tests for Medicare Online
+        all must relate to the same patient and doctor
         """
         try:
-            inv = self.db.get_private_invoice_to_upload(fk_invoice)
+            if not type(fk_invoice) == list: fk_invoice = [fk_invoice]
+            invoices = [self.db.get_private_invoice_to_upload(i) for i in fk_invoice]
+            inv = invoices[0]
             pt = self.db.get_patient(inv['fk_patient'])
             logic_pack = self.get_logic_pack("HIC/HolClassic")
             content_type = "HIC/HolClassic/InteractivePatientClaim@"+logic_pack
             path = self.create_object(content_type,"","")
-            if inv['total_paid'] == inv['total_bill']:
-                self.set(path,"AccountPaidInd","Y")  # patient has fully paid the account
-            else:
-                self.set(path,"AccountPaidInd","N") # not fully-paid (i.e. single send pay-doctor cheque)
+            account_paid = "Y"
+            for i in invoices:
+                if i['total_paid'] != i['total_bill']:
+                    account_paid = "N"
+            self.set(path,"AccountPaidInd",account_paid)  # patient has fully paid the account (all invoices)?
             self.set(path,"AccountReferenceId",inv['pk_invoice'])  # our reference, so use PK
             if 'bank_details_upload' in inv and inv['bank_details_upload']:  # has the user elected to submit their bank details on this invoice?
                 acct_name, bsb, acct_number = self.db.get_bank_details(inv['fk_invoice'])
@@ -628,8 +633,9 @@ class MedicareOnline:
                 self.set(path,"PayeeProviderNum", inv['payee_provider_number']) # payee is the doctor that receives the money
             self.set(path,"ServicingProviderNum",inv['staff_provided_service_provider_number'])
             self.set(path,"TimeOfLodgement",inv["date_invoiced"].strftime("%H%M%S"))
-            voucher_path = self.create_object("Voucher","./"+path,"01")
-            self.set_voucher_items(voucher_path,inv,True)  # set item details as for bulk-billing
+            for i in invoices:  # do all invoices in one transmission
+                voucher_path = self.create_object("Voucher","./"+path,"01")
+                self.set_voucher_items(voucher_path,i,True)  # set item details as for bulk-billing
             send_code = self.send_content(content_type) # communicate with Medicare, get result code
             if send_code == 0:
                 # success

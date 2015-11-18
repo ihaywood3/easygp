@@ -11,9 +11,9 @@ with open('cdc.txt') as f:
             row['percent'] = line[7]
             row['chart'] = line[8]
         row['x'] = int(float(line[0]))
-        row['a'] = line[1]
+        row['b0'] = line[1]
         row['b1'] = line[2]
         row['b2'] = line[3]
         row['b3'] = line[4]
-        print "insert into common.lu_growth_chart (sex,age,percent,chart,x,a,b1,b2,b3) values ('%(sex)s',%(age)s,%(percent)s,%(chart)s,%(x)s,%(a)s,%(b1)s,%(b2)s,%(b3)s);" % row
+        print "insert into clin_measurements.lu_growth_chart (sex,age,percent,chart,x,b0,b1,b2,b3) values ('%(sex)s',%(age)s,%(percent)s,%(chart)s,%(x)s,%(b0)s,%(b1)s,%(b2)s,%(b3)s);" % row
 

@@ -108,6 +108,12 @@ class DBWrapper:
         if len(q) == 0: return None
         return q[0]['typname']
 
+    def column_notnull(self,tbl,col):
+        """Whether particular column has the NOT NULL constraint"""
+        q= self.query("select attnotnull from pg_attribute, pg_class, pg_namespace where relnamespace = pg_namespace.oid and pg_class.oid = attrelid and nspname || '.' || relname = %s and attname = %s",(tbl,col))
+        if len(q) == 0: return None
+        return q[0]['attnotnull']
+    
     def each_foreign_constraint(self):
         """list all foreign key constraints in the DB, dict keyed by table, dict keyed by column"""
         q = self.query("""

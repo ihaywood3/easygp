@@ -96,12 +96,12 @@ def last_file(g):
 
 def get_xml_etree():
     global release_date
-    f = last_file("pbs*.xml")
+    f = last_file("*.xml")
     if not f:
         f = last_file("*.zip")
         if f:
             os.system("unzip -Laq '%s'" % f)
-            f = last_file("pbs*.xml")
+            f = last_file("*.xml")
     if f is None:
         print >>sys.stderr, "can't find file"
         sys.exit(0)

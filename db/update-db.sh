@@ -8,6 +8,7 @@ i=$MINOR
 let i++
 
 while [ -e $MAJOR.$i*.sql ] ; do
-   psql -f $MAJOR.$i*.sql easygp -U easygp
+   echo Running update $MAJOR.$i
+   psql -f $MAJOR.$i*.sql easygp -U easygp > /dev/null
    let i++
 done

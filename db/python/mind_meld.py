@@ -23,7 +23,7 @@
 
 import dbwrapper
 import pdb
-db = dbwrapper.DBWrapper({'database':'30oct15-6','db_user':'richard','host':'','port':None,'password':None},True)
+db = dbwrapper.DBWrapper({'database':'easygp','db_user':'easygp','host':'','port':None,'password':None},True)
 others= {'fk_consult':'clin_consult.consult','fk_patient':'clerical.data_patients','fk_employee':'contacts.data_employees','fk_person':'contacts.data_persons','fk_staff':'admin.staff','fk_branch':'contacts.data_branches','fk_address':'contacts.data_addresses','fk_progressnote':'clin_consult.progressnotes','fk_pasthistory':'clin_history.past_history','fk_clinic':'admin.clinics','fk_occupation':'common.lu_occupations','fk_generic_product':'drugs.product','fk_document':'documents.documents','fk_coding_system':'coding.lu_systems'}
 
 def convert_all_uuid():
@@ -78,6 +78,16 @@ def add_constraints():
                     if not found and c != 'fk_code':
                         print 'ALTER TABLE %s add constraint "%s_%s_fkey" foreign key (%s) references  (pk);' % (t,t2,c,c)
 
-add_constraints()
+
+
+def find_notnulls():
+    for t in db.each_table():
+        for c in db.each_table_cols(t):
+            if c.startswith('fk_') and not db.column_notnull(t,c):
+                print "ALTER TABLE %s ALTER COLUMN %s SET NOT NULL;" % (t,c)
+
+find_notnulls()
+                
+#add_constraints()
 #convert_all_uuid()
 #drop_all_views()

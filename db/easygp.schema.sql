@@ -90,15 +90,6 @@ CREATE SCHEMA clin_certificates;
 ALTER SCHEMA clin_certificates OWNER TO easygp;
 
 --
--- Name: clin_checkups; Type: SCHEMA; Schema: -; Owner: easygp
---
-
-CREATE SCHEMA clin_checkups;
-
-
-ALTER SCHEMA clin_checkups OWNER TO easygp;
-
---
 -- Name: clin_consult; Type: SCHEMA; Schema: -; Owner: easygp
 --
 
@@ -405,7 +396,7 @@ CREATE TYPE check_dirs_result AS (
 );
 
 
-ALTER TYPE public.check_dirs_result OWNER TO easygp;
+ALTER TYPE check_dirs_result OWNER TO easygp;
 
 SET search_path = admin, pg_catalog;
 
@@ -586,7 +577,7 @@ CREATE TABLE sessions (
 );
 
 
-ALTER TABLE clerical.sessions OWNER TO easygp;
+ALTER TABLE sessions OWNER TO easygp;
 
 --
 -- Name: TABLE sessions; Type: COMMENT; Schema: clerical; Owner: easygp
@@ -1277,7 +1268,7 @@ CREATE TABLE clinics (
 );
 
 
-ALTER TABLE admin.clinics OWNER TO easygp;
+ALTER TABLE clinics OWNER TO easygp;
 
 --
 -- Name: TABLE clinics; Type: COMMENT; Schema: admin; Owner: easygp
@@ -1305,7 +1296,7 @@ CREATE SEQUENCE clinic_pk_seq
     CACHE 1;
 
 
-ALTER TABLE admin.clinic_pk_seq OWNER TO easygp;
+ALTER TABLE clinic_pk_seq OWNER TO easygp;
 
 --
 -- Name: clinic_pk_seq; Type: SEQUENCE OWNED BY; Schema: admin; Owner: easygp
@@ -1327,7 +1318,7 @@ CREATE TABLE clinic_rooms (
 );
 
 
-ALTER TABLE admin.clinic_rooms OWNER TO easygp;
+ALTER TABLE clinic_rooms OWNER TO easygp;
 
 --
 -- Name: TABLE clinic_rooms; Type: COMMENT; Schema: admin; Owner: easygp
@@ -1362,7 +1353,7 @@ CREATE SEQUENCE clinic_rooms_pk_seq
     CACHE 1;
 
 
-ALTER TABLE admin.clinic_rooms_pk_seq OWNER TO easygp;
+ALTER TABLE clinic_rooms_pk_seq OWNER TO easygp;
 
 --
 -- Name: clinic_rooms_pk_seq; Type: SEQUENCE OWNED BY; Schema: admin; Owner: easygp
@@ -1384,7 +1375,7 @@ CREATE TABLE global_preferences (
 );
 
 
-ALTER TABLE admin.global_preferences OWNER TO easygp;
+ALTER TABLE global_preferences OWNER TO easygp;
 
 --
 -- Name: COLUMN global_preferences.fk_staff; Type: COMMENT; Schema: admin; Owner: easygp
@@ -1405,7 +1396,7 @@ CREATE SEQUENCE global_preferences_pk_seq
     CACHE 1;
 
 
-ALTER TABLE admin.global_preferences_pk_seq OWNER TO easygp;
+ALTER TABLE global_preferences_pk_seq OWNER TO easygp;
 
 --
 -- Name: global_preferences_pk_seq; Type: SEQUENCE OWNED BY; Schema: admin; Owner: easygp
@@ -1425,7 +1416,7 @@ CREATE TABLE link_staff_clinics (
 );
 
 
-ALTER TABLE admin.link_staff_clinics OWNER TO easygp;
+ALTER TABLE link_staff_clinics OWNER TO easygp;
 
 --
 -- Name: link_staff_clinics_pk_seq; Type: SEQUENCE; Schema: admin; Owner: easygp
@@ -1439,7 +1430,7 @@ CREATE SEQUENCE link_staff_clinics_pk_seq
     CACHE 1;
 
 
-ALTER TABLE admin.link_staff_clinics_pk_seq OWNER TO easygp;
+ALTER TABLE link_staff_clinics_pk_seq OWNER TO easygp;
 
 --
 -- Name: link_staff_clinics_pk_seq; Type: SEQUENCE OWNED BY; Schema: admin; Owner: easygp
@@ -1460,7 +1451,7 @@ CREATE TABLE lu_clinical_modules (
 );
 
 
-ALTER TABLE admin.lu_clinical_modules OWNER TO easygp;
+ALTER TABLE lu_clinical_modules OWNER TO easygp;
 
 --
 -- Name: TABLE lu_clinical_modules; Type: COMMENT; Schema: admin; Owner: easygp
@@ -1481,7 +1472,7 @@ CREATE SEQUENCE lu_clinical_modules_pk_seq
     CACHE 1;
 
 
-ALTER TABLE admin.lu_clinical_modules_pk_seq OWNER TO easygp;
+ALTER TABLE lu_clinical_modules_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_clinical_modules_pk_seq; Type: SEQUENCE OWNED BY; Schema: admin; Owner: easygp
@@ -1502,7 +1493,7 @@ CREATE TABLE lu_patient_warnings (
 );
 
 
-ALTER TABLE admin.lu_patient_warnings OWNER TO easygp;
+ALTER TABLE lu_patient_warnings OWNER TO easygp;
 
 --
 -- Name: TABLE lu_patient_warnings; Type: COMMENT; Schema: admin; Owner: easygp
@@ -1523,7 +1514,7 @@ CREATE SEQUENCE lu_patient_warnings_pk_seq
     CACHE 1;
 
 
-ALTER TABLE admin.lu_patient_warnings_pk_seq OWNER TO easygp;
+ALTER TABLE lu_patient_warnings_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_patient_warnings_pk_seq; Type: SEQUENCE OWNED BY; Schema: admin; Owner: easygp
@@ -1544,7 +1535,7 @@ CREATE TABLE lu_preferences_defaults (
 );
 
 
-ALTER TABLE admin.lu_preferences_defaults OWNER TO easygp;
+ALTER TABLE lu_preferences_defaults OWNER TO easygp;
 
 --
 -- Name: lu_preferences_defaults_pk_seq; Type: SEQUENCE; Schema: admin; Owner: easygp
@@ -1558,7 +1549,7 @@ CREATE SEQUENCE lu_preferences_defaults_pk_seq
     CACHE 1;
 
 
-ALTER TABLE admin.lu_preferences_defaults_pk_seq OWNER TO easygp;
+ALTER TABLE lu_preferences_defaults_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_preferences_defaults_pk_seq; Type: SEQUENCE OWNED BY; Schema: admin; Owner: easygp
@@ -1577,7 +1568,7 @@ CREATE TABLE lu_staff_roles (
 );
 
 
-ALTER TABLE admin.lu_staff_roles OWNER TO easygp;
+ALTER TABLE lu_staff_roles OWNER TO easygp;
 
 --
 -- Name: TABLE lu_staff_roles; Type: COMMENT; Schema: admin; Owner: easygp
@@ -1599,7 +1590,7 @@ CREATE SEQUENCE lu_staff_roles_pk_seq
     CACHE 1;
 
 
-ALTER TABLE admin.lu_staff_roles_pk_seq OWNER TO easygp;
+ALTER TABLE lu_staff_roles_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_staff_roles_pk_seq; Type: SEQUENCE OWNED BY; Schema: admin; Owner: easygp
@@ -1618,7 +1609,7 @@ CREATE TABLE lu_staff_status (
 );
 
 
-ALTER TABLE admin.lu_staff_status OWNER TO easygp;
+ALTER TABLE lu_staff_status OWNER TO easygp;
 
 --
 -- Name: TABLE lu_staff_status; Type: COMMENT; Schema: admin; Owner: easygp
@@ -1641,7 +1632,7 @@ CREATE SEQUENCE lu_staff_status_pk_seq
     CACHE 1;
 
 
-ALTER TABLE admin.lu_staff_status_pk_seq OWNER TO easygp;
+ALTER TABLE lu_staff_status_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_staff_status_pk_seq; Type: SEQUENCE OWNED BY; Schema: admin; Owner: easygp
@@ -1660,7 +1651,7 @@ CREATE TABLE lu_staff_type (
 );
 
 
-ALTER TABLE admin.lu_staff_type OWNER TO easygp;
+ALTER TABLE lu_staff_type OWNER TO easygp;
 
 --
 -- Name: TABLE lu_staff_type; Type: COMMENT; Schema: admin; Owner: easygp
@@ -1691,7 +1682,7 @@ CREATE SEQUENCE lu_staff_type_pk_seq
     CACHE 1;
 
 
-ALTER TABLE admin.lu_staff_type_pk_seq OWNER TO easygp;
+ALTER TABLE lu_staff_type_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_staff_type_pk_seq; Type: SEQUENCE OWNED BY; Schema: admin; Owner: easygp
@@ -1712,7 +1703,7 @@ CREATE TABLE patient_warnings (
 );
 
 
-ALTER TABLE admin.patient_warnings OWNER TO easygp;
+ALTER TABLE patient_warnings OWNER TO easygp;
 
 --
 -- Name: TABLE patient_warnings; Type: COMMENT; Schema: admin; Owner: easygp
@@ -1733,7 +1724,7 @@ CREATE SEQUENCE patient_warnings_pk_seq
     CACHE 1;
 
 
-ALTER TABLE admin.patient_warnings_pk_seq OWNER TO easygp;
+ALTER TABLE patient_warnings_pk_seq OWNER TO easygp;
 
 --
 -- Name: patient_warnings_pk_seq; Type: SEQUENCE OWNED BY; Schema: admin; Owner: easygp
@@ -1759,7 +1750,7 @@ CREATE TABLE staff (
 );
 
 
-ALTER TABLE admin.staff OWNER TO easygp;
+ALTER TABLE staff OWNER TO easygp;
 
 --
 -- Name: COLUMN staff.fk_lu_staff_type; Type: COMMENT; Schema: admin; Owner: easygp
@@ -1783,7 +1774,7 @@ CREATE TABLE staff_clinical_toolbar (
 );
 
 
-ALTER TABLE admin.staff_clinical_toolbar OWNER TO easygp;
+ALTER TABLE staff_clinical_toolbar OWNER TO easygp;
 
 --
 -- Name: TABLE staff_clinical_toolbar; Type: COMMENT; Schema: admin; Owner: easygp
@@ -1805,7 +1796,7 @@ CREATE SEQUENCE staff_clinical_toolbar_pk_seq
     CACHE 1;
 
 
-ALTER TABLE admin.staff_clinical_toolbar_pk_seq OWNER TO easygp;
+ALTER TABLE staff_clinical_toolbar_pk_seq OWNER TO easygp;
 
 --
 -- Name: staff_clinical_toolbar_pk_seq; Type: SEQUENCE OWNED BY; Schema: admin; Owner: easygp
@@ -1826,7 +1817,7 @@ CREATE SEQUENCE staff_pk_seq
     CACHE 1;
 
 
-ALTER TABLE admin.staff_pk_seq OWNER TO easygp;
+ALTER TABLE staff_pk_seq OWNER TO easygp;
 
 --
 -- Name: staff_pk_seq; Type: SEQUENCE OWNED BY; Schema: admin; Owner: easygp
@@ -1849,7 +1840,7 @@ CREATE TABLE test_latex_templates (
 );
 
 
-ALTER TABLE admin.test_latex_templates OWNER TO easygp;
+ALTER TABLE test_latex_templates OWNER TO easygp;
 
 --
 -- Name: TABLE test_latex_templates; Type: COMMENT; Schema: admin; Owner: easygp
@@ -1870,7 +1861,7 @@ CREATE SEQUENCE test_latex_templates_pk_seq
     CACHE 1;
 
 
-ALTER TABLE admin.test_latex_templates_pk_seq OWNER TO easygp;
+ALTER TABLE test_latex_templates_pk_seq OWNER TO easygp;
 
 --
 -- Name: test_latex_templates_pk_seq; Type: SEQUENCE OWNED BY; Schema: admin; Owner: easygp
@@ -1889,7 +1880,7 @@ CREATE TABLE tips_seen (
 );
 
 
-ALTER TABLE admin.tips_seen OWNER TO easygp;
+ALTER TABLE tips_seen OWNER TO easygp;
 
 --
 -- Name: TABLE tips_seen; Type: COMMENT; Schema: admin; Owner: easygp
@@ -1919,7 +1910,7 @@ CREATE TABLE data_addresses (
 );
 
 
-ALTER TABLE contacts.data_addresses OWNER TO easygp;
+ALTER TABLE data_addresses OWNER TO easygp;
 
 --
 -- Name: COLUMN data_addresses.geolocation; Type: COMMENT; Schema: contacts; Owner: easygp
@@ -1957,7 +1948,7 @@ CREATE TABLE data_branches (
 );
 
 
-ALTER TABLE contacts.data_branches OWNER TO easygp;
+ALTER TABLE data_branches OWNER TO easygp;
 
 --
 -- Name: COLUMN data_branches.memo; Type: COMMENT; Schema: contacts; Owner: easygp
@@ -1996,7 +1987,7 @@ CREATE TABLE data_numbers (
 );
 
 
-ALTER TABLE contacts.data_numbers OWNER TO easygp;
+ALTER TABLE data_numbers OWNER TO easygp;
 
 --
 -- Name: TABLE data_numbers; Type: COMMENT; Schema: contacts; Owner: easygp
@@ -2054,7 +2045,7 @@ CREATE TABLE data_organisations (
 );
 
 
-ALTER TABLE contacts.data_organisations OWNER TO easygp;
+ALTER TABLE data_organisations OWNER TO easygp;
 
 --
 -- Name: lu_address_types; Type: TABLE; Schema: contacts; Owner: easygp; Tablespace: 
@@ -2066,7 +2057,7 @@ CREATE TABLE lu_address_types (
 );
 
 
-ALTER TABLE contacts.lu_address_types OWNER TO easygp;
+ALTER TABLE lu_address_types OWNER TO easygp;
 
 --
 -- Name: lu_categories; Type: TABLE; Schema: contacts; Owner: easygp; Tablespace: 
@@ -2078,7 +2069,7 @@ CREATE TABLE lu_categories (
 );
 
 
-ALTER TABLE contacts.lu_categories OWNER TO easygp;
+ALTER TABLE lu_categories OWNER TO easygp;
 
 --
 -- Name: lu_towns; Type: TABLE; Schema: contacts; Owner: easygp; Tablespace: 
@@ -2093,7 +2084,7 @@ CREATE TABLE lu_towns (
 );
 
 
-ALTER TABLE contacts.lu_towns OWNER TO easygp;
+ALTER TABLE lu_towns OWNER TO easygp;
 
 --
 -- Name: COLUMN lu_towns.comment; Type: COMMENT; Schema: contacts; Owner: easygp
@@ -2146,7 +2137,7 @@ CREATE VIEW vwclinics AS
      JOIN contacts.lu_categories ON ((data_branches.fk_category = lu_categories.pk)));
 
 
-ALTER TABLE admin.vwclinics OWNER TO easygp;
+ALTER TABLE vwclinics OWNER TO easygp;
 
 --
 -- Name: vwclinicrooms; Type: VIEW; Schema: admin; Owner: easygp
@@ -2169,7 +2160,7 @@ CREATE VIEW vwclinicrooms AS
   ORDER BY clinic_rooms.fk_clinic, clinic_rooms.room_name;
 
 
-ALTER TABLE admin.vwclinicrooms OWNER TO easygp;
+ALTER TABLE vwclinicrooms OWNER TO easygp;
 
 --
 -- Name: vwpatientwarnings; Type: VIEW; Schema: admin; Owner: easygp
@@ -2188,7 +2179,7 @@ CREATE VIEW vwpatientwarnings AS
   WHERE (patient_warnings.fk_lu_patient_warning = lu_patient_warnings.pk);
 
 
-ALTER TABLE admin.vwpatientwarnings OWNER TO easygp;
+ALTER TABLE vwpatientwarnings OWNER TO easygp;
 
 --
 -- Name: vwpreferences; Type: VIEW; Schema: admin; Owner: easygp
@@ -2209,7 +2200,7 @@ CREATE VIEW vwpreferences AS
      FULL JOIN lu_preferences_defaults lpd USING (name));
 
 
-ALTER TABLE admin.vwpreferences OWNER TO easygp;
+ALTER TABLE vwpreferences OWNER TO easygp;
 
 SET search_path = contacts, pg_catalog;
 
@@ -2227,7 +2218,7 @@ CREATE TABLE data_numbers_persons (
 );
 
 
-ALTER TABLE contacts.data_numbers_persons OWNER TO easygp;
+ALTER TABLE data_numbers_persons OWNER TO easygp;
 
 --
 -- Name: TABLE data_numbers_persons; Type: COMMENT; Schema: contacts; Owner: easygp
@@ -2281,7 +2272,7 @@ CREATE TABLE data_persons (
 );
 
 
-ALTER TABLE contacts.data_persons OWNER TO easygp;
+ALTER TABLE data_persons OWNER TO easygp;
 
 --
 -- Name: COLUMN data_persons.country_code; Type: COMMENT; Schema: contacts; Owner: easygp
@@ -2324,7 +2315,7 @@ CREATE TABLE lu_title (
 );
 
 
-ALTER TABLE contacts.lu_title OWNER TO easygp;
+ALTER TABLE lu_title OWNER TO easygp;
 
 SET search_path = admin, pg_catalog;
 
@@ -2359,7 +2350,7 @@ CREATE VIEW vwstaff AS
      LEFT JOIN contacts.data_numbers employees_numbers ON ((staff.fk_person = employees_numbers.fk_person)));
 
 
-ALTER TABLE admin.vwstaff OWNER TO easygp;
+ALTER TABLE vwstaff OWNER TO easygp;
 
 SET search_path = blobs, pg_catalog;
 
@@ -2377,7 +2368,7 @@ CREATE TABLE images (
 );
 
 
-ALTER TABLE blobs.images OWNER TO easygp;
+ALTER TABLE images OWNER TO easygp;
 
 --
 -- Name: TABLE images; Type: COMMENT; Schema: blobs; Owner: easygp
@@ -2426,7 +2417,7 @@ CREATE TABLE lu_ethnicity (
 );
 
 
-ALTER TABLE common.lu_ethnicity OWNER TO easygp;
+ALTER TABLE lu_ethnicity OWNER TO easygp;
 
 --
 -- Name: lu_languages; Type: TABLE; Schema: common; Owner: easygp; Tablespace: 
@@ -2438,7 +2429,7 @@ CREATE TABLE lu_languages (
 );
 
 
-ALTER TABLE common.lu_languages OWNER TO easygp;
+ALTER TABLE lu_languages OWNER TO easygp;
 
 --
 -- Name: lu_occupations; Type: TABLE; Schema: common; Owner: easygp; Tablespace: 
@@ -2452,7 +2443,7 @@ CREATE TABLE lu_occupations (
 );
 
 
-ALTER TABLE common.lu_occupations OWNER TO easygp;
+ALTER TABLE lu_occupations OWNER TO easygp;
 
 --
 -- Name: TABLE lu_occupations; Type: COMMENT; Schema: common; Owner: easygp
@@ -2491,7 +2482,7 @@ CREATE TABLE data_employees (
 );
 
 
-ALTER TABLE contacts.data_employees OWNER TO easygp;
+ALTER TABLE data_employees OWNER TO easygp;
 
 --
 -- Name: COLUMN data_employees.deleted; Type: COMMENT; Schema: contacts; Owner: easygp
@@ -2519,7 +2510,7 @@ CREATE TABLE lu_employee_status (
 );
 
 
-ALTER TABLE contacts.lu_employee_status OWNER TO easygp;
+ALTER TABLE lu_employee_status OWNER TO easygp;
 
 --
 -- Name: TABLE lu_employee_status; Type: COMMENT; Schema: contacts; Owner: easygp
@@ -2539,7 +2530,7 @@ CREATE TABLE lu_marital (
 );
 
 
-ALTER TABLE contacts.lu_marital OWNER TO easygp;
+ALTER TABLE lu_marital OWNER TO easygp;
 
 --
 -- Name: lu_sex; Type: TABLE; Schema: contacts; Owner: easygp; Tablespace: 
@@ -2552,7 +2543,7 @@ CREATE TABLE lu_sex (
 );
 
 
-ALTER TABLE contacts.lu_sex OWNER TO easygp;
+ALTER TABLE lu_sex OWNER TO easygp;
 
 SET search_path = admin, pg_catalog;
 
@@ -2664,7 +2655,7 @@ CREATE VIEW vwstaffinclinics AS
      LEFT JOIN contacts.lu_address_types ON ((data_addresses.fk_lu_address_type = lu_address_types.pk)));
 
 
-ALTER TABLE admin.vwstaffinclinics OWNER TO easygp;
+ALTER TABLE vwstaffinclinics OWNER TO easygp;
 
 --
 -- Name: vwstafftoolbarbuttons; Type: VIEW; Schema: admin; Owner: easygp
@@ -2685,7 +2676,7 @@ CREATE VIEW vwstafftoolbarbuttons AS
   ORDER BY staff_clinical_toolbar.fk_staff, staff_clinical_toolbar.display_order;
 
 
-ALTER TABLE admin.vwstafftoolbarbuttons OWNER TO easygp;
+ALTER TABLE vwstafftoolbarbuttons OWNER TO easygp;
 
 SET search_path = billing, pg_catalog;
 
@@ -2704,7 +2695,7 @@ CREATE TABLE bank_details (
 );
 
 
-ALTER TABLE billing.bank_details OWNER TO easygp;
+ALTER TABLE bank_details OWNER TO easygp;
 
 --
 -- Name: bank_details_pk_seq; Type: SEQUENCE; Schema: billing; Owner: easygp
@@ -2718,7 +2709,7 @@ CREATE SEQUENCE bank_details_pk_seq
     CACHE 1;
 
 
-ALTER TABLE billing.bank_details_pk_seq OWNER TO easygp;
+ALTER TABLE bank_details_pk_seq OWNER TO easygp;
 
 --
 -- Name: bank_details_pk_seq; Type: SEQUENCE OWNED BY; Schema: billing; Owner: easygp
@@ -2745,7 +2736,7 @@ CREATE TABLE claims (
 );
 
 
-ALTER TABLE billing.claims OWNER TO easygp;
+ALTER TABLE claims OWNER TO easygp;
 
 --
 -- Name: TABLE claims; Type: COMMENT; Schema: billing; Owner: easygp
@@ -2794,7 +2785,7 @@ CREATE SEQUENCE claims_pk_seq
     CACHE 1;
 
 
-ALTER TABLE billing.claims_pk_seq OWNER TO easygp;
+ALTER TABLE claims_pk_seq OWNER TO easygp;
 
 --
 -- Name: claims_pk_seq; Type: SEQUENCE OWNED BY; Schema: billing; Owner: easygp
@@ -2824,7 +2815,7 @@ CREATE TABLE fee_schedule (
 );
 
 
-ALTER TABLE billing.fee_schedule OWNER TO easygp;
+ALTER TABLE fee_schedule OWNER TO easygp;
 
 --
 -- Name: TABLE fee_schedule; Type: COMMENT; Schema: billing; Owner: easygp
@@ -2887,7 +2878,7 @@ CREATE SEQUENCE fee_schedule_pk_seq
     CACHE 1;
 
 
-ALTER TABLE billing.fee_schedule_pk_seq OWNER TO easygp;
+ALTER TABLE fee_schedule_pk_seq OWNER TO easygp;
 
 --
 -- Name: fee_schedule_pk_seq; Type: SEQUENCE OWNED BY; Schema: billing; Owner: easygp
@@ -2937,7 +2928,7 @@ CREATE TABLE invoices (
 );
 
 
-ALTER TABLE billing.invoices OWNER TO easygp;
+ALTER TABLE invoices OWNER TO easygp;
 
 --
 -- Name: TABLE invoices; Type: COMMENT; Schema: billing; Owner: easygp
@@ -3072,7 +3063,7 @@ CREATE SEQUENCE invoices_pk_seq
     CACHE 1;
 
 
-ALTER TABLE billing.invoices_pk_seq OWNER TO easygp;
+ALTER TABLE invoices_pk_seq OWNER TO easygp;
 
 --
 -- Name: invoices_pk_seq; Type: SEQUENCE OWNED BY; Schema: billing; Owner: easygp
@@ -3106,7 +3097,7 @@ CREATE TABLE items_billed (
 );
 
 
-ALTER TABLE billing.items_billed OWNER TO easygp;
+ALTER TABLE items_billed OWNER TO easygp;
 
 --
 -- Name: TABLE items_billed; Type: COMMENT; Schema: billing; Owner: easygp
@@ -3183,7 +3174,7 @@ CREATE SEQUENCE items_billed_pk_seq
     CACHE 1;
 
 
-ALTER TABLE billing.items_billed_pk_seq OWNER TO easygp;
+ALTER TABLE items_billed_pk_seq OWNER TO easygp;
 
 --
 -- Name: items_billed_pk_seq; Type: SEQUENCE OWNED BY; Schema: billing; Owner: easygp
@@ -3202,7 +3193,7 @@ CREATE TABLE lu_billing_type (
 );
 
 
-ALTER TABLE billing.lu_billing_type OWNER TO easygp;
+ALTER TABLE lu_billing_type OWNER TO easygp;
 
 --
 -- Name: TABLE lu_billing_type; Type: COMMENT; Schema: billing; Owner: easygp
@@ -3223,7 +3214,7 @@ CREATE SEQUENCE lu_billing_type_pk_seq
     CACHE 1;
 
 
-ALTER TABLE billing.lu_billing_type_pk_seq OWNER TO easygp;
+ALTER TABLE lu_billing_type_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_billing_type_pk_seq; Type: SEQUENCE OWNED BY; Schema: billing; Owner: easygp
@@ -3242,7 +3233,7 @@ CREATE TABLE lu_bulk_billing_type (
 );
 
 
-ALTER TABLE billing.lu_bulk_billing_type OWNER TO easygp;
+ALTER TABLE lu_bulk_billing_type OWNER TO easygp;
 
 --
 -- Name: TABLE lu_bulk_billing_type; Type: COMMENT; Schema: billing; Owner: easygp
@@ -3263,7 +3254,7 @@ CREATE SEQUENCE lu_bulk_billing_type_pk_seq
     CACHE 1;
 
 
-ALTER TABLE billing.lu_bulk_billing_type_pk_seq OWNER TO easygp;
+ALTER TABLE lu_bulk_billing_type_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_bulk_billing_type_pk_seq; Type: SEQUENCE OWNED BY; Schema: billing; Owner: easygp
@@ -3282,7 +3273,7 @@ CREATE TABLE lu_codes (
 );
 
 
-ALTER TABLE billing.lu_codes OWNER TO easygp;
+ALTER TABLE lu_codes OWNER TO easygp;
 
 --
 -- Name: lu_default_billing_level; Type: TABLE; Schema: billing; Owner: easygp; Tablespace: 
@@ -3294,7 +3285,7 @@ CREATE TABLE lu_default_billing_level (
 );
 
 
-ALTER TABLE billing.lu_default_billing_level OWNER TO easygp;
+ALTER TABLE lu_default_billing_level OWNER TO easygp;
 
 --
 -- Name: TABLE lu_default_billing_level; Type: COMMENT; Schema: billing; Owner: easygp
@@ -3316,7 +3307,7 @@ CREATE SEQUENCE lu_default_billing_level_pk_seq
     CACHE 1;
 
 
-ALTER TABLE billing.lu_default_billing_level_pk_seq OWNER TO easygp;
+ALTER TABLE lu_default_billing_level_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_default_billing_level_pk_seq; Type: SEQUENCE OWNED BY; Schema: billing; Owner: easygp
@@ -3335,7 +3326,7 @@ CREATE TABLE lu_invoice_comments (
 );
 
 
-ALTER TABLE billing.lu_invoice_comments OWNER TO easygp;
+ALTER TABLE lu_invoice_comments OWNER TO easygp;
 
 --
 -- Name: TABLE lu_invoice_comments; Type: COMMENT; Schema: billing; Owner: easygp
@@ -3356,7 +3347,7 @@ CREATE SEQUENCE lu_invoice_comments_pk_seq
     CACHE 1;
 
 
-ALTER TABLE billing.lu_invoice_comments_pk_seq OWNER TO easygp;
+ALTER TABLE lu_invoice_comments_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_invoice_comments_pk_seq; Type: SEQUENCE OWNED BY; Schema: billing; Owner: easygp
@@ -3375,7 +3366,7 @@ CREATE TABLE lu_payment_method (
 );
 
 
-ALTER TABLE billing.lu_payment_method OWNER TO easygp;
+ALTER TABLE lu_payment_method OWNER TO easygp;
 
 --
 -- Name: TABLE lu_payment_method; Type: COMMENT; Schema: billing; Owner: easygp
@@ -3396,7 +3387,7 @@ CREATE SEQUENCE lu_payment_method_pk_seq
     CACHE 1;
 
 
-ALTER TABLE billing.lu_payment_method_pk_seq OWNER TO easygp;
+ALTER TABLE lu_payment_method_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_payment_method_pk_seq; Type: SEQUENCE OWNED BY; Schema: billing; Owner: easygp
@@ -3415,7 +3406,7 @@ CREATE TABLE lu_reasons_not_billed (
 );
 
 
-ALTER TABLE billing.lu_reasons_not_billed OWNER TO easygp;
+ALTER TABLE lu_reasons_not_billed OWNER TO easygp;
 
 --
 -- Name: lu_reasons_not_billed_pk_seq; Type: SEQUENCE; Schema: billing; Owner: easygp
@@ -3429,7 +3420,7 @@ CREATE SEQUENCE lu_reasons_not_billed_pk_seq
     CACHE 1;
 
 
-ALTER TABLE billing.lu_reasons_not_billed_pk_seq OWNER TO easygp;
+ALTER TABLE lu_reasons_not_billed_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_reasons_not_billed_pk_seq; Type: SEQUENCE OWNED BY; Schema: billing; Owner: easygp
@@ -3452,7 +3443,7 @@ CREATE TABLE lu_reports (
 );
 
 
-ALTER TABLE billing.lu_reports OWNER TO easygp;
+ALTER TABLE lu_reports OWNER TO easygp;
 
 --
 -- Name: COLUMN lu_reports.sql; Type: COMMENT; Schema: billing; Owner: easygp
@@ -3494,7 +3485,7 @@ CREATE SEQUENCE lu_reports_pk_seq
     CACHE 1;
 
 
-ALTER TABLE billing.lu_reports_pk_seq OWNER TO easygp;
+ALTER TABLE lu_reports_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_reports_pk_seq; Type: SEQUENCE OWNED BY; Schema: billing; Owner: easygp
@@ -3518,7 +3509,7 @@ CREATE TABLE payments_received (
 );
 
 
-ALTER TABLE billing.payments_received OWNER TO easygp;
+ALTER TABLE payments_received OWNER TO easygp;
 
 --
 -- Name: payments_received_pk_seq; Type: SEQUENCE; Schema: billing; Owner: easygp
@@ -3532,7 +3523,7 @@ CREATE SEQUENCE payments_received_pk_seq
     CACHE 1;
 
 
-ALTER TABLE billing.payments_received_pk_seq OWNER TO easygp;
+ALTER TABLE payments_received_pk_seq OWNER TO easygp;
 
 --
 -- Name: payments_received_pk_seq; Type: SEQUENCE OWNED BY; Schema: billing; Owner: easygp
@@ -3554,7 +3545,7 @@ CREATE TABLE prices (
 );
 
 
-ALTER TABLE billing.prices OWNER TO easygp;
+ALTER TABLE prices OWNER TO easygp;
 
 --
 -- Name: COLUMN prices.price; Type: COMMENT; Schema: billing; Owner: easygp
@@ -3575,7 +3566,7 @@ CREATE SEQUENCE prices_pk_seq
     CACHE 1;
 
 
-ALTER TABLE billing.prices_pk_seq OWNER TO easygp;
+ALTER TABLE prices_pk_seq OWNER TO easygp;
 
 --
 -- Name: prices_pk_seq; Type: SEQUENCE OWNED BY; Schema: billing; Owner: easygp
@@ -3594,7 +3585,7 @@ CREATE TABLE reports (
 );
 
 
-ALTER TABLE billing.reports OWNER TO easygp;
+ALTER TABLE reports OWNER TO easygp;
 
 --
 -- Name: vwclaims; Type: VIEW; Schema: billing; Owner: easygp
@@ -3619,7 +3610,7 @@ CREATE VIEW vwclaims AS
      JOIN admin.vwclinics ON ((vwclinics.fk_branch = claims.fk_branch)));
 
 
-ALTER TABLE billing.vwclaims OWNER TO easygp;
+ALTER TABLE vwclaims OWNER TO easygp;
 
 SET search_path = clerical, pg_catalog;
 
@@ -3646,7 +3637,7 @@ CREATE TABLE bookings (
 );
 
 
-ALTER TABLE clerical.bookings OWNER TO easygp;
+ALTER TABLE bookings OWNER TO easygp;
 
 --
 -- Name: TABLE bookings; Type: COMMENT; Schema: clerical; Owner: easygp
@@ -3713,7 +3704,7 @@ CREATE TABLE data_patients (
 );
 
 
-ALTER TABLE clerical.data_patients OWNER TO easygp;
+ALTER TABLE data_patients OWNER TO easygp;
 
 --
 -- Name: TABLE data_patients; Type: COMMENT; Schema: clerical; Owner: easygp
@@ -3896,7 +3887,7 @@ CREATE TABLE lu_countries (
 );
 
 
-ALTER TABLE common.lu_countries OWNER TO easygp;
+ALTER TABLE lu_countries OWNER TO easygp;
 
 SET search_path = contacts, pg_catalog;
 
@@ -3915,7 +3906,7 @@ CREATE TABLE data_communications (
 );
 
 
-ALTER TABLE contacts.data_communications OWNER TO easygp;
+ALTER TABLE data_communications OWNER TO easygp;
 
 --
 -- Name: links_branches_comms; Type: TABLE; Schema: contacts; Owner: easygp; Tablespace: 
@@ -3929,7 +3920,7 @@ CREATE TABLE links_branches_comms (
 );
 
 
-ALTER TABLE contacts.links_branches_comms OWNER TO easygp;
+ALTER TABLE links_branches_comms OWNER TO easygp;
 
 --
 -- Name: links_persons_addresses; Type: TABLE; Schema: contacts; Owner: easygp; Tablespace: 
@@ -3944,7 +3935,7 @@ CREATE TABLE links_persons_addresses (
 );
 
 
-ALTER TABLE contacts.links_persons_addresses OWNER TO easygp;
+ALTER TABLE links_persons_addresses OWNER TO easygp;
 
 --
 -- Name: lu_contact_type; Type: TABLE; Schema: contacts; Owner: easygp; Tablespace: 
@@ -3956,7 +3947,7 @@ CREATE TABLE lu_contact_type (
 );
 
 
-ALTER TABLE contacts.lu_contact_type OWNER TO easygp;
+ALTER TABLE lu_contact_type OWNER TO easygp;
 
 --
 -- Name: vwbranchescomms; Type: VIEW; Schema: contacts; Owner: easygp
@@ -3981,7 +3972,7 @@ CREATE VIEW vwbranchescomms AS
   ORDER BY branches.pk;
 
 
-ALTER TABLE contacts.vwbranchescomms OWNER TO easygp;
+ALTER TABLE vwbranchescomms OWNER TO easygp;
 
 --
 -- Name: vworganisations; Type: VIEW; Schema: contacts; Owner: easygp
@@ -4026,7 +4017,7 @@ CREATE VIEW vworganisations AS
      LEFT JOIN vwbranchescomms vbc ON (((branches.pk = vbc.fk_branch) AND (vbc.fk_type = 2))));
 
 
-ALTER TABLE contacts.vworganisations OWNER TO easygp;
+ALTER TABLE vworganisations OWNER TO easygp;
 
 --
 -- Name: vwpersonsincludingpatients; Type: VIEW; Schema: contacts; Owner: easygp
@@ -4098,7 +4089,7 @@ CREATE VIEW vwpersonsincludingpatients AS
      LEFT JOIN common.lu_countries countries1 ON ((addresses.country_code = countries1.country_code)));
 
 
-ALTER TABLE contacts.vwpersonsincludingpatients OWNER TO easygp;
+ALTER TABLE vwpersonsincludingpatients OWNER TO easygp;
 
 --
 -- Name: VIEW vwpersonsincludingpatients; Type: COMMENT; Schema: contacts; Owner: easygp
@@ -4207,7 +4198,7 @@ UNION
   WHERE (bookings.fk_lu_reason_not_billed IS NOT NULL);
 
 
-ALTER TABLE billing.vwdaylist OWNER TO easygp;
+ALTER TABLE vwdaylist OWNER TO easygp;
 
 --
 -- Name: vwfees; Type: VIEW; Schema: billing; Owner: easygp
@@ -4237,7 +4228,7 @@ CREATE VIEW vwfees AS
      JOIN lu_billing_type ON ((prices.fk_lu_billing_type = lu_billing_type.pk)));
 
 
-ALTER TABLE billing.vwfees OWNER TO easygp;
+ALTER TABLE vwfees OWNER TO easygp;
 
 SET search_path = clerical, pg_catalog;
 
@@ -4251,7 +4242,7 @@ CREATE TABLE lu_active_status (
 );
 
 
-ALTER TABLE clerical.lu_active_status OWNER TO easygp;
+ALTER TABLE lu_active_status OWNER TO easygp;
 
 --
 -- Name: TABLE lu_active_status; Type: COMMENT; Schema: clerical; Owner: easygp
@@ -4270,7 +4261,7 @@ CREATE TABLE lu_centrelink_card_type (
 );
 
 
-ALTER TABLE clerical.lu_centrelink_card_type OWNER TO easygp;
+ALTER TABLE lu_centrelink_card_type OWNER TO easygp;
 
 --
 -- Name: TABLE lu_centrelink_card_type; Type: COMMENT; Schema: clerical; Owner: easygp
@@ -4292,7 +4283,7 @@ CREATE TABLE lu_private_health_funds (
 );
 
 
-ALTER TABLE clerical.lu_private_health_funds OWNER TO easygp;
+ALTER TABLE lu_private_health_funds OWNER TO easygp;
 
 --
 -- Name: TABLE lu_private_health_funds; Type: COMMENT; Schema: clerical; Owner: easygp
@@ -4311,7 +4302,7 @@ CREATE TABLE lu_veteran_card_type (
 );
 
 
-ALTER TABLE clerical.lu_veteran_card_type OWNER TO easygp;
+ALTER TABLE lu_veteran_card_type OWNER TO easygp;
 
 --
 -- Name: TABLE lu_veteran_card_type; Type: COMMENT; Schema: clerical; Owner: easygp
@@ -4332,7 +4323,7 @@ CREATE TABLE lu_aboriginality (
 );
 
 
-ALTER TABLE common.lu_aboriginality OWNER TO easygp;
+ALTER TABLE lu_aboriginality OWNER TO easygp;
 
 SET search_path = contacts, pg_catalog;
 
@@ -4458,7 +4449,7 @@ CREATE VIEW vwpatients AS
      LEFT JOIN common.lu_countries address_country ON ((addresses.country_code = address_country.country_code)));
 
 
-ALTER TABLE contacts.vwpatients OWNER TO easygp;
+ALTER TABLE vwpatients OWNER TO easygp;
 
 SET search_path = billing, pg_catalog;
 
@@ -4543,7 +4534,7 @@ CREATE VIEW vwinvoices AS
      LEFT JOIN contacts.vwpatients vp2 ON ((invoices.fk_payer_person = vp2.fk_person)));
 
 
-ALTER TABLE billing.vwinvoices OWNER TO easygp;
+ALTER TABLE vwinvoices OWNER TO easygp;
 
 --
 -- Name: vwitemsbilled; Type: VIEW; Schema: billing; Owner: easygp
@@ -4584,7 +4575,7 @@ CREATE VIEW vwitemsbilled AS
      LEFT JOIN lu_codes ON ((items_billed.reason_code = lu_codes.code)));
 
 
-ALTER TABLE billing.vwitemsbilled OWNER TO easygp;
+ALTER TABLE vwitemsbilled OWNER TO easygp;
 
 --
 -- Name: vwitemsandinvoices; Type: VIEW; Schema: billing; Owner: easygp
@@ -4678,7 +4669,7 @@ CREATE VIEW vwitemsandinvoices AS
   WHERE (vwinvoices.fk_invoice = vwitemsbilled.fk_invoice);
 
 
-ALTER TABLE billing.vwitemsandinvoices OWNER TO easygp;
+ALTER TABLE vwitemsandinvoices OWNER TO easygp;
 
 --
 -- Name: vwpaymentsreceived; Type: VIEW; Schema: billing; Owner: easygp
@@ -4716,7 +4707,7 @@ CREATE VIEW vwpaymentsreceived AS
      LEFT JOIN contacts.vwpersonsincludingpatients ON ((invoices.fk_payer_person = vwpersonsincludingpatients.fk_person)));
 
 
-ALTER TABLE billing.vwpaymentsreceived OWNER TO easygp;
+ALTER TABLE vwpaymentsreceived OWNER TO easygp;
 
 SET search_path = blobs, pg_catalog;
 
@@ -4730,7 +4721,7 @@ CREATE TABLE blobs (
 );
 
 
-ALTER TABLE blobs.blobs OWNER TO easygp;
+ALTER TABLE blobs OWNER TO easygp;
 
 --
 -- Name: blobs_pk_seq; Type: SEQUENCE; Schema: blobs; Owner: easygp
@@ -4744,7 +4735,7 @@ CREATE SEQUENCE blobs_pk_seq
     CACHE 1;
 
 
-ALTER TABLE blobs.blobs_pk_seq OWNER TO easygp;
+ALTER TABLE blobs_pk_seq OWNER TO easygp;
 
 --
 -- Name: blobs_pk_seq; Type: SEQUENCE OWNED BY; Schema: blobs; Owner: easygp
@@ -4765,7 +4756,7 @@ CREATE SEQUENCE images_pk_seq
     CACHE 1;
 
 
-ALTER TABLE blobs.images_pk_seq OWNER TO easygp;
+ALTER TABLE images_pk_seq OWNER TO easygp;
 
 --
 -- Name: images_pk_seq; Type: SEQUENCE OWNED BY; Schema: blobs; Owner: easygp
@@ -4790,7 +4781,7 @@ CREATE TABLE consult (
 );
 
 
-ALTER TABLE clin_consult.consult OWNER TO easygp;
+ALTER TABLE consult OWNER TO easygp;
 
 SET search_path = blobs, pg_catalog;
 
@@ -4812,7 +4803,7 @@ CREATE VIEW vwpatientimages AS
   ORDER BY consult.fk_patient;
 
 
-ALTER TABLE blobs.vwpatientimages OWNER TO easygp;
+ALTER TABLE vwpatientimages OWNER TO easygp;
 
 SET search_path = chronic_disease_management, pg_catalog;
 
@@ -4869,7 +4860,7 @@ CREATE TABLE diabetes_annual_cycle_of_care (
 );
 
 
-ALTER TABLE chronic_disease_management.diabetes_annual_cycle_of_care OWNER TO easygp;
+ALTER TABLE diabetes_annual_cycle_of_care OWNER TO easygp;
 
 --
 -- Name: TABLE diabetes_annual_cycle_of_care; Type: COMMENT; Schema: chronic_disease_management; Owner: easygp
@@ -4926,7 +4917,7 @@ CREATE TABLE diabetes_annual_cycle_of_care_notes (
 );
 
 
-ALTER TABLE chronic_disease_management.diabetes_annual_cycle_of_care_notes OWNER TO easygp;
+ALTER TABLE diabetes_annual_cycle_of_care_notes OWNER TO easygp;
 
 --
 -- Name: TABLE diabetes_annual_cycle_of_care_notes; Type: COMMENT; Schema: chronic_disease_management; Owner: easygp
@@ -4949,7 +4940,7 @@ CREATE SEQUENCE diabetes_annual_cycle_of_care_notes_pk_seq
     CACHE 1;
 
 
-ALTER TABLE chronic_disease_management.diabetes_annual_cycle_of_care_notes_pk_seq OWNER TO easygp;
+ALTER TABLE diabetes_annual_cycle_of_care_notes_pk_seq OWNER TO easygp;
 
 --
 -- Name: diabetes_annual_cycle_of_care_notes_pk_seq; Type: SEQUENCE OWNED BY; Schema: chronic_disease_management; Owner: easygp
@@ -4970,7 +4961,7 @@ CREATE SEQUENCE diabetes_annual_cycle_of_care_pk_seq
     CACHE 1;
 
 
-ALTER TABLE chronic_disease_management.diabetes_annual_cycle_of_care_pk_seq OWNER TO easygp;
+ALTER TABLE diabetes_annual_cycle_of_care_pk_seq OWNER TO easygp;
 
 --
 -- Name: diabetes_annual_cycle_of_care_pk_seq; Type: SEQUENCE OWNED BY; Schema: chronic_disease_management; Owner: easygp
@@ -5009,7 +5000,7 @@ CREATE TABLE diabetes_group_allied_health_services (
 );
 
 
-ALTER TABLE chronic_disease_management.diabetes_group_allied_health_services OWNER TO easygp;
+ALTER TABLE diabetes_group_allied_health_services OWNER TO easygp;
 
 --
 -- Name: TABLE diabetes_group_allied_health_services; Type: COMMENT; Schema: chronic_disease_management; Owner: easygp
@@ -5144,130 +5135,13 @@ CREATE SEQUENCE diabetes_group_allied_health_services_pk_seq
     CACHE 1;
 
 
-ALTER TABLE chronic_disease_management.diabetes_group_allied_health_services_pk_seq OWNER TO easygp;
+ALTER TABLE diabetes_group_allied_health_services_pk_seq OWNER TO easygp;
 
 --
 -- Name: diabetes_group_allied_health_services_pk_seq; Type: SEQUENCE OWNED BY; Schema: chronic_disease_management; Owner: easygp
 --
 
 ALTER SEQUENCE diabetes_group_allied_health_services_pk_seq OWNED BY diabetes_group_allied_health_services.pk;
-
-
---
--- Name: epc_link_provider_form; Type: TABLE; Schema: chronic_disease_management; Owner: easygp; Tablespace: 
---
-
-CREATE TABLE epc_link_provider_form (
-    pk integer NOT NULL,
-    fk_epc_referral integer NOT NULL,
-    fk_type integer NOT NULL,
-    number_services integer NOT NULL,
-    deleted boolean DEFAULT false
-);
-
-
-ALTER TABLE chronic_disease_management.epc_link_provider_form OWNER TO easygp;
-
---
--- Name: TABLE epc_link_provider_form; Type: COMMENT; Schema: chronic_disease_management; Owner: easygp
---
-
-COMMENT ON TABLE epc_link_provider_form IS 'links the core EPC referral details to a provider on this form and number of services';
-
-
---
--- Name: epc_link_provider_form_pk_seq; Type: SEQUENCE; Schema: chronic_disease_management; Owner: easygp
---
-
-CREATE SEQUENCE epc_link_provider_form_pk_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
-ALTER TABLE chronic_disease_management.epc_link_provider_form_pk_seq OWNER TO easygp;
-
---
--- Name: epc_link_provider_form_pk_seq; Type: SEQUENCE OWNED BY; Schema: chronic_disease_management; Owner: easygp
---
-
-ALTER SEQUENCE epc_link_provider_form_pk_seq OWNED BY epc_link_provider_form.pk;
-
-
---
--- Name: epc_referral; Type: TABLE; Schema: chronic_disease_management; Owner: easygp; Tablespace: 
---
-
-CREATE TABLE epc_referral (
-    pk integer NOT NULL,
-    fk_consult integer NOT NULL,
-    has_gp_management_plan_and_team_care_arrangments boolean DEFAULT true,
-    has_aged_care_multidisciplinary_plan boolean DEFAULT false,
-    fk_team_care_arrangement integer NOT NULL,
-    fk_electronic_signature integer
-);
-
-
-ALTER TABLE chronic_disease_management.epc_referral OWNER TO easygp;
-
---
--- Name: TABLE epc_referral; Type: COMMENT; Schema: chronic_disease_management; Owner: easygp
---
-
-COMMENT ON TABLE epc_referral IS 'Describes the core details single EPC_Referral to one or more allied health or dental providers
- however note that the view chronic_disease_management.vwEPCReferrals is needed to describe
- a single form (multiple rows) as there are 1 or more providers on a form';
-
-
---
--- Name: COLUMN epc_referral.fk_consult; Type: COMMENT; Schema: chronic_disease_management; Owner: easygp
---
-
-COMMENT ON COLUMN epc_referral.fk_consult IS ' key to clin_consult.consult links the form to the patient, date and doctor who did it';
-
-
---
--- Name: COLUMN epc_referral.has_gp_management_plan_and_team_care_arrangments; Type: COMMENT; Schema: chronic_disease_management; Owner: easygp
---
-
-COMMENT ON COLUMN epc_referral.has_gp_management_plan_and_team_care_arrangments IS 'defaults to true because most will have a GP management plan in place';
-
-
---
--- Name: COLUMN epc_referral.fk_team_care_arrangement; Type: COMMENT; Schema: chronic_disease_management; Owner: easygp
---
-
-COMMENT ON COLUMN epc_referral.fk_team_care_arrangement IS 'key to EPC_TeamCare_Arrangements table';
-
-
---
--- Name: COLUMN epc_referral.fk_electronic_signature; Type: COMMENT; Schema: chronic_disease_management; Owner: easygp
---
-
-COMMENT ON COLUMN epc_referral.fk_electronic_signature IS 'if not null, an image in blobs.images which is the signature of the GP';
-
-
---
--- Name: epc_referral_pk_seq; Type: SEQUENCE; Schema: chronic_disease_management; Owner: easygp
---
-
-CREATE SEQUENCE epc_referral_pk_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
-ALTER TABLE chronic_disease_management.epc_referral_pk_seq OWNER TO easygp;
-
---
--- Name: epc_referral_pk_seq; Type: SEQUENCE OWNED BY; Schema: chronic_disease_management; Owner: easygp
---
-
-ALTER SEQUENCE epc_referral_pk_seq OWNED BY epc_referral.pk;
 
 
 --
@@ -5282,7 +5156,7 @@ CREATE TABLE lu_allied_health_type (
 );
 
 
-ALTER TABLE chronic_disease_management.lu_allied_health_type OWNER TO easygp;
+ALTER TABLE lu_allied_health_type OWNER TO easygp;
 
 --
 -- Name: TABLE lu_allied_health_type; Type: COMMENT; Schema: chronic_disease_management; Owner: easygp
@@ -5303,61 +5177,13 @@ CREATE SEQUENCE lu_allied_health_type_pk_seq
     CACHE 1;
 
 
-ALTER TABLE chronic_disease_management.lu_allied_health_type_pk_seq OWNER TO easygp;
+ALTER TABLE lu_allied_health_type_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_allied_health_type_pk_seq; Type: SEQUENCE OWNED BY; Schema: chronic_disease_management; Owner: easygp
 --
 
 ALTER SEQUENCE lu_allied_health_type_pk_seq OWNED BY lu_allied_health_type.pk;
-
-
---
--- Name: lu_dacc_components; Type: TABLE; Schema: chronic_disease_management; Owner: easygp; Tablespace: 
---
-
-CREATE TABLE lu_dacc_components (
-    pk integer NOT NULL,
-    fk_component integer NOT NULL
-);
-
-
-ALTER TABLE chronic_disease_management.lu_dacc_components OWNER TO easygp;
-
---
--- Name: TABLE lu_dacc_components; Type: COMMENT; Schema: chronic_disease_management; Owner: easygp
---
-
-COMMENT ON TABLE lu_dacc_components IS 'Specific to Australian Government requirements for billing care of diabetics is the so 
-  called Diabetic Annual Cycle of Care (DACC)';
-
-
---
--- Name: COLUMN lu_dacc_components.fk_component; Type: COMMENT; Schema: chronic_disease_management; Owner: easygp
---
-
-COMMENT ON COLUMN lu_dacc_components.fk_component IS 'key to chronic_disease_management.lu_careplan_components table';
-
-
---
--- Name: lu_dacc_components_pk_seq; Type: SEQUENCE; Schema: chronic_disease_management; Owner: easygp
---
-
-CREATE SEQUENCE lu_dacc_components_pk_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
-ALTER TABLE chronic_disease_management.lu_dacc_components_pk_seq OWNER TO easygp;
-
---
--- Name: lu_dacc_components_pk_seq; Type: SEQUENCE OWNED BY; Schema: chronic_disease_management; Owner: easygp
---
-
-ALTER SEQUENCE lu_dacc_components_pk_seq OWNED BY lu_dacc_components.pk;
 
 
 --
@@ -5369,7 +5195,7 @@ CREATE TABLE patients_with_hba1c_not_diabetic (
 );
 
 
-ALTER TABLE chronic_disease_management.patients_with_hba1c_not_diabetic OWNER TO easygp;
+ALTER TABLE patients_with_hba1c_not_diabetic OWNER TO easygp;
 
 --
 -- Name: TABLE patients_with_hba1c_not_diabetic; Type: COMMENT; Schema: chronic_disease_management; Owner: easygp
@@ -5377,49 +5203,6 @@ ALTER TABLE chronic_disease_management.patients_with_hba1c_not_diabetic OWNER TO
 
 COMMENT ON TABLE patients_with_hba1c_not_diabetic IS 'table containing keys to clerical.fk_patient where someone has ordered 
  a hba1c on somone who is not diabetic in fact.';
-
-
---
--- Name: team_care_arrangements; Type: TABLE; Schema: chronic_disease_management; Owner: easygp; Tablespace: 
---
-
-CREATE TABLE team_care_arrangements (
-    pk integer NOT NULL,
-    fk_organisation integer,
-    fk_employee integer,
-    fk_person integer,
-    responsibility text NOT NULL
-);
-
-
-ALTER TABLE chronic_disease_management.team_care_arrangements OWNER TO easygp;
-
---
--- Name: TABLE team_care_arrangements; Type: COMMENT; Schema: chronic_disease_management; Owner: easygp
---
-
-COMMENT ON TABLE team_care_arrangements IS 'the team care arrangements table';
-
-
---
--- Name: team_care_arrangements_pk_seq; Type: SEQUENCE; Schema: chronic_disease_management; Owner: easygp
---
-
-CREATE SEQUENCE team_care_arrangements_pk_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
-ALTER TABLE chronic_disease_management.team_care_arrangements_pk_seq OWNER TO easygp;
-
---
--- Name: team_care_arrangements_pk_seq; Type: SEQUENCE OWNED BY; Schema: chronic_disease_management; Owner: easygp
---
-
-ALTER SEQUENCE team_care_arrangements_pk_seq OWNED BY team_care_arrangements.pk;
 
 
 SET search_path = clin_consult, pg_catalog;
@@ -5435,7 +5218,7 @@ CREATE TABLE lu_audit_actions (
 );
 
 
-ALTER TABLE clin_consult.lu_audit_actions OWNER TO easygp;
+ALTER TABLE lu_audit_actions OWNER TO easygp;
 
 --
 -- Name: TABLE lu_audit_actions; Type: COMMENT; Schema: clin_consult; Owner: easygp
@@ -5455,7 +5238,7 @@ CREATE TABLE lu_audit_reasons (
 );
 
 
-ALTER TABLE clin_consult.lu_audit_reasons OWNER TO easygp;
+ALTER TABLE lu_audit_reasons OWNER TO easygp;
 
 --
 -- Name: TABLE lu_audit_reasons; Type: COMMENT; Schema: clin_consult; Owner: easygp
@@ -5475,7 +5258,7 @@ CREATE TABLE lu_consult_type (
 );
 
 
-ALTER TABLE clin_consult.lu_consult_type OWNER TO easygp;
+ALTER TABLE lu_consult_type OWNER TO easygp;
 
 --
 -- Name: lu_progressnotes_sections; Type: TABLE; Schema: clin_consult; Owner: easygp; Tablespace: 
@@ -5487,7 +5270,7 @@ CREATE TABLE lu_progressnotes_sections (
 );
 
 
-ALTER TABLE clin_consult.lu_progressnotes_sections OWNER TO easygp;
+ALTER TABLE lu_progressnotes_sections OWNER TO easygp;
 
 --
 -- Name: progressnotes; Type: TABLE; Schema: clin_consult; Owner: easygp; Tablespace: 
@@ -5498,9 +5281,7 @@ CREATE TABLE progressnotes (
     fk_consult integer,
     notes text,
     fk_section integer,
-    fk_code bigint,
     problem text,
-    fk_problem integer,
     fk_audit_action integer DEFAULT 1,
     linked_table regclass,
     fk_row integer,
@@ -5509,7 +5290,7 @@ CREATE TABLE progressnotes (
 );
 
 
-ALTER TABLE clin_consult.progressnotes OWNER TO easygp;
+ALTER TABLE progressnotes OWNER TO easygp;
 
 --
 -- Name: COLUMN progressnotes.deleted; Type: COMMENT; Schema: clin_consult; Owner: easygp
@@ -5533,8 +5314,6 @@ CREATE VIEW vwprogressnotes AS
     "CONSULT".summary,
     progressnotes.fk_consult,
     progressnotes.fk_section,
-    progressnotes.fk_code,
-    progressnotes.fk_problem,
     progressnotes.fk_audit_action,
     progressnotes.deleted,
     "CONSULT".fk_staff,
@@ -5560,10 +5339,10 @@ CREATE VIEW vwprogressnotes AS
      JOIN admin.lu_staff_roles ON ((staff.fk_role = lu_staff_roles.pk)))
      LEFT JOIN lu_audit_reasons ON ((progressnotes.fk_audit_reason = lu_audit_reasons.pk)))
   WHERE ("CONSULT_TYPE".pk <> 8)
-  ORDER BY "CONSULT".fk_patient, "CONSULT".consult_date, "CONSULT".fk_staff, "SECTION".pk, progressnotes.fk_problem;
+  ORDER BY "CONSULT".fk_patient, "CONSULT".consult_date, "CONSULT".fk_staff, "SECTION".pk;
 
 
-ALTER TABLE clin_consult.vwprogressnotes OWNER TO easygp;
+ALTER TABLE vwprogressnotes OWNER TO easygp;
 
 --
 -- Name: VIEW vwprogressnotes; Type: COMMENT; Schema: clin_consult; Owner: easygp
@@ -5645,7 +5424,7 @@ CREATE VIEW vwdiabetescycleofcare AS
      JOIN admin.vwstaff vwstaff1 ON ((consult.fk_staff = vwstaff1.pk)));
 
 
-ALTER TABLE chronic_disease_management.vwdiabetescycleofcare OWNER TO easygp;
+ALTER TABLE vwdiabetescycleofcare OWNER TO easygp;
 
 SET search_path = contacts, pg_catalog;
 
@@ -5806,7 +5585,7 @@ UNION
   ORDER BY 7, 5;
 
 
-ALTER TABLE contacts.vworganisationsemployees OWNER TO easygp;
+ALTER TABLE vworganisationsemployees OWNER TO easygp;
 
 --
 -- Name: VIEW vworganisationsemployees; Type: COMMENT; Schema: contacts; Owner: easygp
@@ -5928,7 +5707,7 @@ UNION
   WHERE ((diabetes_group_allied_health_services.deleted = false) AND (diabetes_group_allied_health_services.fk_branch > 0));
 
 
-ALTER TABLE chronic_disease_management.vwdiabetesgroupalliedhealth OWNER TO easygp;
+ALTER TABLE vwdiabetesgroupalliedhealth OWNER TO easygp;
 
 SET search_path = clerical, pg_catalog;
 
@@ -5944,7 +5723,7 @@ CREATE SEQUENCE bookings_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clerical.bookings_pk_seq OWNER TO easygp;
+ALTER TABLE bookings_pk_seq OWNER TO easygp;
 
 --
 -- Name: bookings_pk_seq; Type: SEQUENCE OWNED BY; Schema: clerical; Owner: easygp
@@ -5963,7 +5742,7 @@ CREATE TABLE data_families (
 );
 
 
-ALTER TABLE clerical.data_families OWNER TO easygp;
+ALTER TABLE data_families OWNER TO easygp;
 
 --
 -- Name: data_families_pk_seq; Type: SEQUENCE; Schema: clerical; Owner: easygp
@@ -5977,7 +5756,7 @@ CREATE SEQUENCE data_families_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clerical.data_families_pk_seq OWNER TO easygp;
+ALTER TABLE data_families_pk_seq OWNER TO easygp;
 
 --
 -- Name: data_families_pk_seq; Type: SEQUENCE OWNED BY; Schema: clerical; Owner: easygp
@@ -5997,7 +5776,7 @@ CREATE TABLE data_family_members (
 );
 
 
-ALTER TABLE clerical.data_family_members OWNER TO easygp;
+ALTER TABLE data_family_members OWNER TO easygp;
 
 --
 -- Name: data_family_members_pk_seq; Type: SEQUENCE; Schema: clerical; Owner: easygp
@@ -6011,7 +5790,7 @@ CREATE SEQUENCE data_family_members_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clerical.data_family_members_pk_seq OWNER TO easygp;
+ALTER TABLE data_family_members_pk_seq OWNER TO easygp;
 
 --
 -- Name: data_family_members_pk_seq; Type: SEQUENCE OWNED BY; Schema: clerical; Owner: easygp
@@ -6032,7 +5811,7 @@ CREATE SEQUENCE data_patients_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clerical.data_patients_pk_seq OWNER TO easygp;
+ALTER TABLE data_patients_pk_seq OWNER TO easygp;
 
 --
 -- Name: data_patients_pk_seq; Type: SEQUENCE OWNED BY; Schema: clerical; Owner: easygp
@@ -6059,7 +5838,7 @@ CREATE TABLE inventory (
 );
 
 
-ALTER TABLE clerical.inventory OWNER TO easygp;
+ALTER TABLE inventory OWNER TO easygp;
 
 --
 -- Name: TABLE inventory; Type: COMMENT; Schema: clerical; Owner: easygp
@@ -6111,7 +5890,7 @@ CREATE TABLE inventory_lent (
 );
 
 
-ALTER TABLE clerical.inventory_lent OWNER TO easygp;
+ALTER TABLE inventory_lent OWNER TO easygp;
 
 --
 -- Name: inventory_lent_pk_seq; Type: SEQUENCE; Schema: clerical; Owner: easygp
@@ -6125,7 +5904,7 @@ CREATE SEQUENCE inventory_lent_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clerical.inventory_lent_pk_seq OWNER TO easygp;
+ALTER TABLE inventory_lent_pk_seq OWNER TO easygp;
 
 --
 -- Name: inventory_lent_pk_seq; Type: SEQUENCE OWNED BY; Schema: clerical; Owner: easygp
@@ -6145,7 +5924,7 @@ CREATE TABLE inventory_locations (
 );
 
 
-ALTER TABLE clerical.inventory_locations OWNER TO easygp;
+ALTER TABLE inventory_locations OWNER TO easygp;
 
 --
 -- Name: TABLE inventory_locations; Type: COMMENT; Schema: clerical; Owner: easygp
@@ -6166,7 +5945,7 @@ CREATE SEQUENCE inventory_locations_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clerical.inventory_locations_pk_seq OWNER TO easygp;
+ALTER TABLE inventory_locations_pk_seq OWNER TO easygp;
 
 --
 -- Name: inventory_locations_pk_seq; Type: SEQUENCE OWNED BY; Schema: clerical; Owner: easygp
@@ -6187,7 +5966,7 @@ CREATE SEQUENCE inventory_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clerical.inventory_pk_seq OWNER TO easygp;
+ALTER TABLE inventory_pk_seq OWNER TO easygp;
 
 --
 -- Name: inventory_pk_seq; Type: SEQUENCE OWNED BY; Schema: clerical; Owner: easygp
@@ -6208,7 +5987,7 @@ CREATE SEQUENCE lu_active_status_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clerical.lu_active_status_pk_seq OWNER TO easygp;
+ALTER TABLE lu_active_status_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_active_status_pk_seq; Type: SEQUENCE OWNED BY; Schema: clerical; Owner: easygp
@@ -6228,7 +6007,7 @@ CREATE TABLE lu_appointment_icons (
 );
 
 
-ALTER TABLE clerical.lu_appointment_icons OWNER TO easygp;
+ALTER TABLE lu_appointment_icons OWNER TO easygp;
 
 --
 -- Name: TABLE lu_appointment_icons; Type: COMMENT; Schema: clerical; Owner: easygp
@@ -6249,7 +6028,7 @@ CREATE SEQUENCE lu_appointment_icons_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clerical.lu_appointment_icons_pk_seq OWNER TO easygp;
+ALTER TABLE lu_appointment_icons_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_appointment_icons_pk_seq; Type: SEQUENCE OWNED BY; Schema: clerical; Owner: easygp
@@ -6268,7 +6047,7 @@ CREATE TABLE lu_appointment_status (
 );
 
 
-ALTER TABLE clerical.lu_appointment_status OWNER TO easygp;
+ALTER TABLE lu_appointment_status OWNER TO easygp;
 
 --
 -- Name: TABLE lu_appointment_status; Type: COMMENT; Schema: clerical; Owner: easygp
@@ -6289,7 +6068,7 @@ CREATE SEQUENCE lu_appointment_status_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clerical.lu_appointment_status_pk_seq OWNER TO easygp;
+ALTER TABLE lu_appointment_status_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_appointment_status_pk_seq; Type: SEQUENCE OWNED BY; Schema: clerical; Owner: easygp
@@ -6310,7 +6089,7 @@ CREATE SEQUENCE lu_centrelink_card_type_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clerical.lu_centrelink_card_type_pk_seq OWNER TO easygp;
+ALTER TABLE lu_centrelink_card_type_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_centrelink_card_type_pk_seq; Type: SEQUENCE OWNED BY; Schema: clerical; Owner: easygp
@@ -6329,7 +6108,7 @@ CREATE TABLE lu_inventory_categories (
 );
 
 
-ALTER TABLE clerical.lu_inventory_categories OWNER TO easygp;
+ALTER TABLE lu_inventory_categories OWNER TO easygp;
 
 --
 -- Name: TABLE lu_inventory_categories; Type: COMMENT; Schema: clerical; Owner: easygp
@@ -6351,7 +6130,7 @@ CREATE SEQUENCE lu_inventory_categories_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clerical.lu_inventory_categories_pk_seq OWNER TO easygp;
+ALTER TABLE lu_inventory_categories_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_inventory_categories_pk_seq; Type: SEQUENCE OWNED BY; Schema: clerical; Owner: easygp
@@ -6371,7 +6150,7 @@ CREATE TABLE lu_inventory_items (
 );
 
 
-ALTER TABLE clerical.lu_inventory_items OWNER TO easygp;
+ALTER TABLE lu_inventory_items OWNER TO easygp;
 
 --
 -- Name: TABLE lu_inventory_items; Type: COMMENT; Schema: clerical; Owner: easygp
@@ -6400,7 +6179,7 @@ CREATE SEQUENCE lu_inventory_items_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clerical.lu_inventory_items_pk_seq OWNER TO easygp;
+ALTER TABLE lu_inventory_items_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_inventory_items_pk_seq; Type: SEQUENCE OWNED BY; Schema: clerical; Owner: easygp
@@ -6421,7 +6200,7 @@ CREATE SEQUENCE lu_private_health_funds_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clerical.lu_private_health_funds_pk_seq OWNER TO easygp;
+ALTER TABLE lu_private_health_funds_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_private_health_funds_pk_seq; Type: SEQUENCE OWNED BY; Schema: clerical; Owner: easygp
@@ -6440,7 +6219,7 @@ CREATE TABLE lu_task_types (
 );
 
 
-ALTER TABLE clerical.lu_task_types OWNER TO easygp;
+ALTER TABLE lu_task_types OWNER TO easygp;
 
 --
 -- Name: TABLE lu_task_types; Type: COMMENT; Schema: clerical; Owner: easygp
@@ -6461,7 +6240,7 @@ CREATE SEQUENCE lu_task_types_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clerical.lu_task_types_pk_seq OWNER TO easygp;
+ALTER TABLE lu_task_types_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_task_types_pk_seq; Type: SEQUENCE OWNED BY; Schema: clerical; Owner: easygp
@@ -6482,7 +6261,7 @@ CREATE SEQUENCE lu_veteran_card_type_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clerical.lu_veteran_card_type_pk_seq OWNER TO easygp;
+ALTER TABLE lu_veteran_card_type_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_veteran_card_type_pk_seq; Type: SEQUENCE OWNED BY; Schema: clerical; Owner: easygp
@@ -6503,7 +6282,7 @@ CREATE SEQUENCE sessions_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clerical.sessions_pk_seq OWNER TO easygp;
+ALTER TABLE sessions_pk_seq OWNER TO easygp;
 
 --
 -- Name: sessions_pk_seq; Type: SEQUENCE OWNED BY; Schema: clerical; Owner: easygp
@@ -6525,7 +6304,7 @@ CREATE TABLE task_component_notes (
 );
 
 
-ALTER TABLE clerical.task_component_notes OWNER TO easygp;
+ALTER TABLE task_component_notes OWNER TO easygp;
 
 --
 -- Name: COLUMN task_component_notes.note; Type: COMMENT; Schema: clerical; Owner: easygp
@@ -6548,7 +6327,7 @@ CREATE SEQUENCE task_component_notes_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clerical.task_component_notes_pk_seq OWNER TO easygp;
+ALTER TABLE task_component_notes_pk_seq OWNER TO easygp;
 
 --
 -- Name: task_component_notes_pk_seq; Type: SEQUENCE OWNED BY; Schema: clerical; Owner: easygp
@@ -6579,7 +6358,7 @@ CREATE TABLE task_components (
 );
 
 
-ALTER TABLE clerical.task_components OWNER TO easygp;
+ALTER TABLE task_components OWNER TO easygp;
 
 --
 -- Name: TABLE task_components; Type: COMMENT; Schema: clerical; Owner: easygp
@@ -6686,7 +6465,7 @@ CREATE SEQUENCE task_components_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clerical.task_components_pk_seq OWNER TO easygp;
+ALTER TABLE task_components_pk_seq OWNER TO easygp;
 
 --
 -- Name: task_components_pk_seq; Type: SEQUENCE OWNED BY; Schema: clerical; Owner: easygp
@@ -6712,7 +6491,7 @@ CREATE TABLE tasks (
 );
 
 
-ALTER TABLE clerical.tasks OWNER TO easygp;
+ALTER TABLE tasks OWNER TO easygp;
 
 --
 -- Name: TABLE tasks; Type: COMMENT; Schema: clerical; Owner: easygp
@@ -6774,7 +6553,7 @@ CREATE SEQUENCE tasks_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clerical.tasks_pk_seq OWNER TO easygp;
+ALTER TABLE tasks_pk_seq OWNER TO easygp;
 
 --
 -- Name: tasks_pk_seq; Type: SEQUENCE OWNED BY; Schema: clerical; Owner: easygp
@@ -6841,7 +6620,7 @@ CREATE VIEW vwappointments AS
   ORDER BY bookings.begin;
 
 
-ALTER TABLE clerical.vwappointments OWNER TO easygp;
+ALTER TABLE vwappointments OWNER TO easygp;
 
 --
 -- Name: vwinventory; Type: VIEW; Schema: clerical; Owner: easygp
@@ -6885,7 +6664,7 @@ CREATE VIEW vwinventory AS
      LEFT JOIN contacts.data_organisations ON ((data_branches.fk_organisation = data_organisations.pk)));
 
 
-ALTER TABLE clerical.vwinventory OWNER TO easygp;
+ALTER TABLE vwinventory OWNER TO easygp;
 
 SET search_path = common, pg_catalog;
 
@@ -6899,7 +6678,7 @@ CREATE TABLE lu_urgency (
 );
 
 
-ALTER TABLE common.lu_urgency OWNER TO easygp;
+ALTER TABLE lu_urgency OWNER TO easygp;
 
 --
 -- Name: TABLE lu_urgency; Type: COMMENT; Schema: common; Owner: easygp
@@ -6969,7 +6748,7 @@ CREATE VIEW vwtaskscomponents AS
   ORDER BY vwpatients.fk_patient, task_components.pk;
 
 
-ALTER TABLE clerical.vwtaskscomponents OWNER TO easygp;
+ALTER TABLE vwtaskscomponents OWNER TO easygp;
 
 --
 -- Name: vwtaskscomponentsandnotes; Type: VIEW; Schema: clerical; Owner: easygp
@@ -7043,7 +6822,7 @@ CREATE VIEW vwtaskscomponentsandnotes AS
   ORDER BY vwpatients.fk_patient, task_components.pk;
 
 
-ALTER TABLE clerical.vwtaskscomponentsandnotes OWNER TO easygp;
+ALTER TABLE vwtaskscomponentsandnotes OWNER TO easygp;
 
 --
 -- Name: VIEW vwtaskscomponentsandnotes; Type: COMMENT; Schema: clerical; Owner: easygp
@@ -7074,7 +6853,7 @@ CREATE VIEW vwtaskscomponentsnotes AS
      JOIN task_components ON ((task_component_notes.fk_task_component = task_components.pk)));
 
 
-ALTER TABLE clerical.vwtaskscomponentsnotes OWNER TO easygp;
+ALTER TABLE vwtaskscomponentsnotes OWNER TO easygp;
 
 SET search_path = clin_allergies, pg_catalog;
 
@@ -7102,7 +6881,7 @@ CREATE TABLE allergies (
 );
 
 
-ALTER TABLE clin_allergies.allergies OWNER TO easygp;
+ALTER TABLE allergies OWNER TO easygp;
 
 --
 -- Name: COLUMN allergies.fk_consult; Type: COMMENT; Schema: clin_allergies; Owner: easygp
@@ -7210,7 +6989,7 @@ CREATE SEQUENCE allergies_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_allergies.allergies_pk_seq OWNER TO easygp;
+ALTER TABLE allergies_pk_seq OWNER TO easygp;
 
 --
 -- Name: allergies_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_allergies; Owner: easygp
@@ -7229,7 +7008,7 @@ CREATE TABLE lu_reaction_type (
 );
 
 
-ALTER TABLE clin_allergies.lu_reaction_type OWNER TO easygp;
+ALTER TABLE lu_reaction_type OWNER TO easygp;
 
 --
 -- Name: lu_reaction_type_pk_seq; Type: SEQUENCE; Schema: clin_allergies; Owner: easygp
@@ -7243,7 +7022,7 @@ CREATE SEQUENCE lu_reaction_type_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_allergies.lu_reaction_type_pk_seq OWNER TO easygp;
+ALTER TABLE lu_reaction_type_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_reaction_type_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_allergies; Owner: easygp
@@ -7269,7 +7048,7 @@ CREATE TABLE generic_terms (
 );
 
 
-ALTER TABLE coding.generic_terms OWNER TO easygp;
+ALTER TABLE generic_terms OWNER TO easygp;
 
 --
 -- Name: COLUMN generic_terms.icd10; Type: COMMENT; Schema: coding; Owner: easygp
@@ -7290,7 +7069,7 @@ CREATE TABLE lu_systems (
 );
 
 
-ALTER TABLE coding.lu_systems OWNER TO easygp;
+ALTER TABLE lu_systems OWNER TO easygp;
 
 --
 -- Name: TABLE lu_systems; Type: COMMENT; Schema: coding; Owner: easygp
@@ -7333,7 +7112,7 @@ CREATE TABLE atc (
 );
 
 
-ALTER TABLE drugs.atc OWNER TO easygp;
+ALTER TABLE atc OWNER TO easygp;
 
 --
 -- Name: TABLE atc; Type: COMMENT; Schema: drugs; Owner: easygp
@@ -7363,7 +7142,7 @@ CREATE TABLE brand (
 );
 
 
-ALTER TABLE drugs.brand OWNER TO easygp;
+ALTER TABLE brand OWNER TO easygp;
 
 --
 -- Name: TABLE brand; Type: COMMENT; Schema: drugs; Owner: easygp
@@ -7444,7 +7223,7 @@ CREATE TABLE product (
 );
 
 
-ALTER TABLE drugs.product OWNER TO easygp;
+ALTER TABLE product OWNER TO easygp;
 
 --
 -- Name: TABLE product; Type: COMMENT; Schema: drugs; Owner: easygp
@@ -7568,7 +7347,7 @@ CREATE VIEW vwallergies AS
      LEFT JOIN drugs.atc atc1 ON (("substring"((product.atccode)::text, 1, 4) = atc1.atccode)));
 
 
-ALTER TABLE clin_allergies.vwallergies OWNER TO easygp;
+ALTER TABLE vwallergies OWNER TO easygp;
 
 SET search_path = clin_certificates, pg_catalog;
 
@@ -7589,7 +7368,7 @@ CREATE TABLE centrelink_diagnoses (
 );
 
 
-ALTER TABLE clin_certificates.centrelink_diagnoses OWNER TO easygp;
+ALTER TABLE centrelink_diagnoses OWNER TO easygp;
 
 --
 -- Name: TABLE centrelink_diagnoses; Type: COMMENT; Schema: clin_certificates; Owner: easygp
@@ -7665,7 +7444,7 @@ CREATE SEQUENCE centrelink_diagnoses_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_certificates.centrelink_diagnoses_pk_seq OWNER TO easygp;
+ALTER TABLE centrelink_diagnoses_pk_seq OWNER TO easygp;
 
 --
 -- Name: centrelink_diagnoses_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_certificates; Owner: easygp
@@ -7708,7 +7487,7 @@ CREATE TABLE centrelink_medical_certificates (
 );
 
 
-ALTER TABLE clin_certificates.centrelink_medical_certificates OWNER TO easygp;
+ALTER TABLE centrelink_medical_certificates OWNER TO easygp;
 
 --
 -- Name: TABLE centrelink_medical_certificates; Type: COMMENT; Schema: clin_certificates; Owner: easygp
@@ -7759,7 +7538,7 @@ CREATE SEQUENCE centrelink_medical_certificates_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_certificates.centrelink_medical_certificates_pk_seq OWNER TO easygp;
+ALTER TABLE centrelink_medical_certificates_pk_seq OWNER TO easygp;
 
 --
 -- Name: centrelink_medical_certificates_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_certificates; Owner: easygp
@@ -7779,7 +7558,7 @@ CREATE TABLE certificate_reasons (
 );
 
 
-ALTER TABLE clin_certificates.certificate_reasons OWNER TO easygp;
+ALTER TABLE certificate_reasons OWNER TO easygp;
 
 --
 -- Name: TABLE certificate_reasons; Type: COMMENT; Schema: clin_certificates; Owner: easygp
@@ -7801,7 +7580,7 @@ CREATE SEQUENCE certificate_reasons_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_certificates.certificate_reasons_pk_seq OWNER TO easygp;
+ALTER TABLE certificate_reasons_pk_seq OWNER TO easygp;
 
 --
 -- Name: certificate_reasons_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_certificates; Owner: easygp
@@ -7820,7 +7599,7 @@ CREATE TABLE lu_centrelink_condition_prognosis (
 );
 
 
-ALTER TABLE clin_certificates.lu_centrelink_condition_prognosis OWNER TO easygp;
+ALTER TABLE lu_centrelink_condition_prognosis OWNER TO easygp;
 
 --
 -- Name: TABLE lu_centrelink_condition_prognosis; Type: COMMENT; Schema: clin_certificates; Owner: easygp
@@ -7841,7 +7620,7 @@ CREATE SEQUENCE lu_centrelink_condition_prognosis_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_certificates.lu_centrelink_condition_prognosis_pk_seq OWNER TO easygp;
+ALTER TABLE lu_centrelink_condition_prognosis_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_centrelink_condition_prognosis_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_certificates; Owner: easygp
@@ -7860,7 +7639,7 @@ CREATE TABLE lu_centrelink_condition_temporality (
 );
 
 
-ALTER TABLE clin_certificates.lu_centrelink_condition_temporality OWNER TO easygp;
+ALTER TABLE lu_centrelink_condition_temporality OWNER TO easygp;
 
 --
 -- Name: TABLE lu_centrelink_condition_temporality; Type: COMMENT; Schema: clin_certificates; Owner: easygp
@@ -7881,7 +7660,7 @@ CREATE SEQUENCE lu_centrelink_condition_temporality_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_certificates.lu_centrelink_condition_temporality_pk_seq OWNER TO easygp;
+ALTER TABLE lu_centrelink_condition_temporality_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_centrelink_condition_temporality_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_certificates; Owner: easygp
@@ -7900,7 +7679,7 @@ CREATE TABLE lu_centrelink_diagnosis_type (
 );
 
 
-ALTER TABLE clin_certificates.lu_centrelink_diagnosis_type OWNER TO easygp;
+ALTER TABLE lu_centrelink_diagnosis_type OWNER TO easygp;
 
 --
 -- Name: TABLE lu_centrelink_diagnosis_type; Type: COMMENT; Schema: clin_certificates; Owner: easygp
@@ -7921,7 +7700,7 @@ CREATE SEQUENCE lu_centrelink_diagnosis_type_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_certificates.lu_centrelink_diagnosis_type_pk_seq OWNER TO easygp;
+ALTER TABLE lu_centrelink_diagnosis_type_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_centrelink_diagnosis_type_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_certificates; Owner: easygp
@@ -7940,7 +7719,7 @@ CREATE TABLE lu_fitness (
 );
 
 
-ALTER TABLE clin_certificates.lu_fitness OWNER TO easygp;
+ALTER TABLE lu_fitness OWNER TO easygp;
 
 --
 -- Name: lu_fitness_pk_seq; Type: SEQUENCE; Schema: clin_certificates; Owner: easygp
@@ -7954,7 +7733,7 @@ CREATE SEQUENCE lu_fitness_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_certificates.lu_fitness_pk_seq OWNER TO easygp;
+ALTER TABLE lu_fitness_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_fitness_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_certificates; Owner: easygp
@@ -7973,7 +7752,7 @@ CREATE TABLE lu_illness_temporality (
 );
 
 
-ALTER TABLE clin_certificates.lu_illness_temporality OWNER TO easygp;
+ALTER TABLE lu_illness_temporality OWNER TO easygp;
 
 --
 -- Name: TABLE lu_illness_temporality; Type: COMMENT; Schema: clin_certificates; Owner: easygp
@@ -8002,7 +7781,7 @@ CREATE SEQUENCE lu_illness_temporality_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_certificates.lu_illness_temporality_pk_seq OWNER TO easygp;
+ALTER TABLE lu_illness_temporality_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_illness_temporality_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_certificates; Owner: easygp
@@ -8034,7 +7813,7 @@ CREATE TABLE medical_certificates (
 );
 
 
-ALTER TABLE clin_certificates.medical_certificates OWNER TO easygp;
+ALTER TABLE medical_certificates OWNER TO easygp;
 
 --
 -- Name: TABLE medical_certificates; Type: COMMENT; Schema: clin_certificates; Owner: easygp
@@ -8143,7 +7922,7 @@ CREATE SEQUENCE medical_certificate_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_certificates.medical_certificate_pk_seq OWNER TO easygp;
+ALTER TABLE medical_certificate_pk_seq OWNER TO easygp;
 
 --
 -- Name: medical_certificate_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_certificates; Owner: easygp
@@ -8204,7 +7983,7 @@ CREATE VIEW vwcentrelinkcertificates AS
      JOIN clin_consult.progressnotes ON ((progressnotes.pk = centrelink_medical_certificates.fk_progressnote)));
 
 
-ALTER TABLE clin_certificates.vwcentrelinkcertificates OWNER TO easygp;
+ALTER TABLE vwcentrelinkcertificates OWNER TO easygp;
 
 --
 -- Name: VIEW vwcentrelinkcertificates; Type: COMMENT; Schema: clin_certificates; Owner: easygp
@@ -8237,7 +8016,7 @@ CREATE VIEW vwcentrelinkdiagnoses AS
      JOIN coding.generic_terms ON ((centrelink_diagnoses.fk_code = generic_terms.code)));
 
 
-ALTER TABLE clin_certificates.vwcentrelinkdiagnoses OWNER TO easygp;
+ALTER TABLE vwcentrelinkdiagnoses OWNER TO easygp;
 
 --
 -- Name: vwmedicalcertificates; Type: VIEW; Schema: clin_certificates; Owner: easygp
@@ -8286,299 +8065,13 @@ CREATE VIEW vwmedicalcertificates AS
   ORDER BY consult.fk_patient, consult.consult_date;
 
 
-ALTER TABLE clin_certificates.vwmedicalcertificates OWNER TO easygp;
+ALTER TABLE vwmedicalcertificates OWNER TO easygp;
 
 --
 -- Name: VIEW vwmedicalcertificates; Type: COMMENT; Schema: clin_certificates; Owner: easygp
 --
 
 COMMENT ON VIEW vwmedicalcertificates IS 'A view of patients medical certificate history';
-
-
-SET search_path = clin_checkups, pg_catalog;
-
---
--- Name: annual_checkup; Type: TABLE; Schema: clin_checkups; Owner: easygp; Tablespace: 
---
-
-CREATE TABLE annual_checkup (
-    pk integer NOT NULL,
-    pk_consult integer,
-    patient_concerns text,
-    "system _review" text,
-    centralnervoussystem_sysreview boolean DEFAULT false,
-    earnosethroat_sysreview boolean DEFAULT false,
-    cardiovascular_sysreview boolean DEFAULT false,
-    respiratory_sysreview boolean DEFAULT false,
-    muskuloskeletal_sysreview boolean DEFAULT false,
-    gastrointestinal_sysreview boolean DEFAULT false,
-    genitourinary_sysreview boolean DEFAULT false,
-    endocrine_sysreview boolean DEFAULT false,
-    haemopoetic_sysreview boolean DEFAULT false,
-    fk_height integer,
-    fk_weight numeric,
-    bmi numeric,
-    overweight_kg numeric,
-    fk_bp numeric,
-    fk_bsl numeric,
-    fk_urinalysis text,
-    clinical_notes text,
-    summary text,
-    consultation_html text
-);
-
-
-ALTER TABLE clin_checkups.annual_checkup OWNER TO easygp;
-
---
--- Name: TABLE annual_checkup; Type: COMMENT; Schema: clin_checkups; Owner: easygp
---
-
-COMMENT ON TABLE annual_checkup IS 'Describes a persons annual checkup';
-
-
---
--- Name: annual_checkup_pk_seq; Type: SEQUENCE; Schema: clin_checkups; Owner: easygp
---
-
-CREATE SEQUENCE annual_checkup_pk_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
-ALTER TABLE clin_checkups.annual_checkup_pk_seq OWNER TO easygp;
-
---
--- Name: annual_checkup_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_checkups; Owner: easygp
---
-
-ALTER SEQUENCE annual_checkup_pk_seq OWNED BY annual_checkup.pk;
-
-
---
--- Name: lu_nutrition_questions; Type: TABLE; Schema: clin_checkups; Owner: easygp; Tablespace: 
---
-
-CREATE TABLE lu_nutrition_questions (
-    pk integer NOT NULL,
-    question text NOT NULL,
-    red_flag_text text
-);
-
-
-ALTER TABLE clin_checkups.lu_nutrition_questions OWNER TO easygp;
-
---
--- Name: TABLE lu_nutrition_questions; Type: COMMENT; Schema: clin_checkups; Owner: easygp
---
-
-COMMENT ON TABLE lu_nutrition_questions IS 'The questions to determinate patients state of nuitrition';
-
-
---
--- Name: COLUMN lu_nutrition_questions.question; Type: COMMENT; Schema: clin_checkups; Owner: easygp
---
-
-COMMENT ON COLUMN lu_nutrition_questions.question IS 'the question e.g do you have enough money for food?';
-
-
---
--- Name: COLUMN lu_nutrition_questions.red_flag_text; Type: COMMENT; Schema: clin_checkups; Owner: easygp
---
-
-COMMENT ON COLUMN lu_nutrition_questions.red_flag_text IS 'the question translated e.g may not have enough money to buy food and may be null';
-
-
---
--- Name: lu_nutrition_questions_pk_seq; Type: SEQUENCE; Schema: clin_checkups; Owner: easygp
---
-
-CREATE SEQUENCE lu_nutrition_questions_pk_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
-ALTER TABLE clin_checkups.lu_nutrition_questions_pk_seq OWNER TO easygp;
-
---
--- Name: lu_nutrition_questions_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_checkups; Owner: easygp
---
-
-ALTER SEQUENCE lu_nutrition_questions_pk_seq OWNED BY lu_nutrition_questions.pk;
-
-
---
--- Name: lu_state_of_health; Type: TABLE; Schema: clin_checkups; Owner: easygp; Tablespace: 
---
-
-CREATE TABLE lu_state_of_health (
-    pk integer NOT NULL,
-    state_of_health text NOT NULL
-);
-
-
-ALTER TABLE clin_checkups.lu_state_of_health OWNER TO easygp;
-
---
--- Name: TABLE lu_state_of_health; Type: COMMENT; Schema: clin_checkups; Owner: easygp
---
-
-COMMENT ON TABLE lu_state_of_health IS 'The general state of the patients health';
-
-
---
--- Name: COLUMN lu_state_of_health.state_of_health; Type: COMMENT; Schema: clin_checkups; Owner: easygp
---
-
-COMMENT ON COLUMN lu_state_of_health.state_of_health IS 'excellent, very good, good, fair, poor, indeterminate';
-
-
---
--- Name: lu_state_of_health_pk_seq; Type: SEQUENCE; Schema: clin_checkups; Owner: easygp
---
-
-CREATE SEQUENCE lu_state_of_health_pk_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
-ALTER TABLE clin_checkups.lu_state_of_health_pk_seq OWNER TO easygp;
-
---
--- Name: lu_state_of_health_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_checkups; Owner: easygp
---
-
-ALTER SEQUENCE lu_state_of_health_pk_seq OWNED BY lu_state_of_health.pk;
-
-
---
--- Name: over75; Type: TABLE; Schema: clin_checkups; Owner: easygp; Tablespace: 
---
-
-CREATE TABLE over75 (
-    pk integer NOT NULL,
-    fk_lu_consult_type integer NOT NULL,
-    fk_lu_state_of_health integer NOT NULL,
-    systems_reviewed boolean,
-    fk_lu_smoking_status integer,
-    alcohol_gm_per_day integer,
-    consider_alcohol_audit_tool boolean,
-    exercise boolean,
-    foot_problems boolean,
-    visual_acuity text,
-    lu_hearing_aid_status integer,
-    fk_lu_earcanal_status integer,
-    fk_lu_whisper_test integer,
-    fit_to_drive boolean,
-    urinary_incontinence boolean,
-    fk_bowel_trouble boolean,
-    system_review_comments text,
-    other_health_professionals text,
-    mentalstatus_problems boolean,
-    mentalstatus_consider_assessment_tool boolean,
-    fk_lu_companion_status integer,
-    fk_lu_social_support integer,
-    independance_have_carer boolean,
-    independance_is_carer boolean,
-    fk_lu_depression_degree boolean,
-    mood_difficulty_sleeping boolean,
-    mood_consider_assessement_tool boolean,
-    nuitrition_dentures_yes_no boolean,
-    nuitrition_denture_problems boolean,
-    nuitrition_eating_less boolean,
-    nuitrition_3meals_per_day boolean,
-    nuitrition_fruit_n_veg boolean,
-    nuitrition_dairy boolean,
-    nuitrition_excess_alcohol boolean,
-    nuitrition_adequate_fluids boolean,
-    nuitrition_swallowing_problems boolean,
-    nuitrition_enough_money boolean,
-    nuitrition_eat_alone boolean,
-    nuitrition_lots_of_medications boolean,
-    nuitrition_weight_change boolean,
-    nuitrition_shop_cook_feed boolean,
-    mobility_aid_indoors boolean,
-    mobility_aid_outdoors boolean,
-    mobility_bath_shower boolean,
-    mobility_bend_kneel boolean,
-    mobility_walk100meters boolean,
-    mobility_use_steps boolean,
-    mobility_reach_overhead boolean,
-    mobility_no_clutter boolean,
-    mobility_adequate_lighting boolean,
-    mobility_free_of_falls boolean,
-    mobility_actions_suggested text,
-    home_safety_use_chairs boolean,
-    home_safety_use_bed boolean,
-    home_safety_use_light boolean,
-    home_safety_use_toilet boolean,
-    home_safety_flooring_secured boolean,
-    home_safety_use_bath_mats boolean,
-    home_safety_carry_meals boolean,
-    home_safety_use_utensils boolean,
-    home_safety_see_stairs boolean,
-    home_safety_actions_suggested text
-);
-
-
-ALTER TABLE clin_checkups.over75 OWNER TO easygp;
-
---
--- Name: COLUMN over75.fk_lu_consult_type; Type: COMMENT; Schema: clin_checkups; Owner: easygp
---
-
-COMMENT ON COLUMN over75.fk_lu_consult_type IS 'foreign key to consult.lu_consult_type table eg home visit';
-
-
---
--- Name: COLUMN over75.fk_lu_state_of_health; Type: COMMENT; Schema: clin_checkups; Owner: easygp
---
-
-COMMENT ON COLUMN over75.fk_lu_state_of_health IS 'foreign key to clin_checkups.fk_lu_state_of_health table';
-
-
---
--- Name: COLUMN over75.fk_lu_smoking_status; Type: COMMENT; Schema: clin_checkups; Owner: easygp
---
-
-COMMENT ON COLUMN over75.fk_lu_smoking_status IS 'foreign key to clin_checkups.lu_lu_smoking_status';
-
-
---
--- Name: COLUMN over75.fk_lu_earcanal_status; Type: COMMENT; Schema: clin_checkups; Owner: easygp
---
-
-COMMENT ON COLUMN over75.fk_lu_earcanal_status IS 'references common.lu_normality';
-
-
---
--- Name: over75_pk_seq; Type: SEQUENCE; Schema: clin_checkups; Owner: easygp
---
-
-CREATE SEQUENCE over75_pk_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
-ALTER TABLE clin_checkups.over75_pk_seq OWNER TO easygp;
-
---
--- Name: over75_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_checkups; Owner: easygp
---
-
-ALTER SEQUENCE over75_pk_seq OWNED BY over75.pk;
 
 
 SET search_path = clin_consult, pg_catalog;
@@ -8595,7 +8088,7 @@ CREATE SEQUENCE consult_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_consult.consult_pk_seq OWNER TO easygp;
+ALTER TABLE consult_pk_seq OWNER TO easygp;
 
 --
 -- Name: consult_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_consult; Owner: easygp
@@ -8619,7 +8112,7 @@ CREATE TABLE dictations (
 );
 
 
-ALTER TABLE clin_consult.dictations OWNER TO easygp;
+ALTER TABLE dictations OWNER TO easygp;
 
 --
 -- Name: TABLE dictations; Type: COMMENT; Schema: clin_consult; Owner: easygp
@@ -8675,7 +8168,7 @@ CREATE SEQUENCE dictations_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_consult.dictations_pk_seq OWNER TO easygp;
+ALTER TABLE dictations_pk_seq OWNER TO easygp;
 
 --
 -- Name: dictations_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_consult; Owner: easygp
@@ -8695,7 +8188,7 @@ CREATE TABLE images (
 );
 
 
-ALTER TABLE clin_consult.images OWNER TO easygp;
+ALTER TABLE images OWNER TO easygp;
 
 --
 -- Name: images_pk_seq; Type: SEQUENCE; Schema: clin_consult; Owner: easygp
@@ -8709,7 +8202,7 @@ CREATE SEQUENCE images_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_consult.images_pk_seq OWNER TO easygp;
+ALTER TABLE images_pk_seq OWNER TO easygp;
 
 --
 -- Name: images_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_consult; Owner: easygp
@@ -8730,7 +8223,7 @@ CREATE SEQUENCE lu_actions_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_consult.lu_actions_pk_seq OWNER TO easygp;
+ALTER TABLE lu_actions_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_actions_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_consult; Owner: easygp
@@ -8751,7 +8244,7 @@ CREATE SEQUENCE lu_audit_reasons_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_consult.lu_audit_reasons_pk_seq OWNER TO easygp;
+ALTER TABLE lu_audit_reasons_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_audit_reasons_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_consult; Owner: easygp
@@ -8772,7 +8265,7 @@ CREATE SEQUENCE lu_consult_type_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_consult.lu_consult_type_pk_seq OWNER TO easygp;
+ALTER TABLE lu_consult_type_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_consult_type_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_consult; Owner: easygp
@@ -8797,7 +8290,7 @@ CREATE TABLE lu_progressnote_templates (
 );
 
 
-ALTER TABLE clin_consult.lu_progressnote_templates OWNER TO easygp;
+ALTER TABLE lu_progressnote_templates OWNER TO easygp;
 
 --
 -- Name: TABLE lu_progressnote_templates; Type: COMMENT; Schema: clin_consult; Owner: easygp
@@ -8847,7 +8340,7 @@ CREATE SEQUENCE lu_progressnote_templates_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_consult.lu_progressnote_templates_pk_seq OWNER TO easygp;
+ALTER TABLE lu_progressnote_templates_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_progressnote_templates_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_consult; Owner: easygp
@@ -8868,7 +8361,7 @@ CREATE SEQUENCE lu_progressnotes_sections_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_consult.lu_progressnotes_sections_pk_seq OWNER TO easygp;
+ALTER TABLE lu_progressnotes_sections_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_progressnotes_sections_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_consult; Owner: easygp
@@ -8883,7 +8376,6 @@ ALTER SEQUENCE lu_progressnotes_sections_pk_seq OWNED BY lu_progressnotes_sectio
 
 CREATE TABLE lu_shortcut (
     pk integer NOT NULL,
-    fk_staff integer,
     shared boolean DEFAULT false,
     shortcut text,
     expanded text,
@@ -8891,20 +8383,13 @@ CREATE TABLE lu_shortcut (
 );
 
 
-ALTER TABLE clin_consult.lu_shortcut OWNER TO easygp;
+ALTER TABLE lu_shortcut OWNER TO easygp;
 
 --
 -- Name: TABLE lu_shortcut; Type: COMMENT; Schema: clin_consult; Owner: easygp
 --
 
 COMMENT ON TABLE lu_shortcut IS 'System wide shortcuts that the editor will expand to a longer text sequence';
-
-
---
--- Name: COLUMN lu_shortcut.fk_staff; Type: COMMENT; Schema: clin_consult; Owner: easygp
---
-
-COMMENT ON COLUMN lu_shortcut.fk_staff IS 'Use only in inherited table - necessary to allow exporting lu_* data without contaminatin from user data';
 
 
 --
@@ -8931,7 +8416,7 @@ CREATE TABLE lu_shortcut_category (
 );
 
 
-ALTER TABLE clin_consult.lu_shortcut_category OWNER TO easygp;
+ALTER TABLE lu_shortcut_category OWNER TO easygp;
 
 --
 -- Name: TABLE lu_shortcut_category; Type: COMMENT; Schema: clin_consult; Owner: easygp
@@ -8952,7 +8437,7 @@ CREATE SEQUENCE lu_shortcut_category_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_consult.lu_shortcut_category_pk_seq OWNER TO easygp;
+ALTER TABLE lu_shortcut_category_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_shortcut_category_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_consult; Owner: easygp
@@ -8973,7 +8458,7 @@ CREATE SEQUENCE lu_shortcut_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_consult.lu_shortcut_pk_seq OWNER TO easygp;
+ALTER TABLE lu_shortcut_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_shortcut_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_consult; Owner: easygp
@@ -8993,7 +8478,7 @@ CREATE TABLE next_visit (
 );
 
 
-ALTER TABLE clin_consult.next_visit OWNER TO easygp;
+ALTER TABLE next_visit OWNER TO easygp;
 
 --
 -- Name: TABLE next_visit; Type: COMMENT; Schema: clin_consult; Owner: easygp
@@ -9014,7 +8499,7 @@ CREATE SEQUENCE next_visit_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_consult.next_visit_pk_seq OWNER TO easygp;
+ALTER TABLE next_visit_pk_seq OWNER TO easygp;
 
 --
 -- Name: next_visit_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_consult; Owner: easygp
@@ -9035,7 +8520,7 @@ CREATE TABLE progressnotes_codes (
 );
 
 
-ALTER TABLE clin_consult.progressnotes_codes OWNER TO easygp;
+ALTER TABLE progressnotes_codes OWNER TO easygp;
 
 --
 -- Name: progressnotes_codes_pk_seq; Type: SEQUENCE; Schema: clin_consult; Owner: easygp
@@ -9049,7 +8534,7 @@ CREATE SEQUENCE progressnotes_codes_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_consult.progressnotes_codes_pk_seq OWNER TO easygp;
+ALTER TABLE progressnotes_codes_pk_seq OWNER TO easygp;
 
 --
 -- Name: progressnotes_codes_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_consult; Owner: easygp
@@ -9070,7 +8555,7 @@ CREATE SEQUENCE progressnotes_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_consult.progressnotes_pk_seq OWNER TO easygp;
+ALTER TABLE progressnotes_pk_seq OWNER TO easygp;
 
 --
 -- Name: progressnotes_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_consult; Owner: easygp
@@ -9084,24 +8569,57 @@ ALTER SEQUENCE progressnotes_pk_seq OWNED BY progressnotes.pk;
 --
 
 CREATE TABLE shortcuts_user (
-)
-INHERITS (lu_shortcut);
+    pk integer NOT NULL,
+    fk_staff integer NOT NULL,
+    shared boolean DEFAULT false,
+    shortcut text NOT NULL,
+    expanded text NOT NULL,
+    fk_lu_shortcut_category integer NOT NULL
+);
 
 
-ALTER TABLE clin_consult.shortcuts_user OWNER TO easygp;
+ALTER TABLE shortcuts_user OWNER TO easygp;
 
 --
 -- Name: TABLE shortcuts_user; Type: COMMENT; Schema: clin_consult; Owner: easygp
 --
 
-COMMENT ON TABLE shortcuts_user IS 'User specific editable shortcuts that the editor will expand to a longer text sequence';
+COMMENT ON TABLE shortcuts_user IS 'user unique shortcuts that the editor will expand to a longer text sequence';
 
 
 --
--- Name: COLUMN shortcuts_user.fk_staff; Type: COMMENT; Schema: clin_consult; Owner: easygp
+-- Name: COLUMN shortcuts_user.shortcut; Type: COMMENT; Schema: clin_consult; Owner: easygp
 --
 
-COMMENT ON COLUMN shortcuts_user.fk_staff IS 'if true, the shortcut will be shared with other users';
+COMMENT ON COLUMN shortcuts_user.shortcut IS 'the shortcut that triggers the text expansion';
+
+
+--
+-- Name: COLUMN shortcuts_user.expanded; Type: COMMENT; Schema: clin_consult; Owner: easygp
+--
+
+COMMENT ON COLUMN shortcuts_user.expanded IS 'the text the shortcut will get expanded to. Any htnl code is valid, including embedded images';
+
+
+--
+-- Name: shortcuts_user_temp_pk_seq; Type: SEQUENCE; Schema: clin_consult; Owner: easygp
+--
+
+CREATE SEQUENCE shortcuts_user_temp_pk_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE shortcuts_user_temp_pk_seq OWNER TO easygp;
+
+--
+-- Name: shortcuts_user_temp_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_consult; Owner: easygp
+--
+
+ALTER SEQUENCE shortcuts_user_temp_pk_seq OWNED BY shortcuts_user.pk;
 
 
 SET search_path = clin_referrals, pg_catalog;
@@ -9134,7 +8652,7 @@ CREATE TABLE referrals (
 );
 
 
-ALTER TABLE clin_referrals.referrals OWNER TO easygp;
+ALTER TABLE referrals OWNER TO easygp;
 
 --
 -- Name: TABLE referrals; Type: COMMENT; Schema: clin_referrals; Owner: easygp
@@ -9276,7 +8794,7 @@ CREATE VIEW vwdictations AS
   WHERE (((d.fk_referral = r.pk) AND (r.fk_consult = c.pk)) AND (c.fk_patient = vwp.fk_patient));
 
 
-ALTER TABLE clin_consult.vwdictations OWNER TO postgres;
+ALTER TABLE vwdictations OWNER TO postgres;
 
 --
 -- Name: vwnextvisit; Type: VIEW; Schema: clin_consult; Owner: easygp
@@ -9293,7 +8811,7 @@ CREATE VIEW vwnextvisit AS
   WHERE ((next_visit.fk_consult = consult.pk) AND (consult.fk_staff = staff.pk));
 
 
-ALTER TABLE clin_consult.vwnextvisit OWNER TO easygp;
+ALTER TABLE vwnextvisit OWNER TO easygp;
 
 --
 -- Name: VIEW vwnextvisit; Type: COMMENT; Schema: clin_consult; Owner: easygp
@@ -9338,7 +8856,7 @@ CREATE VIEW vwpatientconsults AS
   ORDER BY vwprogressnotes.consult_date;
 
 
-ALTER TABLE clin_consult.vwpatientconsults OWNER TO easygp;
+ALTER TABLE vwpatientconsults OWNER TO easygp;
 
 --
 -- Name: vwprogressnotescodes; Type: VIEW; Schema: clin_consult; Owner: easygp
@@ -9361,7 +8879,7 @@ CREATE VIEW vwprogressnotescodes AS
   WHERE (((progressnotes_codes.fk_code = generic_terms.code) AND (progressnotes.fk_consult = consult.pk)) AND (progressnotes.pk = progressnotes_codes.fk_progressnote));
 
 
-ALTER TABLE clin_consult.vwprogressnotescodes OWNER TO easygp;
+ALTER TABLE vwprogressnotescodes OWNER TO easygp;
 
 --
 -- Name: vwprogressnotestemplates; Type: VIEW; Schema: clin_consult; Owner: easygp
@@ -9382,26 +8900,35 @@ CREATE VIEW vwprogressnotestemplates AS
      LEFT JOIN coding.generic_terms ON ((lu_progressnote_templates.code = generic_terms.code)));
 
 
-ALTER TABLE clin_consult.vwprogressnotestemplates OWNER TO easygp;
+ALTER TABLE vwprogressnotestemplates OWNER TO easygp;
 
 --
 -- Name: vwshortcuts; Type: VIEW; Schema: clin_consult; Owner: easygp
 --
 
 CREATE VIEW vwshortcuts AS
- SELECT lu_shortcut_category.category,
-    shortcuts_user.pk,
-    shortcuts_user.fk_staff,
+ SELECT lu_shortcut.pk AS fk_shortcut,
+    lu_shortcut.shared,
+    lu_shortcut.shortcut,
+    lu_shortcut.expanded,
+    lu_shortcut.fk_lu_shortcut_category,
+    lu_shortcut_category.category,
+    NULL::integer AS fk_staff
+   FROM (lu_shortcut
+     JOIN lu_shortcut_category ON ((lu_shortcut_category.pk = lu_shortcut.fk_lu_shortcut_category)))
+UNION
+ SELECT shortcuts_user.pk AS fk_shortcut,
     shortcuts_user.shared,
     shortcuts_user.shortcut,
     shortcuts_user.expanded,
-    shortcuts_user.fk_lu_shortcut_category
-   FROM lu_shortcut_category,
-    shortcuts_user
-  WHERE (shortcuts_user.fk_lu_shortcut_category = lu_shortcut_category.pk);
+    shortcuts_user.fk_lu_shortcut_category,
+    lu_shortcut_category.category,
+    shortcuts_user.fk_staff
+   FROM (shortcuts_user
+     JOIN lu_shortcut_category ON ((lu_shortcut_category.pk = shortcuts_user.fk_lu_shortcut_category)));
 
 
-ALTER TABLE clin_consult.vwshortcuts OWNER TO easygp;
+ALTER TABLE vwshortcuts OWNER TO easygp;
 
 --
 -- Name: vwstaffmemberspatientsconsults; Type: VIEW; Schema: clin_consult; Owner: easygp
@@ -9419,7 +8946,7 @@ CREATE VIEW vwstaffmemberspatientsconsults AS
   WHERE (((vwprogressnotes.fk_audit_action = 1) OR (vwprogressnotes.fk_audit_action = 2)) AND (vwprogressnotes.deleted = false));
 
 
-ALTER TABLE clin_consult.vwstaffmemberspatientsconsults OWNER TO easygp;
+ALTER TABLE vwstaffmemberspatientsconsults OWNER TO easygp;
 
 --
 -- Name: VIEW vwstaffmemberspatientsconsults; Type: COMMENT; Schema: clin_consult; Owner: easygp
@@ -9450,7 +8977,7 @@ CREATE TABLE family_conditions (
 );
 
 
-ALTER TABLE clin_history.family_conditions OWNER TO easygp;
+ALTER TABLE family_conditions OWNER TO easygp;
 
 --
 -- Name: COLUMN family_conditions.condition; Type: COMMENT; Schema: clin_history; Owner: easygp
@@ -9480,7 +9007,7 @@ CREATE SEQUENCE family_conditions_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_history.family_conditions_pk_seq OWNER TO easygp;
+ALTER TABLE family_conditions_pk_seq OWNER TO easygp;
 
 --
 -- Name: family_conditions_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_history; Owner: easygp
@@ -9501,7 +9028,7 @@ CREATE TABLE family_links (
 );
 
 
-ALTER TABLE clin_history.family_links OWNER TO easygp;
+ALTER TABLE family_links OWNER TO easygp;
 
 --
 -- Name: family_links_pk_seq; Type: SEQUENCE; Schema: clin_history; Owner: easygp
@@ -9515,7 +9042,7 @@ CREATE SEQUENCE family_links_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_history.family_links_pk_seq OWNER TO easygp;
+ALTER TABLE family_links_pk_seq OWNER TO easygp;
 
 --
 -- Name: family_links_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_history; Owner: easygp
@@ -9542,7 +9069,7 @@ CREATE TABLE family_members (
 );
 
 
-ALTER TABLE clin_history.family_members OWNER TO easygp;
+ALTER TABLE family_members OWNER TO easygp;
 
 --
 -- Name: COLUMN family_members.fk_person; Type: COMMENT; Schema: clin_history; Owner: easygp
@@ -9563,7 +9090,7 @@ CREATE SEQUENCE family_members_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_history.family_members_pk_seq OWNER TO easygp;
+ALTER TABLE family_members_pk_seq OWNER TO easygp;
 
 --
 -- Name: family_members_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_history; Owner: easygp
@@ -9596,7 +9123,7 @@ CREATE TABLE gp_management_plans (
 );
 
 
-ALTER TABLE clin_history.gp_management_plans OWNER TO easygp;
+ALTER TABLE gp_management_plans OWNER TO easygp;
 
 --
 -- Name: TABLE gp_management_plans; Type: COMMENT; Schema: clin_history; Owner: easygp
@@ -9662,7 +9189,7 @@ CREATE SEQUENCE gp_management_plans_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_history.gp_management_plans_pk_seq OWNER TO easygp;
+ALTER TABLE gp_management_plans_pk_seq OWNER TO easygp;
 
 --
 -- Name: gp_management_plans_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_history; Owner: easygp
@@ -9689,7 +9216,7 @@ CREATE TABLE health_issue_templates (
 );
 
 
-ALTER TABLE clin_history.health_issue_templates OWNER TO easygp;
+ALTER TABLE health_issue_templates OWNER TO easygp;
 
 --
 -- Name: TABLE health_issue_templates; Type: COMMENT; Schema: clin_history; Owner: easygp
@@ -9741,7 +9268,7 @@ CREATE SEQUENCE health_issue_templates_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_history.health_issue_templates_pk_seq OWNER TO easygp;
+ALTER TABLE health_issue_templates_pk_seq OWNER TO easygp;
 
 --
 -- Name: health_issue_templates_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_history; Owner: easygp
@@ -9764,7 +9291,7 @@ CREATE TABLE hospitalisations (
 );
 
 
-ALTER TABLE clin_history.hospitalisations OWNER TO easygp;
+ALTER TABLE hospitalisations OWNER TO easygp;
 
 --
 -- Name: TABLE hospitalisations; Type: COMMENT; Schema: clin_history; Owner: easygp
@@ -9785,7 +9312,7 @@ CREATE SEQUENCE hospitalisations_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_history.hospitalisations_pk_seq OWNER TO easygp;
+ALTER TABLE hospitalisations_pk_seq OWNER TO easygp;
 
 --
 -- Name: hospitalisations_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_history; Owner: easygp
@@ -9809,7 +9336,7 @@ CREATE TABLE link_pasthistory_providers (
 );
 
 
-ALTER TABLE clin_history.link_pasthistory_providers OWNER TO easygp;
+ALTER TABLE link_pasthistory_providers OWNER TO easygp;
 
 --
 -- Name: TABLE link_pasthistory_providers; Type: COMMENT; Schema: clin_history; Owner: easygp
@@ -9833,7 +9360,7 @@ CREATE SEQUENCE link_pasthistory_providers_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_history.link_pasthistory_providers_pk_seq OWNER TO easygp;
+ALTER TABLE link_pasthistory_providers_pk_seq OWNER TO easygp;
 
 --
 -- Name: link_pasthistory_providers_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_history; Owner: easygp
@@ -9852,7 +9379,7 @@ CREATE TABLE lu_allied_health_care_types (
 );
 
 
-ALTER TABLE clin_history.lu_allied_health_care_types OWNER TO easygp;
+ALTER TABLE lu_allied_health_care_types OWNER TO easygp;
 
 --
 -- Name: TABLE lu_allied_health_care_types; Type: COMMENT; Schema: clin_history; Owner: easygp
@@ -9873,63 +9400,13 @@ CREATE SEQUENCE lu_allied_health_care_types_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_history.lu_allied_health_care_types_pk_seq OWNER TO easygp;
+ALTER TABLE lu_allied_health_care_types_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_allied_health_care_types_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_history; Owner: easygp
 --
 
 ALTER SEQUENCE lu_allied_health_care_types_pk_seq OWNED BY lu_allied_health_care_types.pk;
-
-
---
--- Name: lu_dacc_components; Type: TABLE; Schema: clin_history; Owner: easygp; Tablespace: 
---
-
-CREATE TABLE lu_dacc_components (
-    pk integer NOT NULL,
-    fk_component integer NOT NULL
-);
-
-
-ALTER TABLE clin_history.lu_dacc_components OWNER TO easygp;
-
---
--- Name: TABLE lu_dacc_components; Type: COMMENT; Schema: clin_history; Owner: easygp
---
-
-COMMENT ON TABLE lu_dacc_components IS 'Specific to Australian Government requirements for billing care of diabetics is the so 
-  called Diabetic Annual Cycle of Care (DACC). This table keeps linkages to the 
-  lu_careplan_components table for those components needed
-  This table is purely to enable quick pulling in of DACC for the health issues section';
-
-
---
--- Name: COLUMN lu_dacc_components.fk_component; Type: COMMENT; Schema: clin_history; Owner: easygp
---
-
-COMMENT ON COLUMN lu_dacc_components.fk_component IS 'key to clin_history.lu_careplan_components table';
-
-
---
--- Name: lu_dacc_components_pk_seq; Type: SEQUENCE; Schema: clin_history; Owner: easygp
---
-
-CREATE SEQUENCE lu_dacc_components_pk_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
-ALTER TABLE clin_history.lu_dacc_components_pk_seq OWNER TO easygp;
-
---
--- Name: lu_dacc_components_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_history; Owner: easygp
---
-
-ALTER SEQUENCE lu_dacc_components_pk_seq OWNED BY lu_dacc_components.pk;
 
 
 --
@@ -9944,7 +9421,7 @@ CREATE TABLE lu_exposures (
 );
 
 
-ALTER TABLE clin_history.lu_exposures OWNER TO easygp;
+ALTER TABLE lu_exposures OWNER TO easygp;
 
 --
 -- Name: TABLE lu_exposures; Type: COMMENT; Schema: clin_history; Owner: easygp
@@ -9973,7 +9450,7 @@ CREATE SEQUENCE lu_exposures_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_history.lu_exposures_pk_seq OWNER TO easygp;
+ALTER TABLE lu_exposures_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_exposures_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_history; Owner: easygp
@@ -10000,7 +9477,7 @@ CREATE TABLE occupational_history (
 );
 
 
-ALTER TABLE clin_history.occupational_history OWNER TO easygp;
+ALTER TABLE occupational_history OWNER TO easygp;
 
 --
 -- Name: TABLE occupational_history; Type: COMMENT; Schema: clin_history; Owner: easygp
@@ -10068,7 +9545,7 @@ CREATE SEQUENCE occupational_history_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_history.occupational_history_pk_seq OWNER TO easygp;
+ALTER TABLE occupational_history_pk_seq OWNER TO easygp;
 
 --
 -- Name: occupational_history_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_history; Owner: easygp
@@ -10092,7 +9569,7 @@ CREATE TABLE occupations_exposures (
 );
 
 
-ALTER TABLE clin_history.occupations_exposures OWNER TO easygp;
+ALTER TABLE occupations_exposures OWNER TO easygp;
 
 --
 -- Name: TABLE occupations_exposures; Type: COMMENT; Schema: clin_history; Owner: easygp
@@ -10142,7 +9619,7 @@ CREATE SEQUENCE occupations_exposures_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_history.occupations_exposures_pk_seq OWNER TO easygp;
+ALTER TABLE occupations_exposures_pk_seq OWNER TO easygp;
 
 --
 -- Name: occupations_exposures_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_history; Owner: easygp
@@ -10183,7 +9660,7 @@ CREATE TABLE past_history (
 );
 
 
-ALTER TABLE clin_history.past_history OWNER TO easygp;
+ALTER TABLE past_history OWNER TO easygp;
 
 --
 -- Name: COLUMN past_history.fk_coding_system; Type: COMMENT; Schema: clin_history; Owner: easygp
@@ -10214,7 +9691,7 @@ CREATE SEQUENCE past_history_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_history.past_history_pk_seq OWNER TO easygp;
+ALTER TABLE past_history_pk_seq OWNER TO easygp;
 
 --
 -- Name: past_history_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_history; Owner: easygp
@@ -10235,7 +9712,7 @@ CREATE SEQUENCE pk_view_familyhistory
     CACHE 1;
 
 
-ALTER TABLE clin_history.pk_view_familyhistory OWNER TO easygp;
+ALTER TABLE pk_view_familyhistory OWNER TO easygp;
 
 --
 -- Name: providers_of_care; Type: TABLE; Schema: clin_history; Owner: easygp; Tablespace: 
@@ -10252,7 +9729,7 @@ CREATE TABLE providers_of_care (
 );
 
 
-ALTER TABLE clin_history.providers_of_care OWNER TO easygp;
+ALTER TABLE providers_of_care OWNER TO easygp;
 
 --
 -- Name: TABLE providers_of_care; Type: COMMENT; Schema: clin_history; Owner: easygp
@@ -10276,7 +9753,7 @@ CREATE SEQUENCE providers_of_care_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_history.providers_of_care_pk_seq OWNER TO easygp;
+ALTER TABLE providers_of_care_pk_seq OWNER TO easygp;
 
 --
 -- Name: providers_of_care_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_history; Owner: easygp
@@ -10308,7 +9785,7 @@ CREATE TABLE recreational_drugs (
 );
 
 
-ALTER TABLE clin_history.recreational_drugs OWNER TO easygp;
+ALTER TABLE recreational_drugs OWNER TO easygp;
 
 --
 -- Name: TABLE recreational_drugs; Type: COMMENT; Schema: clin_history; Owner: easygp
@@ -10407,7 +9884,7 @@ CREATE SEQUENCE recreational_drugs_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_history.recreational_drugs_pk_seq OWNER TO easygp;
+ALTER TABLE recreational_drugs_pk_seq OWNER TO easygp;
 
 --
 -- Name: recreational_drugs_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_history; Owner: easygp
@@ -10444,7 +9921,7 @@ CREATE TABLE social_history (
 );
 
 
-ALTER TABLE clin_history.social_history OWNER TO easygp;
+ALTER TABLE social_history OWNER TO easygp;
 
 --
 -- Name: TABLE social_history; Type: COMMENT; Schema: clin_history; Owner: easygp
@@ -10554,7 +10031,7 @@ CREATE SEQUENCE social_history_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_history.social_history_pk_seq OWNER TO easygp;
+ALTER TABLE social_history_pk_seq OWNER TO easygp;
 
 --
 -- Name: social_history_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_history; Owner: easygp
@@ -10585,7 +10062,7 @@ CREATE TABLE team_care_arrangements (
 );
 
 
-ALTER TABLE clin_history.team_care_arrangements OWNER TO easygp;
+ALTER TABLE team_care_arrangements OWNER TO easygp;
 
 --
 -- Name: TABLE team_care_arrangements; Type: COMMENT; Schema: clin_history; Owner: easygp
@@ -10638,7 +10115,7 @@ CREATE SEQUENCE team_care_arrangements_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_history.team_care_arrangements_pk_seq OWNER TO easygp;
+ALTER TABLE team_care_arrangements_pk_seq OWNER TO easygp;
 
 --
 -- Name: team_care_arrangements_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_history; Owner: easygp
@@ -10672,7 +10149,7 @@ CREATE TABLE team_care_members (
 );
 
 
-ALTER TABLE clin_history.team_care_members OWNER TO easygp;
+ALTER TABLE team_care_members OWNER TO easygp;
 
 --
 -- Name: TABLE team_care_members; Type: COMMENT; Schema: clin_history; Owner: easygp
@@ -10780,7 +10257,7 @@ CREATE SEQUENCE team_care_members_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_history.team_care_members_pk_seq OWNER TO easygp;
+ALTER TABLE team_care_members_pk_seq OWNER TO easygp;
 
 --
 -- Name: team_care_members_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_history; Owner: easygp
@@ -10801,7 +10278,7 @@ CREATE TABLE lu_family_relationships (
 );
 
 
-ALTER TABLE common.lu_family_relationships OWNER TO easygp;
+ALTER TABLE lu_family_relationships OWNER TO easygp;
 
 SET search_path = clin_history, pg_catalog;
 
@@ -10852,7 +10329,7 @@ CREATE VIEW vwfamilyhistory AS
   ORDER BY family_links.fk_patient, family_links.fk_member;
 
 
-ALTER TABLE clin_history.vwfamilyhistory OWNER TO easygp;
+ALTER TABLE vwfamilyhistory OWNER TO easygp;
 
 --
 -- Name: vwgpmanagementplans; Type: VIEW; Schema: clin_history; Owner: easygp
@@ -10886,7 +10363,7 @@ CREATE VIEW vwgpmanagementplans AS
   WHERE ((gp_management_plans.fk_consult = consult.pk) AND (consult.fk_staff = vwstaff.fk_staff));
 
 
-ALTER TABLE clin_history.vwgpmanagementplans OWNER TO easygp;
+ALTER TABLE vwgpmanagementplans OWNER TO easygp;
 
 SET search_path = common, pg_catalog;
 
@@ -10900,7 +10377,7 @@ CREATE TABLE lu_laterality (
 );
 
 
-ALTER TABLE common.lu_laterality OWNER TO easygp;
+ALTER TABLE lu_laterality OWNER TO easygp;
 
 SET search_path = clin_history, pg_catalog;
 
@@ -10955,7 +10432,7 @@ CREATE VIEW vwhealthissues AS
   ORDER BY consult.fk_patient;
 
 
-ALTER TABLE clin_history.vwhealthissues OWNER TO easygp;
+ALTER TABLE vwhealthissues OWNER TO easygp;
 
 SET search_path = common, pg_catalog;
 
@@ -10970,7 +10447,7 @@ CREATE TABLE lu_units (
 );
 
 
-ALTER TABLE common.lu_units OWNER TO easygp;
+ALTER TABLE lu_units OWNER TO easygp;
 
 SET search_path = clin_history, pg_catalog;
 
@@ -11014,7 +10491,7 @@ CREATE VIEW vwoccupationalhistory AS
      LEFT JOIN common.lu_units ON ((occupations_exposures.exposure_duration_units = lu_units.pk)));
 
 
-ALTER TABLE clin_history.vwoccupationalhistory OWNER TO easygp;
+ALTER TABLE vwoccupationalhistory OWNER TO easygp;
 
 SET search_path = contacts, pg_catalog;
 
@@ -11029,7 +10506,7 @@ CREATE TABLE images (
 );
 
 
-ALTER TABLE contacts.images OWNER TO easygp;
+ALTER TABLE images OWNER TO easygp;
 
 --
 -- Name: vwemployees; Type: VIEW; Schema: contacts; Owner: easygp
@@ -11108,7 +10585,7 @@ CREATE VIEW vwemployees AS
   WHERE (NOT data_employees.deleted);
 
 
-ALTER TABLE contacts.vwemployees OWNER TO easygp;
+ALTER TABLE vwemployees OWNER TO easygp;
 
 --
 -- Name: vwpersons; Type: VIEW; Schema: contacts; Owner: easygp
@@ -11186,7 +10663,7 @@ CREATE VIEW vwpersons AS
   ORDER BY data_persons.pk, links_persons_addresses.fk_address;
 
 
-ALTER TABLE contacts.vwpersons OWNER TO easygp;
+ALTER TABLE vwpersons OWNER TO easygp;
 
 --
 -- Name: vwpersonsexcludingpatients; Type: VIEW; Schema: contacts; Owner: easygp
@@ -11250,7 +10727,7 @@ CREATE VIEW vwpersonsexcludingpatients AS
   ORDER BY vwpersons.fk_person, vwpersons.fk_address;
 
 
-ALTER TABLE contacts.vwpersonsexcludingpatients OWNER TO easygp;
+ALTER TABLE vwpersonsexcludingpatients OWNER TO easygp;
 
 SET search_path = clin_history, pg_catalog;
 
@@ -11310,7 +10787,7 @@ UNION
   WHERE (((((link_pasthistory_providers.fk_person = vwpersonsexcludingpatients.fk_person) AND (past_history.pk = link_pasthistory_providers.fk_pasthistory)) AND (past_history.fk_consult = consult.pk)) AND (link_pasthistory_providers.deleted IS FALSE)) AND (vwpersonsexcludingpatients.occupation <> 'unknown'::text));
 
 
-ALTER TABLE clin_history.vwprovidersofcare OWNER TO easygp;
+ALTER TABLE vwprovidersofcare OWNER TO easygp;
 
 --
 -- Name: VIEW vwprovidersofcare; Type: COMMENT; Schema: clin_history; Owner: easygp
@@ -11335,7 +10812,7 @@ CREATE TABLE lu_recreational_drugs (
 );
 
 
-ALTER TABLE common.lu_recreational_drugs OWNER TO easygp;
+ALTER TABLE lu_recreational_drugs OWNER TO easygp;
 
 --
 -- Name: TABLE lu_recreational_drugs; Type: COMMENT; Schema: common; Owner: easygp
@@ -11376,7 +10853,7 @@ CREATE TABLE lu_route_administration (
 );
 
 
-ALTER TABLE common.lu_route_administration OWNER TO easygp;
+ALTER TABLE lu_route_administration OWNER TO easygp;
 
 SET search_path = clin_history, pg_catalog;
 
@@ -11417,7 +10894,7 @@ CREATE VIEW vwrecreationaldrugsused AS
      LEFT JOIN common.lu_units ON ((lu_units.pk = recreational_drugs.fk_lu_substance_amount_units)));
 
 
-ALTER TABLE clin_history.vwrecreationaldrugsused OWNER TO easygp;
+ALTER TABLE vwrecreationaldrugsused OWNER TO easygp;
 
 --
 -- Name: vwsocialhistory; Type: VIEW; Schema: clin_history; Owner: easygp
@@ -11465,7 +10942,7 @@ CREATE VIEW vwsocialhistory AS
   WHERE (sh.deleted = false);
 
 
-ALTER TABLE clin_history.vwsocialhistory OWNER TO easygp;
+ALTER TABLE vwsocialhistory OWNER TO easygp;
 
 --
 -- Name: VIEW vwsocialhistory; Type: COMMENT; Schema: clin_history; Owner: easygp
@@ -11502,7 +10979,7 @@ CREATE VIEW vwresponsiblepersons AS
   WHERE (((((vwsocialhistory.fk_patient = vwpatients.fk_patient) AND (vwpatients.age_numeric < (90)::double precision)) AND (vwpatients.active_status = 'active'::text)) AND (vwpatients.deceased = false)) AND (vwpatients.person_deleted = false));
 
 
-ALTER TABLE clin_history.vwresponsiblepersons OWNER TO easygp;
+ALTER TABLE vwresponsiblepersons OWNER TO easygp;
 
 --
 -- Name: vwteamcarearrangements; Type: VIEW; Schema: clin_history; Owner: easygp
@@ -11532,7 +11009,7 @@ CREATE VIEW vwteamcarearrangements AS
      JOIN admin.vwstaff ON ((vwstaff.fk_staff = consult.fk_staff)));
 
 
-ALTER TABLE clin_history.vwteamcarearrangements OWNER TO easygp;
+ALTER TABLE vwteamcarearrangements OWNER TO easygp;
 
 SET search_path = documents, pg_catalog;
 
@@ -11578,7 +11055,7 @@ CREATE TABLE documents (
 );
 
 
-ALTER TABLE documents.documents OWNER TO easygp;
+ALTER TABLE documents OWNER TO easygp;
 
 --
 -- Name: COLUMN documents.source_file; Type: COMMENT; Schema: documents; Owner: easygp
@@ -11724,7 +11201,7 @@ CREATE VIEW vwteamcaremembers AS
      LEFT JOIN documents.documents ON ((team_care_members.fk_document_allied_health_form = documents.pk)));
 
 
-ALTER TABLE clin_history.vwteamcaremembers OWNER TO easygp;
+ALTER TABLE vwteamcaremembers OWNER TO easygp;
 
 SET search_path = clin_measurements, pg_catalog;
 
@@ -11745,7 +11222,7 @@ CREATE TABLE inr_dose_management (
 );
 
 
-ALTER TABLE clin_measurements.inr_dose_management OWNER TO easygp;
+ALTER TABLE inr_dose_management OWNER TO easygp;
 
 --
 -- Name: TABLE inr_dose_management; Type: COMMENT; Schema: clin_measurements; Owner: easygp
@@ -11799,7 +11276,7 @@ CREATE SEQUENCE inr_dose_management_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_measurements.inr_dose_management_pk_seq OWNER TO easygp;
+ALTER TABLE inr_dose_management_pk_seq OWNER TO easygp;
 
 --
 -- Name: inr_dose_management_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_measurements; Owner: easygp
@@ -11824,7 +11301,7 @@ CREATE TABLE inr_plan (
 );
 
 
-ALTER TABLE clin_measurements.inr_plan OWNER TO easygp;
+ALTER TABLE inr_plan OWNER TO easygp;
 
 --
 -- Name: TABLE inr_plan; Type: COMMENT; Schema: clin_measurements; Owner: easygp
@@ -11869,7 +11346,7 @@ CREATE SEQUENCE inr_plan_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_measurements.inr_plan_pk_seq OWNER TO easygp;
+ALTER TABLE inr_plan_pk_seq OWNER TO easygp;
 
 --
 -- Name: inr_plan_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_measurements; Owner: easygp
@@ -11889,7 +11366,7 @@ CREATE TABLE lu_reason_anticoagulant_use (
 );
 
 
-ALTER TABLE clin_measurements.lu_reason_anticoagulant_use OWNER TO easygp;
+ALTER TABLE lu_reason_anticoagulant_use OWNER TO easygp;
 
 --
 -- Name: TABLE lu_reason_anticoagulant_use; Type: COMMENT; Schema: clin_measurements; Owner: easygp
@@ -11917,7 +11394,7 @@ CREATE SEQUENCE lu_reason_anticoagulant_use_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_measurements.lu_reason_anticoagulant_use_pk_seq OWNER TO easygp;
+ALTER TABLE lu_reason_anticoagulant_use_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_reason_anticoagulant_use_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_measurements; Owner: easygp
@@ -11940,13 +11417,11 @@ CREATE TABLE lu_type (
     fk_unit integer,
     unit_qualifier text,
     upper_limit integer,
-    lower_limit integer,
-    fk_decision_support integer,
-    fk_plotting_method integer
+    lower_limit integer
 );
 
 
-ALTER TABLE clin_measurements.lu_type OWNER TO easygp;
+ALTER TABLE lu_type OWNER TO easygp;
 
 --
 -- Name: TABLE lu_type; Type: COMMENT; Schema: clin_measurements; Owner: easygp
@@ -12019,20 +11494,6 @@ COMMENT ON COLUMN lu_type.lower_limit IS 'A recommended lower limit if not null'
 
 
 --
--- Name: COLUMN lu_type.fk_decision_support; Type: COMMENT; Schema: clin_measurements; Owner: easygp
---
-
-COMMENT ON COLUMN lu_type.fk_decision_support IS 'key to Decision support table which does not exist yet';
-
-
---
--- Name: COLUMN lu_type.fk_plotting_method; Type: COMMENT; Schema: clin_measurements; Owner: easygp
---
-
-COMMENT ON COLUMN lu_type.fk_plotting_method IS 'foreign key for lu_plotting method table';
-
-
---
 -- Name: lu_type_pk_seq; Type: SEQUENCE; Schema: clin_measurements; Owner: easygp
 --
 
@@ -12044,7 +11505,7 @@ CREATE SEQUENCE lu_type_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_measurements.lu_type_pk_seq OWNER TO easygp;
+ALTER TABLE lu_type_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_type_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_measurements; Owner: easygp
@@ -12068,7 +11529,7 @@ CREATE TABLE measurements (
 );
 
 
-ALTER TABLE clin_measurements.measurements OWNER TO easygp;
+ALTER TABLE measurements OWNER TO easygp;
 
 --
 -- Name: TABLE measurements; Type: COMMENT; Schema: clin_measurements; Owner: easygp
@@ -12125,7 +11586,7 @@ CREATE SEQUENCE measurements_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_measurements.measurements_pk_seq OWNER TO easygp;
+ALTER TABLE measurements_pk_seq OWNER TO easygp;
 
 --
 -- Name: measurements_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_measurements; Owner: easygp
@@ -12150,7 +11611,7 @@ CREATE TABLE patients_defaults (
 );
 
 
-ALTER TABLE clin_measurements.patients_defaults OWNER TO easygp;
+ALTER TABLE patients_defaults OWNER TO easygp;
 
 --
 -- Name: TABLE patients_defaults; Type: COMMENT; Schema: clin_measurements; Owner: easygp
@@ -12199,7 +11660,7 @@ CREATE SEQUENCE patients_defaults_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_measurements.patients_defaults_pk_seq OWNER TO easygp;
+ALTER TABLE patients_defaults_pk_seq OWNER TO easygp;
 
 --
 -- Name: patients_defaults_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_measurements; Owner: easygp
@@ -12240,7 +11701,7 @@ CREATE VIEW vwmeasurements AS
   ORDER BY consult.fk_patient, lu_type.name_abbreviated, consult.consult_date, measurements.time_noted;
 
 
-ALTER TABLE clin_measurements.vwmeasurements OWNER TO easygp;
+ALTER TABLE vwmeasurements OWNER TO easygp;
 
 --
 -- Name: vwbpmostrecent; Type: VIEW; Schema: clin_measurements; Owner: easygp
@@ -12255,7 +11716,7 @@ CREATE VIEW vwbpmostrecent AS
   ORDER BY vwmeasurements.fk_patient, vwmeasurements.consult_date DESC;
 
 
-ALTER TABLE clin_measurements.vwbpmostrecent OWNER TO easygp;
+ALTER TABLE vwbpmostrecent OWNER TO easygp;
 
 --
 -- Name: VIEW vwbpmostrecent; Type: COMMENT; Schema: clin_measurements; Owner: easygp
@@ -12277,7 +11738,7 @@ CREATE VIEW vwheightmostrecent AS
   ORDER BY vwmeasurements.fk_patient, vwmeasurements.consult_date DESC;
 
 
-ALTER TABLE clin_measurements.vwheightmostrecent OWNER TO easygp;
+ALTER TABLE vwheightmostrecent OWNER TO easygp;
 
 --
 -- Name: VIEW vwheightmostrecent; Type: COMMENT; Schema: clin_measurements; Owner: easygp
@@ -12316,7 +11777,7 @@ CREATE TABLE observations (
 );
 
 
-ALTER TABLE documents.observations OWNER TO easygp;
+ALTER TABLE observations OWNER TO easygp;
 
 --
 -- Name: TABLE observations; Type: COMMENT; Schema: documents; Owner: easygp
@@ -12371,7 +11832,7 @@ CREATE VIEW vwinrmanagement AS
   ORDER BY consult.fk_patient;
 
 
-ALTER TABLE clin_measurements.vwinrmanagement OWNER TO easygp;
+ALTER TABLE vwinrmanagement OWNER TO easygp;
 
 --
 -- Name: VIEW vwinrmanagement; Type: COMMENT; Schema: clin_measurements; Owner: easygp
@@ -12409,7 +11870,7 @@ CREATE VIEW vwinrplans AS
   WHERE (((((inr_plan.fk_consult = consult.pk) AND (inr_plan.fk_progressnote = progressnotes.pk)) AND (inr_plan.fk_lu_reason_anticoagulant_use = lu_reason_anticoagulant_use.pk)) AND (progressnotes.fk_consult = consult1.pk)) AND (lu_reason_anticoagulant_use.fk_code = generic_terms.code));
 
 
-ALTER TABLE clin_measurements.vwinrplans OWNER TO easygp;
+ALTER TABLE vwinrplans OWNER TO easygp;
 
 --
 -- Name: vwlabinrs; Type: VIEW; Schema: clin_measurements; Owner: easygp
@@ -12430,7 +11891,7 @@ CREATE VIEW vwlabinrs AS
   ORDER BY documents.fk_patient;
 
 
-ALTER TABLE clin_measurements.vwlabinrs OWNER TO easygp;
+ALTER TABLE vwlabinrs OWNER TO easygp;
 
 --
 -- Name: vwmeasurementtypes; Type: VIEW; Schema: clin_measurements; Owner: easygp
@@ -12448,15 +11909,13 @@ CREATE VIEW vwmeasurementtypes AS
     lu_type.fk_unit,
     lu_type.unit_qualifier,
     lu_type.upper_limit,
-    lu_type.lower_limit,
-    lu_type.fk_decision_support,
-    lu_type.fk_plotting_method
+    lu_type.lower_limit
    FROM (lu_type
      JOIN common.lu_units ON ((lu_type.fk_unit = lu_units.pk)))
   ORDER BY lu_type.name_full;
 
 
-ALTER TABLE clin_measurements.vwmeasurementtypes OWNER TO easygp;
+ALTER TABLE vwmeasurementtypes OWNER TO easygp;
 
 --
 -- Name: vwpatientsdefaults; Type: VIEW; Schema: clin_measurements; Owner: easygp
@@ -12475,8 +11934,6 @@ CREATE VIEW vwpatientsdefaults AS
     lu_type.unit_qualifier,
     lu_type.upper_limit,
     lu_type.lower_limit,
-    lu_type.fk_decision_support,
-    lu_type.fk_plotting_method,
     lu_units.full_text,
     lu_units.abbrev_text
    FROM ((patients_defaults
@@ -12485,7 +11942,7 @@ CREATE VIEW vwpatientsdefaults AS
   ORDER BY patients_defaults.fk_patient;
 
 
-ALTER TABLE clin_measurements.vwpatientsdefaults OWNER TO easygp;
+ALTER TABLE vwpatientsdefaults OWNER TO easygp;
 
 --
 -- Name: vwweightmostrecent; Type: VIEW; Schema: clin_measurements; Owner: easygp
@@ -12500,7 +11957,7 @@ CREATE VIEW vwweightmostrecent AS
   ORDER BY vwmeasurements.fk_patient, vwmeasurements.consult_date DESC;
 
 
-ALTER TABLE clin_measurements.vwweightmostrecent OWNER TO easygp;
+ALTER TABLE vwweightmostrecent OWNER TO easygp;
 
 --
 -- Name: VIEW vwweightmostrecent; Type: COMMENT; Schema: clin_measurements; Owner: easygp
@@ -12529,7 +11986,7 @@ CREATE TABLE clozapine_details (
 );
 
 
-ALTER TABLE clin_mentalhealth.clozapine_details OWNER TO easygp;
+ALTER TABLE clozapine_details OWNER TO easygp;
 
 --
 -- Name: COLUMN clozapine_details.brand; Type: COMMENT; Schema: clin_mentalhealth; Owner: easygp
@@ -12551,7 +12008,7 @@ CREATE SEQUENCE clozapine_details_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_mentalhealth.clozapine_details_pk_seq OWNER TO easygp;
+ALTER TABLE clozapine_details_pk_seq OWNER TO easygp;
 
 --
 -- Name: clozapine_details_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_mentalhealth; Owner: easygp
@@ -12582,7 +12039,7 @@ CREATE TABLE clozapine_record (
 );
 
 
-ALTER TABLE clin_mentalhealth.clozapine_record OWNER TO easygp;
+ALTER TABLE clozapine_record OWNER TO easygp;
 
 --
 -- Name: COLUMN clozapine_record.fk_document; Type: COMMENT; Schema: clin_mentalhealth; Owner: easygp
@@ -12624,7 +12081,7 @@ CREATE SEQUENCE clozapine_record_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_mentalhealth.clozapine_record_pk_seq OWNER TO easygp;
+ALTER TABLE clozapine_record_pk_seq OWNER TO easygp;
 
 --
 -- Name: clozapine_record_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_mentalhealth; Owner: easygp
@@ -12646,7 +12103,7 @@ CREATE TABLE k10_results (
 );
 
 
-ALTER TABLE clin_mentalhealth.k10_results OWNER TO easygp;
+ALTER TABLE k10_results OWNER TO easygp;
 
 --
 -- Name: k10_results_pk_seq; Type: SEQUENCE; Schema: clin_mentalhealth; Owner: easygp
@@ -12660,7 +12117,7 @@ CREATE SEQUENCE k10_results_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_mentalhealth.k10_results_pk_seq OWNER TO easygp;
+ALTER TABLE k10_results_pk_seq OWNER TO easygp;
 
 --
 -- Name: k10_results_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_mentalhealth; Owner: easygp
@@ -12681,7 +12138,7 @@ CREATE TABLE lu_assessment_tools (
 );
 
 
-ALTER TABLE clin_mentalhealth.lu_assessment_tools OWNER TO easygp;
+ALTER TABLE lu_assessment_tools OWNER TO easygp;
 
 --
 -- Name: TABLE lu_assessment_tools; Type: COMMENT; Schema: clin_mentalhealth; Owner: easygp
@@ -12702,7 +12159,7 @@ CREATE SEQUENCE lu_assessment_tools_pk_tool_seq
     CACHE 1;
 
 
-ALTER TABLE clin_mentalhealth.lu_assessment_tools_pk_tool_seq OWNER TO easygp;
+ALTER TABLE lu_assessment_tools_pk_tool_seq OWNER TO easygp;
 
 --
 -- Name: lu_assessment_tools_pk_tool_seq; Type: SEQUENCE OWNED BY; Schema: clin_mentalhealth; Owner: easygp
@@ -12722,7 +12179,7 @@ CREATE TABLE lu_component_help (
 );
 
 
-ALTER TABLE clin_mentalhealth.lu_component_help OWNER TO easygp;
+ALTER TABLE lu_component_help OWNER TO easygp;
 
 --
 -- Name: TABLE lu_component_help; Type: COMMENT; Schema: clin_mentalhealth; Owner: easygp
@@ -12750,7 +12207,7 @@ CREATE SEQUENCE lu_component_help_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_mentalhealth.lu_component_help_pk_seq OWNER TO easygp;
+ALTER TABLE lu_component_help_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_component_help_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_mentalhealth; Owner: easygp
@@ -12769,7 +12226,7 @@ CREATE TABLE lu_depression_degree (
 );
 
 
-ALTER TABLE clin_mentalhealth.lu_depression_degree OWNER TO easygp;
+ALTER TABLE lu_depression_degree OWNER TO easygp;
 
 --
 -- Name: lu_depression_degree_pk_seq; Type: SEQUENCE; Schema: clin_mentalhealth; Owner: easygp
@@ -12783,7 +12240,7 @@ CREATE SEQUENCE lu_depression_degree_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_mentalhealth.lu_depression_degree_pk_seq OWNER TO easygp;
+ALTER TABLE lu_depression_degree_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_depression_degree_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_mentalhealth; Owner: easygp
@@ -12802,7 +12259,7 @@ CREATE TABLE lu_k10_components (
 );
 
 
-ALTER TABLE clin_mentalhealth.lu_k10_components OWNER TO easygp;
+ALTER TABLE lu_k10_components OWNER TO easygp;
 
 --
 -- Name: lu_k10_components_pk_seq; Type: SEQUENCE; Schema: clin_mentalhealth; Owner: easygp
@@ -12816,7 +12273,7 @@ CREATE SEQUENCE lu_k10_components_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_mentalhealth.lu_k10_components_pk_seq OWNER TO easygp;
+ALTER TABLE lu_k10_components_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_k10_components_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_mentalhealth; Owner: easygp
@@ -12835,7 +12292,7 @@ CREATE TABLE lu_plan_type (
 );
 
 
-ALTER TABLE clin_mentalhealth.lu_plan_type OWNER TO easygp;
+ALTER TABLE lu_plan_type OWNER TO easygp;
 
 --
 -- Name: lu_plan_type_pk_seq; Type: SEQUENCE; Schema: clin_mentalhealth; Owner: easygp
@@ -12849,7 +12306,7 @@ CREATE SEQUENCE lu_plan_type_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_mentalhealth.lu_plan_type_pk_seq OWNER TO easygp;
+ALTER TABLE lu_plan_type_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_plan_type_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_mentalhealth; Owner: easygp
@@ -12868,7 +12325,7 @@ CREATE TABLE lu_risk_to_others (
 );
 
 
-ALTER TABLE clin_mentalhealth.lu_risk_to_others OWNER TO easygp;
+ALTER TABLE lu_risk_to_others OWNER TO easygp;
 
 --
 -- Name: lu_risk_to_others_pk_seq; Type: SEQUENCE; Schema: clin_mentalhealth; Owner: easygp
@@ -12882,7 +12339,7 @@ CREATE SEQUENCE lu_risk_to_others_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_mentalhealth.lu_risk_to_others_pk_seq OWNER TO easygp;
+ALTER TABLE lu_risk_to_others_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_risk_to_others_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_mentalhealth; Owner: easygp
@@ -12906,7 +12363,6 @@ CREATE TABLE mentalhealth_plan (
     bio_psycho_social text,
     mental_state_examination text,
     fk_lu_risk_to_others integer,
-    fk_stress_assessment integer,
     risk_harm_comments text,
     goals text,
     treatment_referrrals text,
@@ -12920,7 +12376,7 @@ CREATE TABLE mentalhealth_plan (
 );
 
 
-ALTER TABLE clin_mentalhealth.mentalhealth_plan OWNER TO easygp;
+ALTER TABLE mentalhealth_plan OWNER TO easygp;
 
 --
 -- Name: TABLE mentalhealth_plan; Type: COMMENT; Schema: clin_mentalhealth; Owner: easygp
@@ -12965,13 +12421,6 @@ COMMENT ON COLUMN mentalhealth_plan.fk_lu_risk_to_others IS 'key to lu_risk_to_o
 
 
 --
--- Name: COLUMN mentalhealth_plan.fk_stress_assessment; Type: COMMENT; Schema: clin_mentalhealth; Owner: easygp
---
-
-COMMENT ON COLUMN mentalhealth_plan.fk_stress_assessment IS 'key to stress_assessment table eg results of K10';
-
-
---
 -- Name: COLUMN mentalhealth_plan.html; Type: COMMENT; Schema: clin_mentalhealth; Owner: easygp
 --
 
@@ -12998,7 +12447,7 @@ CREATE SEQUENCE mentalhealth_plan_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_mentalhealth.mentalhealth_plan_pk_seq OWNER TO easygp;
+ALTER TABLE mentalhealth_plan_pk_seq OWNER TO easygp;
 
 --
 -- Name: mentalhealth_plan_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_mentalhealth; Owner: easygp
@@ -13023,7 +12472,7 @@ CREATE TABLE team_care_members (
 );
 
 
-ALTER TABLE clin_mentalhealth.team_care_members OWNER TO easygp;
+ALTER TABLE team_care_members OWNER TO easygp;
 
 --
 -- Name: TABLE team_care_members; Type: COMMENT; Schema: clin_mentalhealth; Owner: easygp
@@ -13046,7 +12495,7 @@ CREATE SEQUENCE team_care_members_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_mentalhealth.team_care_members_pk_seq OWNER TO easygp;
+ALTER TABLE team_care_members_pk_seq OWNER TO easygp;
 
 --
 -- Name: team_care_members_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_mentalhealth; Owner: easygp
@@ -13090,7 +12539,7 @@ CREATE VIEW vwclozapinedetails AS
      JOIN contacts.vworganisations dispensing_pharmacy ON ((clozapine_details.fk_branch_dispensing_pharmacy = dispensing_pharmacy.fk_branch)));
 
 
-ALTER TABLE clin_mentalhealth.vwclozapinedetails OWNER TO easygp;
+ALTER TABLE vwclozapinedetails OWNER TO easygp;
 
 --
 -- Name: vwclozapinerecords; Type: VIEW; Schema: clin_mentalhealth; Owner: easygp
@@ -13133,7 +12582,7 @@ CREATE VIEW vwclozapinerecords AS
      LEFT JOIN documents.observations observations_neutrophils ON ((clozapine_record.fk_observation_neutrophil_count = observations_neutrophils.pk)));
 
 
-ALTER TABLE clin_mentalhealth.vwclozapinerecords OWNER TO easygp;
+ALTER TABLE vwclozapinerecords OWNER TO easygp;
 
 --
 -- Name: VIEW vwclozapinerecords; Type: COMMENT; Schema: clin_mentalhealth; Owner: easygp
@@ -13158,7 +12607,7 @@ CREATE VIEW vwk10results AS
   ORDER BY k10_results.fk_plan;
 
 
-ALTER TABLE clin_mentalhealth.vwk10results OWNER TO easygp;
+ALTER TABLE vwk10results OWNER TO easygp;
 
 --
 -- Name: vwmentalhealthplans; Type: VIEW; Schema: clin_mentalhealth; Owner: easygp
@@ -13184,7 +12633,6 @@ CREATE VIEW vwmentalhealthplans AS
     mentalhealth_plan.mental_state_examination,
     mentalhealth_plan.fk_lu_risk_to_others,
     lu_risk_to_others.risk,
-    mentalhealth_plan.fk_stress_assessment,
     mentalhealth_plan.relapse_plan,
     mentalhealth_plan.risk_harm_comments,
     mentalhealth_plan.goals,
@@ -13206,7 +12654,7 @@ CREATE VIEW vwmentalhealthplans AS
   WHERE (NOT mentalhealth_plan.deleted);
 
 
-ALTER TABLE clin_mentalhealth.vwmentalhealthplans OWNER TO easygp;
+ALTER TABLE vwmentalhealthplans OWNER TO easygp;
 
 --
 -- Name: vwteamcaremembers; Type: VIEW; Schema: clin_mentalhealth; Owner: easygp
@@ -13248,7 +12696,7 @@ UNION
   WHERE ((team_care_members.deleted = false) AND (team_care_members.fk_employee IS NULL));
 
 
-ALTER TABLE clin_mentalhealth.vwteamcaremembers OWNER TO easygp;
+ALTER TABLE vwteamcaremembers OWNER TO easygp;
 
 SET search_path = clin_pregnancy, pg_catalog;
 
@@ -13349,7 +12797,7 @@ CREATE TABLE ante_natal_care_summary (
 );
 
 
-ALTER TABLE clin_pregnancy.ante_natal_care_summary OWNER TO easygp;
+ALTER TABLE ante_natal_care_summary OWNER TO easygp;
 
 --
 -- Name: TABLE ante_natal_care_summary; Type: COMMENT; Schema: clin_pregnancy; Owner: easygp
@@ -13391,7 +12839,7 @@ CREATE SEQUENCE ante_natal_care_summary_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_pregnancy.ante_natal_care_summary_pk_seq OWNER TO easygp;
+ALTER TABLE ante_natal_care_summary_pk_seq OWNER TO easygp;
 
 --
 -- Name: ante_natal_care_summary_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_pregnancy; Owner: easygp
@@ -13424,7 +12872,7 @@ CREATE TABLE ante_natal_visits (
 );
 
 
-ALTER TABLE clin_pregnancy.ante_natal_visits OWNER TO easygp;
+ALTER TABLE ante_natal_visits OWNER TO easygp;
 
 --
 -- Name: COLUMN ante_natal_visits.duration_weeks; Type: COMMENT; Schema: clin_pregnancy; Owner: easygp
@@ -13459,7 +12907,7 @@ CREATE SEQUENCE ante_natal_visits_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_pregnancy.ante_natal_visits_pk_seq OWNER TO easygp;
+ALTER TABLE ante_natal_visits_pk_seq OWNER TO easygp;
 
 --
 -- Name: ante_natal_visits_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_pregnancy; Owner: easygp
@@ -13479,7 +12927,7 @@ CREATE TABLE edc (
 );
 
 
-ALTER TABLE clin_pregnancy.edc OWNER TO easygp;
+ALTER TABLE edc OWNER TO easygp;
 
 --
 -- Name: TABLE edc; Type: COMMENT; Schema: clin_pregnancy; Owner: easygp
@@ -13508,7 +12956,7 @@ CREATE SEQUENCE edc_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_pregnancy.edc_pk_seq OWNER TO easygp;
+ALTER TABLE edc_pk_seq OWNER TO easygp;
 
 --
 -- Name: edc_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_pregnancy; Owner: easygp
@@ -13527,7 +12975,7 @@ CREATE TABLE lu_ante_natal_diagnosis (
 );
 
 
-ALTER TABLE clin_pregnancy.lu_ante_natal_diagnosis OWNER TO easygp;
+ALTER TABLE lu_ante_natal_diagnosis OWNER TO easygp;
 
 --
 -- Name: lu_ante_natal_diagnosis_pk_seq; Type: SEQUENCE; Schema: clin_pregnancy; Owner: easygp
@@ -13541,7 +12989,7 @@ CREATE SEQUENCE lu_ante_natal_diagnosis_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_pregnancy.lu_ante_natal_diagnosis_pk_seq OWNER TO easygp;
+ALTER TABLE lu_ante_natal_diagnosis_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_ante_natal_diagnosis_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_pregnancy; Owner: easygp
@@ -13560,7 +13008,7 @@ CREATE TABLE lu_contraception_methods (
 );
 
 
-ALTER TABLE clin_pregnancy.lu_contraception_methods OWNER TO easygp;
+ALTER TABLE lu_contraception_methods OWNER TO easygp;
 
 --
 -- Name: lu_contraception_methods_pk_seq; Type: SEQUENCE; Schema: clin_pregnancy; Owner: easygp
@@ -13574,7 +13022,7 @@ CREATE SEQUENCE lu_contraception_methods_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_pregnancy.lu_contraception_methods_pk_seq OWNER TO easygp;
+ALTER TABLE lu_contraception_methods_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_contraception_methods_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_pregnancy; Owner: easygp
@@ -13593,7 +13041,7 @@ CREATE TABLE lu_delivery_types (
 );
 
 
-ALTER TABLE clin_pregnancy.lu_delivery_types OWNER TO easygp;
+ALTER TABLE lu_delivery_types OWNER TO easygp;
 
 --
 -- Name: lu_delivery_types_pk_seq; Type: SEQUENCE; Schema: clin_pregnancy; Owner: easygp
@@ -13607,7 +13055,7 @@ CREATE SEQUENCE lu_delivery_types_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_pregnancy.lu_delivery_types_pk_seq OWNER TO easygp;
+ALTER TABLE lu_delivery_types_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_delivery_types_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_pregnancy; Owner: easygp
@@ -13626,7 +13074,7 @@ CREATE TABLE lu_onset_labour (
 );
 
 
-ALTER TABLE clin_pregnancy.lu_onset_labour OWNER TO easygp;
+ALTER TABLE lu_onset_labour OWNER TO easygp;
 
 --
 -- Name: lu_onset_labour_pk_seq; Type: SEQUENCE; Schema: clin_pregnancy; Owner: easygp
@@ -13640,7 +13088,7 @@ CREATE SEQUENCE lu_onset_labour_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_pregnancy.lu_onset_labour_pk_seq OWNER TO easygp;
+ALTER TABLE lu_onset_labour_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_onset_labour_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_pregnancy; Owner: easygp
@@ -13659,7 +13107,7 @@ CREATE TABLE lu_placenta_position (
 );
 
 
-ALTER TABLE clin_pregnancy.lu_placenta_position OWNER TO easygp;
+ALTER TABLE lu_placenta_position OWNER TO easygp;
 
 --
 -- Name: lu_placenta_position_pk_seq; Type: SEQUENCE; Schema: clin_pregnancy; Owner: easygp
@@ -13673,7 +13121,7 @@ CREATE SEQUENCE lu_placenta_position_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_pregnancy.lu_placenta_position_pk_seq OWNER TO easygp;
+ALTER TABLE lu_placenta_position_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_placenta_position_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_pregnancy; Owner: easygp
@@ -13692,7 +13140,7 @@ CREATE TABLE lu_presentations (
 );
 
 
-ALTER TABLE clin_pregnancy.lu_presentations OWNER TO easygp;
+ALTER TABLE lu_presentations OWNER TO easygp;
 
 --
 -- Name: lu_presentations_pk_seq; Type: SEQUENCE; Schema: clin_pregnancy; Owner: easygp
@@ -13706,7 +13154,7 @@ CREATE SEQUENCE lu_presentations_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_pregnancy.lu_presentations_pk_seq OWNER TO easygp;
+ALTER TABLE lu_presentations_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_presentations_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_pregnancy; Owner: easygp
@@ -13793,7 +13241,7 @@ CREATE TABLE pregnancies (
 );
 
 
-ALTER TABLE clin_pregnancy.pregnancies OWNER TO easygp;
+ALTER TABLE pregnancies OWNER TO easygp;
 
 --
 -- Name: TABLE pregnancies; Type: COMMENT; Schema: clin_pregnancy; Owner: easygp
@@ -14043,7 +13491,7 @@ CREATE SEQUENCE pregnancies_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_pregnancy.pregnancies_pk_seq OWNER TO easygp;
+ALTER TABLE pregnancies_pk_seq OWNER TO easygp;
 
 --
 -- Name: pregnancies_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_pregnancy; Owner: easygp
@@ -14066,7 +13514,7 @@ CREATE TABLE scans (
 );
 
 
-ALTER TABLE clin_pregnancy.scans OWNER TO easygp;
+ALTER TABLE scans OWNER TO easygp;
 
 --
 -- Name: TABLE scans; Type: COMMENT; Schema: clin_pregnancy; Owner: easygp
@@ -14108,7 +13556,7 @@ CREATE SEQUENCE scans_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_pregnancy.scans_pk_seq OWNER TO easygp;
+ALTER TABLE scans_pk_seq OWNER TO easygp;
 
 --
 -- Name: scans_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_pregnancy; Owner: easygp
@@ -14151,7 +13599,7 @@ CREATE VIEW vwantenatal_visits AS
   WHERE ((((ante_natal_visits.fk_lu_presentation = lu_presentations.pk) AND (ante_natal_visits.fk_consult = consult.pk)) AND (ante_natal_visits.fk_pregnancy = pregnancies.pk)) AND (ante_natal_visits.fk_progressnote = progressnotes.pk));
 
 
-ALTER TABLE clin_pregnancy.vwantenatal_visits OWNER TO easygp;
+ALTER TABLE vwantenatal_visits OWNER TO easygp;
 
 SET search_path = common, pg_catalog;
 
@@ -14165,7 +13613,7 @@ CREATE TABLE lu_blood_group (
 );
 
 
-ALTER TABLE common.lu_blood_group OWNER TO easygp;
+ALTER TABLE lu_blood_group OWNER TO easygp;
 
 --
 -- Name: lu_rhesus_group; Type: TABLE; Schema: common; Owner: easygp; Tablespace: 
@@ -14177,7 +13625,7 @@ CREATE TABLE lu_rhesus_group (
 );
 
 
-ALTER TABLE common.lu_rhesus_group OWNER TO easygp;
+ALTER TABLE lu_rhesus_group OWNER TO easygp;
 
 SET search_path = clin_pregnancy, pg_catalog;
 
@@ -14278,7 +13726,7 @@ CREATE VIEW vwpregnancies AS
      LEFT JOIN lu_contraception_methods ON ((pregnancies.fk_lu_contraception_method = lu_contraception_methods.pk)));
 
 
-ALTER TABLE clin_pregnancy.vwpregnancies OWNER TO easygp;
+ALTER TABLE vwpregnancies OWNER TO easygp;
 
 SET search_path = clin_prescribing, pg_catalog;
 
@@ -14292,7 +13740,7 @@ CREATE TABLE authority_script_number (
 );
 
 
-ALTER TABLE clin_prescribing.authority_script_number OWNER TO easygp;
+ALTER TABLE authority_script_number OWNER TO easygp;
 
 --
 -- Name: TABLE authority_script_number; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
@@ -14311,7 +13759,7 @@ CREATE TABLE increased_quantity_authority_reasons (
 );
 
 
-ALTER TABLE clin_prescribing.increased_quantity_authority_reasons OWNER TO easygp;
+ALTER TABLE increased_quantity_authority_reasons OWNER TO easygp;
 
 --
 -- Name: increased_quantity_authority_reasons_pk_seq; Type: SEQUENCE; Schema: clin_prescribing; Owner: easygp
@@ -14325,7 +13773,7 @@ CREATE SEQUENCE increased_quantity_authority_reasons_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_prescribing.increased_quantity_authority_reasons_pk_seq OWNER TO easygp;
+ALTER TABLE increased_quantity_authority_reasons_pk_seq OWNER TO easygp;
 
 --
 -- Name: increased_quantity_authority_reasons_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_prescribing; Owner: easygp
@@ -14343,12 +13791,11 @@ CREATE TABLE instruction_habits (
     fk_instruction integer NOT NULL,
     fk_generic_product uuid NOT NULL,
     fk_staff integer NOT NULL,
-    weighting integer NOT NULL,
-    fk_brand uuid
+    weighting integer NOT NULL
 );
 
 
-ALTER TABLE clin_prescribing.instruction_habits OWNER TO easygp;
+ALTER TABLE instruction_habits OWNER TO easygp;
 
 --
 -- Name: TABLE instruction_habits; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
@@ -14373,7 +13820,7 @@ CREATE SEQUENCE instruction_habits_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_prescribing.instruction_habits_pk_seq OWNER TO easygp;
+ALTER TABLE instruction_habits_pk_seq OWNER TO easygp;
 
 --
 -- Name: instruction_habits_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_prescribing; Owner: easygp
@@ -14388,17 +13835,11 @@ ALTER SEQUENCE instruction_habits_pk_seq OWNED BY instruction_habits.pk;
 
 CREATE TABLE instructions (
     pk integer NOT NULL,
-    instruction text,
-    fk_lu_units integer,
-    am integer,
-    lunch integer,
-    pm integer,
-    bed integer,
-    prn integer
+    instruction text
 );
 
 
-ALTER TABLE clin_prescribing.instructions OWNER TO easygp;
+ALTER TABLE instructions OWNER TO easygp;
 
 --
 -- Name: TABLE instructions; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
@@ -14406,13 +13847,6 @@ ALTER TABLE clin_prescribing.instructions OWNER TO easygp;
 
 COMMENT ON TABLE instructions IS 'A lookup table for instructions and hopefully with a bit of intelligence
  allow printing out of medications charts';
-
-
---
--- Name: COLUMN instructions.fk_lu_units; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
---
-
-COMMENT ON COLUMN instructions.fk_lu_units IS 'key to common.lu_units = day, month, week or year = frequency of the medication';
 
 
 --
@@ -14427,7 +13861,7 @@ CREATE SEQUENCE instructions_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_prescribing.instructions_pk_seq OWNER TO easygp;
+ALTER TABLE instructions_pk_seq OWNER TO easygp;
 
 --
 -- Name: instructions_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_prescribing; Owner: easygp
@@ -14446,7 +13880,7 @@ CREATE TABLE lu_pbs_script_type (
 );
 
 
-ALTER TABLE clin_prescribing.lu_pbs_script_type OWNER TO easygp;
+ALTER TABLE lu_pbs_script_type OWNER TO easygp;
 
 --
 -- Name: TABLE lu_pbs_script_type; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
@@ -14471,7 +13905,7 @@ CREATE TABLE medications (
 );
 
 
-ALTER TABLE clin_prescribing.medications OWNER TO easygp;
+ALTER TABLE medications OWNER TO easygp;
 
 --
 -- Name: TABLE medications; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
@@ -14532,7 +13966,7 @@ CREATE SEQUENCE medications_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_prescribing.medications_pk_seq OWNER TO easygp;
+ALTER TABLE medications_pk_seq OWNER TO easygp;
 
 --
 -- Name: medications_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_prescribing; Owner: easygp
@@ -14562,7 +13996,6 @@ CREATE TABLE prescribed (
     authority_approval_number text,
     authority_post_to_patient boolean DEFAULT false,
     script_number integer,
-    fk_code text,
     concession_details text,
     brand_substitution boolean DEFAULT true,
     fk_lu_pbs_script_type integer,
@@ -14580,7 +14013,7 @@ CREATE TABLE prescribed (
 );
 
 
-ALTER TABLE clin_prescribing.prescribed OWNER TO easygp;
+ALTER TABLE prescribed OWNER TO easygp;
 
 --
 -- Name: TABLE prescribed; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
@@ -14662,14 +14095,6 @@ COMMENT ON COLUMN prescribed.authority_approval_number IS 'either the steamlined
 
 
 --
--- Name: COLUMN prescribed.fk_code; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
---
-
-COMMENT ON COLUMN prescribed.fk_code IS 'foreign key to references coding.generic_terms, if not null then the reason for using script
-   is coded';
-
-
---
 -- Name: COLUMN prescribed.printed; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
 --
 
@@ -14725,12 +14150,11 @@ code. NULL means no CTG';
 
 CREATE TABLE prescribed_for (
     pk integer NOT NULL,
-    prescribed_for text NOT NULL,
-    fk_code text
+    prescribed_for text NOT NULL
 );
 
 
-ALTER TABLE clin_prescribing.prescribed_for OWNER TO easygp;
+ALTER TABLE prescribed_for OWNER TO easygp;
 
 --
 -- Name: TABLE prescribed_for; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
@@ -14750,12 +14174,11 @@ CREATE TABLE prescribed_for_habits (
     fk_prescribed_for integer NOT NULL,
     fk_generic_product uuid NOT NULL,
     fk_staff integer NOT NULL,
-    weighting integer NOT NULL,
-    fk_brand uuid
+    weighting integer NOT NULL
 );
 
 
-ALTER TABLE clin_prescribing.prescribed_for_habits OWNER TO easygp;
+ALTER TABLE prescribed_for_habits OWNER TO easygp;
 
 --
 -- Name: TABLE prescribed_for_habits; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
@@ -14778,7 +14201,7 @@ CREATE SEQUENCE prescribed_for_habits_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_prescribing.prescribed_for_habits_pk_seq OWNER TO easygp;
+ALTER TABLE prescribed_for_habits_pk_seq OWNER TO easygp;
 
 --
 -- Name: prescribed_for_habits_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_prescribing; Owner: easygp
@@ -14799,7 +14222,7 @@ CREATE SEQUENCE prescribed_for_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_prescribing.prescribed_for_pk_seq OWNER TO easygp;
+ALTER TABLE prescribed_for_pk_seq OWNER TO easygp;
 
 --
 -- Name: prescribed_for_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_prescribing; Owner: easygp
@@ -14820,7 +14243,7 @@ CREATE SEQUENCE prescribed_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_prescribing.prescribed_pk_seq OWNER TO easygp;
+ALTER TABLE prescribed_pk_seq OWNER TO easygp;
 
 --
 -- Name: prescribed_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_prescribing; Owner: easygp
@@ -14841,7 +14264,7 @@ CREATE SEQUENCE print_status_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_prescribing.print_status_pk_seq OWNER TO easygp;
+ALTER TABLE print_status_pk_seq OWNER TO easygp;
 
 --
 -- Name: print_status_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_prescribing; Owner: easygp
@@ -14862,7 +14285,7 @@ CREATE SEQUENCE script_number
     CACHE 1;
 
 
-ALTER TABLE clin_prescribing.script_number OWNER TO easygp;
+ALTER TABLE script_number OWNER TO easygp;
 
 --
 -- Name: vwinstructionhabits; Type: VIEW; Schema: clin_prescribing; Owner: easygp
@@ -14871,7 +14294,6 @@ ALTER TABLE clin_prescribing.script_number OWNER TO easygp;
 CREATE VIEW vwinstructionhabits AS
  SELECT instruction_habits.pk AS pk_instruction_habit,
     instruction_habits.fk_instruction,
-    instruction_habits.fk_brand,
     instruction_habits.fk_generic_product,
     instruction_habits.fk_staff,
     instruction_habits.weighting,
@@ -14881,7 +14303,7 @@ CREATE VIEW vwinstructionhabits AS
   WHERE (instruction_habits.fk_instruction = instructions.pk);
 
 
-ALTER TABLE clin_prescribing.vwinstructionhabits OWNER TO easygp;
+ALTER TABLE vwinstructionhabits OWNER TO easygp;
 
 --
 -- Name: vwprescribedforhabits; Type: VIEW; Schema: clin_prescribing; Owner: easygp
@@ -14889,10 +14311,8 @@ ALTER TABLE clin_prescribing.vwinstructionhabits OWNER TO easygp;
 
 CREATE VIEW vwprescribedforhabits AS
  SELECT prescribed_for.prescribed_for,
-    prescribed_for.fk_code,
     prescribed_for_habits.pk AS pk_prescibed_for_habit,
     prescribed_for_habits.fk_prescribed_for,
-    prescribed_for_habits.fk_brand,
     prescribed_for_habits.fk_generic_product,
     prescribed_for_habits.fk_staff,
     prescribed_for_habits.weighting
@@ -14901,7 +14321,7 @@ CREATE VIEW vwprescribedforhabits AS
   WHERE (prescribed_for_habits.fk_prescribed_for = prescribed_for.pk);
 
 
-ALTER TABLE clin_prescribing.vwprescribedforhabits OWNER TO easygp;
+ALTER TABLE vwprescribedforhabits OWNER TO easygp;
 
 SET search_path = drugs, pg_catalog;
 
@@ -14916,7 +14336,7 @@ CREATE TABLE form (
 );
 
 
-ALTER TABLE drugs.form OWNER TO easygp;
+ALTER TABLE form OWNER TO easygp;
 
 --
 -- Name: restriction; Type: TABLE; Schema: drugs; Owner: easygp; Tablespace: 
@@ -14931,7 +14351,7 @@ CREATE TABLE restriction (
 );
 
 
-ALTER TABLE drugs.restriction OWNER TO easygp;
+ALTER TABLE restriction OWNER TO easygp;
 
 --
 -- Name: TABLE restriction; Type: COMMENT; Schema: drugs; Owner: easygp
@@ -14978,7 +14398,7 @@ CREATE TABLE schedules (
 );
 
 
-ALTER TABLE drugs.schedules OWNER TO easygp;
+ALTER TABLE schedules OWNER TO easygp;
 
 SET search_path = clin_prescribing, pg_catalog;
 
@@ -15024,7 +14444,6 @@ CREATE VIEW vwprescribeditems AS
     prescribed.pbscode,
     prescribed.fk_lu_pbs_script_type,
     prescribed.restriction_code,
-    prescribed.fk_code,
     prescribed.reg24,
     lu_pbs_script_type.type AS pbs_script_type,
     restriction.streamlined,
@@ -15067,7 +14486,7 @@ CREATE VIEW vwprescribeditems AS
      JOIN drugs.form ON ((product.fk_form = form.pk)));
 
 
-ALTER TABLE clin_prescribing.vwprescribeditems OWNER TO easygp;
+ALTER TABLE vwprescribeditems OWNER TO easygp;
 
 SET search_path = clin_procedures, pg_catalog;
 
@@ -15083,7 +14502,7 @@ CREATE TABLE link_images_procedures (
 );
 
 
-ALTER TABLE clin_procedures.link_images_procedures OWNER TO easygp;
+ALTER TABLE link_images_procedures OWNER TO easygp;
 
 --
 -- Name: TABLE link_images_procedures; Type: COMMENT; Schema: clin_procedures; Owner: easygp
@@ -15125,7 +14544,7 @@ CREATE SEQUENCE link_images_procedures_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_procedures.link_images_procedures_pk_seq OWNER TO easygp;
+ALTER TABLE link_images_procedures_pk_seq OWNER TO easygp;
 
 --
 -- Name: link_images_procedures_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_procedures; Owner: easygp
@@ -15145,7 +14564,7 @@ CREATE TABLE lu_anaesthetic_agent (
 );
 
 
-ALTER TABLE clin_procedures.lu_anaesthetic_agent OWNER TO easygp;
+ALTER TABLE lu_anaesthetic_agent OWNER TO easygp;
 
 --
 -- Name: COLUMN lu_anaesthetic_agent.fk_lu_route_administration; Type: COMMENT; Schema: clin_procedures; Owner: easygp
@@ -15166,7 +14585,7 @@ CREATE SEQUENCE lu_anaesthetic_agent_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_procedures.lu_anaesthetic_agent_pk_seq OWNER TO easygp;
+ALTER TABLE lu_anaesthetic_agent_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_anaesthetic_agent_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_procedures; Owner: easygp
@@ -15185,7 +14604,7 @@ CREATE TABLE lu_complications (
 );
 
 
-ALTER TABLE clin_procedures.lu_complications OWNER TO easygp;
+ALTER TABLE lu_complications OWNER TO easygp;
 
 --
 -- Name: lu_complications_pk_seq; Type: SEQUENCE; Schema: clin_procedures; Owner: easygp
@@ -15199,7 +14618,7 @@ CREATE SEQUENCE lu_complications_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_procedures.lu_complications_pk_seq OWNER TO easygp;
+ALTER TABLE lu_complications_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_complications_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_procedures; Owner: easygp
@@ -15218,7 +14637,7 @@ CREATE TABLE lu_procedure_type (
 );
 
 
-ALTER TABLE clin_procedures.lu_procedure_type OWNER TO easygp;
+ALTER TABLE lu_procedure_type OWNER TO easygp;
 
 --
 -- Name: TABLE lu_procedure_type; Type: COMMENT; Schema: clin_procedures; Owner: easygp
@@ -15239,7 +14658,7 @@ CREATE SEQUENCE lu_excision_type_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_procedures.lu_excision_type_pk_seq OWNER TO easygp;
+ALTER TABLE lu_excision_type_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_excision_type_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_procedures; Owner: easygp
@@ -15259,7 +14678,7 @@ CREATE TABLE lu_last_surgical_pack (
 );
 
 
-ALTER TABLE clin_procedures.lu_last_surgical_pack OWNER TO easygp;
+ALTER TABLE lu_last_surgical_pack OWNER TO easygp;
 
 --
 -- Name: TABLE lu_last_surgical_pack; Type: COMMENT; Schema: clin_procedures; Owner: easygp
@@ -15280,7 +14699,7 @@ CREATE SEQUENCE lu_pack_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_procedures.lu_pack_pk_seq OWNER TO easygp;
+ALTER TABLE lu_pack_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_pack_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_procedures; Owner: easygp
@@ -15299,7 +14718,7 @@ CREATE TABLE lu_repair_type (
 );
 
 
-ALTER TABLE clin_procedures.lu_repair_type OWNER TO easygp;
+ALTER TABLE lu_repair_type OWNER TO easygp;
 
 --
 -- Name: lu_repair_type_pk_seq; Type: SEQUENCE; Schema: clin_procedures; Owner: easygp
@@ -15313,7 +14732,7 @@ CREATE SEQUENCE lu_repair_type_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_procedures.lu_repair_type_pk_seq OWNER TO easygp;
+ALTER TABLE lu_repair_type_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_repair_type_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_procedures; Owner: easygp
@@ -15332,7 +14751,7 @@ CREATE TABLE lu_skin_preparation (
 );
 
 
-ALTER TABLE clin_procedures.lu_skin_preparation OWNER TO easygp;
+ALTER TABLE lu_skin_preparation OWNER TO easygp;
 
 --
 -- Name: lu_skin_preparation_pk_seq; Type: SEQUENCE; Schema: clin_procedures; Owner: easygp
@@ -15346,7 +14765,7 @@ CREATE SEQUENCE lu_skin_preparation_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_procedures.lu_skin_preparation_pk_seq OWNER TO easygp;
+ALTER TABLE lu_skin_preparation_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_skin_preparation_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_procedures; Owner: easygp
@@ -15365,7 +14784,7 @@ CREATE TABLE lu_suture_site (
 );
 
 
-ALTER TABLE clin_procedures.lu_suture_site OWNER TO easygp;
+ALTER TABLE lu_suture_site OWNER TO easygp;
 
 --
 -- Name: TABLE lu_suture_site; Type: COMMENT; Schema: clin_procedures; Owner: easygp
@@ -15386,7 +14805,7 @@ CREATE SEQUENCE lu_suture_site_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_procedures.lu_suture_site_pk_seq OWNER TO easygp;
+ALTER TABLE lu_suture_site_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_suture_site_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_procedures; Owner: easygp
@@ -15406,7 +14825,7 @@ CREATE TABLE lu_suture_type (
 );
 
 
-ALTER TABLE clin_procedures.lu_suture_type OWNER TO easygp;
+ALTER TABLE lu_suture_type OWNER TO easygp;
 
 --
 -- Name: TABLE lu_suture_type; Type: COMMENT; Schema: clin_procedures; Owner: easygp
@@ -15427,7 +14846,7 @@ CREATE SEQUENCE lu_suture_type_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_procedures.lu_suture_type_pk_seq OWNER TO easygp;
+ALTER TABLE lu_suture_type_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_suture_type_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_procedures; Owner: easygp
@@ -15475,7 +14894,7 @@ CREATE TABLE skin_procedures (
 );
 
 
-ALTER TABLE clin_procedures.skin_procedures OWNER TO easygp;
+ALTER TABLE skin_procedures OWNER TO easygp;
 
 --
 -- Name: TABLE skin_procedures; Type: COMMENT; Schema: clin_procedures; Owner: easygp
@@ -15523,7 +14942,7 @@ COMMENT ON COLUMN skin_procedures.detailed_complications IS 'if true the clinici
 -- Name: COLUMN skin_procedures.fk_lu_site; Type: COMMENT; Schema: clin_procedures; Owner: easygp
 --
 
-COMMENT ON COLUMN skin_procedures.fk_lu_site IS 'pk of clin_procedures.lu_site e.g could be the foot';
+COMMENT ON COLUMN skin_procedures.fk_lu_site IS 'pk of common.lu_anatomical_site e.g could be the foot';
 
 
 --
@@ -15649,7 +15068,7 @@ CREATE SEQUENCE skin_procedures_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_procedures.skin_procedures_pk_seq OWNER TO easygp;
+ALTER TABLE skin_procedures_pk_seq OWNER TO easygp;
 
 --
 -- Name: skin_procedures_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_procedures; Owner: easygp
@@ -15675,7 +15094,7 @@ CREATE TABLE staff_skin_procedure_defaults (
 );
 
 
-ALTER TABLE clin_procedures.staff_skin_procedure_defaults OWNER TO easygp;
+ALTER TABLE staff_skin_procedure_defaults OWNER TO easygp;
 
 --
 -- Name: TABLE staff_skin_procedure_defaults; Type: COMMENT; Schema: clin_procedures; Owner: easygp
@@ -15706,7 +15125,7 @@ CREATE SEQUENCE staff_skin_procedure_defaults_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_procedures.staff_skin_procedure_defaults_pk_seq OWNER TO easygp;
+ALTER TABLE staff_skin_procedure_defaults_pk_seq OWNER TO easygp;
 
 --
 -- Name: staff_skin_procedure_defaults_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_procedures; Owner: easygp
@@ -15729,7 +15148,7 @@ CREATE TABLE surgical_packs (
 );
 
 
-ALTER TABLE clin_procedures.surgical_packs OWNER TO easygp;
+ALTER TABLE surgical_packs OWNER TO easygp;
 
 --
 -- Name: TABLE surgical_packs; Type: COMMENT; Schema: clin_procedures; Owner: easygp
@@ -15750,7 +15169,7 @@ CREATE SEQUENCE surgical_packs_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_procedures.surgical_packs_pk_seq OWNER TO easygp;
+ALTER TABLE surgical_packs_pk_seq OWNER TO easygp;
 
 --
 -- Name: surgical_packs_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_procedures; Owner: easygp
@@ -15779,7 +15198,7 @@ CREATE VIEW vwimages AS
   ORDER BY link_images_procedures.fk_procedure;
 
 
-ALTER TABLE clin_procedures.vwimages OWNER TO easygp;
+ALTER TABLE vwimages OWNER TO easygp;
 
 SET search_path = clin_requests, pg_catalog;
 
@@ -15812,7 +15231,7 @@ CREATE TABLE forms (
 );
 
 
-ALTER TABLE clin_requests.forms OWNER TO easygp;
+ALTER TABLE forms OWNER TO easygp;
 
 --
 -- Name: TABLE forms; Type: COMMENT; Schema: clin_requests; Owner: easygp
@@ -15906,7 +15325,7 @@ CREATE TABLE lu_anatomical_site (
 );
 
 
-ALTER TABLE common.lu_anatomical_site OWNER TO easygp;
+ALTER TABLE lu_anatomical_site OWNER TO easygp;
 
 --
 -- Name: lu_anterior_posterior; Type: TABLE; Schema: common; Owner: easygp; Tablespace: 
@@ -15918,7 +15337,7 @@ CREATE TABLE lu_anterior_posterior (
 );
 
 
-ALTER TABLE common.lu_anterior_posterior OWNER TO easygp;
+ALTER TABLE lu_anterior_posterior OWNER TO easygp;
 
 SET search_path = clin_procedures, pg_catalog;
 
@@ -16000,7 +15419,7 @@ CREATE VIEW vwskinprocedures AS
      JOIN admin.vwstaff ON ((consult.fk_staff = vwstaff.fk_staff)));
 
 
-ALTER TABLE clin_procedures.vwskinprocedures OWNER TO easygp;
+ALTER TABLE vwskinprocedures OWNER TO easygp;
 
 --
 -- Name: vwstaffskinproceduredefaults; Type: VIEW; Schema: clin_procedures; Owner: easygp
@@ -16032,7 +15451,7 @@ CREATE VIEW vwstaffskinproceduredefaults AS
   ORDER BY staff_skin_procedure_defaults.fk_staff;
 
 
-ALTER TABLE clin_procedures.vwstaffskinproceduredefaults OWNER TO easygp;
+ALTER TABLE vwstaffskinproceduredefaults OWNER TO easygp;
 
 --
 -- Name: vwsutures; Type: VIEW; Schema: clin_procedures; Owner: easygp
@@ -16048,7 +15467,7 @@ CREATE VIEW vwsutures AS
   ORDER BY lu_suture_site.site, lu_suture_type.brand;
 
 
-ALTER TABLE clin_procedures.vwsutures OWNER TO easygp;
+ALTER TABLE vwsutures OWNER TO easygp;
 
 SET search_path = clin_recalls, pg_catalog;
 
@@ -16062,7 +15481,7 @@ CREATE TABLE forms (
 );
 
 
-ALTER TABLE clin_recalls.forms OWNER TO easygp;
+ALTER TABLE forms OWNER TO easygp;
 
 --
 -- Name: TABLE forms; Type: COMMENT; Schema: clin_recalls; Owner: easygp
@@ -16083,7 +15502,7 @@ CREATE SEQUENCE forms_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_recalls.forms_pk_seq OWNER TO easygp;
+ALTER TABLE forms_pk_seq OWNER TO easygp;
 
 --
 -- Name: forms_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_recalls; Owner: easygp
@@ -16103,7 +15522,7 @@ CREATE TABLE links_forms (
 );
 
 
-ALTER TABLE clin_recalls.links_forms OWNER TO easygp;
+ALTER TABLE links_forms OWNER TO easygp;
 
 --
 -- Name: TABLE links_forms; Type: COMMENT; Schema: clin_recalls; Owner: easygp
@@ -16138,7 +15557,7 @@ CREATE SEQUENCE links_forms_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_recalls.links_forms_pk_seq OWNER TO easygp;
+ALTER TABLE links_forms_pk_seq OWNER TO easygp;
 
 --
 -- Name: links_forms_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_recalls; Owner: easygp
@@ -16157,7 +15576,7 @@ CREATE TABLE lu_reasons (
 );
 
 
-ALTER TABLE clin_recalls.lu_reasons OWNER TO easygp;
+ALTER TABLE lu_reasons OWNER TO easygp;
 
 --
 -- Name: TABLE lu_reasons; Type: COMMENT; Schema: clin_recalls; Owner: easygp
@@ -16190,7 +15609,7 @@ CREATE SEQUENCE lu_reasons_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_recalls.lu_reasons_pk_seq OWNER TO easygp;
+ALTER TABLE lu_reasons_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_reasons_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_recalls; Owner: easygp
@@ -16212,7 +15631,7 @@ CREATE TABLE lu_recall_intervals (
 );
 
 
-ALTER TABLE clin_recalls.lu_recall_intervals OWNER TO easygp;
+ALTER TABLE lu_recall_intervals OWNER TO easygp;
 
 --
 -- Name: TABLE lu_recall_intervals; Type: COMMENT; Schema: clin_recalls; Owner: easygp
@@ -16260,13 +15679,54 @@ CREATE SEQUENCE lu_recall_intervals_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_recalls.lu_recall_intervals_pk_seq OWNER TO easygp;
+ALTER TABLE lu_recall_intervals_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_recall_intervals_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_recalls; Owner: easygp
 --
 
 ALTER SEQUENCE lu_recall_intervals_pk_seq OWNED BY lu_recall_intervals.pk;
+
+
+--
+-- Name: lu_status; Type: TABLE; Schema: clin_recalls; Owner: easygp; Tablespace: 
+--
+
+CREATE TABLE lu_status (
+    pk integer NOT NULL,
+    status text NOT NULL
+);
+
+
+ALTER TABLE lu_status OWNER TO easygp;
+
+--
+-- Name: TABLE lu_status; Type: COMMENT; Schema: clin_recalls; Owner: easygp
+--
+
+COMMENT ON TABLE lu_status IS 'the completion or otherwise status  not due, finalised, refused
+     corresponds to e.g const.RecallNotDue in the gui code';
+
+
+--
+-- Name: lu_status_pk_seq; Type: SEQUENCE; Schema: clin_recalls; Owner: easygp
+--
+
+CREATE SEQUENCE lu_status_pk_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE lu_status_pk_seq OWNER TO easygp;
+
+--
+-- Name: lu_status_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_recalls; Owner: easygp
+--
+
+ALTER SEQUENCE lu_status_pk_seq OWNED BY lu_status.pk;
 
 
 --
@@ -16282,7 +15742,7 @@ CREATE TABLE lu_templates (
 );
 
 
-ALTER TABLE clin_recalls.lu_templates OWNER TO easygp;
+ALTER TABLE lu_templates OWNER TO easygp;
 
 --
 -- Name: TABLE lu_templates; Type: COMMENT; Schema: clin_recalls; Owner: easygp
@@ -16317,7 +15777,7 @@ CREATE SEQUENCE lu_templates_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_recalls.lu_templates_pk_seq OWNER TO easygp;
+ALTER TABLE lu_templates_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_templates_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_recalls; Owner: easygp
@@ -16353,7 +15813,7 @@ CREATE TABLE recalls (
 );
 
 
-ALTER TABLE clin_recalls.recalls OWNER TO easygp;
+ALTER TABLE recalls OWNER TO easygp;
 
 --
 -- Name: TABLE recalls; Type: COMMENT; Schema: clin_recalls; Owner: easygp
@@ -16429,8 +15889,8 @@ COMMENT ON COLUMN recalls.fk_staff IS 'key to clerical.staff table';
 --
 
 COMMENT ON COLUMN recalls.fk_status IS 'key to lu_status table, ie things like not due, finalised, refused
-     corresponds to e.g gvar.RecallNotDue constants
-     this defaults to 1 = not due';
+corresponds to e.g gvar.RecallNotDue constants
+this defaults to 1 = not due';
 
 
 --
@@ -16497,7 +15957,7 @@ CREATE SEQUENCE recalls_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_recalls.recalls_pk_seq OWNER TO easygp;
+ALTER TABLE recalls_pk_seq OWNER TO easygp;
 
 --
 -- Name: recalls_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_recalls; Owner: easygp
@@ -16522,7 +15982,7 @@ CREATE TABLE sent (
 );
 
 
-ALTER TABLE clin_recalls.sent OWNER TO easygp;
+ALTER TABLE sent OWNER TO easygp;
 
 --
 -- Name: TABLE sent; Type: COMMENT; Schema: clin_recalls; Owner: easygp
@@ -16592,7 +16052,7 @@ CREATE SEQUENCE sent_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_recalls.sent_pk_seq OWNER TO easygp;
+ALTER TABLE sent_pk_seq OWNER TO easygp;
 
 --
 -- Name: sent_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_recalls; Owner: easygp
@@ -16620,7 +16080,7 @@ CREATE VIEW vwreasons AS
   ORDER BY lu_reasons.reason;
 
 
-ALTER TABLE clin_recalls.vwreasons OWNER TO easygp;
+ALTER TABLE vwreasons OWNER TO easygp;
 
 SET search_path = common, pg_catalog;
 
@@ -16636,7 +16096,7 @@ CREATE SEQUENCE lu_appointment_length_pk_seq
     CACHE 1;
 
 
-ALTER TABLE common.lu_appointment_length_pk_seq OWNER TO easygp;
+ALTER TABLE lu_appointment_length_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_appointment_length; Type: TABLE; Schema: common; Owner: easygp; Tablespace: 
@@ -16648,7 +16108,7 @@ CREATE TABLE lu_appointment_length (
 );
 
 
-ALTER TABLE common.lu_appointment_length OWNER TO easygp;
+ALTER TABLE lu_appointment_length OWNER TO easygp;
 
 SET search_path = clin_recalls, pg_catalog;
 
@@ -16715,7 +16175,7 @@ CREATE VIEW vwrecalls AS
   ORDER BY consult.fk_patient, recalls.due;
 
 
-ALTER TABLE clin_recalls.vwrecalls OWNER TO easygp;
+ALTER TABLE vwrecalls OWNER TO easygp;
 
 --
 -- Name: vwrecallsdue; Type: VIEW; Schema: clin_recalls; Owner: easygp
@@ -16790,7 +16250,7 @@ CREATE VIEW vwrecallsdue AS
   ORDER BY (recalls.due - date(now())), consult.fk_patient;
 
 
-ALTER TABLE clin_recalls.vwrecallsdue OWNER TO easygp;
+ALTER TABLE vwrecallsdue OWNER TO easygp;
 
 --
 -- Name: vwtemplates; Type: VIEW; Schema: clin_recalls; Owner: easygp
@@ -16808,7 +16268,7 @@ CREATE VIEW vwtemplates AS
   WHERE ((lu_templates.fk_lu_appointment_length = lu_appointment_length.pk) AND (lu_templates.template <> ''::text));
 
 
-ALTER TABLE clin_recalls.vwtemplates OWNER TO easygp;
+ALTER TABLE vwtemplates OWNER TO easygp;
 
 SET search_path = clin_referrals, pg_catalog;
 
@@ -16824,7 +16284,7 @@ CREATE TABLE inclusions (
 );
 
 
-ALTER TABLE clin_referrals.inclusions OWNER TO easygp;
+ALTER TABLE inclusions OWNER TO easygp;
 
 --
 -- Name: TABLE inclusions; Type: COMMENT; Schema: clin_referrals; Owner: easygp
@@ -16853,7 +16313,7 @@ CREATE SEQUENCE inclusions_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_referrals.inclusions_pk_seq OWNER TO easygp;
+ALTER TABLE inclusions_pk_seq OWNER TO easygp;
 
 --
 -- Name: inclusions_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_referrals; Owner: easygp
@@ -16876,7 +16336,7 @@ CREATE TABLE lu_referral_letter_templates (
 );
 
 
-ALTER TABLE clin_referrals.lu_referral_letter_templates OWNER TO easygp;
+ALTER TABLE lu_referral_letter_templates OWNER TO easygp;
 
 --
 -- Name: TABLE lu_referral_letter_templates; Type: COMMENT; Schema: clin_referrals; Owner: easygp
@@ -16911,7 +16371,7 @@ CREATE SEQUENCE lu_referral_letter_templates_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_referrals.lu_referral_letter_templates_pk_seq OWNER TO easygp;
+ALTER TABLE lu_referral_letter_templates_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_referral_letter_templates_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_referrals; Owner: easygp
@@ -16931,7 +16391,7 @@ CREATE TABLE lu_type (
 );
 
 
-ALTER TABLE clin_referrals.lu_type OWNER TO easygp;
+ALTER TABLE lu_type OWNER TO easygp;
 
 --
 -- Name: TABLE lu_type; Type: COMMENT; Schema: clin_referrals; Owner: easygp
@@ -16962,7 +16422,7 @@ CREATE SEQUENCE lu_type_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_referrals.lu_type_pk_seq OWNER TO easygp;
+ALTER TABLE lu_type_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_type_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_referrals; Owner: easygp
@@ -16981,7 +16441,7 @@ CREATE TABLE lu_urgency (
 );
 
 
-ALTER TABLE clin_referrals.lu_urgency OWNER TO easygp;
+ALTER TABLE lu_urgency OWNER TO easygp;
 
 --
 -- Name: lu_urgency_pk_seq; Type: SEQUENCE; Schema: clin_referrals; Owner: easygp
@@ -16995,7 +16455,7 @@ CREATE SEQUENCE lu_urgency_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_referrals.lu_urgency_pk_seq OWNER TO easygp;
+ALTER TABLE lu_urgency_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_urgency_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_referrals; Owner: easygp
@@ -17016,7 +16476,7 @@ CREATE SEQUENCE referrals_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_referrals.referrals_pk_seq OWNER TO easygp;
+ALTER TABLE referrals_pk_seq OWNER TO easygp;
 
 --
 -- Name: referrals_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_referrals; Owner: easygp
@@ -17045,7 +16505,7 @@ CREATE VIEW vwinclusions AS
   ORDER BY consult.fk_patient;
 
 
-ALTER TABLE clin_referrals.vwinclusions OWNER TO easygp;
+ALTER TABLE vwinclusions OWNER TO easygp;
 
 --
 -- Name: vwreferrals; Type: VIEW; Schema: clin_referrals; Owner: easygp
@@ -17214,7 +16674,7 @@ UNION
   WHERE (referrals.fk_person IS NULL);
 
 
-ALTER TABLE clin_referrals.vwreferrals OWNER TO easygp;
+ALTER TABLE vwreferrals OWNER TO easygp;
 
 SET search_path = clin_requests, pg_catalog;
 
@@ -17230,7 +16690,7 @@ CREATE SEQUENCE forms_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_requests.forms_pk_seq OWNER TO easygp;
+ALTER TABLE forms_pk_seq OWNER TO easygp;
 
 --
 -- Name: forms_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_requests; Owner: easygp
@@ -17252,7 +16712,7 @@ CREATE TABLE forms_requests (
 );
 
 
-ALTER TABLE clin_requests.forms_requests OWNER TO easygp;
+ALTER TABLE forms_requests OWNER TO easygp;
 
 --
 -- Name: TABLE forms_requests; Type: COMMENT; Schema: clin_requests; Owner: easygp
@@ -17312,7 +16772,7 @@ CREATE SEQUENCE forms_requests_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_requests.forms_requests_pk_seq OWNER TO easygp;
+ALTER TABLE forms_requests_pk_seq OWNER TO easygp;
 
 --
 -- Name: forms_requests_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_requests; Owner: easygp
@@ -17333,7 +16793,7 @@ CREATE SEQUENCE inbox_oru_unresolved_temp_patient_id_seq
     CACHE 1;
 
 
-ALTER TABLE clin_requests.inbox_oru_unresolved_temp_patient_id_seq OWNER TO easygp;
+ALTER TABLE inbox_oru_unresolved_temp_patient_id_seq OWNER TO easygp;
 
 --
 -- Name: link_forms_requests_requests_results; Type: TABLE; Schema: clin_requests; Owner: easygp; Tablespace: 
@@ -17346,7 +16806,7 @@ CREATE TABLE link_forms_requests_requests_results (
 );
 
 
-ALTER TABLE clin_requests.link_forms_requests_requests_results OWNER TO easygp;
+ALTER TABLE link_forms_requests_requests_results OWNER TO easygp;
 
 --
 -- Name: link_forms_requests_requests_results_pk_seq; Type: SEQUENCE; Schema: clin_requests; Owner: easygp
@@ -17360,7 +16820,7 @@ CREATE SEQUENCE link_forms_requests_requests_results_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_requests.link_forms_requests_requests_results_pk_seq OWNER TO easygp;
+ALTER TABLE link_forms_requests_requests_results_pk_seq OWNER TO easygp;
 
 --
 -- Name: link_forms_requests_requests_results_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_requests; Owner: easygp
@@ -17379,7 +16839,7 @@ CREATE TABLE lu_copyto_type (
 );
 
 
-ALTER TABLE clin_requests.lu_copyto_type OWNER TO easygp;
+ALTER TABLE lu_copyto_type OWNER TO easygp;
 
 --
 -- Name: TABLE lu_copyto_type; Type: COMMENT; Schema: clin_requests; Owner: easygp
@@ -17401,7 +16861,7 @@ CREATE SEQUENCE lu_copyto_type_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_requests.lu_copyto_type_pk_seq OWNER TO easygp;
+ALTER TABLE lu_copyto_type_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_copyto_type_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_requests; Owner: easygp
@@ -17422,7 +16882,7 @@ CREATE TABLE lu_form_header (
 );
 
 
-ALTER TABLE clin_requests.lu_form_header OWNER TO easygp;
+ALTER TABLE lu_form_header OWNER TO easygp;
 
 --
 -- Name: TABLE lu_form_header; Type: COMMENT; Schema: clin_requests; Owner: easygp
@@ -17472,7 +16932,7 @@ CREATE SEQUENCE lu_form_header_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_requests.lu_form_header_pk_seq OWNER TO easygp;
+ALTER TABLE lu_form_header_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_form_header_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_requests; Owner: easygp
@@ -17491,7 +16951,7 @@ CREATE TABLE lu_instructions (
 );
 
 
-ALTER TABLE clin_requests.lu_instructions OWNER TO easygp;
+ALTER TABLE lu_instructions OWNER TO easygp;
 
 --
 -- Name: TABLE lu_instructions; Type: COMMENT; Schema: clin_requests; Owner: easygp
@@ -17527,7 +16987,7 @@ CREATE SEQUENCE lu_instructions_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_requests.lu_instructions_pk_seq OWNER TO easygp;
+ALTER TABLE lu_instructions_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_instructions_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_requests; Owner: easygp
@@ -17549,7 +17009,7 @@ CREATE TABLE lu_link_provider_user_requests (
 );
 
 
-ALTER TABLE clin_requests.lu_link_provider_user_requests OWNER TO easygp;
+ALTER TABLE lu_link_provider_user_requests OWNER TO easygp;
 
 --
 -- Name: lu_link_provider_user_requests_pk_seq; Type: SEQUENCE; Schema: clin_requests; Owner: easygp
@@ -17563,7 +17023,7 @@ CREATE SEQUENCE lu_link_provider_user_requests_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_requests.lu_link_provider_user_requests_pk_seq OWNER TO easygp;
+ALTER TABLE lu_link_provider_user_requests_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_link_provider_user_requests_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_requests; Owner: easygp
@@ -17582,7 +17042,7 @@ CREATE TABLE lu_request_type (
 );
 
 
-ALTER TABLE clin_requests.lu_request_type OWNER TO easygp;
+ALTER TABLE lu_request_type OWNER TO easygp;
 
 --
 -- Name: TABLE lu_request_type; Type: COMMENT; Schema: clin_requests; Owner: easygp
@@ -17610,7 +17070,7 @@ CREATE SEQUENCE lu_request_type_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_requests.lu_request_type_pk_seq OWNER TO easygp;
+ALTER TABLE lu_request_type_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_request_type_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_requests; Owner: easygp
@@ -17628,13 +17088,11 @@ CREATE TABLE lu_requests (
     fk_lu_request_type integer NOT NULL,
     item text NOT NULL,
     fk_laterality integer DEFAULT 0,
-    fk_decision_support integer DEFAULT 0,
-    fk_instruction integer DEFAULT 0,
     deleted boolean DEFAULT false
 );
 
 
-ALTER TABLE clin_requests.lu_requests OWNER TO easygp;
+ALTER TABLE lu_requests OWNER TO easygp;
 
 --
 -- Name: TABLE lu_requests; Type: COMMENT; Schema: clin_requests; Owner: easygp
@@ -17665,20 +17123,6 @@ COMMENT ON COLUMN lu_requests.fk_laterality IS 'foreign key to common.lu_lateral
 
 
 --
--- Name: COLUMN lu_requests.fk_decision_support; Type: COMMENT; Schema: clin_requests; Owner: easygp
---
-
-COMMENT ON COLUMN lu_requests.fk_decision_support IS 'foreign key to decision_support.decision_support table neither of which exist yet';
-
-
---
--- Name: COLUMN lu_requests.fk_instruction; Type: COMMENT; Schema: clin_requests; Owner: easygp
---
-
-COMMENT ON COLUMN lu_requests.fk_instruction IS 'foreign key to lu_instructions ie patient instructions for a particular test';
-
-
---
 -- Name: lu_requests_pk_seq; Type: SEQUENCE; Schema: clin_requests; Owner: easygp
 --
 
@@ -17690,7 +17134,7 @@ CREATE SEQUENCE lu_requests_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_requests.lu_requests_pk_seq OWNER TO easygp;
+ALTER TABLE lu_requests_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_requests_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_requests; Owner: easygp
@@ -17711,7 +17155,7 @@ CREATE TABLE notes (
 );
 
 
-ALTER TABLE clin_requests.notes OWNER TO easygp;
+ALTER TABLE notes OWNER TO easygp;
 
 --
 -- Name: TABLE notes; Type: COMMENT; Schema: clin_requests; Owner: easygp
@@ -17742,7 +17186,7 @@ CREATE SEQUENCE notes_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_requests.notes_pk_seq OWNER TO easygp;
+ALTER TABLE notes_pk_seq OWNER TO easygp;
 
 --
 -- Name: notes_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_requests; Owner: easygp
@@ -17767,7 +17211,7 @@ CREATE TABLE request_providers (
 );
 
 
-ALTER TABLE clin_requests.request_providers OWNER TO easygp;
+ALTER TABLE request_providers OWNER TO easygp;
 
 --
 -- Name: TABLE request_providers; Type: COMMENT; Schema: clin_requests; Owner: easygp
@@ -17799,7 +17243,7 @@ CREATE SEQUENCE request_providers_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_requests.request_providers_pk_seq OWNER TO easygp;
+ALTER TABLE request_providers_pk_seq OWNER TO easygp;
 
 --
 -- Name: request_providers_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_requests; Owner: easygp
@@ -17820,7 +17264,7 @@ CREATE SEQUENCE results_requests_episode_key
     CACHE 1;
 
 
-ALTER TABLE clin_requests.results_requests_episode_key OWNER TO easygp;
+ALTER TABLE results_requests_episode_key OWNER TO easygp;
 
 --
 -- Name: SEQUENCE results_requests_episode_key; Type: COMMENT; Schema: clin_requests; Owner: easygp
@@ -17841,7 +17285,7 @@ CREATE TABLE user_default_type (
 );
 
 
-ALTER TABLE clin_requests.user_default_type OWNER TO easygp;
+ALTER TABLE user_default_type OWNER TO easygp;
 
 --
 -- Name: TABLE user_default_type; Type: COMMENT; Schema: clin_requests; Owner: easygp
@@ -17877,7 +17321,7 @@ CREATE SEQUENCE user_default_type_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_requests.user_default_type_pk_seq OWNER TO easygp;
+ALTER TABLE user_default_type_pk_seq OWNER TO easygp;
 
 --
 -- Name: user_default_type_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_requests; Owner: easygp
@@ -17902,7 +17346,7 @@ CREATE TABLE user_provider_defaults (
 );
 
 
-ALTER TABLE clin_requests.user_provider_defaults OWNER TO easygp;
+ALTER TABLE user_provider_defaults OWNER TO easygp;
 
 --
 -- Name: TABLE user_provider_defaults; Type: COMMENT; Schema: clin_requests; Owner: easygp
@@ -17947,7 +17391,7 @@ CREATE SEQUENCE user_provider_defaults_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_requests.user_provider_defaults_pk_seq OWNER TO easygp;
+ALTER TABLE user_provider_defaults_pk_seq OWNER TO easygp;
 
 --
 -- Name: user_provider_defaults_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_requests; Owner: easygp
@@ -17968,7 +17412,7 @@ CREATE SEQUENCE vwforms_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_requests.vwforms_pk_seq OWNER TO easygp;
+ALTER TABLE vwforms_pk_seq OWNER TO easygp;
 
 --
 -- Name: vwrequestproviders; Type: VIEW; Schema: clin_requests; Owner: easygp
@@ -18066,7 +17510,7 @@ UNION
   ORDER BY 7;
 
 
-ALTER TABLE clin_requests.vwrequestproviders OWNER TO easygp;
+ALTER TABLE vwrequestproviders OWNER TO easygp;
 
 --
 -- Name: VIEW vwrequestproviders; Type: COMMENT; Schema: clin_requests; Owner: easygp
@@ -18160,7 +17604,7 @@ CREATE VIEW vwrequestforms AS
      LEFT JOIN clin_history.past_history ON ((forms.fk_pasthistory = past_history.pk)));
 
 
-ALTER TABLE clin_requests.vwrequestforms OWNER TO easygp;
+ALTER TABLE vwrequestforms OWNER TO easygp;
 
 --
 -- Name: vwrequestnames; Type: VIEW; Schema: clin_requests; Owner: easygp
@@ -18176,13 +17620,9 @@ CREATE VIEW vwrequestnames AS
             WHEN (lu_request_items.fk_laterality = 3) THEN (lu_request_items.item || ' (LEFT)'::text)
             ELSE NULL::text
         END AS item,
-    1 AS fk_laterality,
-    lu_request_items.fk_decision_support,
-    lu_request_items.fk_instruction,
-    lu_instructions.instruction
-   FROM ((lu_requests lu_request_items
+    1 AS fk_laterality
+   FROM (lu_requests lu_request_items
      JOIN lu_request_type ON ((lu_request_items.fk_lu_request_type = lu_request_type.pk)))
-     LEFT JOIN lu_instructions ON ((lu_request_items.fk_instruction = lu_instructions.pk)))
   WHERE ((lower(lu_request_items.item) ~~ '%'::text) AND (lu_request_items.fk_laterality = 3))
 UNION
  SELECT (lu_request_items.pk || '-2'::text) AS pk_view,
@@ -18194,13 +17634,9 @@ UNION
             WHEN (lu_request_items.fk_laterality = 3) THEN (lu_request_items.item || ' (RIGHT)'::text)
             ELSE NULL::text
         END AS item,
-    2 AS fk_laterality,
-    lu_request_items.fk_decision_support,
-    lu_request_items.fk_instruction,
-    lu_instructions.instruction
-   FROM ((lu_requests lu_request_items
+    2 AS fk_laterality
+   FROM (lu_requests lu_request_items
      JOIN lu_request_type ON ((lu_request_items.fk_lu_request_type = lu_request_type.pk)))
-     LEFT JOIN lu_instructions ON ((lu_request_items.fk_instruction = lu_instructions.pk)))
   WHERE ((lower(lu_request_items.item) ~~ '%'::text) AND (lu_request_items.fk_laterality = 3))
 UNION
  SELECT (lu_request_items.pk || '-3'::text) AS pk_view,
@@ -18212,13 +17648,9 @@ UNION
             WHEN (lu_request_items.fk_laterality = 3) THEN (lu_request_items.item || ' (BOTH)'::text)
             ELSE NULL::text
         END AS item,
-    3 AS fk_laterality,
-    lu_request_items.fk_decision_support,
-    lu_request_items.fk_instruction,
-    lu_instructions.instruction
-   FROM ((lu_requests lu_request_items
+    3 AS fk_laterality
+   FROM (lu_requests lu_request_items
      JOIN lu_request_type ON ((lu_request_items.fk_lu_request_type = lu_request_type.pk)))
-     LEFT JOIN lu_instructions ON ((lu_request_items.fk_instruction = lu_instructions.pk)))
   WHERE ((lower(lu_request_items.item) ~~ '%'::text) AND (lu_request_items.fk_laterality = 3))
 UNION
  SELECT (lu_request_items.pk || '-0'::text) AS pk_view,
@@ -18227,18 +17659,14 @@ UNION
     lu_request_items.fk_lu_request_type,
     lu_request_items.deleted,
     lu_request_items.item,
-    lu_request_items.fk_laterality,
-    lu_request_items.fk_decision_support,
-    lu_request_items.fk_instruction,
-    lu_instructions.instruction
-   FROM ((lu_requests lu_request_items
+    lu_request_items.fk_laterality
+   FROM (lu_requests lu_request_items
      JOIN lu_request_type ON ((lu_request_items.fk_lu_request_type = lu_request_type.pk)))
-     LEFT JOIN lu_instructions ON ((lu_request_items.fk_instruction = lu_instructions.pk)))
   WHERE ((lower(lu_request_items.item) ~~ '%'::text) AND (lu_request_items.fk_laterality = 0))
   ORDER BY 2, 7;
 
 
-ALTER TABLE clin_requests.vwrequestnames OWNER TO easygp;
+ALTER TABLE vwrequestnames OWNER TO easygp;
 
 --
 -- Name: VIEW vwrequestnames; Type: COMMENT; Schema: clin_requests; Owner: easygp
@@ -18259,7 +17687,7 @@ CREATE TABLE lu_data_content_type (
 );
 
 
-ALTER TABLE documents.lu_data_content_type OWNER TO easygp;
+ALTER TABLE lu_data_content_type OWNER TO easygp;
 
 --
 -- Name: TABLE lu_data_content_type; Type: COMMENT; Schema: documents; Owner: easygp
@@ -18278,7 +17706,7 @@ CREATE TABLE lu_message_display_style (
 );
 
 
-ALTER TABLE documents.lu_message_display_style OWNER TO easygp;
+ALTER TABLE lu_message_display_style OWNER TO easygp;
 
 --
 -- Name: lu_message_standard; Type: TABLE; Schema: documents; Owner: easygp; Tablespace: 
@@ -18291,7 +17719,7 @@ CREATE TABLE lu_message_standard (
 );
 
 
-ALTER TABLE documents.lu_message_standard OWNER TO easygp;
+ALTER TABLE lu_message_standard OWNER TO easygp;
 
 --
 -- Name: TABLE lu_message_standard; Type: COMMENT; Schema: documents; Owner: easygp
@@ -18322,7 +17750,7 @@ CREATE TABLE sending_entities (
 );
 
 
-ALTER TABLE documents.sending_entities OWNER TO easygp;
+ALTER TABLE sending_entities OWNER TO easygp;
 
 --
 -- Name: TABLE sending_entities; Type: COMMENT; Schema: documents; Owner: easygp
@@ -18413,7 +17841,7 @@ CREATE TABLE unmatched_patients (
 );
 
 
-ALTER TABLE documents.unmatched_patients OWNER TO easygp;
+ALTER TABLE unmatched_patients OWNER TO easygp;
 
 --
 -- Name: COLUMN unmatched_patients.comment; Type: COMMENT; Schema: documents; Owner: easygp
@@ -18436,7 +17864,7 @@ CREATE TABLE unmatched_staff (
 );
 
 
-ALTER TABLE documents.unmatched_staff OWNER TO easygp;
+ALTER TABLE unmatched_staff OWNER TO easygp;
 
 --
 -- Name: vwsendingentities; Type: VIEW; Schema: documents; Owner: easygp
@@ -18663,7 +18091,7 @@ UNION
   WHERE ((((sending_entities.fk_branch IS NULL) AND (sending_entities.fk_employee IS NULL)) AND (sending_entities.fk_person IS NULL)) AND (sending_entities.fk_branch IS NULL));
 
 
-ALTER TABLE documents.vwsendingentities OWNER TO easygp;
+ALTER TABLE vwsendingentities OWNER TO easygp;
 
 --
 -- Name: vwdocuments; Type: VIEW; Schema: documents; Owner: easygp
@@ -18764,7 +18192,7 @@ CREATE VIEW vwdocuments AS
   ORDER BY documents.fk_patient, documents.date_created;
 
 
-ALTER TABLE documents.vwdocuments OWNER TO easygp;
+ALTER TABLE vwdocuments OWNER TO easygp;
 
 SET search_path = clin_requests, pg_catalog;
 
@@ -18793,8 +18221,6 @@ CREATE VIEW vwrequestsordered AS
     forms_requests.fk_lu_request,
     forms_requests.deleted AS request_deleted,
     lu_requests.fk_laterality,
-    lu_requests.fk_decision_support,
-    lu_requests.fk_instruction,
     forms.fk_request_provider AS fk_branch,
     forms.notes_summary,
     forms.medications_summary,
@@ -18838,7 +18264,7 @@ CREATE VIEW vwrequestsordered AS
   ORDER BY consult.fk_patient, forms.date DESC, forms_requests.fk_form, lu_requests.item;
 
 
-ALTER TABLE clin_requests.vwrequestsordered OWNER TO easygp;
+ALTER TABLE vwrequestsordered OWNER TO easygp;
 
 --
 -- Name: vwrequestsynonyms; Type: VIEW; Schema: clin_requests; Owner: easygp
@@ -18856,7 +18282,7 @@ CREATE VIEW vwrequestsynonyms AS
   WHERE (lu_link_provider_user_requests.fk_lu_request = lu_requests.pk);
 
 
-ALTER TABLE clin_requests.vwrequestsynonyms OWNER TO easygp;
+ALTER TABLE vwrequestsynonyms OWNER TO easygp;
 
 --
 -- Name: vwuserproviderdefaults; Type: VIEW; Schema: clin_requests; Owner: easygp
@@ -18914,7 +18340,7 @@ CREATE VIEW vwuserproviderdefaults AS
   ORDER BY user_provider_defaults.fk_staff;
 
 
-ALTER TABLE clin_requests.vwuserproviderdefaults OWNER TO easygp;
+ALTER TABLE vwuserproviderdefaults OWNER TO easygp;
 
 SET search_path = clin_vaccination, pg_catalog;
 
@@ -18929,7 +18355,7 @@ CREATE TABLE lu_descriptions (
 );
 
 
-ALTER TABLE clin_vaccination.lu_descriptions OWNER TO easygp;
+ALTER TABLE lu_descriptions OWNER TO easygp;
 
 --
 -- Name: TABLE lu_descriptions; Type: COMMENT; Schema: clin_vaccination; Owner: easygp
@@ -18948,7 +18374,7 @@ CREATE TABLE lu_formulation (
 );
 
 
-ALTER TABLE clin_vaccination.lu_formulation OWNER TO easygp;
+ALTER TABLE lu_formulation OWNER TO easygp;
 
 --
 -- Name: TABLE lu_formulation; Type: COMMENT; Schema: clin_vaccination; Owner: easygp
@@ -18970,7 +18396,7 @@ CREATE SEQUENCE lu_formulation_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_vaccination.lu_formulation_pk_seq OWNER TO easygp;
+ALTER TABLE lu_formulation_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_formulation_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_vaccination; Owner: easygp
@@ -18999,7 +18425,7 @@ CREATE TABLE lu_schedules (
 );
 
 
-ALTER TABLE clin_vaccination.lu_schedules OWNER TO easygp;
+ALTER TABLE lu_schedules OWNER TO easygp;
 
 --
 -- Name: TABLE lu_schedules; Type: COMMENT; Schema: clin_vaccination; Owner: easygp
@@ -19058,7 +18484,7 @@ CREATE SEQUENCE lu_schedules_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_vaccination.lu_schedules_pk_seq OWNER TO easygp;
+ALTER TABLE lu_schedules_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_schedules_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_vaccination; Owner: easygp
@@ -19084,7 +18510,7 @@ CREATE TABLE lu_vaccines (
 );
 
 
-ALTER TABLE clin_vaccination.lu_vaccines OWNER TO easygp;
+ALTER TABLE lu_vaccines OWNER TO easygp;
 
 --
 -- Name: TABLE lu_vaccines; Type: COMMENT; Schema: clin_vaccination; Owner: easygp
@@ -19108,7 +18534,7 @@ CREATE SEQUENCE lu_vaccines_descriptions_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_vaccination.lu_vaccines_descriptions_pk_seq OWNER TO easygp;
+ALTER TABLE lu_vaccines_descriptions_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_vaccines_descriptions_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_vaccination; Owner: easygp
@@ -19130,7 +18556,7 @@ CREATE TABLE lu_vaccines_in_schedule (
 );
 
 
-ALTER TABLE clin_vaccination.lu_vaccines_in_schedule OWNER TO easygp;
+ALTER TABLE lu_vaccines_in_schedule OWNER TO easygp;
 
 --
 -- Name: lu_vaccines_in_schedule_pk_seq; Type: SEQUENCE; Schema: clin_vaccination; Owner: easygp
@@ -19144,7 +18570,7 @@ CREATE SEQUENCE lu_vaccines_in_schedule_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_vaccination.lu_vaccines_in_schedule_pk_seq OWNER TO easygp;
+ALTER TABLE lu_vaccines_in_schedule_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_vaccines_in_schedule_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_vaccination; Owner: easygp
@@ -19165,7 +18591,7 @@ CREATE SEQUENCE lu_vaccines_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_vaccination.lu_vaccines_pk_seq OWNER TO easygp;
+ALTER TABLE lu_vaccines_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_vaccines_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_vaccination; Owner: easygp
@@ -19194,7 +18620,7 @@ CREATE TABLE vaccinations (
 );
 
 
-ALTER TABLE clin_vaccination.vaccinations OWNER TO easygp;
+ALTER TABLE vaccinations OWNER TO easygp;
 
 --
 -- Name: COLUMN vaccinations.fk_site; Type: COMMENT; Schema: clin_vaccination; Owner: easygp
@@ -19249,7 +18675,7 @@ CREATE SEQUENCE vaccinations_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_vaccination.vaccinations_pk_seq OWNER TO easygp;
+ALTER TABLE vaccinations_pk_seq OWNER TO easygp;
 
 --
 -- Name: vaccinations_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_vaccination; Owner: easygp
@@ -19270,7 +18696,7 @@ CREATE TABLE vaccine_serial_numbers (
 );
 
 
-ALTER TABLE clin_vaccination.vaccine_serial_numbers OWNER TO easygp;
+ALTER TABLE vaccine_serial_numbers OWNER TO easygp;
 
 --
 -- Name: TABLE vaccine_serial_numbers; Type: COMMENT; Schema: clin_vaccination; Owner: easygp
@@ -19291,7 +18717,7 @@ CREATE SEQUENCE vaccine_serial_numbers_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_vaccination.vaccine_serial_numbers_pk_seq OWNER TO easygp;
+ALTER TABLE vaccine_serial_numbers_pk_seq OWNER TO easygp;
 
 --
 -- Name: vaccine_serial_numbers_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_vaccination; Owner: easygp
@@ -19312,7 +18738,7 @@ CREATE VIEW vwvaccineroutesadministration AS
   WHERE (lu_route_administration.pk < 9);
 
 
-ALTER TABLE clin_vaccination.vwvaccineroutesadministration OWNER TO easygp;
+ALTER TABLE vwvaccineroutesadministration OWNER TO easygp;
 
 --
 -- Name: vwvaccines; Type: VIEW; Schema: clin_vaccination; Owner: easygp
@@ -19339,7 +18765,7 @@ CREATE VIEW vwvaccines AS
   ORDER BY lu_descriptions.description;
 
 
-ALTER TABLE clin_vaccination.vwvaccines OWNER TO easygp;
+ALTER TABLE vwvaccines OWNER TO easygp;
 
 SET search_path = common, pg_catalog;
 
@@ -19353,7 +18779,7 @@ CREATE TABLE lu_seasons (
 );
 
 
-ALTER TABLE common.lu_seasons OWNER TO easygp;
+ALTER TABLE lu_seasons OWNER TO easygp;
 
 --
 -- Name: lu_site_administration; Type: TABLE; Schema: common; Owner: easygp; Tablespace: 
@@ -19366,7 +18792,7 @@ CREATE TABLE lu_site_administration (
 );
 
 
-ALTER TABLE common.lu_site_administration OWNER TO easygp;
+ALTER TABLE lu_site_administration OWNER TO easygp;
 
 SET search_path = clin_vaccination, pg_catalog;
 
@@ -19423,7 +18849,7 @@ CREATE VIEW vwvaccinesgiven AS
      LEFT JOIN common.lu_seasons ON ((lu_schedules.fk_season = lu_seasons.pk)));
 
 
-ALTER TABLE clin_vaccination.vwvaccinesgiven OWNER TO easygp;
+ALTER TABLE vwvaccinesgiven OWNER TO easygp;
 
 --
 -- Name: vwvaccinesinschedule; Type: VIEW; Schema: clin_vaccination; Owner: easygp
@@ -19464,7 +18890,7 @@ CREATE VIEW vwvaccinesinschedule AS
   ORDER BY lu_vaccines_in_schedule.fk_schedule, lu_vaccines.brand;
 
 
-ALTER TABLE clin_vaccination.vwvaccinesinschedule OWNER TO easygp;
+ALTER TABLE vwvaccinesinschedule OWNER TO easygp;
 
 SET search_path = clin_workcover, pg_catalog;
 
@@ -19493,7 +18919,7 @@ CREATE TABLE claims (
 );
 
 
-ALTER TABLE clin_workcover.claims OWNER TO easygp;
+ALTER TABLE claims OWNER TO easygp;
 
 --
 -- Name: COLUMN claims.fk_consult; Type: COMMENT; Schema: clin_workcover; Owner: easygp
@@ -19596,7 +19022,7 @@ CREATE SEQUENCE claims_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_workcover.claims_pk_seq OWNER TO easygp;
+ALTER TABLE claims_pk_seq OWNER TO easygp;
 
 --
 -- Name: claims_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_workcover; Owner: easygp
@@ -19615,7 +19041,7 @@ CREATE TABLE lu_caused_by_employment (
 );
 
 
-ALTER TABLE clin_workcover.lu_caused_by_employment OWNER TO easygp;
+ALTER TABLE lu_caused_by_employment OWNER TO easygp;
 
 --
 -- Name: TABLE lu_caused_by_employment; Type: COMMENT; Schema: clin_workcover; Owner: easygp
@@ -19636,7 +19062,7 @@ CREATE SEQUENCE lu_caused_by_employment_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_workcover.lu_caused_by_employment_pk_seq OWNER TO easygp;
+ALTER TABLE lu_caused_by_employment_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_caused_by_employment_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_workcover; Owner: easygp
@@ -19655,7 +19081,7 @@ CREATE TABLE lu_visit_type (
 );
 
 
-ALTER TABLE clin_workcover.lu_visit_type OWNER TO easygp;
+ALTER TABLE lu_visit_type OWNER TO easygp;
 
 --
 -- Name: TABLE lu_visit_type; Type: COMMENT; Schema: clin_workcover; Owner: easygp
@@ -19683,7 +19109,7 @@ CREATE SEQUENCE lu_visit_type_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_workcover.lu_visit_type_pk_seq OWNER TO easygp;
+ALTER TABLE lu_visit_type_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_visit_type_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_workcover; Owner: easygp
@@ -19740,7 +19166,7 @@ CREATE TABLE visits (
 );
 
 
-ALTER TABLE clin_workcover.visits OWNER TO easygp;
+ALTER TABLE visits OWNER TO easygp;
 
 --
 -- Name: COLUMN visits.fk_claim; Type: COMMENT; Schema: clin_workcover; Owner: easygp
@@ -19886,7 +19312,7 @@ CREATE SEQUENCE visits_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_workcover.visits_pk_seq OWNER TO easygp;
+ALTER TABLE visits_pk_seq OWNER TO easygp;
 
 --
 -- Name: visits_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_workcover; Owner: easygp
@@ -20006,7 +19432,7 @@ CREATE VIEW vwworkcover AS
      JOIN clin_consult.consult consult1 ON ((claims.fk_consult = consult1.pk)));
 
 
-ALTER TABLE clin_workcover.vwworkcover OWNER TO easygp;
+ALTER TABLE vwworkcover OWNER TO easygp;
 
 --
 -- Name: vwpatientswithworkcover; Type: VIEW; Schema: clin_workcover; Owner: easygp
@@ -20031,7 +19457,7 @@ CREATE VIEW vwpatientswithworkcover AS
   WHERE (vwpatients.fk_patient = vwworkcover.fk_patient);
 
 
-ALTER TABLE clin_workcover.vwpatientswithworkcover OWNER TO easygp;
+ALTER TABLE vwpatientswithworkcover OWNER TO easygp;
 
 SET search_path = coding, pg_catalog;
 
@@ -20046,7 +19472,7 @@ CREATE TABLE lu_icpc2_plain_language_mapper (
 );
 
 
-ALTER TABLE coding.lu_icpc2_plain_language_mapper OWNER TO easygp;
+ALTER TABLE lu_icpc2_plain_language_mapper OWNER TO easygp;
 
 --
 -- Name: lu_icpc2_plain_language_mapper_pk_seq; Type: SEQUENCE; Schema: coding; Owner: easygp
@@ -20060,7 +19486,7 @@ CREATE SEQUENCE lu_icpc2_plain_language_mapper_pk_seq
     CACHE 1;
 
 
-ALTER TABLE coding.lu_icpc2_plain_language_mapper_pk_seq OWNER TO easygp;
+ALTER TABLE lu_icpc2_plain_language_mapper_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_icpc2_plain_language_mapper_pk_seq; Type: SEQUENCE OWNED BY; Schema: coding; Owner: easygp
@@ -20129,7 +19555,7 @@ CREATE TABLE lu_loinc (
 );
 
 
-ALTER TABLE coding.lu_loinc OWNER TO easygp;
+ALTER TABLE lu_loinc OWNER TO easygp;
 
 --
 -- Name: lu_loinc_abbrev; Type: TABLE; Schema: coding; Owner: easygp; Tablespace: 
@@ -20143,7 +19569,7 @@ CREATE TABLE lu_loinc_abbrev (
 );
 
 
-ALTER TABLE coding.lu_loinc_abbrev OWNER TO easygp;
+ALTER TABLE lu_loinc_abbrev OWNER TO easygp;
 
 --
 -- Name: lu_loinc_abbrev_pk_seq; Type: SEQUENCE; Schema: coding; Owner: easygp
@@ -20157,7 +19583,7 @@ CREATE SEQUENCE lu_loinc_abbrev_pk_seq
     CACHE 1;
 
 
-ALTER TABLE coding.lu_loinc_abbrev_pk_seq OWNER TO easygp;
+ALTER TABLE lu_loinc_abbrev_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_loinc_abbrev_pk_seq; Type: SEQUENCE OWNED BY; Schema: coding; Owner: easygp
@@ -20181,7 +19607,7 @@ CREATE TABLE lu_oid (
 );
 
 
-ALTER TABLE coding.lu_oid OWNER TO easygp;
+ALTER TABLE lu_oid OWNER TO easygp;
 
 --
 -- Name: TABLE lu_oid; Type: COMMENT; Schema: coding; Owner: easygp
@@ -20230,7 +19656,7 @@ CREATE SEQUENCE lu_oid_pk_seq
     CACHE 1;
 
 
-ALTER TABLE coding.lu_oid_pk_seq OWNER TO easygp;
+ALTER TABLE lu_oid_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_oid_pk_seq; Type: SEQUENCE OWNED BY; Schema: coding; Owner: easygp
@@ -20251,7 +19677,7 @@ CREATE SEQUENCE lu_systems_pk_seq
     CACHE 1;
 
 
-ALTER TABLE coding.lu_systems_pk_seq OWNER TO easygp;
+ALTER TABLE lu_systems_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_systems_pk_seq; Type: SEQUENCE OWNED BY; Schema: coding; Owner: easygp
@@ -20272,7 +19698,7 @@ CREATE TABLE user_favourites (
 );
 
 
-ALTER TABLE coding.user_favourites OWNER TO easygp;
+ALTER TABLE user_favourites OWNER TO easygp;
 
 --
 -- Name: TABLE user_favourites; Type: COMMENT; Schema: coding; Owner: easygp
@@ -20293,7 +19719,7 @@ CREATE SEQUENCE user_favourites_pk_seq
     CACHE 1;
 
 
-ALTER TABLE coding.user_favourites_pk_seq OWNER TO easygp;
+ALTER TABLE user_favourites_pk_seq OWNER TO easygp;
 
 --
 -- Name: user_favourites_pk_seq; Type: SEQUENCE OWNED BY; Schema: coding; Owner: easygp
@@ -20315,7 +19741,7 @@ CREATE TABLE usr_codes_weighting (
 );
 
 
-ALTER TABLE coding.usr_codes_weighting OWNER TO easygp;
+ALTER TABLE usr_codes_weighting OWNER TO easygp;
 
 --
 -- Name: usr_codes_weighting_pk_seq; Type: SEQUENCE; Schema: coding; Owner: easygp
@@ -20329,7 +19755,7 @@ CREATE SEQUENCE usr_codes_weighting_pk_seq
     CACHE 1;
 
 
-ALTER TABLE coding.usr_codes_weighting_pk_seq OWNER TO easygp;
+ALTER TABLE usr_codes_weighting_pk_seq OWNER TO easygp;
 
 --
 -- Name: usr_codes_weighting_pk_seq; Type: SEQUENCE OWNED BY; Schema: coding; Owner: easygp
@@ -20352,7 +19778,7 @@ CREATE VIEW vwcodesweighted AS
      LEFT JOIN usr_codes_weighting w ON (((t.code = w.code) AND (w.fk_coding_system = t.fk_coding_system))));
 
 
-ALTER TABLE coding.vwcodesweighted OWNER TO easygp;
+ALTER TABLE vwcodesweighted OWNER TO easygp;
 
 --
 -- Name: vwgenericterms; Type: VIEW; Schema: coding; Owner: easygp
@@ -20374,7 +19800,7 @@ CREATE VIEW vwgenericterms AS
   WHERE (s.pk = generic_terms.fk_coding_system);
 
 
-ALTER TABLE coding.vwgenericterms OWNER TO easygp;
+ALTER TABLE vwgenericterms OWNER TO easygp;
 
 --
 -- Name: vwuserfavourites; Type: VIEW; Schema: coding; Owner: easygp
@@ -20397,7 +19823,7 @@ CREATE VIEW vwuserfavourites AS
   WHERE ((user_favourites.fk_code = vwgenericterms.code) AND (user_favourites.deleted = false));
 
 
-ALTER TABLE coding.vwuserfavourites OWNER TO easygp;
+ALTER TABLE vwuserfavourites OWNER TO easygp;
 
 SET search_path = common, pg_catalog;
 
@@ -20413,7 +19839,7 @@ CREATE SEQUENCE lu_aboriginality_pk_seq
     CACHE 1;
 
 
-ALTER TABLE common.lu_aboriginality_pk_seq OWNER TO easygp;
+ALTER TABLE lu_aboriginality_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_aboriginality_pk_seq; Type: SEQUENCE OWNED BY; Schema: common; Owner: easygp
@@ -20432,7 +19858,7 @@ CREATE TABLE lu_anatomical_localisation (
 );
 
 
-ALTER TABLE common.lu_anatomical_localisation OWNER TO easygp;
+ALTER TABLE lu_anatomical_localisation OWNER TO easygp;
 
 --
 -- Name: lu_anatomical_location_pk_seq; Type: SEQUENCE; Schema: common; Owner: easygp
@@ -20446,7 +19872,7 @@ CREATE SEQUENCE lu_anatomical_location_pk_seq
     CACHE 1;
 
 
-ALTER TABLE common.lu_anatomical_location_pk_seq OWNER TO easygp;
+ALTER TABLE lu_anatomical_location_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_anatomical_location_pk_seq; Type: SEQUENCE OWNED BY; Schema: common; Owner: easygp
@@ -20467,7 +19893,7 @@ CREATE SEQUENCE lu_anatomical_site_pk_seq
     CACHE 1;
 
 
-ALTER TABLE common.lu_anatomical_site_pk_seq OWNER TO easygp;
+ALTER TABLE lu_anatomical_site_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_anatomical_site_pk_seq; Type: SEQUENCE OWNED BY; Schema: common; Owner: easygp
@@ -20488,7 +19914,7 @@ CREATE SEQUENCE lu_anterior_posterior_pk_seq
     CACHE 1;
 
 
-ALTER TABLE common.lu_anterior_posterior_pk_seq OWNER TO easygp;
+ALTER TABLE lu_anterior_posterior_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_anterior_posterior_pk_seq; Type: SEQUENCE OWNED BY; Schema: common; Owner: easygp
@@ -20509,7 +19935,7 @@ CREATE SEQUENCE lu_blood_group_pk_seq
     CACHE 1;
 
 
-ALTER TABLE common.lu_blood_group_pk_seq OWNER TO easygp;
+ALTER TABLE lu_blood_group_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_blood_group_pk_seq; Type: SEQUENCE OWNED BY; Schema: common; Owner: easygp
@@ -20528,7 +19954,7 @@ CREATE TABLE lu_companion_status (
 );
 
 
-ALTER TABLE common.lu_companion_status OWNER TO easygp;
+ALTER TABLE lu_companion_status OWNER TO easygp;
 
 --
 -- Name: lu_companion_status_pk_seq; Type: SEQUENCE; Schema: common; Owner: easygp
@@ -20542,7 +19968,7 @@ CREATE SEQUENCE lu_companion_status_pk_seq
     CACHE 1;
 
 
-ALTER TABLE common.lu_companion_status_pk_seq OWNER TO easygp;
+ALTER TABLE lu_companion_status_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_companion_status_pk_seq; Type: SEQUENCE OWNED BY; Schema: common; Owner: easygp
@@ -20563,7 +19989,7 @@ CREATE SEQUENCE lu_countries_pk_seq
     CACHE 1;
 
 
-ALTER TABLE common.lu_countries_pk_seq OWNER TO easygp;
+ALTER TABLE lu_countries_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_countries_pk_seq; Type: SEQUENCE OWNED BY; Schema: common; Owner: easygp
@@ -20584,7 +20010,7 @@ CREATE SEQUENCE lu_ethnicity_pk_seq
     CACHE 1;
 
 
-ALTER TABLE common.lu_ethnicity_pk_seq OWNER TO easygp;
+ALTER TABLE lu_ethnicity_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_ethnicity_pk_seq; Type: SEQUENCE OWNED BY; Schema: common; Owner: easygp
@@ -20605,7 +20031,7 @@ CREATE SEQUENCE lu_family_relationships_pk_seq
     CACHE 1;
 
 
-ALTER TABLE common.lu_family_relationships_pk_seq OWNER TO easygp;
+ALTER TABLE lu_family_relationships_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_family_relationships_pk_seq; Type: SEQUENCE OWNED BY; Schema: common; Owner: easygp
@@ -20624,7 +20050,7 @@ CREATE TABLE lu_formulation (
 );
 
 
-ALTER TABLE common.lu_formulation OWNER TO easygp;
+ALTER TABLE lu_formulation OWNER TO easygp;
 
 --
 -- Name: lu_formulation_pk_seq; Type: SEQUENCE; Schema: common; Owner: easygp
@@ -20638,7 +20064,7 @@ CREATE SEQUENCE lu_formulation_pk_seq
     CACHE 1;
 
 
-ALTER TABLE common.lu_formulation_pk_seq OWNER TO easygp;
+ALTER TABLE lu_formulation_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_formulation_pk_seq; Type: SEQUENCE OWNED BY; Schema: common; Owner: easygp
@@ -20657,7 +20083,7 @@ CREATE TABLE lu_hearing_aid_status (
 );
 
 
-ALTER TABLE common.lu_hearing_aid_status OWNER TO easygp;
+ALTER TABLE lu_hearing_aid_status OWNER TO easygp;
 
 --
 -- Name: lu_hearing_aid_status_pk_seq; Type: SEQUENCE; Schema: common; Owner: easygp
@@ -20671,7 +20097,7 @@ CREATE SEQUENCE lu_hearing_aid_status_pk_seq
     CACHE 1;
 
 
-ALTER TABLE common.lu_hearing_aid_status_pk_seq OWNER TO easygp;
+ALTER TABLE lu_hearing_aid_status_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_hearing_aid_status_pk_seq; Type: SEQUENCE OWNED BY; Schema: common; Owner: easygp
@@ -20692,7 +20118,7 @@ CREATE SEQUENCE lu_languages_pk_seq
     CACHE 1;
 
 
-ALTER TABLE common.lu_languages_pk_seq OWNER TO easygp;
+ALTER TABLE lu_languages_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_languages_pk_seq; Type: SEQUENCE OWNED BY; Schema: common; Owner: easygp
@@ -20713,7 +20139,7 @@ CREATE SEQUENCE lu_laterality_pk_seq
     CACHE 1;
 
 
-ALTER TABLE common.lu_laterality_pk_seq OWNER TO easygp;
+ALTER TABLE lu_laterality_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_laterality_pk_seq; Type: SEQUENCE OWNED BY; Schema: common; Owner: easygp
@@ -20732,7 +20158,7 @@ CREATE TABLE lu_medicolegal (
 );
 
 
-ALTER TABLE common.lu_medicolegal OWNER TO easygp;
+ALTER TABLE lu_medicolegal OWNER TO easygp;
 
 --
 -- Name: TABLE lu_medicolegal; Type: COMMENT; Schema: common; Owner: easygp
@@ -20753,7 +20179,7 @@ CREATE SEQUENCE lu_medicolegal_pk_seq
     CACHE 1;
 
 
-ALTER TABLE common.lu_medicolegal_pk_seq OWNER TO easygp;
+ALTER TABLE lu_medicolegal_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_medicolegal_pk_seq; Type: SEQUENCE OWNED BY; Schema: common; Owner: easygp
@@ -20772,7 +20198,7 @@ CREATE TABLE lu_motion (
 );
 
 
-ALTER TABLE common.lu_motion OWNER TO easygp;
+ALTER TABLE lu_motion OWNER TO easygp;
 
 --
 -- Name: lu_motion_pk_seq; Type: SEQUENCE; Schema: common; Owner: easygp
@@ -20786,7 +20212,7 @@ CREATE SEQUENCE lu_motion_pk_seq
     CACHE 1;
 
 
-ALTER TABLE common.lu_motion_pk_seq OWNER TO easygp;
+ALTER TABLE lu_motion_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_motion_pk_seq; Type: SEQUENCE OWNED BY; Schema: common; Owner: easygp
@@ -20805,7 +20231,7 @@ CREATE TABLE lu_normality (
 );
 
 
-ALTER TABLE common.lu_normality OWNER TO easygp;
+ALTER TABLE lu_normality OWNER TO easygp;
 
 --
 -- Name: lu_normality_pk_seq; Type: SEQUENCE; Schema: common; Owner: easygp
@@ -20819,7 +20245,7 @@ CREATE SEQUENCE lu_normality_pk_seq
     CACHE 1;
 
 
-ALTER TABLE common.lu_normality_pk_seq OWNER TO easygp;
+ALTER TABLE lu_normality_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_normality_pk_seq; Type: SEQUENCE OWNED BY; Schema: common; Owner: easygp
@@ -20839,7 +20265,7 @@ CREATE TABLE lu_occupations_abs_coded (
 );
 
 
-ALTER TABLE common.lu_occupations_abs_coded OWNER TO easygp;
+ALTER TABLE lu_occupations_abs_coded OWNER TO easygp;
 
 --
 -- Name: lu_occupations_abs_coded_pk_seq; Type: SEQUENCE; Schema: common; Owner: easygp
@@ -20853,7 +20279,7 @@ CREATE SEQUENCE lu_occupations_abs_coded_pk_seq
     CACHE 1;
 
 
-ALTER TABLE common.lu_occupations_abs_coded_pk_seq OWNER TO easygp;
+ALTER TABLE lu_occupations_abs_coded_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_occupations_abs_coded_pk_seq; Type: SEQUENCE OWNED BY; Schema: common; Owner: easygp
@@ -20874,7 +20300,7 @@ CREATE SEQUENCE lu_occupations_pk_seq
     CACHE 1;
 
 
-ALTER TABLE common.lu_occupations_pk_seq OWNER TO easygp;
+ALTER TABLE lu_occupations_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_occupations_pk_seq; Type: SEQUENCE OWNED BY; Schema: common; Owner: easygp
@@ -20895,7 +20321,7 @@ CREATE TABLE lu_occupations_temp (
 );
 
 
-ALTER TABLE common.lu_occupations_temp OWNER TO easygp;
+ALTER TABLE lu_occupations_temp OWNER TO easygp;
 
 --
 -- Name: lu_occupations_temp_pk_seq; Type: SEQUENCE; Schema: common; Owner: easygp
@@ -20909,7 +20335,7 @@ CREATE SEQUENCE lu_occupations_temp_pk_seq
     CACHE 1;
 
 
-ALTER TABLE common.lu_occupations_temp_pk_seq OWNER TO easygp;
+ALTER TABLE lu_occupations_temp_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_occupations_temp_pk_seq; Type: SEQUENCE OWNED BY; Schema: common; Owner: easygp
@@ -20928,7 +20354,7 @@ CREATE TABLE lu_proximal_distal (
 );
 
 
-ALTER TABLE common.lu_proximal_distal OWNER TO easygp;
+ALTER TABLE lu_proximal_distal OWNER TO easygp;
 
 --
 -- Name: lu_proximal_distal_pk_seq; Type: SEQUENCE; Schema: common; Owner: easygp
@@ -20942,7 +20368,7 @@ CREATE SEQUENCE lu_proximal_distal_pk_seq
     CACHE 1;
 
 
-ALTER TABLE common.lu_proximal_distal_pk_seq OWNER TO easygp;
+ALTER TABLE lu_proximal_distal_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_proximal_distal_pk_seq; Type: SEQUENCE OWNED BY; Schema: common; Owner: easygp
@@ -20963,7 +20389,7 @@ CREATE SEQUENCE lu_recreational_drugs_pk_seq
     CACHE 1;
 
 
-ALTER TABLE common.lu_recreational_drugs_pk_seq OWNER TO easygp;
+ALTER TABLE lu_recreational_drugs_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_recreational_drugs_pk_seq; Type: SEQUENCE OWNED BY; Schema: common; Owner: easygp
@@ -20982,7 +20408,7 @@ CREATE TABLE lu_religions (
 );
 
 
-ALTER TABLE common.lu_religions OWNER TO easygp;
+ALTER TABLE lu_religions OWNER TO easygp;
 
 --
 -- Name: TABLE lu_religions; Type: COMMENT; Schema: common; Owner: easygp
@@ -21004,7 +20430,7 @@ CREATE SEQUENCE lu_religions_pk_seq
     CACHE 1;
 
 
-ALTER TABLE common.lu_religions_pk_seq OWNER TO easygp;
+ALTER TABLE lu_religions_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_religions_pk_seq; Type: SEQUENCE OWNED BY; Schema: common; Owner: easygp
@@ -21025,7 +20451,7 @@ CREATE SEQUENCE lu_rhesus_group_pk_seq
     CACHE 1;
 
 
-ALTER TABLE common.lu_rhesus_group_pk_seq OWNER TO easygp;
+ALTER TABLE lu_rhesus_group_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_rhesus_group_pk_seq; Type: SEQUENCE OWNED BY; Schema: common; Owner: easygp
@@ -21046,7 +20472,7 @@ CREATE SEQUENCE lu_route_administration_pk_seq
     CACHE 1;
 
 
-ALTER TABLE common.lu_route_administration_pk_seq OWNER TO easygp;
+ALTER TABLE lu_route_administration_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_route_administration_pk_seq; Type: SEQUENCE OWNED BY; Schema: common; Owner: easygp
@@ -21067,7 +20493,7 @@ CREATE SEQUENCE lu_seasons_pk_seq
     CACHE 1;
 
 
-ALTER TABLE common.lu_seasons_pk_seq OWNER TO easygp;
+ALTER TABLE lu_seasons_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_seasons_pk_seq; Type: SEQUENCE OWNED BY; Schema: common; Owner: easygp
@@ -21088,7 +20514,7 @@ CREATE SEQUENCE lu_site_administration_pk_seq
     CACHE 1;
 
 
-ALTER TABLE common.lu_site_administration_pk_seq OWNER TO easygp;
+ALTER TABLE lu_site_administration_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_site_administration_pk_seq; Type: SEQUENCE OWNED BY; Schema: common; Owner: easygp
@@ -21107,7 +20533,7 @@ CREATE TABLE lu_smoking_status (
 );
 
 
-ALTER TABLE common.lu_smoking_status OWNER TO easygp;
+ALTER TABLE lu_smoking_status OWNER TO easygp;
 
 --
 -- Name: lu_smoking_status_pk_seq; Type: SEQUENCE; Schema: common; Owner: easygp
@@ -21121,7 +20547,7 @@ CREATE SEQUENCE lu_smoking_status_pk_seq
     CACHE 1;
 
 
-ALTER TABLE common.lu_smoking_status_pk_seq OWNER TO easygp;
+ALTER TABLE lu_smoking_status_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_smoking_status_pk_seq; Type: SEQUENCE OWNED BY; Schema: common; Owner: easygp
@@ -21140,7 +20566,7 @@ CREATE TABLE lu_social_support (
 );
 
 
-ALTER TABLE common.lu_social_support OWNER TO easygp;
+ALTER TABLE lu_social_support OWNER TO easygp;
 
 --
 -- Name: lu_social_support_pk_seq; Type: SEQUENCE; Schema: common; Owner: easygp
@@ -21154,7 +20580,7 @@ CREATE SEQUENCE lu_social_support_pk_seq
     CACHE 1;
 
 
-ALTER TABLE common.lu_social_support_pk_seq OWNER TO easygp;
+ALTER TABLE lu_social_support_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_social_support_pk_seq; Type: SEQUENCE OWNED BY; Schema: common; Owner: easygp
@@ -21174,7 +20600,7 @@ CREATE TABLE lu_sub_religions (
 );
 
 
-ALTER TABLE common.lu_sub_religions OWNER TO easygp;
+ALTER TABLE lu_sub_religions OWNER TO easygp;
 
 --
 -- Name: TABLE lu_sub_religions; Type: COMMENT; Schema: common; Owner: easygp
@@ -21195,7 +20621,7 @@ CREATE SEQUENCE lu_sub_religions_pk_seq
     CACHE 1;
 
 
-ALTER TABLE common.lu_sub_religions_pk_seq OWNER TO easygp;
+ALTER TABLE lu_sub_religions_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_sub_religions_pk_seq; Type: SEQUENCE OWNED BY; Schema: common; Owner: easygp
@@ -21216,7 +20642,7 @@ CREATE SEQUENCE lu_units_pk_seq
     CACHE 1;
 
 
-ALTER TABLE common.lu_units_pk_seq OWNER TO easygp;
+ALTER TABLE lu_units_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_units_pk_seq; Type: SEQUENCE OWNED BY; Schema: common; Owner: easygp
@@ -21237,7 +20663,7 @@ CREATE SEQUENCE lu_urgency_pk_seq
     CACHE 1;
 
 
-ALTER TABLE common.lu_urgency_pk_seq OWNER TO easygp;
+ALTER TABLE lu_urgency_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_urgency_pk_seq; Type: SEQUENCE OWNED BY; Schema: common; Owner: easygp
@@ -21256,7 +20682,7 @@ CREATE TABLE lu_whisper_test (
 );
 
 
-ALTER TABLE common.lu_whisper_test OWNER TO easygp;
+ALTER TABLE lu_whisper_test OWNER TO easygp;
 
 --
 -- Name: lu_whisper_test_pk_seq; Type: SEQUENCE; Schema: common; Owner: easygp
@@ -21270,7 +20696,7 @@ CREATE SEQUENCE lu_whisper_test_pk_seq
     CACHE 1;
 
 
-ALTER TABLE common.lu_whisper_test_pk_seq OWNER TO easygp;
+ALTER TABLE lu_whisper_test_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_whisper_test_pk_seq; Type: SEQUENCE OWNED BY; Schema: common; Owner: easygp
@@ -21296,7 +20722,7 @@ CREATE VIEW vwrecreationaldrugs AS
   WHERE (lu_recreational_drugs.default_fk_lu_route_administration = lu_route_administration.pk);
 
 
-ALTER TABLE common.vwrecreationaldrugs OWNER TO postgres;
+ALTER TABLE vwrecreationaldrugs OWNER TO postgres;
 
 --
 -- Name: vwreligions; Type: VIEW; Schema: common; Owner: easygp
@@ -21317,7 +20743,7 @@ CREATE VIEW vwreligions AS
   ORDER BY lu_sub_religions.fk_religion, lu_sub_religions.pk;
 
 
-ALTER TABLE common.vwreligions OWNER TO easygp;
+ALTER TABLE vwreligions OWNER TO easygp;
 
 SET search_path = contacts, pg_catalog;
 
@@ -21333,7 +20759,7 @@ CREATE SEQUENCE data_addresses_pk_seq
     CACHE 1;
 
 
-ALTER TABLE contacts.data_addresses_pk_seq OWNER TO easygp;
+ALTER TABLE data_addresses_pk_seq OWNER TO easygp;
 
 --
 -- Name: data_addresses_pk_seq; Type: SEQUENCE OWNED BY; Schema: contacts; Owner: easygp
@@ -21354,7 +20780,7 @@ CREATE SEQUENCE data_branches_pk_seq
     CACHE 1;
 
 
-ALTER TABLE contacts.data_branches_pk_seq OWNER TO easygp;
+ALTER TABLE data_branches_pk_seq OWNER TO easygp;
 
 --
 -- Name: data_branches_pk_seq; Type: SEQUENCE OWNED BY; Schema: contacts; Owner: easygp
@@ -21375,7 +20801,7 @@ CREATE SEQUENCE data_communications_pk_seq
     CACHE 1;
 
 
-ALTER TABLE contacts.data_communications_pk_seq OWNER TO easygp;
+ALTER TABLE data_communications_pk_seq OWNER TO easygp;
 
 --
 -- Name: data_communications_pk_seq; Type: SEQUENCE OWNED BY; Schema: contacts; Owner: easygp
@@ -21396,7 +20822,7 @@ CREATE SEQUENCE data_employees_pk_seq
     CACHE 1;
 
 
-ALTER TABLE contacts.data_employees_pk_seq OWNER TO easygp;
+ALTER TABLE data_employees_pk_seq OWNER TO easygp;
 
 --
 -- Name: data_employees_pk_seq; Type: SEQUENCE OWNED BY; Schema: contacts; Owner: easygp
@@ -21417,7 +20843,7 @@ CREATE SEQUENCE data_numbers_persons_pk_seq
     CACHE 1;
 
 
-ALTER TABLE contacts.data_numbers_persons_pk_seq OWNER TO easygp;
+ALTER TABLE data_numbers_persons_pk_seq OWNER TO easygp;
 
 --
 -- Name: data_numbers_persons_pk_seq; Type: SEQUENCE OWNED BY; Schema: contacts; Owner: easygp
@@ -21438,7 +20864,7 @@ CREATE SEQUENCE data_numbers_pk_seq
     CACHE 1;
 
 
-ALTER TABLE contacts.data_numbers_pk_seq OWNER TO easygp;
+ALTER TABLE data_numbers_pk_seq OWNER TO easygp;
 
 --
 -- Name: data_numbers_pk_seq; Type: SEQUENCE OWNED BY; Schema: contacts; Owner: easygp
@@ -21459,7 +20885,7 @@ CREATE SEQUENCE data_organisations_pk_seq
     CACHE 1;
 
 
-ALTER TABLE contacts.data_organisations_pk_seq OWNER TO easygp;
+ALTER TABLE data_organisations_pk_seq OWNER TO easygp;
 
 --
 -- Name: data_organisations_pk_seq; Type: SEQUENCE OWNED BY; Schema: contacts; Owner: easygp
@@ -21480,7 +20906,7 @@ CREATE SEQUENCE data_persons_pk_seq
     CACHE 1;
 
 
-ALTER TABLE contacts.data_persons_pk_seq OWNER TO easygp;
+ALTER TABLE data_persons_pk_seq OWNER TO easygp;
 
 --
 -- Name: data_persons_pk_seq; Type: SEQUENCE OWNED BY; Schema: contacts; Owner: easygp
@@ -21501,7 +20927,7 @@ CREATE SEQUENCE images_pk_seq
     CACHE 1;
 
 
-ALTER TABLE contacts.images_pk_seq OWNER TO easygp;
+ALTER TABLE images_pk_seq OWNER TO easygp;
 
 --
 -- Name: images_pk_seq; Type: SEQUENCE OWNED BY; Schema: contacts; Owner: easygp
@@ -21522,7 +20948,7 @@ CREATE SEQUENCE links_branches_comms_pk_seq
     CACHE 1;
 
 
-ALTER TABLE contacts.links_branches_comms_pk_seq OWNER TO easygp;
+ALTER TABLE links_branches_comms_pk_seq OWNER TO easygp;
 
 --
 -- Name: links_branches_comms_pk_seq; Type: SEQUENCE OWNED BY; Schema: contacts; Owner: easygp
@@ -21543,7 +20969,7 @@ CREATE TABLE links_employees_comms (
 );
 
 
-ALTER TABLE contacts.links_employees_comms OWNER TO easygp;
+ALTER TABLE links_employees_comms OWNER TO easygp;
 
 --
 -- Name: links_employees_comms_pk_seq; Type: SEQUENCE; Schema: contacts; Owner: easygp
@@ -21557,7 +20983,7 @@ CREATE SEQUENCE links_employees_comms_pk_seq
     CACHE 1;
 
 
-ALTER TABLE contacts.links_employees_comms_pk_seq OWNER TO easygp;
+ALTER TABLE links_employees_comms_pk_seq OWNER TO easygp;
 
 --
 -- Name: links_employees_comms_pk_seq; Type: SEQUENCE OWNED BY; Schema: contacts; Owner: easygp
@@ -21578,7 +21004,7 @@ CREATE SEQUENCE links_persons_addresses_pk_seq
     CACHE 1;
 
 
-ALTER TABLE contacts.links_persons_addresses_pk_seq OWNER TO easygp;
+ALTER TABLE links_persons_addresses_pk_seq OWNER TO easygp;
 
 --
 -- Name: links_persons_addresses_pk_seq; Type: SEQUENCE OWNED BY; Schema: contacts; Owner: easygp
@@ -21599,7 +21025,7 @@ CREATE TABLE links_persons_comms (
 );
 
 
-ALTER TABLE contacts.links_persons_comms OWNER TO easygp;
+ALTER TABLE links_persons_comms OWNER TO easygp;
 
 --
 -- Name: links_persons_comms_pk_seq; Type: SEQUENCE; Schema: contacts; Owner: easygp
@@ -21613,7 +21039,7 @@ CREATE SEQUENCE links_persons_comms_pk_seq
     CACHE 1;
 
 
-ALTER TABLE contacts.links_persons_comms_pk_seq OWNER TO easygp;
+ALTER TABLE links_persons_comms_pk_seq OWNER TO easygp;
 
 --
 -- Name: links_persons_comms_pk_seq; Type: SEQUENCE OWNED BY; Schema: contacts; Owner: easygp
@@ -21634,7 +21060,7 @@ CREATE SEQUENCE lu_address_types_pk_seq
     CACHE 1;
 
 
-ALTER TABLE contacts.lu_address_types_pk_seq OWNER TO easygp;
+ALTER TABLE lu_address_types_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_address_types_pk_seq; Type: SEQUENCE OWNED BY; Schema: contacts; Owner: easygp
@@ -21655,7 +21081,7 @@ CREATE SEQUENCE lu_categories_pk_seq
     CACHE 1;
 
 
-ALTER TABLE contacts.lu_categories_pk_seq OWNER TO easygp;
+ALTER TABLE lu_categories_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_categories_pk_seq; Type: SEQUENCE OWNED BY; Schema: contacts; Owner: easygp
@@ -21676,7 +21102,7 @@ CREATE SEQUENCE lu_contact_type_pk_seq
     CACHE 1;
 
 
-ALTER TABLE contacts.lu_contact_type_pk_seq OWNER TO easygp;
+ALTER TABLE lu_contact_type_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_contact_type_pk_seq; Type: SEQUENCE OWNED BY; Schema: contacts; Owner: easygp
@@ -21697,7 +21123,7 @@ CREATE SEQUENCE lu_employee_status_pk_seq
     CACHE 1;
 
 
-ALTER TABLE contacts.lu_employee_status_pk_seq OWNER TO easygp;
+ALTER TABLE lu_employee_status_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_employee_status_pk_seq; Type: SEQUENCE OWNED BY; Schema: contacts; Owner: easygp
@@ -21718,7 +21144,7 @@ CREATE TABLE lu_firstnames (
 );
 
 
-ALTER TABLE contacts.lu_firstnames OWNER TO easygp;
+ALTER TABLE lu_firstnames OWNER TO easygp;
 
 --
 -- Name: lu_firstnames_pk_seq; Type: SEQUENCE; Schema: contacts; Owner: easygp
@@ -21732,7 +21158,7 @@ CREATE SEQUENCE lu_firstnames_pk_seq
     CACHE 1;
 
 
-ALTER TABLE contacts.lu_firstnames_pk_seq OWNER TO easygp;
+ALTER TABLE lu_firstnames_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_firstnames_pk_seq; Type: SEQUENCE OWNED BY; Schema: contacts; Owner: easygp
@@ -21753,7 +21179,7 @@ CREATE SEQUENCE lu_marital_pk_seq
     CACHE 1;
 
 
-ALTER TABLE contacts.lu_marital_pk_seq OWNER TO easygp;
+ALTER TABLE lu_marital_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_marital_pk_seq; Type: SEQUENCE OWNED BY; Schema: contacts; Owner: easygp
@@ -21774,7 +21200,7 @@ CREATE TABLE lu_misspelt_towns (
 );
 
 
-ALTER TABLE contacts.lu_misspelt_towns OWNER TO easygp;
+ALTER TABLE lu_misspelt_towns OWNER TO easygp;
 
 --
 -- Name: TABLE lu_misspelt_towns; Type: COMMENT; Schema: contacts; Owner: easygp
@@ -21796,7 +21222,7 @@ CREATE SEQUENCE lu_mismatched_towns_pk_seq
     CACHE 1;
 
 
-ALTER TABLE contacts.lu_mismatched_towns_pk_seq OWNER TO easygp;
+ALTER TABLE lu_mismatched_towns_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_mismatched_towns_pk_seq; Type: SEQUENCE OWNED BY; Schema: contacts; Owner: easygp
@@ -21817,7 +21243,7 @@ CREATE SEQUENCE lu_sex_pk_seq
     CACHE 1;
 
 
-ALTER TABLE contacts.lu_sex_pk_seq OWNER TO easygp;
+ALTER TABLE lu_sex_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_sex_pk_seq; Type: SEQUENCE OWNED BY; Schema: contacts; Owner: easygp
@@ -21836,7 +21262,7 @@ CREATE TABLE lu_surnames (
 );
 
 
-ALTER TABLE contacts.lu_surnames OWNER TO easygp;
+ALTER TABLE lu_surnames OWNER TO easygp;
 
 --
 -- Name: lu_surnames_pk_seq; Type: SEQUENCE; Schema: contacts; Owner: easygp
@@ -21850,7 +21276,7 @@ CREATE SEQUENCE lu_surnames_pk_seq
     CACHE 1;
 
 
-ALTER TABLE contacts.lu_surnames_pk_seq OWNER TO easygp;
+ALTER TABLE lu_surnames_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_surnames_pk_seq; Type: SEQUENCE OWNED BY; Schema: contacts; Owner: easygp
@@ -21871,7 +21297,7 @@ CREATE SEQUENCE lu_title_pk_seq
     CACHE 1;
 
 
-ALTER TABLE contacts.lu_title_pk_seq OWNER TO easygp;
+ALTER TABLE lu_title_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_title_pk_seq; Type: SEQUENCE OWNED BY; Schema: contacts; Owner: easygp
@@ -21892,7 +21318,7 @@ CREATE SEQUENCE lu_towns_pk_seq
     CACHE 1;
 
 
-ALTER TABLE contacts.lu_towns_pk_seq OWNER TO easygp;
+ALTER TABLE lu_towns_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_towns_pk_seq; Type: SEQUENCE OWNED BY; Schema: contacts; Owner: easygp
@@ -21913,7 +21339,7 @@ CREATE SEQUENCE vworganisations_pk_seq
     CACHE 1;
 
 
-ALTER TABLE contacts.vworganisations_pk_seq OWNER TO easygp;
+ALTER TABLE vworganisations_pk_seq OWNER TO easygp;
 
 --
 -- Name: vworganisationsbycategory; Type: VIEW; Schema: contacts; Owner: easygp
@@ -21932,7 +21358,7 @@ CREATE VIEW vworganisationsbycategory AS
   ORDER BY lu_categories.category, data_organisations.organisation, data_branches.branch;
 
 
-ALTER TABLE contacts.vworganisationsbycategory OWNER TO easygp;
+ALTER TABLE vworganisationsbycategory OWNER TO easygp;
 
 --
 -- Name: vwpatients_pk_seq; Type: SEQUENCE; Schema: contacts; Owner: easygp
@@ -21946,7 +21372,7 @@ CREATE SEQUENCE vwpatients_pk_seq
     CACHE 1;
 
 
-ALTER TABLE contacts.vwpatients_pk_seq OWNER TO easygp;
+ALTER TABLE vwpatients_pk_seq OWNER TO easygp;
 
 --
 -- Name: vwpersonsaddresses; Type: VIEW; Schema: contacts; Owner: easygp
@@ -21978,7 +21404,7 @@ CREATE VIEW vwpersonsaddresses AS
   ORDER BY links_persons_addresses.fk_person;
 
 
-ALTER TABLE contacts.vwpersonsaddresses OWNER TO easygp;
+ALTER TABLE vwpersonsaddresses OWNER TO easygp;
 
 --
 -- Name: vwpersonsandemployeesaddresses; Type: VIEW; Schema: contacts; Owner: easygp
@@ -22030,7 +21456,7 @@ UNION
   WHERE ((vwpersonsexcludingpatients.fk_person <> 0) AND (vwpersonsexcludingpatients.fk_address IS NOT NULL));
 
 
-ALTER TABLE contacts.vwpersonsandemployeesaddresses OWNER TO easygp;
+ALTER TABLE vwpersonsandemployeesaddresses OWNER TO easygp;
 
 --
 -- Name: vwpersonscomms; Type: VIEW; Schema: contacts; Owner: easygp
@@ -22052,7 +21478,7 @@ CREATE VIEW vwpersonscomms AS
   ORDER BY links_person_comms.fk_person;
 
 
-ALTER TABLE contacts.vwpersonscomms OWNER TO easygp;
+ALTER TABLE vwpersonscomms OWNER TO easygp;
 
 --
 -- Name: vwpersonsemployeesbyoccupation; Type: VIEW; Schema: contacts; Owner: easygp
@@ -22147,7 +21573,7 @@ UNION
   WHERE (((vwemployees.employee_deleted = false) AND (vwemployees.person_deleted = false)) AND ((vwemployees.organisation_address_deleted = false) OR (vwemployees.organisation_address_deleted IS NULL)));
 
 
-ALTER TABLE contacts.vwpersonsemployeesbyoccupation OWNER TO easygp;
+ALTER TABLE vwpersonsemployeesbyoccupation OWNER TO easygp;
 
 --
 -- Name: vwtowns; Type: VIEW; Schema: contacts; Owner: easygp
@@ -22163,7 +21589,7 @@ CREATE VIEW vwtowns AS
   ORDER BY lu_towns.town;
 
 
-ALTER TABLE contacts.vwtowns OWNER TO easygp;
+ALTER TABLE vwtowns OWNER TO easygp;
 
 SET search_path = db, pg_catalog;
 
@@ -22178,7 +21604,7 @@ CREATE TABLE lu_version (
 );
 
 
-ALTER TABLE db.lu_version OWNER TO easygp;
+ALTER TABLE lu_version OWNER TO easygp;
 
 --
 -- Name: db_version_pk_seq; Type: SEQUENCE; Schema: db; Owner: easygp
@@ -22192,7 +21618,7 @@ CREATE SEQUENCE db_version_pk_seq
     CACHE 1;
 
 
-ALTER TABLE db.db_version_pk_seq OWNER TO easygp;
+ALTER TABLE db_version_pk_seq OWNER TO easygp;
 
 --
 -- Name: db_version_pk_seq; Type: SEQUENCE OWNED BY; Schema: db; Owner: easygp
@@ -22213,7 +21639,7 @@ CREATE TABLE hl7_inboxes (
 );
 
 
-ALTER TABLE defaults.hl7_inboxes OWNER TO easygp;
+ALTER TABLE hl7_inboxes OWNER TO easygp;
 
 --
 -- Name: TABLE hl7_inboxes; Type: COMMENT; Schema: defaults; Owner: easygp
@@ -22247,7 +21673,7 @@ CREATE SEQUENCE hl7_message_destination_pk_seq
     CACHE 1;
 
 
-ALTER TABLE defaults.hl7_message_destination_pk_seq OWNER TO easygp;
+ALTER TABLE hl7_message_destination_pk_seq OWNER TO easygp;
 
 --
 -- Name: hl7_message_destination_pk_seq; Type: SEQUENCE OWNED BY; Schema: defaults; Owner: easygp
@@ -22280,7 +21706,7 @@ CREATE TABLE incoming_message_handling (
 );
 
 
-ALTER TABLE defaults.incoming_message_handling OWNER TO easygp;
+ALTER TABLE incoming_message_handling OWNER TO easygp;
 
 --
 -- Name: TABLE incoming_message_handling; Type: COMMENT; Schema: defaults; Owner: easygp
@@ -22359,54 +21785,13 @@ CREATE SEQUENCE incoming_message_handling_pk_seq
     CACHE 1;
 
 
-ALTER TABLE defaults.incoming_message_handling_pk_seq OWNER TO easygp;
+ALTER TABLE incoming_message_handling_pk_seq OWNER TO easygp;
 
 --
 -- Name: incoming_message_handling_pk_seq; Type: SEQUENCE OWNED BY; Schema: defaults; Owner: easygp
 --
 
 ALTER SEQUENCE incoming_message_handling_pk_seq OWNED BY incoming_message_handling.pk;
-
-
---
--- Name: lu_link_printer_task; Type: TABLE; Schema: defaults; Owner: easygp; Tablespace: 
---
-
-CREATE TABLE lu_link_printer_task (
-    pk integer NOT NULL,
-    fk_lu_printer_host integer NOT NULL,
-    fk_task integer NOT NULL
-);
-
-
-ALTER TABLE defaults.lu_link_printer_task OWNER TO easygp;
-
---
--- Name: TABLE lu_link_printer_task; Type: COMMENT; Schema: defaults; Owner: easygp
---
-
-COMMENT ON TABLE lu_link_printer_task IS 'Links a printer on a host = linux hostname = a computer to a task';
-
-
---
--- Name: lu_link_printer_task_pk_seq; Type: SEQUENCE; Schema: defaults; Owner: easygp
---
-
-CREATE SEQUENCE lu_link_printer_task_pk_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
-ALTER TABLE defaults.lu_link_printer_task_pk_seq OWNER TO easygp;
-
---
--- Name: lu_link_printer_task_pk_seq; Type: SEQUENCE OWNED BY; Schema: defaults; Owner: easygp
---
-
-ALTER SEQUENCE lu_link_printer_task_pk_seq OWNED BY lu_link_printer_task.pk;
 
 
 --
@@ -22419,7 +21804,7 @@ CREATE TABLE lu_message_display_style (
 );
 
 
-ALTER TABLE defaults.lu_message_display_style OWNER TO easygp;
+ALTER TABLE lu_message_display_style OWNER TO easygp;
 
 --
 -- Name: lu_message_display_style_pk_seq; Type: SEQUENCE; Schema: defaults; Owner: easygp
@@ -22433,7 +21818,7 @@ CREATE SEQUENCE lu_message_display_style_pk_seq
     CACHE 1;
 
 
-ALTER TABLE defaults.lu_message_display_style_pk_seq OWNER TO easygp;
+ALTER TABLE lu_message_display_style_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_message_display_style_pk_seq; Type: SEQUENCE OWNED BY; Schema: defaults; Owner: easygp
@@ -22453,7 +21838,7 @@ CREATE TABLE lu_message_standard (
 );
 
 
-ALTER TABLE defaults.lu_message_standard OWNER TO easygp;
+ALTER TABLE lu_message_standard OWNER TO easygp;
 
 --
 -- Name: TABLE lu_message_standard; Type: COMMENT; Schema: defaults; Owner: easygp
@@ -22474,7 +21859,7 @@ CREATE SEQUENCE lu_message_standard_pk_seq
     CACHE 1;
 
 
-ALTER TABLE defaults.lu_message_standard_pk_seq OWNER TO easygp;
+ALTER TABLE lu_message_standard_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_message_standard_pk_seq; Type: SEQUENCE OWNED BY; Schema: defaults; Owner: easygp
@@ -22482,204 +21867,6 @@ ALTER TABLE defaults.lu_message_standard_pk_seq OWNER TO easygp;
 
 ALTER SEQUENCE lu_message_standard_pk_seq OWNED BY lu_message_standard.pk;
 
-
---
--- Name: lu_printer_host; Type: TABLE; Schema: defaults; Owner: easygp; Tablespace: 
---
-
-CREATE TABLE lu_printer_host (
-    pk integer NOT NULL,
-    fk_clinic integer NOT NULL,
-    hostname text NOT NULL,
-    printer text NOT NULL
-);
-
-
-ALTER TABLE defaults.lu_printer_host OWNER TO easygp;
-
---
--- Name: TABLE lu_printer_host; Type: COMMENT; Schema: defaults; Owner: easygp
---
-
-COMMENT ON TABLE lu_printer_host IS 'keeps a list of which printers live in which rooms (host=linux hostname)';
-
-
---
--- Name: lu_printer_host_pk_seq; Type: SEQUENCE; Schema: defaults; Owner: easygp
---
-
-CREATE SEQUENCE lu_printer_host_pk_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
-ALTER TABLE defaults.lu_printer_host_pk_seq OWNER TO easygp;
-
---
--- Name: lu_printer_host_pk_seq; Type: SEQUENCE OWNED BY; Schema: defaults; Owner: easygp
---
-
-ALTER SEQUENCE lu_printer_host_pk_seq OWNED BY lu_printer_host.pk;
-
-
---
--- Name: lu_printer_task; Type: TABLE; Schema: defaults; Owner: easygp; Tablespace: 
---
-
-CREATE TABLE lu_printer_task (
-    pk integer NOT NULL,
-    task text NOT NULL
-);
-
-
-ALTER TABLE defaults.lu_printer_task OWNER TO easygp;
-
---
--- Name: lu_printer_task_pk_seq; Type: SEQUENCE; Schema: defaults; Owner: easygp
---
-
-CREATE SEQUENCE lu_printer_task_pk_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
-ALTER TABLE defaults.lu_printer_task_pk_seq OWNER TO easygp;
-
---
--- Name: lu_printer_task_pk_seq; Type: SEQUENCE OWNED BY; Schema: defaults; Owner: easygp
---
-
-ALTER SEQUENCE lu_printer_task_pk_seq OWNED BY lu_printer_task.pk;
-
-
---
--- Name: script_coordinates; Type: TABLE; Schema: defaults; Owner: easygp; Tablespace: 
---
-
-CREATE TABLE script_coordinates (
-    pk integer NOT NULL,
-    fk_lu_printer_host integer NOT NULL,
-    left_margin integer NOT NULL,
-    top_margin integer NOT NULL,
-    practice_details_x integer NOT NULL,
-    practice_details_y integer NOT NULL,
-    prescriber_number_x integer NOT NULL,
-    prescriber_number_y integer NOT NULL,
-    medicare_number_x integer NOT NULL,
-    medicare_number_y integer NOT NULL,
-    benefits_number_x integer NOT NULL,
-    benefits_number_y integer NOT NULL,
-    safety_net_card_holder_x integer NOT NULL,
-    safety_net_card_holder_y integer NOT NULL,
-    other_concession_card_x integer NOT NULL,
-    other_concession_card_y integer NOT NULL,
-    patients_details_x integer NOT NULL,
-    patients_details_y integer NOT NULL,
-    script_date_x integer NOT NULL,
-    script_date_y integer NOT NULL,
-    no_brand_substitution_x integer NOT NULL,
-    no_brand_substitution_y integer NOT NULL,
-    script_type_x integer NOT NULL,
-    script_type_y integer NOT NULL,
-    font text DEFAULT 'Arial,9'::text,
-    drugs_x integer,
-    drugs_y integer
-);
-
-
-ALTER TABLE defaults.script_coordinates OWNER TO easygp;
-
---
--- Name: TABLE script_coordinates; Type: COMMENT; Schema: defaults; Owner: easygp
---
-
-COMMENT ON TABLE script_coordinates IS 'keeps the paper positions x-y for printing out
- a prescription for a particular printer in a
- particular clinic on a particular desk';
-
-
---
--- Name: script_coordinates_pk_seq; Type: SEQUENCE; Schema: defaults; Owner: easygp
---
-
-CREATE SEQUENCE script_coordinates_pk_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
-ALTER TABLE defaults.script_coordinates_pk_seq OWNER TO easygp;
-
---
--- Name: script_coordinates_pk_seq; Type: SEQUENCE OWNED BY; Schema: defaults; Owner: easygp
---
-
-ALTER SEQUENCE script_coordinates_pk_seq OWNED BY script_coordinates.pk;
-
-
---
--- Name: temp; Type: TABLE; Schema: defaults; Owner: easygp; Tablespace: 
---
-
-CREATE TABLE temp (
-    pk integer NOT NULL,
-    xy point
-);
-
-
-ALTER TABLE defaults.temp OWNER TO easygp;
-
---
--- Name: temp_pk_seq; Type: SEQUENCE; Schema: defaults; Owner: easygp
---
-
-CREATE SEQUENCE temp_pk_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
-ALTER TABLE defaults.temp_pk_seq OWNER TO easygp;
-
---
--- Name: temp_pk_seq; Type: SEQUENCE OWNED BY; Schema: defaults; Owner: easygp
---
-
-ALTER SEQUENCE temp_pk_seq OWNED BY temp.pk;
-
-
---
--- Name: vwprinterstasks; Type: VIEW; Schema: defaults; Owner: easygp
---
-
-CREATE VIEW vwprinterstasks AS
- SELECT data_branches.branch,
-    lu_printer_host.hostname,
-    lu_printer_host.printer,
-    lu_printer_task.task,
-    lu_link_printer_task.fk_task,
-    lu_link_printer_task.fk_lu_printer_host,
-    lu_printer_host.fk_clinic,
-    clinics.fk_branch,
-    lu_link_printer_task.pk AS pk_lu_link_printer_task
-   FROM ((((lu_link_printer_task
-     JOIN lu_printer_host ON ((lu_link_printer_task.fk_lu_printer_host = lu_printer_host.pk)))
-     JOIN lu_printer_task ON ((lu_link_printer_task.fk_task = lu_printer_task.pk)))
-     JOIN admin.clinics ON ((lu_printer_host.fk_clinic = clinics.pk)))
-     JOIN contacts.data_branches ON ((clinics.fk_branch = data_branches.pk)));
-
-
-ALTER TABLE defaults.vwprinterstasks OWNER TO easygp;
 
 SET search_path = documents, pg_catalog;
 
@@ -22696,7 +21883,7 @@ CREATE TABLE access_code_cache (
 );
 
 
-ALTER TABLE documents.access_code_cache OWNER TO easygp;
+ALTER TABLE access_code_cache OWNER TO easygp;
 
 --
 -- Name: TABLE access_code_cache; Type: COMMENT; Schema: documents; Owner: easygp
@@ -22733,7 +21920,7 @@ CREATE SEQUENCE access_code_cache_pk_seq
     CACHE 1;
 
 
-ALTER TABLE documents.access_code_cache_pk_seq OWNER TO easygp;
+ALTER TABLE access_code_cache_pk_seq OWNER TO easygp;
 
 --
 -- Name: access_code_cache_pk_seq; Type: SEQUENCE OWNED BY; Schema: documents; Owner: easygp
@@ -22754,7 +21941,7 @@ CREATE SEQUENCE documents_pk_seq
     CACHE 1;
 
 
-ALTER TABLE documents.documents_pk_seq OWNER TO easygp;
+ALTER TABLE documents_pk_seq OWNER TO easygp;
 
 --
 -- Name: documents_pk_seq; Type: SEQUENCE OWNED BY; Schema: documents; Owner: easygp
@@ -22775,7 +21962,7 @@ CREATE SEQUENCE hl7_messages_in
     CACHE 1;
 
 
-ALTER TABLE documents.hl7_messages_in OWNER TO easygp;
+ALTER TABLE hl7_messages_in OWNER TO easygp;
 
 --
 -- Name: SEQUENCE hl7_messages_in; Type: COMMENT; Schema: documents; Owner: easygp
@@ -22797,7 +21984,7 @@ CREATE SEQUENCE hl7_messages_seq
     CACHE 1;
 
 
-ALTER TABLE documents.hl7_messages_seq OWNER TO easygp;
+ALTER TABLE hl7_messages_seq OWNER TO easygp;
 
 --
 -- Name: lu_archive_site; Type: TABLE; Schema: documents; Owner: easygp; Tablespace: 
@@ -22809,7 +21996,7 @@ CREATE TABLE lu_archive_site (
 );
 
 
-ALTER TABLE documents.lu_archive_site OWNER TO easygp;
+ALTER TABLE lu_archive_site OWNER TO easygp;
 
 --
 -- Name: TABLE lu_archive_site; Type: COMMENT; Schema: documents; Owner: easygp
@@ -22830,7 +22017,7 @@ CREATE SEQUENCE lu_archive_site_pk_seq
     CACHE 1;
 
 
-ALTER TABLE documents.lu_archive_site_pk_seq OWNER TO easygp;
+ALTER TABLE lu_archive_site_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_archive_site_pk_seq; Type: SEQUENCE OWNED BY; Schema: documents; Owner: easygp
@@ -22851,7 +22038,7 @@ CREATE SEQUENCE lu_data_content_type_pk_seq
     CACHE 1;
 
 
-ALTER TABLE documents.lu_data_content_type_pk_seq OWNER TO easygp;
+ALTER TABLE lu_data_content_type_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_data_content_type_pk_seq; Type: SEQUENCE OWNED BY; Schema: documents; Owner: easygp
@@ -22870,7 +22057,7 @@ CREATE TABLE lu_display_as (
 );
 
 
-ALTER TABLE documents.lu_display_as OWNER TO easygp;
+ALTER TABLE lu_display_as OWNER TO easygp;
 
 --
 -- Name: COLUMN lu_display_as.display_as; Type: COMMENT; Schema: documents; Owner: easygp
@@ -22893,7 +22080,7 @@ CREATE SEQUENCE lu_display_as_pk_seq
     CACHE 1;
 
 
-ALTER TABLE documents.lu_display_as_pk_seq OWNER TO easygp;
+ALTER TABLE lu_display_as_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_display_as_pk_seq; Type: SEQUENCE OWNED BY; Schema: documents; Owner: easygp
@@ -22914,7 +22101,7 @@ CREATE SEQUENCE lu_message_display_style_pk_seq
     CACHE 1;
 
 
-ALTER TABLE documents.lu_message_display_style_pk_seq OWNER TO easygp;
+ALTER TABLE lu_message_display_style_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_message_display_style_pk_seq; Type: SEQUENCE OWNED BY; Schema: documents; Owner: easygp
@@ -22935,7 +22122,7 @@ CREATE SEQUENCE lu_message_standard_pk_seq
     CACHE 1;
 
 
-ALTER TABLE documents.lu_message_standard_pk_seq OWNER TO easygp;
+ALTER TABLE lu_message_standard_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_message_standard_pk_seq; Type: SEQUENCE OWNED BY; Schema: documents; Owner: easygp
@@ -22970,7 +22157,7 @@ CREATE TABLE lu_nata_laboratories (
 );
 
 
-ALTER TABLE documents.lu_nata_laboratories OWNER TO easygp;
+ALTER TABLE lu_nata_laboratories OWNER TO easygp;
 
 --
 -- Name: TABLE lu_nata_laboratories; Type: COMMENT; Schema: documents; Owner: easygp
@@ -23002,7 +22189,7 @@ CREATE SEQUENCE lu_nata_laboratories_pk_seq
     CACHE 1;
 
 
-ALTER TABLE documents.lu_nata_laboratories_pk_seq OWNER TO easygp;
+ALTER TABLE lu_nata_laboratories_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_nata_laboratories_pk_seq; Type: SEQUENCE OWNED BY; Schema: documents; Owner: easygp
@@ -23023,7 +22210,7 @@ CREATE SEQUENCE observations_pk_seq
     CACHE 1;
 
 
-ALTER TABLE documents.observations_pk_seq OWNER TO easygp;
+ALTER TABLE observations_pk_seq OWNER TO easygp;
 
 --
 -- Name: observations_pk_seq; Type: SEQUENCE OWNED BY; Schema: documents; Owner: easygp
@@ -23057,7 +22244,7 @@ CREATE VIEW vwgraphableobservations AS
   ORDER BY observations.pk;
 
 
-ALTER TABLE documents.vwgraphableobservations OWNER TO easygp;
+ALTER TABLE vwgraphableobservations OWNER TO easygp;
 
 --
 -- Name: patientshba1cover75; Type: VIEW; Schema: documents; Owner: easygp
@@ -23069,7 +22256,7 @@ CREATE VIEW patientshba1cover75 AS
   WHERE ((vwgraphableobservations.loinc = '4548-4'::text) AND (vwgraphableobservations.value_numeric > 7.5));
 
 
-ALTER TABLE documents.patientshba1cover75 OWNER TO easygp;
+ALTER TABLE patientshba1cover75 OWNER TO easygp;
 
 --
 -- Name: pcehr; Type: TABLE; Schema: documents; Owner: easygp; Tablespace: 
@@ -23092,7 +22279,7 @@ CREATE TABLE pcehr (
 );
 
 
-ALTER TABLE documents.pcehr OWNER TO easygp;
+ALTER TABLE pcehr OWNER TO easygp;
 
 --
 -- Name: TABLE pcehr; Type: COMMENT; Schema: documents; Owner: easygp
@@ -23176,7 +22363,7 @@ CREATE SEQUENCE pcehr_pk_seq
     CACHE 1;
 
 
-ALTER TABLE documents.pcehr_pk_seq OWNER TO easygp;
+ALTER TABLE pcehr_pk_seq OWNER TO easygp;
 
 --
 -- Name: pcehr_pk_seq; Type: SEQUENCE OWNED BY; Schema: documents; Owner: easygp
@@ -23195,7 +22382,7 @@ CREATE TABLE pcehr_type (
 );
 
 
-ALTER TABLE documents.pcehr_type OWNER TO easygp;
+ALTER TABLE pcehr_type OWNER TO easygp;
 
 --
 -- Name: TABLE pcehr_type; Type: COMMENT; Schema: documents; Owner: easygp
@@ -23216,7 +22403,7 @@ CREATE SEQUENCE pcehr_type_pk_seq
     CACHE 1;
 
 
-ALTER TABLE documents.pcehr_type_pk_seq OWNER TO easygp;
+ALTER TABLE pcehr_type_pk_seq OWNER TO easygp;
 
 --
 -- Name: pcehr_type_pk_seq; Type: SEQUENCE OWNED BY; Schema: documents; Owner: easygp
@@ -23237,7 +22424,7 @@ CREATE SEQUENCE sending_entities_pk_seq
     CACHE 1;
 
 
-ALTER TABLE documents.sending_entities_pk_seq OWNER TO easygp;
+ALTER TABLE sending_entities_pk_seq OWNER TO easygp;
 
 --
 -- Name: sending_entities_pk_seq; Type: SEQUENCE OWNED BY; Schema: documents; Owner: easygp
@@ -23259,7 +22446,7 @@ CREATE TABLE signed_off (
 );
 
 
-ALTER TABLE documents.signed_off OWNER TO easygp;
+ALTER TABLE signed_off OWNER TO easygp;
 
 --
 -- Name: signed_off_pk_seq; Type: SEQUENCE; Schema: documents; Owner: easygp
@@ -23273,7 +22460,7 @@ CREATE SEQUENCE signed_off_pk_seq
     CACHE 1;
 
 
-ALTER TABLE documents.signed_off_pk_seq OWNER TO easygp;
+ALTER TABLE signed_off_pk_seq OWNER TO easygp;
 
 --
 -- Name: signed_off_pk_seq; Type: SEQUENCE OWNED BY; Schema: documents; Owner: easygp
@@ -23294,7 +22481,7 @@ CREATE SEQUENCE unique_file_number_seq
     CACHE 1;
 
 
-ALTER TABLE documents.unique_file_number_seq OWNER TO easygp;
+ALTER TABLE unique_file_number_seq OWNER TO easygp;
 
 --
 -- Name: unmatched_patients_pk_seq; Type: SEQUENCE; Schema: documents; Owner: easygp
@@ -23308,7 +22495,7 @@ CREATE SEQUENCE unmatched_patients_pk_seq
     CACHE 1;
 
 
-ALTER TABLE documents.unmatched_patients_pk_seq OWNER TO easygp;
+ALTER TABLE unmatched_patients_pk_seq OWNER TO easygp;
 
 --
 -- Name: unmatched_patients_pk_seq; Type: SEQUENCE OWNED BY; Schema: documents; Owner: easygp
@@ -23329,7 +22516,7 @@ CREATE SEQUENCE unmatched_staff_pk_seq
     CACHE 1;
 
 
-ALTER TABLE documents.unmatched_staff_pk_seq OWNER TO easygp;
+ALTER TABLE unmatched_staff_pk_seq OWNER TO easygp;
 
 --
 -- Name: unmatched_staff_pk_seq; Type: SEQUENCE OWNED BY; Schema: documents; Owner: easygp
@@ -23348,7 +22535,7 @@ CREATE VIEW vwhba1cover75 AS
   WHERE ((vwgraphableobservations.loinc = '4548-4'::text) AND (vwgraphableobservations.value_numeric > 7.5));
 
 
-ALTER TABLE documents.vwhba1cover75 OWNER TO easygp;
+ALTER TABLE vwhba1cover75 OWNER TO easygp;
 
 --
 -- Name: vwhl7filesimported; Type: VIEW; Schema: documents; Owner: easygp
@@ -23361,7 +22548,7 @@ CREATE VIEW vwhl7filesimported AS
   ORDER BY vwdocuments.source_file;
 
 
-ALTER TABLE documents.vwhl7filesimported OWNER TO easygp;
+ALTER TABLE vwhl7filesimported OWNER TO easygp;
 
 --
 -- Name: vwinboxstaff; Type: VIEW; Schema: documents; Owner: easygp
@@ -23387,7 +22574,7 @@ UNION
   ORDER BY 5;
 
 
-ALTER TABLE documents.vwinboxstaff OWNER TO easygp;
+ALTER TABLE vwinboxstaff OWNER TO easygp;
 
 --
 -- Name: VIEW vwinboxstaff; Type: COMMENT; Schema: documents; Owner: easygp
@@ -23419,7 +22606,7 @@ CREATE VIEW vwobservations AS
   ORDER BY documents.fk_patient, observations.observation_date, observations.set_id;
 
 
-ALTER TABLE documents.vwobservations OWNER TO easygp;
+ALTER TABLE vwobservations OWNER TO easygp;
 
 SET search_path = drugbank, pg_catalog;
 
@@ -23433,7 +22620,7 @@ CREATE TABLE atc_codes (
 );
 
 
-ALTER TABLE drugbank.atc_codes OWNER TO easygp;
+ALTER TABLE atc_codes OWNER TO easygp;
 
 --
 -- Name: atc_codes_pk_seq; Type: SEQUENCE; Schema: drugbank; Owner: easygp
@@ -23447,7 +22634,7 @@ CREATE SEQUENCE atc_codes_pk_seq
     CACHE 1;
 
 
-ALTER TABLE drugbank.atc_codes_pk_seq OWNER TO easygp;
+ALTER TABLE atc_codes_pk_seq OWNER TO easygp;
 
 --
 -- Name: atc_codes_pk_seq; Type: SEQUENCE OWNED BY; Schema: drugbank; Owner: easygp
@@ -23467,7 +22654,7 @@ CREATE TABLE brands (
 );
 
 
-ALTER TABLE drugbank.brands OWNER TO easygp;
+ALTER TABLE brands OWNER TO easygp;
 
 --
 -- Name: brands_pk_seq; Type: SEQUENCE; Schema: drugbank; Owner: easygp
@@ -23481,7 +22668,7 @@ CREATE SEQUENCE brands_pk_seq
     CACHE 1;
 
 
-ALTER TABLE drugbank.brands_pk_seq OWNER TO easygp;
+ALTER TABLE brands_pk_seq OWNER TO easygp;
 
 --
 -- Name: brands_pk_seq; Type: SEQUENCE OWNED BY; Schema: drugbank; Owner: easygp
@@ -23500,7 +22687,7 @@ CREATE TABLE categories (
 );
 
 
-ALTER TABLE drugbank.categories OWNER TO easygp;
+ALTER TABLE categories OWNER TO easygp;
 
 --
 -- Name: categories_pk_seq; Type: SEQUENCE; Schema: drugbank; Owner: easygp
@@ -23514,7 +22701,7 @@ CREATE SEQUENCE categories_pk_seq
     CACHE 1;
 
 
-ALTER TABLE drugbank.categories_pk_seq OWNER TO easygp;
+ALTER TABLE categories_pk_seq OWNER TO easygp;
 
 --
 -- Name: categories_pk_seq; Type: SEQUENCE OWNED BY; Schema: drugbank; Owner: easygp
@@ -23535,7 +22722,7 @@ CREATE TABLE dosage (
 );
 
 
-ALTER TABLE drugbank.dosage OWNER TO easygp;
+ALTER TABLE dosage OWNER TO easygp;
 
 --
 -- Name: dosage_pl_seq; Type: SEQUENCE; Schema: drugbank; Owner: easygp
@@ -23549,7 +22736,7 @@ CREATE SEQUENCE dosage_pl_seq
     CACHE 1;
 
 
-ALTER TABLE drugbank.dosage_pl_seq OWNER TO easygp;
+ALTER TABLE dosage_pl_seq OWNER TO easygp;
 
 --
 -- Name: dosage_pl_seq; Type: SEQUENCE OWNED BY; Schema: drugbank; Owner: easygp
@@ -23581,7 +22768,7 @@ CREATE TABLE drug (
 );
 
 
-ALTER TABLE drugbank.drug OWNER TO easygp;
+ALTER TABLE drug OWNER TO easygp;
 
 --
 -- Name: TABLE drug; Type: COMMENT; Schema: drugbank; Owner: easygp
@@ -23609,7 +22796,7 @@ CREATE TABLE drug_interactions (
 );
 
 
-ALTER TABLE drugbank.drug_interactions OWNER TO easygp;
+ALTER TABLE drug_interactions OWNER TO easygp;
 
 --
 -- Name: COLUMN drug_interactions.description; Type: COMMENT; Schema: drugbank; Owner: easygp
@@ -23630,7 +22817,7 @@ CREATE SEQUENCE drug_interactions_pk_seq
     CACHE 1;
 
 
-ALTER TABLE drugbank.drug_interactions_pk_seq OWNER TO easygp;
+ALTER TABLE drug_interactions_pk_seq OWNER TO easygp;
 
 --
 -- Name: drug_interactions_pk_seq; Type: SEQUENCE OWNED BY; Schema: drugbank; Owner: easygp
@@ -23651,7 +22838,7 @@ CREATE SEQUENCE drug_pk_seq
     CACHE 1;
 
 
-ALTER TABLE drugbank.drug_pk_seq OWNER TO easygp;
+ALTER TABLE drug_pk_seq OWNER TO easygp;
 
 --
 -- Name: drug_pk_seq; Type: SEQUENCE OWNED BY; Schema: drugbank; Owner: easygp
@@ -23672,7 +22859,7 @@ CREATE TABLE external_links (
 );
 
 
-ALTER TABLE drugbank.external_links OWNER TO easygp;
+ALTER TABLE external_links OWNER TO easygp;
 
 --
 -- Name: external_links_pk_seq; Type: SEQUENCE; Schema: drugbank; Owner: easygp
@@ -23686,7 +22873,7 @@ CREATE SEQUENCE external_links_pk_seq
     CACHE 1;
 
 
-ALTER TABLE drugbank.external_links_pk_seq OWNER TO easygp;
+ALTER TABLE external_links_pk_seq OWNER TO easygp;
 
 --
 -- Name: external_links_pk_seq; Type: SEQUENCE OWNED BY; Schema: drugbank; Owner: easygp
@@ -23706,7 +22893,7 @@ CREATE TABLE food_interactions (
 );
 
 
-ALTER TABLE drugbank.food_interactions OWNER TO easygp;
+ALTER TABLE food_interactions OWNER TO easygp;
 
 --
 -- Name: food_interactions_pk_seq; Type: SEQUENCE; Schema: drugbank; Owner: easygp
@@ -23720,7 +22907,7 @@ CREATE SEQUENCE food_interactions_pk_seq
     CACHE 1;
 
 
-ALTER TABLE drugbank.food_interactions_pk_seq OWNER TO easygp;
+ALTER TABLE food_interactions_pk_seq OWNER TO easygp;
 
 --
 -- Name: food_interactions_pk_seq; Type: SEQUENCE OWNED BY; Schema: drugbank; Owner: easygp
@@ -23740,7 +22927,7 @@ CREATE TABLE general_references (
 );
 
 
-ALTER TABLE drugbank.general_references OWNER TO easygp;
+ALTER TABLE general_references OWNER TO easygp;
 
 --
 -- Name: TABLE general_references; Type: COMMENT; Schema: drugbank; Owner: easygp
@@ -23761,7 +22948,7 @@ CREATE SEQUENCE general_references_pk_seq
     CACHE 1;
 
 
-ALTER TABLE drugbank.general_references_pk_seq OWNER TO easygp;
+ALTER TABLE general_references_pk_seq OWNER TO easygp;
 
 --
 -- Name: general_references_pk_seq; Type: SEQUENCE OWNED BY; Schema: drugbank; Owner: easygp
@@ -23781,7 +22968,7 @@ CREATE TABLE link_drug_to_atc_code (
 );
 
 
-ALTER TABLE drugbank.link_drug_to_atc_code OWNER TO easygp;
+ALTER TABLE link_drug_to_atc_code OWNER TO easygp;
 
 --
 -- Name: link_drug_to_atc_code_pk_seq; Type: SEQUENCE; Schema: drugbank; Owner: easygp
@@ -23795,7 +22982,7 @@ CREATE SEQUENCE link_drug_to_atc_code_pk_seq
     CACHE 1;
 
 
-ALTER TABLE drugbank.link_drug_to_atc_code_pk_seq OWNER TO easygp;
+ALTER TABLE link_drug_to_atc_code_pk_seq OWNER TO easygp;
 
 --
 -- Name: link_drug_to_atc_code_pk_seq; Type: SEQUENCE OWNED BY; Schema: drugbank; Owner: easygp
@@ -23815,7 +23002,7 @@ CREATE TABLE link_drug_to_category (
 );
 
 
-ALTER TABLE drugbank.link_drug_to_category OWNER TO easygp;
+ALTER TABLE link_drug_to_category OWNER TO easygp;
 
 --
 -- Name: link_drug_to_category_pk_seq; Type: SEQUENCE; Schema: drugbank; Owner: easygp
@@ -23829,7 +23016,7 @@ CREATE SEQUENCE link_drug_to_category_pk_seq
     CACHE 1;
 
 
-ALTER TABLE drugbank.link_drug_to_category_pk_seq OWNER TO easygp;
+ALTER TABLE link_drug_to_category_pk_seq OWNER TO easygp;
 
 --
 -- Name: link_drug_to_category_pk_seq; Type: SEQUENCE OWNED BY; Schema: drugbank; Owner: easygp
@@ -23849,7 +23036,7 @@ CREATE TABLE link_drug_to_dosage (
 );
 
 
-ALTER TABLE drugbank.link_drug_to_dosage OWNER TO easygp;
+ALTER TABLE link_drug_to_dosage OWNER TO easygp;
 
 --
 -- Name: link_drug_to_dosage_pk_seq; Type: SEQUENCE; Schema: drugbank; Owner: easygp
@@ -23863,7 +23050,7 @@ CREATE SEQUENCE link_drug_to_dosage_pk_seq
     CACHE 1;
 
 
-ALTER TABLE drugbank.link_drug_to_dosage_pk_seq OWNER TO easygp;
+ALTER TABLE link_drug_to_dosage_pk_seq OWNER TO easygp;
 
 --
 -- Name: link_drug_to_dosage_pk_seq; Type: SEQUENCE OWNED BY; Schema: drugbank; Owner: easygp
@@ -23882,7 +23069,7 @@ CREATE TABLE lu_external_resources (
 );
 
 
-ALTER TABLE drugbank.lu_external_resources OWNER TO easygp;
+ALTER TABLE lu_external_resources OWNER TO easygp;
 
 --
 -- Name: lu_external_resources_pk_seq; Type: SEQUENCE; Schema: drugbank; Owner: easygp
@@ -23896,7 +23083,7 @@ CREATE SEQUENCE lu_external_resources_pk_seq
     CACHE 1;
 
 
-ALTER TABLE drugbank.lu_external_resources_pk_seq OWNER TO easygp;
+ALTER TABLE lu_external_resources_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_external_resources_pk_seq; Type: SEQUENCE OWNED BY; Schema: drugbank; Owner: easygp
@@ -23919,7 +23106,7 @@ CREATE TABLE patents (
 );
 
 
-ALTER TABLE drugbank.patents OWNER TO easygp;
+ALTER TABLE patents OWNER TO easygp;
 
 --
 -- Name: patents_pk_seq; Type: SEQUENCE; Schema: drugbank; Owner: easygp
@@ -23933,7 +23120,7 @@ CREATE SEQUENCE patents_pk_seq
     CACHE 1;
 
 
-ALTER TABLE drugbank.patents_pk_seq OWNER TO easygp;
+ALTER TABLE patents_pk_seq OWNER TO easygp;
 
 --
 -- Name: patents_pk_seq; Type: SEQUENCE OWNED BY; Schema: drugbank; Owner: easygp
@@ -23954,7 +23141,7 @@ CREATE TABLE pregnancy_code (
 );
 
 
-ALTER TABLE drugbank.pregnancy_code OWNER TO easygp;
+ALTER TABLE pregnancy_code OWNER TO easygp;
 
 --
 -- Name: COLUMN pregnancy_code.code; Type: COMMENT; Schema: drugbank; Owner: easygp
@@ -23982,7 +23169,7 @@ CREATE SEQUENCE pregnancy_code_pk_seq
     CACHE 1;
 
 
-ALTER TABLE drugbank.pregnancy_code_pk_seq OWNER TO easygp;
+ALTER TABLE pregnancy_code_pk_seq OWNER TO easygp;
 
 --
 -- Name: pregnancy_code_pk_seq; Type: SEQUENCE OWNED BY; Schema: drugbank; Owner: easygp
@@ -24002,7 +23189,7 @@ CREATE TABLE salts (
 );
 
 
-ALTER TABLE drugbank.salts OWNER TO easygp;
+ALTER TABLE salts OWNER TO easygp;
 
 --
 -- Name: salts_pk_seq; Type: SEQUENCE; Schema: drugbank; Owner: easygp
@@ -24016,7 +23203,7 @@ CREATE SEQUENCE salts_pk_seq
     CACHE 1;
 
 
-ALTER TABLE drugbank.salts_pk_seq OWNER TO easygp;
+ALTER TABLE salts_pk_seq OWNER TO easygp;
 
 --
 -- Name: salts_pk_seq; Type: SEQUENCE OWNED BY; Schema: drugbank; Owner: easygp
@@ -24036,7 +23223,7 @@ CREATE TABLE synonyms (
 );
 
 
-ALTER TABLE drugbank.synonyms OWNER TO easygp;
+ALTER TABLE synonyms OWNER TO easygp;
 
 --
 -- Name: synonyms_pk_seq; Type: SEQUENCE; Schema: drugbank; Owner: easygp
@@ -24050,7 +23237,7 @@ CREATE SEQUENCE synonyms_pk_seq
     CACHE 1;
 
 
-ALTER TABLE drugbank.synonyms_pk_seq OWNER TO easygp;
+ALTER TABLE synonyms_pk_seq OWNER TO easygp;
 
 --
 -- Name: synonyms_pk_seq; Type: SEQUENCE OWNED BY; Schema: drugbank; Owner: easygp
@@ -24085,7 +23272,7 @@ CREATE VIEW vw_basic_drug_pi AS
      LEFT JOIN pregnancy_code ON ((pregnancy_code.fk_drug = drug.pk)));
 
 
-ALTER TABLE drugbank.vw_basic_drug_pi OWNER TO easygp;
+ALTER TABLE vw_basic_drug_pi OWNER TO easygp;
 
 --
 -- Name: vwatcdrugfoodinteractions; Type: VIEW; Schema: drugbank; Owner: easygp
@@ -24103,7 +23290,7 @@ CREATE VIEW vwatcdrugfoodinteractions AS
   WHERE (((food_interactions.fk_drug = link_drug_to_atc_code.fk_drug) AND (link_drug_to_atc_code.fk_drug = drug.pk)) AND (link_drug_to_atc_code.fk_atc_code = atc_codes.pk));
 
 
-ALTER TABLE drugbank.vwatcdrugfoodinteractions OWNER TO easygp;
+ALTER TABLE vwatcdrugfoodinteractions OWNER TO easygp;
 
 --
 -- Name: VIEW vwatcdrugfoodinteractions; Type: COMMENT; Schema: drugbank; Owner: easygp
@@ -24132,7 +23319,7 @@ CREATE VIEW vwdrugatccodeinteractions AS
      JOIN atc_codes atc2 ON ((link_drug_atc2.fk_atc_code = atc2.pk)));
 
 
-ALTER TABLE drugbank.vwdrugatccodeinteractions OWNER TO easygp;
+ALTER TABLE vwdrugatccodeinteractions OWNER TO easygp;
 
 SET search_path = drugs, pg_catalog;
 
@@ -24146,7 +23333,7 @@ CREATE TABLE chapters (
 );
 
 
-ALTER TABLE drugs.chapters OWNER TO easygp;
+ALTER TABLE chapters OWNER TO easygp;
 
 --
 -- Name: clinical_effects; Type: TABLE; Schema: drugs; Owner: easygp; Tablespace: 
@@ -24159,7 +23346,7 @@ CREATE TABLE clinical_effects (
 );
 
 
-ALTER TABLE drugs.clinical_effects OWNER TO easygp;
+ALTER TABLE clinical_effects OWNER TO easygp;
 
 --
 -- Name: TABLE clinical_effects; Type: COMMENT; Schema: drugs; Owner: easygp
@@ -24183,7 +23370,7 @@ CREATE SEQUENCE clinical_effects_pk_seq
     CACHE 1;
 
 
-ALTER TABLE drugs.clinical_effects_pk_seq OWNER TO easygp;
+ALTER TABLE clinical_effects_pk_seq OWNER TO easygp;
 
 --
 -- Name: clinical_effects_pk_seq; Type: SEQUENCE OWNED BY; Schema: drugs; Owner: easygp
@@ -24205,7 +23392,7 @@ CREATE TABLE company (
 );
 
 
-ALTER TABLE drugs.company OWNER TO easygp;
+ALTER TABLE company OWNER TO easygp;
 
 --
 -- Name: TABLE company; Type: COMMENT; Schema: drugs; Owner: easygp
@@ -24260,7 +23447,7 @@ CREATE TABLE evidence_levels (
 );
 
 
-ALTER TABLE drugs.evidence_levels OWNER TO easygp;
+ALTER TABLE evidence_levels OWNER TO easygp;
 
 --
 -- Name: TABLE evidence_levels; Type: COMMENT; Schema: drugs; Owner: easygp
@@ -24279,7 +23466,7 @@ CREATE TABLE flags (
 );
 
 
-ALTER TABLE drugs.flags OWNER TO easygp;
+ALTER TABLE flags OWNER TO easygp;
 
 --
 -- Name: TABLE flags; Type: COMMENT; Schema: drugs; Owner: easygp
@@ -24300,7 +23487,7 @@ CREATE SEQUENCE flags_pk_seq
     CACHE 1;
 
 
-ALTER TABLE drugs.flags_pk_seq OWNER TO easygp;
+ALTER TABLE flags_pk_seq OWNER TO easygp;
 
 --
 -- Name: flags_pk_seq; Type: SEQUENCE OWNED BY; Schema: drugs; Owner: easygp
@@ -24329,7 +23516,7 @@ CREATE TABLE info (
 );
 
 
-ALTER TABLE drugs.info OWNER TO easygp;
+ALTER TABLE info OWNER TO easygp;
 
 --
 -- Name: TABLE info; Type: COMMENT; Schema: drugs; Owner: easygp
@@ -24357,7 +23544,7 @@ CREATE SEQUENCE info_pk_seq
     CACHE 1;
 
 
-ALTER TABLE drugs.info_pk_seq OWNER TO easygp;
+ALTER TABLE info_pk_seq OWNER TO easygp;
 
 --
 -- Name: info_pk_seq; Type: SEQUENCE OWNED BY; Schema: drugs; Owner: easygp
@@ -24376,7 +23563,7 @@ CREATE TABLE link_atc_info (
 );
 
 
-ALTER TABLE drugs.link_atc_info OWNER TO easygp;
+ALTER TABLE link_atc_info OWNER TO easygp;
 
 --
 -- Name: TABLE link_atc_info; Type: COMMENT; Schema: drugs; Owner: easygp
@@ -24396,7 +23583,7 @@ CREATE TABLE link_category_info (
 );
 
 
-ALTER TABLE drugs.link_category_info OWNER TO easygp;
+ALTER TABLE link_category_info OWNER TO easygp;
 
 --
 -- Name: TABLE link_category_info; Type: COMMENT; Schema: drugs; Owner: easygp
@@ -24416,7 +23603,7 @@ CREATE TABLE link_flag_product (
 );
 
 
-ALTER TABLE drugs.link_flag_product OWNER TO easygp;
+ALTER TABLE link_flag_product OWNER TO easygp;
 
 --
 -- Name: TABLE link_flag_product; Type: COMMENT; Schema: drugs; Owner: easygp
@@ -24435,7 +23622,7 @@ CREATE TABLE link_info_source (
 );
 
 
-ALTER TABLE drugs.link_info_source OWNER TO easygp;
+ALTER TABLE link_info_source OWNER TO easygp;
 
 --
 -- Name: patient_categories; Type: TABLE; Schema: drugs; Owner: easygp; Tablespace: 
@@ -24447,7 +23634,7 @@ CREATE TABLE patient_categories (
 );
 
 
-ALTER TABLE drugs.patient_categories OWNER TO easygp;
+ALTER TABLE patient_categories OWNER TO easygp;
 
 --
 -- Name: TABLE patient_categories; Type: COMMENT; Schema: drugs; Owner: easygp
@@ -24471,7 +23658,7 @@ CREATE TABLE pbs (
 );
 
 
-ALTER TABLE drugs.pbs OWNER TO easygp;
+ALTER TABLE pbs OWNER TO easygp;
 
 --
 -- Name: TABLE pbs; Type: COMMENT; Schema: drugs; Owner: easygp
@@ -24519,7 +23706,7 @@ CREATE TABLE pbsconvert (
 );
 
 
-ALTER TABLE drugs.pbsconvert OWNER TO easygp;
+ALTER TABLE pbsconvert OWNER TO easygp;
 
 --
 -- Name: pharmacologic_mechanisms; Type: TABLE; Schema: drugs; Owner: easygp; Tablespace: 
@@ -24531,7 +23718,7 @@ CREATE TABLE pharmacologic_mechanisms (
 );
 
 
-ALTER TABLE drugs.pharmacologic_mechanisms OWNER TO easygp;
+ALTER TABLE pharmacologic_mechanisms OWNER TO easygp;
 
 --
 -- Name: product_information_files; Type: TABLE; Schema: drugs; Owner: easygp; Tablespace: 
@@ -24542,7 +23729,7 @@ CREATE TABLE product_information_files (
 );
 
 
-ALTER TABLE drugs.product_information_files OWNER TO easygp;
+ALTER TABLE product_information_files OWNER TO easygp;
 
 --
 -- Name: TABLE product_information_files; Type: COMMENT; Schema: drugs; Owner: easygp
@@ -24562,7 +23749,7 @@ CREATE TABLE product_information_unmatched (
 );
 
 
-ALTER TABLE drugs.product_information_unmatched OWNER TO easygp;
+ALTER TABLE product_information_unmatched OWNER TO easygp;
 
 --
 -- Name: severity_level; Type: TABLE; Schema: drugs; Owner: easygp; Tablespace: 
@@ -24574,7 +23761,7 @@ CREATE TABLE severity_level (
 );
 
 
-ALTER TABLE drugs.severity_level OWNER TO easygp;
+ALTER TABLE severity_level OWNER TO easygp;
 
 --
 -- Name: TABLE severity_level; Type: COMMENT; Schema: drugs; Owner: easygp
@@ -24595,7 +23782,7 @@ CREATE TABLE sources (
 );
 
 
-ALTER TABLE drugs.sources OWNER TO easygp;
+ALTER TABLE sources OWNER TO easygp;
 
 --
 -- Name: TABLE sources; Type: COMMENT; Schema: drugs; Owner: easygp
@@ -24630,7 +23817,7 @@ CREATE TABLE topic (
 );
 
 
-ALTER TABLE drugs.topic OWNER TO easygp;
+ALTER TABLE topic OWNER TO easygp;
 
 --
 -- Name: TABLE topic; Type: COMMENT; Schema: drugs; Owner: easygp
@@ -24657,7 +23844,7 @@ CREATE TABLE version (
 );
 
 
-ALTER TABLE drugs.version OWNER TO easygp;
+ALTER TABLE version OWNER TO easygp;
 
 --
 -- Name: vwdistinctbrandsforgenericproduct; Type: VIEW; Schema: drugs; Owner: postgres
@@ -24674,7 +23861,7 @@ CREATE VIEW vwdistinctbrandsforgenericproduct AS
      JOIN product ON ((product.pk = brand.fk_product)));
 
 
-ALTER TABLE drugs.vwdistinctbrandsforgenericproduct OWNER TO postgres;
+ALTER TABLE vwdistinctbrandsforgenericproduct OWNER TO postgres;
 
 --
 -- Name: vwpbs; Type: VIEW; Schema: drugs; Owner: postgres
@@ -24727,7 +23914,7 @@ CREATE VIEW vwpbs AS
      LEFT JOIN restriction ON (((pbs.pbscode)::text = (restriction.pbscode)::text)));
 
 
-ALTER TABLE drugs.vwpbs OWNER TO postgres;
+ALTER TABLE vwpbs OWNER TO postgres;
 
 --
 -- Name: VIEW vwpbs; Type: COMMENT; Schema: drugs; Owner: postgres
@@ -24812,7 +23999,7 @@ CREATE VIEW vwdrugs AS
      LEFT JOIN atc atc1 ON (("substring"((product.atccode)::text, 1, 4) = atc1.atccode)));
 
 
-ALTER TABLE drugs.vwdrugs OWNER TO postgres;
+ALTER TABLE vwdrugs OWNER TO postgres;
 
 --
 -- Name: vwgeneric; Type: VIEW; Schema: drugs; Owner: postgres
@@ -24854,7 +24041,7 @@ CREATE VIEW vwgeneric AS
      LEFT JOIN vwpbs ON ((product.pk = vwpbs.fk_product)));
 
 
-ALTER TABLE drugs.vwgeneric OWNER TO postgres;
+ALTER TABLE vwgeneric OWNER TO postgres;
 
 SET search_path = import_export, pg_catalog;
 
@@ -24889,7 +24076,7 @@ CREATE TABLE lu_demographics_field_templates (
 );
 
 
-ALTER TABLE import_export.lu_demographics_field_templates OWNER TO easygp;
+ALTER TABLE lu_demographics_field_templates OWNER TO easygp;
 
 --
 -- Name: TABLE lu_demographics_field_templates; Type: COMMENT; Schema: import_export; Owner: easygp
@@ -24910,7 +24097,7 @@ CREATE SEQUENCE lu_demographics_field_templates_pk_seq
     CACHE 1;
 
 
-ALTER TABLE import_export.lu_demographics_field_templates_pk_seq OWNER TO easygp;
+ALTER TABLE lu_demographics_field_templates_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_demographics_field_templates_pk_seq; Type: SEQUENCE OWNED BY; Schema: import_export; Owner: easygp
@@ -24930,7 +24117,7 @@ CREATE TABLE lu_misspelt_occupations (
 );
 
 
-ALTER TABLE import_export.lu_misspelt_occupations OWNER TO easygp;
+ALTER TABLE lu_misspelt_occupations OWNER TO easygp;
 
 --
 -- Name: lu_misspelt_occupations_pk_seq; Type: SEQUENCE; Schema: import_export; Owner: easygp
@@ -24944,7 +24131,7 @@ CREATE SEQUENCE lu_misspelt_occupations_pk_seq
     CACHE 1;
 
 
-ALTER TABLE import_export.lu_misspelt_occupations_pk_seq OWNER TO easygp;
+ALTER TABLE lu_misspelt_occupations_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_misspelt_occupations_pk_seq; Type: SEQUENCE OWNED BY; Schema: import_export; Owner: easygp
@@ -24963,7 +24150,7 @@ CREATE TABLE lu_misspelt_user_request_tags (
 );
 
 
-ALTER TABLE import_export.lu_misspelt_user_request_tags OWNER TO easygp;
+ALTER TABLE lu_misspelt_user_request_tags OWNER TO easygp;
 
 --
 -- Name: lu_misspelt_user_request_tags_pk_seq; Type: SEQUENCE; Schema: import_export; Owner: easygp
@@ -24977,7 +24164,7 @@ CREATE SEQUENCE lu_misspelt_user_request_tags_pk_seq
     CACHE 1;
 
 
-ALTER TABLE import_export.lu_misspelt_user_request_tags_pk_seq OWNER TO easygp;
+ALTER TABLE lu_misspelt_user_request_tags_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_misspelt_user_request_tags_pk_seq; Type: SEQUENCE OWNED BY; Schema: import_export; Owner: easygp
@@ -24996,7 +24183,7 @@ CREATE TABLE lu_source_program (
 );
 
 
-ALTER TABLE import_export.lu_source_program OWNER TO easygp;
+ALTER TABLE lu_source_program OWNER TO easygp;
 
 --
 -- Name: TABLE lu_source_program; Type: COMMENT; Schema: import_export; Owner: easygp
@@ -25017,7 +24204,7 @@ CREATE SEQUENCE lu_source_program_pk_seq
     CACHE 1;
 
 
-ALTER TABLE import_export.lu_source_program_pk_seq OWNER TO easygp;
+ALTER TABLE lu_source_program_pk_seq OWNER TO easygp;
 
 --
 -- Name: lu_source_program_pk_seq; Type: SEQUENCE OWNED BY; Schema: import_export; Owner: easygp
@@ -25061,7 +24248,7 @@ CREATE VIEW vwdemographictemplates AS
   ORDER BY lu_source_program.program;
 
 
-ALTER TABLE import_export.vwdemographictemplates OWNER TO easygp;
+ALTER TABLE vwdemographictemplates OWNER TO easygp;
 
 SET search_path = public, pg_catalog;
 
@@ -25077,46 +24264,7 @@ CREATE SEQUENCE authority_number
     CACHE 1;
 
 
-ALTER TABLE public.authority_number OWNER TO easygp;
-
---
--- Name: inventory_items_lent; Type: TABLE; Schema: public; Owner: easygp; Tablespace: 
---
-
-CREATE TABLE inventory_items_lent (
-    pk integer NOT NULL,
-    fk_inventory_item integer NOT NULL,
-    fk_patient integer NOT NULL,
-    fk_clinic integer NOT NULL,
-    fk_staff integer NOT NULL,
-    date_lent timestamp without time zone NOT NULL,
-    date_due timestamp without time zone NOT NULL,
-    comment text
-);
-
-
-ALTER TABLE public.inventory_items_lent OWNER TO easygp;
-
---
--- Name: inventory_items_lent_pk_seq; Type: SEQUENCE; Schema: public; Owner: easygp
---
-
-CREATE SEQUENCE inventory_items_lent_pk_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
-ALTER TABLE public.inventory_items_lent_pk_seq OWNER TO easygp;
-
---
--- Name: inventory_items_lent_pk_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: easygp
---
-
-ALTER SEQUENCE inventory_items_lent_pk_seq OWNED BY inventory_items_lent.pk;
-
+ALTER TABLE authority_number OWNER TO easygp;
 
 --
 -- Name: lu_modes; Type: TABLE; Schema: public; Owner: easygp; Tablespace: 
@@ -25128,7 +24276,7 @@ CREATE TABLE lu_modes (
 );
 
 
-ALTER TABLE public.lu_modes OWNER TO easygp;
+ALTER TABLE lu_modes OWNER TO easygp;
 
 --
 -- Name: pbsconvert_id_seq; Type: SEQUENCE; Schema: public; Owner: easygp
@@ -25142,7 +24290,7 @@ CREATE SEQUENCE pbsconvert_id_seq
     CACHE 1;
 
 
-ALTER TABLE public.pbsconvert_id_seq OWNER TO easygp;
+ALTER TABLE pbsconvert_id_seq OWNER TO easygp;
 
 --
 -- Name: script_number; Type: SEQUENCE; Schema: public; Owner: easygp
@@ -25156,7 +24304,7 @@ CREATE SEQUENCE script_number
     CACHE 1;
 
 
-ALTER TABLE public.script_number OWNER TO easygp;
+ALTER TABLE script_number OWNER TO easygp;
 
 --
 -- Name: web_pk_seq; Type: SEQUENCE; Schema: public; Owner: easygp
@@ -25170,7 +24318,7 @@ CREATE SEQUENCE web_pk_seq
     CACHE 1;
 
 
-ALTER TABLE public.web_pk_seq OWNER TO easygp;
+ALTER TABLE web_pk_seq OWNER TO easygp;
 
 SET search_path = research, pg_catalog;
 
@@ -25205,7 +24353,7 @@ CREATE VIEW diabetes_patients_latest_hba1c AS
          LIMIT 1);
 
 
-ALTER TABLE research.diabetes_patients_latest_hba1c OWNER TO easygp;
+ALTER TABLE diabetes_patients_latest_hba1c OWNER TO easygp;
 
 --
 -- Name: diabetes_patients_with_hba1c; Type: VIEW; Schema: research; Owner: easygp
@@ -25235,7 +24383,7 @@ CREATE VIEW diabetes_patients_with_hba1c AS
   WHERE ((vwgraphableobservations.fk_patient = vwpatients.fk_patient) AND (vwgraphableobservations.loinc = '4548-4'::text));
 
 
-ALTER TABLE research.diabetes_patients_with_hba1c OWNER TO easygp;
+ALTER TABLE diabetes_patients_with_hba1c OWNER TO easygp;
 
 --
 -- Name: patientsnameshba1cover75; Type: VIEW; Schema: research; Owner: easygp
@@ -25250,7 +24398,7 @@ CREATE VIEW patientsnameshba1cover75 AS
   WHERE (patientshba1cover75.fk_patient = vwpatients.fk_patient);
 
 
-ALTER TABLE research.patientsnameshba1cover75 OWNER TO easygp;
+ALTER TABLE patientsnameshba1cover75 OWNER TO easygp;
 
 --
 -- Name: vwdiabetes_patients_with_hba1c; Type: VIEW; Schema: research; Owner: easygp
@@ -25286,7 +24434,7 @@ CREATE VIEW vwdiabetes_patients_with_hba1c AS
   WHERE ((vwgraphableobservations.fk_patient = vwpatients.fk_patient) AND (vwgraphableobservations.loinc = '4548-4'::text));
 
 
-ALTER TABLE research.vwdiabetes_patients_with_hba1c OWNER TO easygp;
+ALTER TABLE vwdiabetes_patients_with_hba1c OWNER TO easygp;
 
 --
 -- Name: VIEW vwdiabetes_patients_with_hba1c; Type: COMMENT; Schema: research; Owner: easygp
@@ -25321,7 +24469,7 @@ CREATE VIEW vwdiabetics_with_ldlcholesterol AS
   WHERE ((vwdiabetes_patients_with_hba1c.fk_patient = vwgraphableobservations.fk_patient) AND (vwgraphableobservations.loinc = '22748-8'::text));
 
 
-ALTER TABLE research.vwdiabetics_with_ldlcholesterol OWNER TO easygp;
+ALTER TABLE vwdiabetics_with_ldlcholesterol OWNER TO easygp;
 
 --
 -- Name: VIEW vwdiabetics_with_ldlcholesterol; Type: COMMENT; Schema: research; Owner: easygp
@@ -25395,7 +24543,7 @@ UNION
   ORDER BY 1, 4;
 
 
-ALTER TABLE research.vwmicroalbuminuria OWNER TO easygp;
+ALTER TABLE vwmicroalbuminuria OWNER TO easygp;
 
 --
 -- Name: VIEW vwmicroalbuminuria; Type: COMMENT; Schema: research; Owner: easygp
@@ -25427,7 +24575,7 @@ CREATE VIEW vwdiabetics_with_microalbumins AS
   ORDER BY vwdiabetes_patients_with_hba1c.fk_patient, vwmicroalbuminuria.observation_date;
 
 
-ALTER TABLE research.vwdiabetics_with_microalbumins OWNER TO easygp;
+ALTER TABLE vwdiabetics_with_microalbumins OWNER TO easygp;
 
 --
 -- Name: VIEW vwdiabetics_with_microalbumins; Type: COMMENT; Schema: research; Owner: easygp
@@ -25458,7 +24606,7 @@ CREATE VIEW vwdiabeticsegfr AS
   WHERE ((vwdiabetes_patients_with_hba1c.fk_patient = vwgraphableobservations.fk_patient) AND (vwgraphableobservations.loinc = '33914-3'::text));
 
 
-ALTER TABLE research.vwdiabeticsegfr OWNER TO easygp;
+ALTER TABLE vwdiabeticsegfr OWNER TO easygp;
 
 --
 -- Name: VIEW vwdiabeticsegfr; Type: COMMENT; Schema: research; Owner: easygp
@@ -25488,7 +24636,7 @@ CREATE VIEW vwldh AS
   ORDER BY vwobservations.value_numeric;
 
 
-ALTER TABLE research.vwldh OWNER TO easygp;
+ALTER TABLE vwldh OWNER TO easygp;
 
 --
 -- Name: vwldlcholesterol; Type: VIEW; Schema: research; Owner: easygp
@@ -25510,7 +24658,7 @@ CREATE VIEW vwldlcholesterol AS
   ORDER BY vwobservations.fk_patient, vwobservations.observation_date DESC;
 
 
-ALTER TABLE research.vwldlcholesterol OWNER TO easygp;
+ALTER TABLE vwldlcholesterol OWNER TO easygp;
 
 --
 -- Name: vwmostrecenteyerelateddocuments; Type: VIEW; Schema: research; Owner: easygp
@@ -25527,7 +24675,7 @@ CREATE VIEW vwmostrecenteyerelateddocuments AS
   ORDER BY vwdocuments.fk_patient, vwdocuments.date_created DESC;
 
 
-ALTER TABLE research.vwmostrecenteyerelateddocuments OWNER TO easygp;
+ALTER TABLE vwmostrecenteyerelateddocuments OWNER TO easygp;
 
 --
 -- Name: VIEW vwmostrecenteyerelateddocuments; Type: COMMENT; Schema: research; Owner: easygp
@@ -25561,7 +24709,7 @@ CREATE VIEW vwtotalcholesterol AS
   ORDER BY vwobservations.fk_patient, vwobservations.observation_date DESC;
 
 
-ALTER TABLE research.vwtotalcholesterol OWNER TO easygp;
+ALTER TABLE vwtotalcholesterol OWNER TO easygp;
 
 SET search_path = admin, pg_catalog;
 
@@ -25806,35 +24954,7 @@ ALTER TABLE ONLY diabetes_group_allied_health_services ALTER COLUMN pk SET DEFAU
 -- Name: pk; Type: DEFAULT; Schema: chronic_disease_management; Owner: easygp
 --
 
-ALTER TABLE ONLY epc_link_provider_form ALTER COLUMN pk SET DEFAULT nextval('epc_link_provider_form_pk_seq'::regclass);
-
-
---
--- Name: pk; Type: DEFAULT; Schema: chronic_disease_management; Owner: easygp
---
-
-ALTER TABLE ONLY epc_referral ALTER COLUMN pk SET DEFAULT nextval('epc_referral_pk_seq'::regclass);
-
-
---
--- Name: pk; Type: DEFAULT; Schema: chronic_disease_management; Owner: easygp
---
-
 ALTER TABLE ONLY lu_allied_health_type ALTER COLUMN pk SET DEFAULT nextval('lu_allied_health_type_pk_seq'::regclass);
-
-
---
--- Name: pk; Type: DEFAULT; Schema: chronic_disease_management; Owner: easygp
---
-
-ALTER TABLE ONLY lu_dacc_components ALTER COLUMN pk SET DEFAULT nextval('lu_dacc_components_pk_seq'::regclass);
-
-
---
--- Name: pk; Type: DEFAULT; Schema: chronic_disease_management; Owner: easygp
---
-
-ALTER TABLE ONLY team_care_arrangements ALTER COLUMN pk SET DEFAULT nextval('team_care_arrangements_pk_seq'::regclass);
 
 
 SET search_path = clerical, pg_catalog;
@@ -26060,36 +25180,6 @@ ALTER TABLE ONLY lu_illness_temporality ALTER COLUMN pk SET DEFAULT nextval('lu_
 ALTER TABLE ONLY medical_certificates ALTER COLUMN pk SET DEFAULT nextval('medical_certificate_pk_seq'::regclass);
 
 
-SET search_path = clin_checkups, pg_catalog;
-
---
--- Name: pk; Type: DEFAULT; Schema: clin_checkups; Owner: easygp
---
-
-ALTER TABLE ONLY annual_checkup ALTER COLUMN pk SET DEFAULT nextval('annual_checkup_pk_seq'::regclass);
-
-
---
--- Name: pk; Type: DEFAULT; Schema: clin_checkups; Owner: easygp
---
-
-ALTER TABLE ONLY lu_nutrition_questions ALTER COLUMN pk SET DEFAULT nextval('lu_nutrition_questions_pk_seq'::regclass);
-
-
---
--- Name: pk; Type: DEFAULT; Schema: clin_checkups; Owner: easygp
---
-
-ALTER TABLE ONLY lu_state_of_health ALTER COLUMN pk SET DEFAULT nextval('lu_state_of_health_pk_seq'::regclass);
-
-
---
--- Name: pk; Type: DEFAULT; Schema: clin_checkups; Owner: easygp
---
-
-ALTER TABLE ONLY over75 ALTER COLUMN pk SET DEFAULT nextval('over75_pk_seq'::regclass);
-
-
 SET search_path = clin_consult, pg_catalog;
 
 --
@@ -26187,14 +25277,7 @@ ALTER TABLE ONLY progressnotes_codes ALTER COLUMN pk SET DEFAULT nextval('progre
 -- Name: pk; Type: DEFAULT; Schema: clin_consult; Owner: easygp
 --
 
-ALTER TABLE ONLY shortcuts_user ALTER COLUMN pk SET DEFAULT nextval('lu_shortcut_pk_seq'::regclass);
-
-
---
--- Name: shared; Type: DEFAULT; Schema: clin_consult; Owner: easygp
---
-
-ALTER TABLE ONLY shortcuts_user ALTER COLUMN shared SET DEFAULT false;
+ALTER TABLE ONLY shortcuts_user ALTER COLUMN pk SET DEFAULT nextval('shortcuts_user_temp_pk_seq'::regclass);
 
 
 SET search_path = clin_history, pg_catalog;
@@ -26253,13 +25336,6 @@ ALTER TABLE ONLY link_pasthistory_providers ALTER COLUMN pk SET DEFAULT nextval(
 --
 
 ALTER TABLE ONLY lu_allied_health_care_types ALTER COLUMN pk SET DEFAULT nextval('lu_allied_health_care_types_pk_seq'::regclass);
-
-
---
--- Name: pk; Type: DEFAULT; Schema: clin_history; Owner: easygp
---
-
-ALTER TABLE ONLY lu_dacc_components ALTER COLUMN pk SET DEFAULT nextval('lu_dacc_components_pk_seq'::regclass);
 
 
 --
@@ -26699,6 +25775,13 @@ ALTER TABLE ONLY lu_reasons ALTER COLUMN pk SET DEFAULT nextval('lu_reasons_pk_s
 --
 
 ALTER TABLE ONLY lu_recall_intervals ALTER COLUMN pk SET DEFAULT nextval('lu_recall_intervals_pk_seq'::regclass);
+
+
+--
+-- Name: pk; Type: DEFAULT; Schema: clin_recalls; Owner: easygp
+--
+
+ALTER TABLE ONLY lu_status ALTER COLUMN pk SET DEFAULT nextval('lu_status_pk_seq'::regclass);
 
 
 --
@@ -27402,13 +26485,6 @@ ALTER TABLE ONLY incoming_message_handling ALTER COLUMN pk SET DEFAULT nextval('
 -- Name: pk; Type: DEFAULT; Schema: defaults; Owner: easygp
 --
 
-ALTER TABLE ONLY lu_link_printer_task ALTER COLUMN pk SET DEFAULT nextval('lu_link_printer_task_pk_seq'::regclass);
-
-
---
--- Name: pk; Type: DEFAULT; Schema: defaults; Owner: easygp
---
-
 ALTER TABLE ONLY lu_message_display_style ALTER COLUMN pk SET DEFAULT nextval('lu_message_display_style_pk_seq'::regclass);
 
 
@@ -27417,34 +26493,6 @@ ALTER TABLE ONLY lu_message_display_style ALTER COLUMN pk SET DEFAULT nextval('l
 --
 
 ALTER TABLE ONLY lu_message_standard ALTER COLUMN pk SET DEFAULT nextval('lu_message_standard_pk_seq'::regclass);
-
-
---
--- Name: pk; Type: DEFAULT; Schema: defaults; Owner: easygp
---
-
-ALTER TABLE ONLY lu_printer_host ALTER COLUMN pk SET DEFAULT nextval('lu_printer_host_pk_seq'::regclass);
-
-
---
--- Name: pk; Type: DEFAULT; Schema: defaults; Owner: easygp
---
-
-ALTER TABLE ONLY lu_printer_task ALTER COLUMN pk SET DEFAULT nextval('lu_printer_task_pk_seq'::regclass);
-
-
---
--- Name: pk; Type: DEFAULT; Schema: defaults; Owner: easygp
---
-
-ALTER TABLE ONLY script_coordinates ALTER COLUMN pk SET DEFAULT nextval('script_coordinates_pk_seq'::regclass);
-
-
---
--- Name: pk; Type: DEFAULT; Schema: defaults; Owner: easygp
---
-
-ALTER TABLE ONLY temp ALTER COLUMN pk SET DEFAULT nextval('temp_pk_seq'::regclass);
 
 
 SET search_path = documents, pg_catalog;
@@ -27726,15 +26774,6 @@ ALTER TABLE ONLY lu_misspelt_user_request_tags ALTER COLUMN pk SET DEFAULT nextv
 --
 
 ALTER TABLE ONLY lu_source_program ALTER COLUMN pk SET DEFAULT nextval('lu_source_program_pk_seq'::regclass);
-
-
-SET search_path = public, pg_catalog;
-
---
--- Name: pk; Type: DEFAULT; Schema: public; Owner: easygp
---
-
-ALTER TABLE ONLY inventory_items_lent ALTER COLUMN pk SET DEFAULT nextval('inventory_items_lent_pk_seq'::regclass);
 
 
 SET search_path = admin, pg_catalog;
@@ -28042,43 +27081,11 @@ ALTER TABLE ONLY diabetes_group_allied_health_services
 
 
 --
--- Name: epc_link_provider_form_pkey; Type: CONSTRAINT; Schema: chronic_disease_management; Owner: easygp; Tablespace: 
---
-
-ALTER TABLE ONLY epc_link_provider_form
-    ADD CONSTRAINT epc_link_provider_form_pkey PRIMARY KEY (pk);
-
-
---
--- Name: epc_referral_pkey; Type: CONSTRAINT; Schema: chronic_disease_management; Owner: easygp; Tablespace: 
---
-
-ALTER TABLE ONLY epc_referral
-    ADD CONSTRAINT epc_referral_pkey PRIMARY KEY (pk);
-
-
---
 -- Name: lu_allied_health_type_pkey; Type: CONSTRAINT; Schema: chronic_disease_management; Owner: easygp; Tablespace: 
 --
 
 ALTER TABLE ONLY lu_allied_health_type
     ADD CONSTRAINT lu_allied_health_type_pkey PRIMARY KEY (pk);
-
-
---
--- Name: lu_dacc_components_pkey; Type: CONSTRAINT; Schema: chronic_disease_management; Owner: easygp; Tablespace: 
---
-
-ALTER TABLE ONLY lu_dacc_components
-    ADD CONSTRAINT lu_dacc_components_pkey PRIMARY KEY (pk);
-
-
---
--- Name: team_care_arrangements_pkey; Type: CONSTRAINT; Schema: chronic_disease_management; Owner: easygp; Tablespace: 
---
-
-ALTER TABLE ONLY team_care_arrangements
-    ADD CONSTRAINT team_care_arrangements_pkey PRIMARY KEY (pk);
 
 
 SET search_path = clerical, pg_catalog;
@@ -28351,40 +27358,6 @@ ALTER TABLE ONLY medical_certificates
     ADD CONSTRAINT medical_certificate_pkey PRIMARY KEY (pk);
 
 
-SET search_path = clin_checkups, pg_catalog;
-
---
--- Name: annual_checkup_pkey; Type: CONSTRAINT; Schema: clin_checkups; Owner: easygp; Tablespace: 
---
-
-ALTER TABLE ONLY annual_checkup
-    ADD CONSTRAINT annual_checkup_pkey PRIMARY KEY (pk);
-
-
---
--- Name: lu_nutrition_questions_pkey; Type: CONSTRAINT; Schema: clin_checkups; Owner: easygp; Tablespace: 
---
-
-ALTER TABLE ONLY lu_nutrition_questions
-    ADD CONSTRAINT lu_nutrition_questions_pkey PRIMARY KEY (pk);
-
-
---
--- Name: lu_state_of_health_pkey; Type: CONSTRAINT; Schema: clin_checkups; Owner: easygp; Tablespace: 
---
-
-ALTER TABLE ONLY lu_state_of_health
-    ADD CONSTRAINT lu_state_of_health_pkey PRIMARY KEY (pk);
-
-
---
--- Name: over75_pkey; Type: CONSTRAINT; Schema: clin_checkups; Owner: easygp; Tablespace: 
---
-
-ALTER TABLE ONLY over75
-    ADD CONSTRAINT over75_pkey PRIMARY KEY (pk);
-
-
 SET search_path = clin_consult, pg_catalog;
 
 --
@@ -28500,11 +27473,11 @@ ALTER TABLE ONLY progressnotes
 
 
 --
--- Name: shortcuts_user_shortcut_fk_staff_key; Type: CONSTRAINT; Schema: clin_consult; Owner: easygp; Tablespace: 
+-- Name: shortcuts_user_temp_pkey; Type: CONSTRAINT; Schema: clin_consult; Owner: easygp; Tablespace: 
 --
 
 ALTER TABLE ONLY shortcuts_user
-    ADD CONSTRAINT shortcuts_user_shortcut_fk_staff_key UNIQUE (shortcut, fk_staff);
+    ADD CONSTRAINT shortcuts_user_temp_pkey PRIMARY KEY (pk);
 
 
 SET search_path = clin_history, pg_catalog;
@@ -28571,14 +27544,6 @@ ALTER TABLE ONLY link_pasthistory_providers
 
 ALTER TABLE ONLY lu_allied_health_care_types
     ADD CONSTRAINT lu_allied_health_care_types_pkey PRIMARY KEY (pk);
-
-
---
--- Name: lu_dacc_components_pkey; Type: CONSTRAINT; Schema: clin_history; Owner: easygp; Tablespace: 
---
-
-ALTER TABLE ONLY lu_dacc_components
-    ADD CONSTRAINT lu_dacc_components_pkey PRIMARY KEY (pk);
 
 
 --
@@ -29071,6 +28036,14 @@ ALTER TABLE ONLY lu_reasons
 
 ALTER TABLE ONLY lu_recall_intervals
     ADD CONSTRAINT lu_recall_intervals_pkey PRIMARY KEY (pk);
+
+
+--
+-- Name: lu_status_pkey; Type: CONSTRAINT; Schema: clin_recalls; Owner: easygp; Tablespace: 
+--
+
+ALTER TABLE ONLY lu_status
+    ADD CONSTRAINT lu_status_pkey PRIMARY KEY (pk);
 
 
 --
@@ -29948,14 +28921,6 @@ ALTER TABLE ONLY incoming_message_handling
 
 
 --
--- Name: lu_link_printer_task_pkey; Type: CONSTRAINT; Schema: defaults; Owner: easygp; Tablespace: 
---
-
-ALTER TABLE ONLY lu_link_printer_task
-    ADD CONSTRAINT lu_link_printer_task_pkey PRIMARY KEY (pk);
-
-
---
 -- Name: lu_message_display_style_pkey; Type: CONSTRAINT; Schema: defaults; Owner: easygp; Tablespace: 
 --
 
@@ -29969,38 +28934,6 @@ ALTER TABLE ONLY lu_message_display_style
 
 ALTER TABLE ONLY lu_message_standard
     ADD CONSTRAINT lu_message_standard_pkey PRIMARY KEY (pk);
-
-
---
--- Name: lu_printer_host_pkey; Type: CONSTRAINT; Schema: defaults; Owner: easygp; Tablespace: 
---
-
-ALTER TABLE ONLY lu_printer_host
-    ADD CONSTRAINT lu_printer_host_pkey PRIMARY KEY (pk);
-
-
---
--- Name: lu_printer_task_pkey; Type: CONSTRAINT; Schema: defaults; Owner: easygp; Tablespace: 
---
-
-ALTER TABLE ONLY lu_printer_task
-    ADD CONSTRAINT lu_printer_task_pkey PRIMARY KEY (pk);
-
-
---
--- Name: script_coordinates_pkey; Type: CONSTRAINT; Schema: defaults; Owner: easygp; Tablespace: 
---
-
-ALTER TABLE ONLY script_coordinates
-    ADD CONSTRAINT script_coordinates_pkey PRIMARY KEY (pk);
-
-
---
--- Name: temp_pkey; Type: CONSTRAINT; Schema: defaults; Owner: easygp; Tablespace: 
---
-
-ALTER TABLE ONLY temp
-    ADD CONSTRAINT temp_pkey PRIMARY KEY (pk);
 
 
 SET search_path = documents, pg_catalog;
@@ -30489,16 +29422,6 @@ ALTER TABLE ONLY lu_misspelt_user_request_tags
 
 ALTER TABLE ONLY lu_source_program
     ADD CONSTRAINT lu_source_program_pkey PRIMARY KEY (pk);
-
-
-SET search_path = public, pg_catalog;
-
---
--- Name: inventory_items_lent_pkey; Type: CONSTRAINT; Schema: public; Owner: easygp; Tablespace: 
---
-
-ALTER TABLE ONLY inventory_items_lent
-    ADD CONSTRAINT inventory_items_lent_pkey PRIMARY KEY (pk);
 
 
 SET search_path = blobs, pg_catalog;
@@ -31090,35 +30013,11 @@ ALTER TABLE ONLY diabetes_group_allied_health_services
 
 
 --
--- Name: epc_referral_fk_consult_fkey; Type: FK CONSTRAINT; Schema: chronic_disease_management; Owner: easygp
---
-
-ALTER TABLE ONLY epc_referral
-    ADD CONSTRAINT epc_referral_fk_consult_fkey FOREIGN KEY (fk_consult) REFERENCES clin_consult.consult(pk);
-
-
---
 -- Name: patients_with_hba1c_not_diabetic_fk_patient_fkey; Type: FK CONSTRAINT; Schema: chronic_disease_management; Owner: easygp
 --
 
 ALTER TABLE ONLY patients_with_hba1c_not_diabetic
     ADD CONSTRAINT patients_with_hba1c_not_diabetic_fk_patient_fkey FOREIGN KEY (fk_patient) REFERENCES clerical.data_patients(pk);
-
-
---
--- Name: team_care_arrangements_fk_employee_fkey; Type: FK CONSTRAINT; Schema: chronic_disease_management; Owner: easygp
---
-
-ALTER TABLE ONLY team_care_arrangements
-    ADD CONSTRAINT team_care_arrangements_fk_employee_fkey FOREIGN KEY (fk_employee) REFERENCES contacts.data_employees(pk);
-
-
---
--- Name: team_care_arrangements_fk_person_fkey; Type: FK CONSTRAINT; Schema: chronic_disease_management; Owner: easygp
---
-
-ALTER TABLE ONLY team_care_arrangements
-    ADD CONSTRAINT team_care_arrangements_fk_person_fkey FOREIGN KEY (fk_person) REFERENCES contacts.data_persons(pk);
 
 
 SET search_path = clerical, pg_catalog;
@@ -31586,14 +30485,6 @@ ALTER TABLE ONLY lu_progressnote_templates
 
 
 --
--- Name: lu_shortcut_fk_staff_fkey; Type: FK CONSTRAINT; Schema: clin_consult; Owner: easygp
---
-
-ALTER TABLE ONLY lu_shortcut
-    ADD CONSTRAINT lu_shortcut_fk_staff_fkey FOREIGN KEY (fk_staff) REFERENCES admin.staff(pk);
-
-
---
 -- Name: next_visit_fk_consult_fkey; Type: FK CONSTRAINT; Schema: clin_consult; Owner: easygp
 --
 
@@ -31626,11 +30517,19 @@ ALTER TABLE ONLY progressnotes
 
 
 --
--- Name: shortcuts_user_fk_staff_fkey; Type: FK CONSTRAINT; Schema: clin_consult; Owner: easygp
+-- Name: shortcuts_user_temp_fk_lu_shortcut_category_fkey; Type: FK CONSTRAINT; Schema: clin_consult; Owner: easygp
 --
 
 ALTER TABLE ONLY shortcuts_user
-    ADD CONSTRAINT shortcuts_user_fk_staff_fkey FOREIGN KEY (fk_staff) REFERENCES admin.staff(pk);
+    ADD CONSTRAINT shortcuts_user_temp_fk_lu_shortcut_category_fkey FOREIGN KEY (fk_lu_shortcut_category) REFERENCES lu_shortcut_category(pk);
+
+
+--
+-- Name: shortcuts_user_temp_fk_staff_fkey; Type: FK CONSTRAINT; Schema: clin_consult; Owner: easygp
+--
+
+ALTER TABLE ONLY shortcuts_user
+    ADD CONSTRAINT shortcuts_user_temp_fk_staff_fkey FOREIGN KEY (fk_staff) REFERENCES admin.staff(pk);
 
 
 SET search_path = clin_history, pg_catalog;
@@ -33135,14 +32034,6 @@ ALTER TABLE ONLY incoming_message_handling
     ADD CONSTRAINT incoming_message_handling_fk_person_fkey FOREIGN KEY (fk_person) REFERENCES contacts.data_persons(pk);
 
 
---
--- Name: lu_printer_host_fk_clinic_fkey; Type: FK CONSTRAINT; Schema: defaults; Owner: easygp
---
-
-ALTER TABLE ONLY lu_printer_host
-    ADD CONSTRAINT lu_printer_host_fk_clinic_fkey FOREIGN KEY (fk_clinic) REFERENCES admin.clinics(pk);
-
-
 SET search_path = documents, pg_catalog;
 
 --
@@ -33573,32 +32464,6 @@ ALTER TABLE ONLY restriction
     ADD CONSTRAINT restriction_pbscode_fkey FOREIGN KEY (pbscode) REFERENCES pbs(pbscode);
 
 
-SET search_path = public, pg_catalog;
-
---
--- Name: inventory_items_lent_fk_clinic_fkey; Type: FK CONSTRAINT; Schema: public; Owner: easygp
---
-
-ALTER TABLE ONLY inventory_items_lent
-    ADD CONSTRAINT inventory_items_lent_fk_clinic_fkey FOREIGN KEY (fk_clinic) REFERENCES admin.clinics(pk);
-
-
---
--- Name: inventory_items_lent_fk_patient_fkey; Type: FK CONSTRAINT; Schema: public; Owner: easygp
---
-
-ALTER TABLE ONLY inventory_items_lent
-    ADD CONSTRAINT inventory_items_lent_fk_patient_fkey FOREIGN KEY (fk_patient) REFERENCES clerical.data_patients(pk);
-
-
---
--- Name: inventory_items_lent_fk_staff_fkey; Type: FK CONSTRAINT; Schema: public; Owner: easygp
---
-
-ALTER TABLE ONLY inventory_items_lent
-    ADD CONSTRAINT inventory_items_lent_fk_staff_fkey FOREIGN KEY (fk_staff) REFERENCES admin.staff(pk);
-
-
 --
 -- Name: admin; Type: ACL; Schema: -; Owner: easygp
 --
@@ -33667,16 +32532,6 @@ REVOKE ALL ON SCHEMA clin_certificates FROM PUBLIC;
 REVOKE ALL ON SCHEMA clin_certificates FROM easygp;
 GRANT ALL ON SCHEMA clin_certificates TO easygp;
 GRANT USAGE ON SCHEMA clin_certificates TO staff;
-
-
---
--- Name: clin_checkups; Type: ACL; Schema: -; Owner: easygp
---
-
-REVOKE ALL ON SCHEMA clin_checkups FROM PUBLIC;
-REVOKE ALL ON SCHEMA clin_checkups FROM easygp;
-GRANT ALL ON SCHEMA clin_checkups TO easygp;
-GRANT USAGE ON SCHEMA clin_checkups TO staff;
 
 
 --
@@ -35146,26 +34001,6 @@ GRANT ALL ON TABLE diabetes_group_allied_health_services TO staff;
 
 
 --
--- Name: epc_link_provider_form_pk_seq; Type: ACL; Schema: chronic_disease_management; Owner: easygp
---
-
-REVOKE ALL ON SEQUENCE epc_link_provider_form_pk_seq FROM PUBLIC;
-REVOKE ALL ON SEQUENCE epc_link_provider_form_pk_seq FROM easygp;
-GRANT ALL ON SEQUENCE epc_link_provider_form_pk_seq TO easygp;
-GRANT USAGE ON SEQUENCE epc_link_provider_form_pk_seq TO staff;
-
-
---
--- Name: epc_referral_pk_seq; Type: ACL; Schema: chronic_disease_management; Owner: easygp
---
-
-REVOKE ALL ON SEQUENCE epc_referral_pk_seq FROM PUBLIC;
-REVOKE ALL ON SEQUENCE epc_referral_pk_seq FROM easygp;
-GRANT ALL ON SEQUENCE epc_referral_pk_seq TO easygp;
-GRANT USAGE ON SEQUENCE epc_referral_pk_seq TO staff;
-
-
---
 -- Name: lu_allied_health_type_pk_seq; Type: ACL; Schema: chronic_disease_management; Owner: easygp
 --
 
@@ -35176,16 +34011,6 @@ GRANT USAGE ON SEQUENCE lu_allied_health_type_pk_seq TO staff;
 
 
 --
--- Name: lu_dacc_components_pk_seq; Type: ACL; Schema: chronic_disease_management; Owner: easygp
---
-
-REVOKE ALL ON SEQUENCE lu_dacc_components_pk_seq FROM PUBLIC;
-REVOKE ALL ON SEQUENCE lu_dacc_components_pk_seq FROM easygp;
-GRANT ALL ON SEQUENCE lu_dacc_components_pk_seq TO easygp;
-GRANT USAGE ON SEQUENCE lu_dacc_components_pk_seq TO staff;
-
-
---
 -- Name: patients_with_hba1c_not_diabetic; Type: ACL; Schema: chronic_disease_management; Owner: easygp
 --
 
@@ -35193,16 +34018,6 @@ REVOKE ALL ON TABLE patients_with_hba1c_not_diabetic FROM PUBLIC;
 REVOKE ALL ON TABLE patients_with_hba1c_not_diabetic FROM easygp;
 GRANT ALL ON TABLE patients_with_hba1c_not_diabetic TO easygp;
 GRANT ALL ON TABLE patients_with_hba1c_not_diabetic TO staff;
-
-
---
--- Name: team_care_arrangements_pk_seq; Type: ACL; Schema: chronic_disease_management; Owner: easygp
---
-
-REVOKE ALL ON SEQUENCE team_care_arrangements_pk_seq FROM PUBLIC;
-REVOKE ALL ON SEQUENCE team_care_arrangements_pk_seq FROM easygp;
-GRANT ALL ON SEQUENCE team_care_arrangements_pk_seq TO easygp;
-GRANT USAGE ON SEQUENCE team_care_arrangements_pk_seq TO staff;
 
 
 SET search_path = clin_consult, pg_catalog;
@@ -35967,88 +34782,6 @@ GRANT ALL ON TABLE vwmedicalcertificates TO easygp;
 GRANT SELECT ON TABLE vwmedicalcertificates TO staff;
 
 
-SET search_path = clin_checkups, pg_catalog;
-
---
--- Name: annual_checkup; Type: ACL; Schema: clin_checkups; Owner: easygp
---
-
-REVOKE ALL ON TABLE annual_checkup FROM PUBLIC;
-REVOKE ALL ON TABLE annual_checkup FROM easygp;
-GRANT ALL ON TABLE annual_checkup TO easygp;
-GRANT ALL ON TABLE annual_checkup TO staff;
-
-
---
--- Name: annual_checkup_pk_seq; Type: ACL; Schema: clin_checkups; Owner: easygp
---
-
-REVOKE ALL ON SEQUENCE annual_checkup_pk_seq FROM PUBLIC;
-REVOKE ALL ON SEQUENCE annual_checkup_pk_seq FROM easygp;
-GRANT ALL ON SEQUENCE annual_checkup_pk_seq TO easygp;
-GRANT USAGE ON SEQUENCE annual_checkup_pk_seq TO staff;
-
-
---
--- Name: lu_nutrition_questions; Type: ACL; Schema: clin_checkups; Owner: easygp
---
-
-REVOKE ALL ON TABLE lu_nutrition_questions FROM PUBLIC;
-REVOKE ALL ON TABLE lu_nutrition_questions FROM easygp;
-GRANT ALL ON TABLE lu_nutrition_questions TO easygp;
-GRANT SELECT ON TABLE lu_nutrition_questions TO staff;
-
-
---
--- Name: lu_nutrition_questions_pk_seq; Type: ACL; Schema: clin_checkups; Owner: easygp
---
-
-REVOKE ALL ON SEQUENCE lu_nutrition_questions_pk_seq FROM PUBLIC;
-REVOKE ALL ON SEQUENCE lu_nutrition_questions_pk_seq FROM easygp;
-GRANT ALL ON SEQUENCE lu_nutrition_questions_pk_seq TO easygp;
-GRANT USAGE ON SEQUENCE lu_nutrition_questions_pk_seq TO staff;
-
-
---
--- Name: lu_state_of_health; Type: ACL; Schema: clin_checkups; Owner: easygp
---
-
-REVOKE ALL ON TABLE lu_state_of_health FROM PUBLIC;
-REVOKE ALL ON TABLE lu_state_of_health FROM easygp;
-GRANT ALL ON TABLE lu_state_of_health TO easygp;
-GRANT SELECT ON TABLE lu_state_of_health TO staff;
-
-
---
--- Name: lu_state_of_health_pk_seq; Type: ACL; Schema: clin_checkups; Owner: easygp
---
-
-REVOKE ALL ON SEQUENCE lu_state_of_health_pk_seq FROM PUBLIC;
-REVOKE ALL ON SEQUENCE lu_state_of_health_pk_seq FROM easygp;
-GRANT ALL ON SEQUENCE lu_state_of_health_pk_seq TO easygp;
-GRANT USAGE ON SEQUENCE lu_state_of_health_pk_seq TO staff;
-
-
---
--- Name: over75; Type: ACL; Schema: clin_checkups; Owner: easygp
---
-
-REVOKE ALL ON TABLE over75 FROM PUBLIC;
-REVOKE ALL ON TABLE over75 FROM easygp;
-GRANT ALL ON TABLE over75 TO easygp;
-GRANT SELECT,INSERT,UPDATE ON TABLE over75 TO staff;
-
-
---
--- Name: over75_pk_seq; Type: ACL; Schema: clin_checkups; Owner: easygp
---
-
-REVOKE ALL ON SEQUENCE over75_pk_seq FROM PUBLIC;
-REVOKE ALL ON SEQUENCE over75_pk_seq FROM easygp;
-GRANT ALL ON SEQUENCE over75_pk_seq TO easygp;
-GRANT USAGE ON SEQUENCE over75_pk_seq TO staff;
-
-
 SET search_path = clin_consult, pg_catalog;
 
 --
@@ -36485,26 +35218,6 @@ REVOKE ALL ON SEQUENCE lu_allied_health_care_types_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_allied_health_care_types_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_allied_health_care_types_pk_seq TO easygp;
 GRANT USAGE ON SEQUENCE lu_allied_health_care_types_pk_seq TO staff;
-
-
---
--- Name: lu_dacc_components; Type: ACL; Schema: clin_history; Owner: easygp
---
-
-REVOKE ALL ON TABLE lu_dacc_components FROM PUBLIC;
-REVOKE ALL ON TABLE lu_dacc_components FROM easygp;
-GRANT ALL ON TABLE lu_dacc_components TO easygp;
-GRANT SELECT ON TABLE lu_dacc_components TO staff;
-
-
---
--- Name: lu_dacc_components_pk_seq; Type: ACL; Schema: clin_history; Owner: easygp
---
-
-REVOKE ALL ON SEQUENCE lu_dacc_components_pk_seq FROM PUBLIC;
-REVOKE ALL ON SEQUENCE lu_dacc_components_pk_seq FROM easygp;
-GRANT ALL ON SEQUENCE lu_dacc_components_pk_seq TO easygp;
-GRANT USAGE ON SEQUENCE lu_dacc_components_pk_seq TO staff;
 
 
 --
@@ -39792,26 +38505,6 @@ GRANT USAGE ON SEQUENCE incoming_message_handling_pk_seq TO staff;
 
 
 --
--- Name: lu_link_printer_task; Type: ACL; Schema: defaults; Owner: easygp
---
-
-REVOKE ALL ON TABLE lu_link_printer_task FROM PUBLIC;
-REVOKE ALL ON TABLE lu_link_printer_task FROM easygp;
-GRANT ALL ON TABLE lu_link_printer_task TO easygp;
-GRANT ALL ON TABLE lu_link_printer_task TO staff;
-
-
---
--- Name: lu_link_printer_task_pk_seq; Type: ACL; Schema: defaults; Owner: easygp
---
-
-REVOKE ALL ON SEQUENCE lu_link_printer_task_pk_seq FROM PUBLIC;
-REVOKE ALL ON SEQUENCE lu_link_printer_task_pk_seq FROM easygp;
-GRANT ALL ON SEQUENCE lu_link_printer_task_pk_seq TO easygp;
-GRANT USAGE ON SEQUENCE lu_link_printer_task_pk_seq TO staff;
-
-
---
 -- Name: lu_message_display_style_pk_seq; Type: ACL; Schema: defaults; Owner: easygp
 --
 
@@ -39819,96 +38512,6 @@ REVOKE ALL ON SEQUENCE lu_message_display_style_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_message_display_style_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_message_display_style_pk_seq TO easygp;
 GRANT USAGE ON SEQUENCE lu_message_display_style_pk_seq TO staff;
-
-
---
--- Name: lu_printer_host; Type: ACL; Schema: defaults; Owner: easygp
---
-
-REVOKE ALL ON TABLE lu_printer_host FROM PUBLIC;
-REVOKE ALL ON TABLE lu_printer_host FROM easygp;
-GRANT ALL ON TABLE lu_printer_host TO easygp;
-GRANT ALL ON TABLE lu_printer_host TO staff;
-
-
---
--- Name: lu_printer_host_pk_seq; Type: ACL; Schema: defaults; Owner: easygp
---
-
-REVOKE ALL ON SEQUENCE lu_printer_host_pk_seq FROM PUBLIC;
-REVOKE ALL ON SEQUENCE lu_printer_host_pk_seq FROM easygp;
-GRANT ALL ON SEQUENCE lu_printer_host_pk_seq TO easygp;
-GRANT USAGE ON SEQUENCE lu_printer_host_pk_seq TO staff;
-
-
---
--- Name: lu_printer_task; Type: ACL; Schema: defaults; Owner: easygp
---
-
-REVOKE ALL ON TABLE lu_printer_task FROM PUBLIC;
-REVOKE ALL ON TABLE lu_printer_task FROM easygp;
-GRANT ALL ON TABLE lu_printer_task TO easygp;
-GRANT ALL ON TABLE lu_printer_task TO staff;
-
-
---
--- Name: lu_printer_task_pk_seq; Type: ACL; Schema: defaults; Owner: easygp
---
-
-REVOKE ALL ON SEQUENCE lu_printer_task_pk_seq FROM PUBLIC;
-REVOKE ALL ON SEQUENCE lu_printer_task_pk_seq FROM easygp;
-GRANT ALL ON SEQUENCE lu_printer_task_pk_seq TO easygp;
-GRANT USAGE ON SEQUENCE lu_printer_task_pk_seq TO staff;
-
-
---
--- Name: script_coordinates; Type: ACL; Schema: defaults; Owner: easygp
---
-
-REVOKE ALL ON TABLE script_coordinates FROM PUBLIC;
-REVOKE ALL ON TABLE script_coordinates FROM easygp;
-GRANT ALL ON TABLE script_coordinates TO easygp;
-GRANT ALL ON TABLE script_coordinates TO staff;
-
-
---
--- Name: script_coordinates_pk_seq; Type: ACL; Schema: defaults; Owner: easygp
---
-
-REVOKE ALL ON SEQUENCE script_coordinates_pk_seq FROM PUBLIC;
-REVOKE ALL ON SEQUENCE script_coordinates_pk_seq FROM easygp;
-GRANT ALL ON SEQUENCE script_coordinates_pk_seq TO easygp;
-GRANT USAGE ON SEQUENCE script_coordinates_pk_seq TO staff;
-
-
---
--- Name: temp; Type: ACL; Schema: defaults; Owner: easygp
---
-
-REVOKE ALL ON TABLE temp FROM PUBLIC;
-REVOKE ALL ON TABLE temp FROM easygp;
-GRANT ALL ON TABLE temp TO easygp;
-GRANT ALL ON TABLE temp TO staff;
-
-
---
--- Name: temp_pk_seq; Type: ACL; Schema: defaults; Owner: easygp
---
-
-REVOKE ALL ON SEQUENCE temp_pk_seq FROM PUBLIC;
-REVOKE ALL ON SEQUENCE temp_pk_seq FROM easygp;
-GRANT ALL ON SEQUENCE temp_pk_seq TO easygp;
-GRANT USAGE ON SEQUENCE temp_pk_seq TO staff;
-
-
---
--- Name: vwprinterstasks; Type: ACL; Schema: defaults; Owner: easygp
---
-
-REVOKE ALL ON TABLE vwprinterstasks FROM PUBLIC;
-REVOKE ALL ON TABLE vwprinterstasks FROM easygp;
-GRANT ALL ON TABLE vwprinterstasks TO easygp;
-GRANT ALL ON TABLE vwprinterstasks TO staff;
 
 
 SET search_path = documents, pg_catalog;

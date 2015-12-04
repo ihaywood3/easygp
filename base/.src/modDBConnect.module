@@ -30,8 +30,9 @@ Private my_is_admin As Boolean
 Private pg_socket_file As Stream
 Private storedQueries As String
 Private bStoring As Boolean
-Private event_listeners As Collection 
+Private event_listeners As Collection
 Private backend_pid As Integer
+Private profile_file As File
 Property Read currentUser As Collection
 Property Read IsAdmin As Boolean
 Property Read IsConnected As Boolean
@@ -46,265 +47,274 @@ Extern PQfreemem(obj As Pointer)
 Extern PQbackendPID(obj As Pointer) As Integer
 
 Private Function timeDiff(startTime As Float) As String
-   
-   Dim diff As Float
-   
-   diff = Timer() - startTime ' actual difference in float seconds
-   diff = diff * 1000 ' milliseconds
-   If diff > 20 Then
-      Return Str$(Round(diff))
-   Else
-      If diff > 2 Then
-         Return Str$(Round(diff, -1))
-      Else
-         Return Str$(Round(diff, -2))
-      Endif
-   Endif
-   
+
+  Dim diff As Float
+
+  diff = Timer() - startTime ' actual difference in float seconds
+  diff = diff * 1000 ' milliseconds
+  If diff > 20 Then
+    Return Str$(Round(diff))
+  Else
+    If diff > 2 Then
+      Return Str$(Round(diff, -1))
+    Else
+      Return Str$(Round(diff, -2))
+    Endif
+  Endif
+
 End
 
 Public Function Set_User(u2 As Collection)
-  
+
   my_current_user = u2
-  
+
 End
 
-
 Private Function IsConnected_Read() As Boolean
-   
-   Return Not IsNull($hconn)
-   
+
+  Return Not IsNull($hconn)
+
 End
 
 Private Function currentUser_Read() As Collection
-   
-   Return my_current_user
-   
+
+  Return my_current_user
+
 End
 
 Public Function currentUser_FullName() As String
-   
-   If IsNull(my_current_user)
-      Return "The Admin User"
-   Else
-      Return my_current_user!title & " " & my_current_user!wholename
-   Endif
-   
+
+  If IsNull(my_current_user)
+    Return "The Admin User"
+  Else
+    Return my_current_user!title & " " & my_current_user!wholename
+  Endif
+
 End
 
 Public Function userName() As String
-   
-   If IsNull(my_current_user) Then
-      Return "easygp"
-   Else
-      Return my_current_user!logon_name
-   Endif
-   
+
+  If IsNull(my_current_user) Then
+    Return "easygp"
+  Else
+    Return my_current_user!logon_name
+  Endif
+
 End
 
 Private Function IsAdmin_Read() As Boolean
-   
-   Return my_is_admin
-   
+
+  Return my_is_admin
+
 End
 
 Public Function Is_Superuser() As Boolean
-   
-   Return my_is_admin
-   
+
+  Return my_is_admin
+
 End
 
 Private Function CheckAdminStatus() As Boolean
-   
-   Dim r As Result
-   
-   r = exec_query("Select 1 From pg_roles r1 where r1.rolname = current_user and (r1.rolsuper or r1.rolcreaterole)")
-   If r.Count = 0 Then Return False
-   Return True
-   
+
+  Dim r As Result
+
+  r = exec_query("Select 1 From pg_roles r1 where r1.rolname = current_user and (r1.rolsuper or r1.rolcreaterole)")
+  If r.Count = 0 Then Return False
+  Return True
+
 End
 
 Public Sub dbConnect_global(opt As Collection)
-   '-------------------------------------
-   'Attempts to connect to a database
-   'returns true if success, false if not
-   '-------------------------------------
-   
-   Dim sa As String[]
-   
-   conninfo = opt
-   sa = Split(conninfo!host, "/")
-   If sa.Length = 2 Then
+  '-------------------------------------
+  'Attempts to connect to a database
+  'returns true if success, false if not
+  '-------------------------------------
+
+  Dim sa As String[]
+
+  conninfo = opt
+  sa = Split(conninfo!host, "/")
+  If sa.Length = 2 Then
+    conninfo!host = sa[0]
+    conninfo!dbname = sa[1]
+  Endif
+  If IsNull(conninfo!dbname) Then conninfo!dbname = "easygp"
+  sa = Split(conninfo!host, ":")
+  If sa[0] = "ssh" Then
+    conninfo!ssh = True
+    conninfo!host = sa[1]
+    If sa.length = 3 Then conninfo!port = sa[2]
+  Else
+    conninfo!ssh = False
+    If sa.Length = 2 Then
       conninfo!host = sa[0]
-      conninfo!dbname = sa[1]
-   Endif
-   If IsNull(conninfo!dbname) Then conninfo!dbname = "easygp"
-   sa = Split(conninfo!host, ":")
-   If sa[0] = "ssh" Then
-      conninfo!ssh = True
-      conninfo!host = sa[1]
-      If sa.length = 3 Then conninfo!port = sa[2]
-   Else 
-      conninfo!ssh = False
-      If sa.Length = 2 Then
-         conninfo!host = sa[0]
-         conninfo!port = sa[1]
-      Endif
-   Endif
-   If IsNull(conninfo!port) Then conninfo!port = "5432"
-   If IsNull(conninfo!username) Then conninfo!username = User.Name
-   event_listeners = New Collection
-   Actual_Connect()
-   
+      conninfo!port = sa[1]
+    Endif
+  Endif
+  If IsNull(conninfo!port) Then conninfo!port = "5432"
+  If IsNull(conninfo!username) Then conninfo!username = User.Name
+  event_listeners = New Collection
+  If modUtil.Is_Developer() Then
+    Try profile_file = Open User.Home &/ "easygp-profile.html" For Output Create
+    If Not IsNull(profile_file) Then
+      Print #profile_file, "<HTML><HEAD><TITLE>EasyGP SQL Profile</TITLE></HEAD><BODY><TABLE>"
+      Print #profile_file, "<TR><TH>Called From</TH><TH>SQL</TH><TH>Time</TH></TR>"
+    Endif
+  Endif
+  Actual_Connect()
+
   'If check_version Then CheckDBVersion()
   If conninfo!login = "easygp" Then
     my_is_admin = True
-  Else      
+  Else
     my_is_admin = CheckAdminStatus()                    'IAN another postgres user with super-user rights can slip past here.
   Endif
   bStoring = False
-   
+
 End
 
 Public Sub Shutdown()
-   
-   Try $hconn.Close()
-   If Not IsNull(inferior_ssh) Then 
-      Try inferior_ssh.Kill()
-      Try inferior_ssh.Close()
-   Endif 
-   
+
+  Try $hconn.Close()
+  If Not IsNull(inferior_ssh) Then
+    Try inferior_ssh.Kill()
+    Try inferior_ssh.Close()
+  Endif
+  If Not IsNull(profile_file) Then
+    Print #profile_file, "</TABLE></BODY></HTML>"
+    Close #profile_file
+  Endif
+
 End
 
 Public Function Scp_Download_Cmd_List(remote_file As String, local_file As String) As String[]
-   
+
   Dim scp_path As String
-  
+
   scp_path = modUtil.FindProgram("scp", "ssh")
   Return [scp_path, "-q", "-o", "ControlPath /tmp/gambas-ssh-%h.%u.%r", conninfo!host & ":" & remote_file, local_file]
-   
+
 End
 
 Public Sub Scp_Download(remote_file As String, local_file As String)
-   
+
   Dim startTime As Float
-  
+
   startTime = Timer()
   Exec Scp_Download_Cmd_List(remote_file, local_file) Wait
   Log.DebugMsg(Subst$("SSH Download of &1 took &2msec", remote_file, timeDiff(startTime)))
-   
+
 End
 
 Public Function Scp_Upload_Cmd_List(local_file As String, remote_file As String) As String[]
-   
+
   Dim scp_path As String
-  
+
   scp_path = modUtil.FindProgram("scp", "ssh")
-  Return [scp_path, "-q", "-o", "ControlPath /tmp/gambas-ssh-%h.%u.%r", local_file, conninfo!host & ":" & remote_file] 
+  Return [scp_path, "-q", "-o", "ControlPath /tmp/gambas-ssh-%h.%u.%r", local_file, conninfo!host & ":" & remote_file]
 
 End
 
 Public Function Scp_Upload_Cmd(local_file As String, remote_file As String) As String
-   
+
   Dim s As String[]
-  
+
   s = Scp_Upload_Cmd_List(local_file, remote_file)
   Return Subst$("&1 -q -o '&2' '&3' '&4'", s[0], s[3], s[4], s[5])
 
 End
 
 Public Sub Scp_Upload(local_file As String, remote_file As String)
-   
-  Exec Scp_Upload_Cmd_List(local_file, remote_file) Wait 
-   
-End
 
+  Exec Scp_Upload_Cmd_List(local_file, remote_file) Wait
+
+End
 
 Private Function Actual_Connect() As String
 
-   Dim ssh_path As String
-   Dim n As Integer = 0
-   Dim evt As Collection
-   Dim s As String
-   
-   
-   Try $hconn.Close
-   Try pg_socket_file.Close()
-   If Not IsNull(inferior_ssh) Then Try inferior_ssh.Kill()
-   $hconn = New Connection
-   With $hconn
-      .Type = "postgresql"
-      .Login = conninfo!username
-      .Password = conninfo!password
-      .Name = conninfo!dbname
-   End With
-   If conninfo!ssh Then
-      ssh_path = modUtil.FindProgram("ssh", "ssh")
-      inferior_ssh_connected = False
-      inferior_ssh_buffer = ""
-      inferior_ssh_error = Null
-      Try Shell "rm -f /tmp/gambas-ssh-*"  ' get rid of previous multiplexer listeners
-      inferior_ssh = Exec [ssh_path, "-Nnv", "-L", Subst$("127.0.0.1:15432:127.0.0.1:&1", conninfo!port), "-M", "-o", "ControlPath /tmp/gambas-ssh-%h.%u.%r", conninfo!host] For Read As "Ssh"
-      $hconn.Host = "127.0.0.1"
-      $hconn.Port = "15432"
-      While (Not inferior_ssh_connected) And n < 120 And IsNull(inferior_ssh_error)
-         Wait 1
-         Inc n
-      Wend
-      If Not inferior_ssh_connected Then
-         Try inferior_ssh.Kill()
-         If IsNull(inferior_ssh_error) Then inferior_ssh_error = "Connection timed out"
-         Return inferior_ssh_error
-      Endif
-   Else
-     If conninfo!host = "unix" Then
-        $hconn.Host = ""
-     Else
-        $hconn.Host = conninfo!host
-     Endif
-      $hconn.Port = conninfo!port
-   Endif
-   Try $hconn.Open
-   If Error Then
-     s = Error.Text
-     Log.ErrorMsg("when opening connection: " & s)
-     Error.Raise(s)
-   Endif
-   $hconn.Exec("set datestyle = 'iso,dmy'")
-   $hconn.Exec("set bytea_output = 'escape'")
-   DB.Current = $hconn
-   backend_pid = PQbackendPID(Connection.Handle)
-   pg_socket_file = Open "." & PQsocket(Connection.Handle) For Read Watch
-   Log.DebugMsg("about to re-attach listeners")
-   Log.DebugMsg("event_listeners is " & Str$(event_listeners))
-   If IsNull(event_listeners) Then
-     Log.WarningMsg("event_listeners was Null: shouldn't happen. Skipping listener attachment")
-   Else
-     For Each evt In event_listeners
-       exec_query("LISTEN " & event_listeners.Key)
-     Next
-   Endif
-   Log.DebugMsg("attached listeners")
-   Catch
-     Log.ErrorMsg("exception in modDBConnect.Actual_Connect () " & Error.Text & " " & Error.Backtrace.Join(" "))
-     Error.Raise("connection error: " & Error.Text)
+  Dim ssh_path As String
+  Dim n As Integer = 0
+  Dim evt As Collection
+  Dim s As String
+
+  Try $hconn.Close
+  Try pg_socket_file.Close()
+  If Not IsNull(inferior_ssh) Then Try inferior_ssh.Kill()
+  $hconn = New Connection
+  With $hconn
+    .Type = "postgresql"
+    .Login = conninfo!username
+    .Password = conninfo!password
+    .Name = conninfo!dbname
+  End With
+  If conninfo!ssh Then
+    ssh_path = modUtil.FindProgram("ssh", "ssh")
+    inferior_ssh_connected = False
+    inferior_ssh_buffer = ""
+    inferior_ssh_error = Null
+    Try Shell "rm -f /tmp/gambas-ssh-*"  ' get rid of previous multiplexer listeners
+    inferior_ssh = Exec [ssh_path, "-Nnv", "-L", Subst$("127.0.0.1:15432:127.0.0.1:&1", conninfo!port), "-M", "-o", "ControlPath /tmp/gambas-ssh-%h.%u.%r", conninfo!host] For Read As "Ssh"
+    $hconn.Host = "127.0.0.1"
+    $hconn.Port = "15432"
+    While (Not inferior_ssh_connected) And n < 120 And IsNull(inferior_ssh_error)
+      Wait 1
+      Inc n
+    Wend
+    If Not inferior_ssh_connected Then
+      Try inferior_ssh.Kill()
+      If IsNull(inferior_ssh_error) Then inferior_ssh_error = "Connection timed out"
+      Return inferior_ssh_error
+    Endif
+  Else
+    If conninfo!host = "unix" Then
+      $hconn.Host = ""
+    Else
+      $hconn.Host = conninfo!host
+    Endif
+    $hconn.Port = conninfo!port
+  Endif
+  Try $hconn.Open
+  If Error Then
+    s = Error.Text
+    Log.ErrorMsg("when opening connection: " & s)
+    Error.Raise(s)
+  Endif
+  $hconn.Exec("set datestyle = 'iso,dmy'")
+  $hconn.Exec("set bytea_output = 'escape'")
+  DB.Current = $hconn
+  backend_pid = PQbackendPID(Connection.Handle)
+  pg_socket_file = Open "." & PQsocket(Connection.Handle) For Read Watch
+  Log.DebugMsg("about to re-attach listeners")
+  Log.DebugMsg("event_listeners is " & Str$(event_listeners))
+  If IsNull(event_listeners) Then
+    Log.WarningMsg("event_listeners was Null: shouldn't happen. Skipping listener attachment")
+  Else
+    For Each evt In event_listeners
+      exec_query("LISTEN " & event_listeners.Key)
+    Next
+  Endif
+  Log.DebugMsg("attached listeners")
+Catch
+  Log.ErrorMsg("exception in modDBConnect.Actual_Connect () " & Error.Text & " " & Error.Backtrace.Join(" "))
+  Error.Raise("connection error: " & Error.Text)
+
 End
 
 Public Sub Close_Listener()
-   
-   event_listeners = Null
-   Try Close #pg_socket_file
-   
+
+  event_listeners = Null
+  Try Close #pg_socket_file
+
 End
 
 ' senda notification on our very basic messaging system
 Public Function Send_Notify(notify As String, the_param As String, Optional its_us As Boolean = False) As Variant
-  
+
   Dim r As Variant
   Dim r2 As Variant
   Dim i As Object
   Dim s As String
-  
+
   r2 = Null
   If event_listeners.Exist(notify) Then
     For Each i In event_listeners[notify]
@@ -324,252 +334,265 @@ Public Function Send_Notify(notify As String, the_param As String, Optional its_
       Endif
     Next
   Endif
-  
+
   Return r2
+
 End
-
-
-
 
 ' process asynchronous notifications
 Public Sub File_Read()
- 
-   PQconsumeInput(Connection.Handle)
-   Check_Notifications()
+
+  PQconsumeInput(Connection.Handle)
+  Check_Notifications()
+
 End
 
 Private Sub Check_Notifications()
-   Dim notifies As Pointer
-   Dim notifies2 As Pointer
-   Dim notify_string As String
-   Dim notify_pid As Integer
-   Dim notify_param As String
-   Dim its_us As Boolean
-   
-   notifies = PQnotifies(Connection.Handle)
-   While Not IsNull(notifies)
-      notifies2 = notifies
-      notify_string = String@(Pointer@(notifies))
-      notifies += SizeOf(gb.Pointer)
-      notify_pid = Integer@(notifies)
-      notifies += SizeOf(gb.Pointer) 'remember C structs are padded for speed to the larger type
-      notify_param = String@(Pointer@(notifies))
-      Log.DebugMsg("received NOTIFY " & notify_string & " pid: " & notify_pid & " param: " & notify_param)
-      ' check if it's our client making the update happen
-      ' some listeners may wish to ignore in this case, some may not
-      its_us = False
-      If backend_pid = notify_pid Then its_us = True
-      Send_Notify(notify_string, notify_param, its_us)
-      PQfreemem(notifies2) ' don't free until all handlers have run
-      PQconsumeInput(Connection.Handle)
-      notifies = PQnotifies(Connection.Handle)
-   Wend
 
+  Dim notifies As Pointer
+  Dim notifies2 As Pointer
+  Dim notify_string As String
+  Dim notify_pid As Integer
+  Dim notify_param As String
+  Dim its_us As Boolean
+
+  notifies = PQnotifies(Connection.Handle)
+  While Not IsNull(notifies)
+    notifies2 = notifies
+    notify_string = String@(Pointer@(notifies))
+    notifies += SizeOf(gb.Pointer)
+    notify_pid = Integer@(notifies)
+    notifies += SizeOf(gb.Pointer) 'remember C structs are padded for speed to the larger type
+    notify_param = String@(Pointer@(notifies))
+    Log.DebugMsg("received NOTIFY " & notify_string & " pid: " & notify_pid & " param: " & notify_param)
+    ' check if it's our client making the update happen
+    ' some listeners may wish to ignore in this case, some may not
+    its_us = False
+    If backend_pid = notify_pid Then its_us = True
+    Send_Notify(notify_string, notify_param, its_us)
+    PQfreemem(notifies2) ' don't free until all handlers have run
+    PQconsumeInput(Connection.Handle)
+    notifies = PQnotifies(Connection.Handle)
+  Wend
 
 End
 
 Public Sub Ssh_Read()
-   
-   Dim s As String
-   
-   s = Read #inferior_ssh, Lof(inferior_ssh)
-   Log.DebugMsg("inferior ssh process emitted \"" & s & "\" on stdout") 
-   
+
+  Dim s As String
+
+  s = Read #inferior_ssh, Lof(inferior_ssh)
+  Log.DebugMsg("inferior ssh process emitted \"" & s & "\" on stdout")
+
 End
 
 Public Sub Ssh_Error(err As String)
 
-   Dim i As String
-   
-   Log.DebugMsg("inferior ssh process emitted \"" & err & "\" on stderr")
-   inferior_ssh_buffer &= err
-   If IsNull(inferior_ssh_error) Then
-      For Each i In Split(inferior_ssh_buffer, "\n")
-         If Not (i Begins "debug1:" Or i Begins "Authenticated" Or i Begins "OpenSSH" Or Len(i) < 15) Then
-            If IsNull(inferior_ssh_error) Then
-               inferior_ssh_error = i
-            Else
-               inferior_ssh_error &= "\n" & err
-            Endif
-         Endif     
-      Next
-   Endif
-   If Not inferior_ssh_connected And If InStr(inferior_ssh_buffer, "Local forwarding listening on") > 0 Then
-      inferior_ssh_connected = True
-   Endif 
+  Dim i As String
+
+  Log.DebugMsg("inferior ssh process emitted \"" & err & "\" on stderr")
+  inferior_ssh_buffer &= err
+  If IsNull(inferior_ssh_error) Then
+    For Each i In Split(inferior_ssh_buffer, "\n")
+      If Not (i Begins "debug1:" Or i Begins "Authenticated" Or i Begins "OpenSSH" Or Len(i) < 15) Then
+        If IsNull(inferior_ssh_error) Then
+          inferior_ssh_error = i
+        Else
+          inferior_ssh_error &= "\n" & err
+        Endif
+      Endif
+    Next
+  Endif
+  If Not inferior_ssh_connected And If InStr(inferior_ssh_buffer, "Local forwarding listening on") > 0 Then
+    inferior_ssh_connected = True
+  Endif
 
 End
 
 Public Sub Register_Listener(evt As String, obj As Object)
-   
-   If Not event_listeners.Exist(evt) Then
-      ' we are the first listener, so tell postgres we are internested in this event
-      If evt <> "lost_connection" Then exec_query("LISTEN " & evt)
-      event_listeners[evt] = New Collection
-   Endif
-   event_listeners[evt].Add(obj, Str$(obj))
-   
+
+  If Not event_listeners.Exist(evt) Then
+    ' we are the first listener, so tell postgres we are internested in this event
+    If evt <> "lost_connection" Then exec_query("LISTEN " & evt)
+    event_listeners[evt] = New Collection
+  Endif
+  event_listeners[evt].Add(obj, Str$(obj))
+
 End
 
 Public Sub Unregister_Listener(evt As String, obj As Object)
-   
-   If IsNull(event_listeners) Then Return
-   If Not event_listeners.Exist(evt) Then Return
-   If Not event_listeners[evt].Exist(Str$(obj)) Then Return
-   event_listeners[evt].Remove(Str$(obj))
-   If event_listeners[evt].Count = 0 Then
-      event_listeners.Remove(evt)
-      If evt <> "lost_connection" Then exec_query("UNLISTEN " & evt)
-   Endif
-   
+
+  If IsNull(event_listeners) Then Return
+  If Not event_listeners.Exist(evt) Then Return
+  If Not event_listeners[evt].Exist(Str$(obj)) Then Return
+  event_listeners[evt].Remove(Str$(obj))
+  If event_listeners[evt].Count = 0 Then
+    event_listeners.Remove(evt)
+    If evt <> "lost_connection" Then exec_query("UNLISTEN " & evt)
+  Endif
+
 End
 
 Public Function BeginTrans() As Result
-   
-   ' now a noop
-   
+
+  ' now a noop
+
 End
 
 Public Function RollBack() As Result
-   
-   Dim $Result As Result
-   Dim startTime As Float
-   
-   If bTransaction Then
-      bTransaction = False
-      bFirstCommand = False
-      startTime = Timer()
-      Try $Result = $hconn.Exec("ROLLBACK")
-      If Error Then
-         Log.ErrorMsg(Error.Text)
-      Else
-         Log.DebugMsg(" ROLLBACK ( took " & timeDiff(startTime) & "msec )")
-      Endif
-      Return $Result
-   End If
-   
+
+  Dim $Result As Result
+  Dim startTime As Float
+
+  If bTransaction Then
+    bTransaction = False
+    bFirstCommand = False
+    startTime = Timer()
+    Try $Result = $hconn.Exec("ROLLBACK")
+    If Error Then
+      Log.ErrorMsg(Error.Text)
+    Else
+      Log.DebugMsg(" ROLLBACK ( took " & timeDiff(startTime) & "msec )")
+    Endif
+    Return $Result
+  End If
+
 End
 
 Public Function CommitTrans() As Result
-   
-   Dim $Result As Result
-   Dim startTime As Float
-   
-   If bTransaction Then
-      bTransaction = False
+
+  Dim $Result As Result
+  Dim startTime As Float
+  Dim time_diff As String
+
+  If bTransaction Then
+    bTransaction = False
+    If Not IsNull(profile_file) Then
       startTime = Timer()
-      Try $Result = $hconn.Exec("COMMIT")
-      If Error Then
-         Log.ErrorMsg(Error.Text)
-         Error.Raise(Error.Text)
-      Else
-         Log.DebugMsg(" COMMIT ( took " & timeDiff(startTime) & "msec )")
+    Endif
+    Try $Result = $hconn.Exec("COMMIT")
+    If Error Then
+      Log.ErrorMsg(Error.Text)
+      Error.Raise(Error.Text)
+    Else
+      If Not IsNull(profile_file) Then
+        time_diff = timeDiff(startTime)
+        Log.DebugMsg(" COMMIT ( took " & time_diff & "msec )")
+        Print #profile_file, "<TR><TD>"; modUtil.Get_Caller(); "</TD><TD>COMMIT</TD><TD>"; time_diff; "msec </TD></TR>"
       Endif
-      Try File_Read()
-      If Error Then
-        Log.ErrorMsg("during File_read():" & Error.Text & " " & Error.Where)
-      Endif
-      Return $Result
-   End If
-   
+    Endif
+    Try File_Read()
+    If Error Then
+      Log.ErrorMsg("during File_read():" & Error.Text & " " & Error.Where)
+    Endif
+    Return $Result
+  End If
+
 End
 
 Public Function exec_query(sql As String, Optional params As Variant[]) As Result
-   
-   Dim $Result As Result
-   Dim prefix As String
-   Dim startTime As Float
-   Dim errtxt As String
-   Dim bt As String
-   Dim obj As Object
-   Dim restart As Boolean
-   Dim v As Variant
-   
-   If Not IsNull(params) Then
-      sql = Me.Subst(sql, params)
-   Endif
-   If bStoring Then storedQueries &= sql & ";\n"
-   prefix = Lower$(Left$(sql, 6))
-   startTime = Timer()
-   If Not bTransaction And prefix <> "select" And prefix <> "listen" Then
-      $hconn.Exec("BEGIN")
-      bTransaction = True
-   End If
-   If Len(sql) > 8000 Then
-      Log.DebugMsg(Left$(sql, 8000))
-   Else
-      Log.DebugMsg(sql)
-   Endif
+
+  Dim $Result As Result
+  Dim prefix As String
+  Dim startTime As Float
+  Dim errtxt As String
+  Dim time_diff As String
+  Dim bt As String
+  Dim obj As Object
+  Dim restart As Boolean
+  Dim v As Variant
+
+  If Not IsNull(params) Then
+    sql = Me.Subst(sql, params)
+  Endif
+  If bStoring Then storedQueries &= sql & ";\n"
+  prefix = Lower$(Left$(sql, 6))
+  If Not IsNull(profile_file) Then
+    startTime = Timer()
+  Endif
+  If Not bTransaction And prefix <> "select" And prefix <> "listen" Then
+    $hconn.Exec("BEGIN")
+    bTransaction = True
+  End If
+  If Len(sql) > 8000 Then
+    Log.DebugMsg(Left$(sql, 8000))
+  Else
+    Log.DebugMsg(sql)
+  Endif
 do_query:
-   Try $Result = $hconn.Exec(sql)
-   If Error Then
-      errtxt = Error.Text
-      bt = Error.Where
-      If errtxt Begins "Query failed: SSL SYSCALL error: EOF detected" Or If errtxt Begins "Out of memory" Or If errtxt Begins "Query failed: SSL SYSCALL error: Connection timed out" Then
-         ' connection lost
-         $hconn = Null
-         Log.ErrorMsg("lost connection with \"" & errtxt & "\"")
-         If event_listeners.Exist("lost_connection") Then
-           restart = False
-           For Each obj In event_listeners["lost_connection"]
-             v = Null
-             Try v = Object.Call(obj, "Lost_Connection")
-             If v = "restart" Then
-             Endif
-           Next
-           ' FIXME: for now always attempt restart
-           If restart Then
-              Actual_Connect()
-              Goto do_query
-           Else
-             Error.Raise("lost connection and not restarting")
-           Endif
-         Endif
-      Else If errtxt Begins "Query failed: ERROR:  schema \"db\" does not exist" Then
-         Error.Raise("The database you have connected to seems empty of data, please check your database setup")
-      Else If errtxt Begins "Query failed: ERROR:  plpy.Error: No such option " Then
-         Log.ErrorMsg("no such option: " & errtxt & bt)
-         Error.Raise("query failed no directory setting")
-      Else If errtxt Begins "Query failed: ERROR:  IOError: [Errno 2] No such file or directory:" Then
-         Log.ErrorMsg("can't find file " & errtxt & bt)
-         Error.Raise("Can't find file")
-      Else
-         RollBack()
-         Error.Raise("query failed: " & errtxt)  'IAN URGENTLY NEED A BUG FIX TO EXIT GRACEFULLY AND RES-SET
+  Try $Result = $hconn.Exec(sql)
+  If Error Then
+    errtxt = Error.Text
+    bt = Error.Where
+    If errtxt Begins "Query failed: SSL SYSCALL error: EOF detected" Or If errtxt Begins "Out of memory" Or If errtxt Begins "Query failed: SSL SYSCALL error: Connection timed out" Then
+      ' connection lost
+      $hconn = Null
+      Log.ErrorMsg("lost connection with \"" & errtxt & "\"")
+      If event_listeners.Exist("lost_connection") Then
+        restart = False
+        For Each obj In event_listeners["lost_connection"]
+          v = Null
+          Try v = Object.Call(obj, "Lost_Connection")
+          If v = "restart" Then
+          Endif
+        Next
+        ' FIXME: for now always attempt restart
+        If restart Then
+          Actual_Connect()
+          Goto do_query
+        Else
+          Error.Raise("lost connection and not restarting")
+        Endif
       Endif
-   Else
-      Log.DebugMsg(" ( " & $Result.Count & " rows returned in " & timeDiff(startTime) & "msec )")
-   Endif
-   Return $Result
-   
+    Else If errtxt Begins "Query failed: ERROR:  schema \"db\" does not exist" Then
+      Error.Raise("The database you have connected to seems empty of data, please check your database setup")
+    Else If errtxt Begins "Query failed: ERROR:  plpy.Error: No such option " Then
+      Log.ErrorMsg("no such option: " & errtxt & bt)
+      Error.Raise("query failed no directory setting")
+    Else If errtxt Begins "Query failed: ERROR:  IOError: [Errno 2] No such file or directory:" Then
+      Log.ErrorMsg("can't find file " & errtxt & bt)
+      Error.Raise("Can't find file")
+    Else
+      RollBack()
+      Error.Raise("query failed: " & errtxt)  'IAN URGENTLY NEED A BUG FIX TO EXIT GRACEFULLY AND RES-SET
+    Endif
+  Else
+    If Not IsNull(profile_file) Then
+      time_diff = timeDiff(startTime)
+      Log.DebugMsg(" ( " & $Result.Count & " rows returned in " & time_diff & "msec )")
+      Print #profile_file, "<TR><TD>"; modUtil.Get_Caller(); "</TD><TD>"; Left$(sql, 500); "</TD><TD>"; time_diff; "msec </TD></TR>"
+    Endif
+    Return $Result
+  Endif
+
 End
 
 Public Sub startStoring()
-   
-   bStoring = True
-   storedQueries = ""
-   
+
+  bStoring = True
+  storedQueries = ""
+
 End
 
 Public Sub stopStoring() As String
-   
-   bStoring = False
-   Return storedQueries
-   
+
+  bStoring = False
+  Return storedQueries
+
 End
 
 Public Function Select(table As String, field As String, v As Variant) As Collection
-   
-   Dim s As String
-   
-   If IsInteger(v) Then
-      s = " = " & Str$(v)
-   Else
-      s = $hconn.Subst(" = upper(&1)", Str$(v))
-      field = "upper(" & field & ") "
-   Endif
-   Return exec_query_collection("select * from " & table & " where " & field & s)
-   
+
+  Dim s As String
+
+  If IsInteger(v) Then
+    s = " = " & Str$(v)
+  Else
+    s = $hconn.Subst(" = upper(&1)", Str$(v))
+    field = "upper(" & field & ") "
+  Endif
+  Return exec_query_collection("select * from " & table & " where " & field & s)
+
 End
 
 ' for queries where only 0 or 1 rows are expected
@@ -577,282 +600,282 @@ End
 ' if multiple rows returned it will bug out
 ' fixme - this is a problem - eg patient can have two addresses
 Public Function exec_query_first(sql As String, Optional params As Variant[]) As Collection
-   
-   Dim $result As Result
-   Dim f As ResultField
-   Dim some_rows As New Collection
-   
-   $result = exec_query(sql, params)
-   If $result.Count = 0 Then Return Null
-   If $result.Count > 1 Then
-      Log.ErrorMsg("multiple rows shouldn't be returned")
-      Error.Raise("multiple rows shouldn't be returned")
-   Endif
-   $result.MoveFirst
-   For Each f In $result.Fields
-      some_rows.Add($result[f.Name], f.Name)
-   Next
-   Return some_rows
-   
+
+  Dim $result As Result
+  Dim f As ResultField
+  Dim some_rows As New Collection
+
+  $result = exec_query(sql, params)
+  If $result.Count = 0 Then Return Null
+  If $result.Count > 1 Then
+    Log.ErrorMsg("multiple rows shouldn't be returned")
+    Error.Raise("multiple rows shouldn't be returned")
+  Endif
+  $result.MoveFirst
+  For Each f In $result.Fields
+    some_rows.Add($result[f.Name], f.Name)
+  Next
+  Return some_rows
+
 End
 
 Public Sub FormatBlob(fname As String) As String
-   
-   Return $hconn.FormatBlob(File.Load(fname))
-   
+
+  Return $hconn.FormatBlob(File.Load(fname))
+
 End
 
 Public Sub Subst(sql As String, params As Variant[]) As String
-   
-   params.Add(sql, 0)
-   Return Object.Call($hconn, "subst", params)
-   
+
+  params.Add(sql, 0)
+  Return Object.Call($hconn, "subst", params)
+
 End
 
 Public Sub insert(table As String, data As Collection, Optional pk_name As String = "pk") As Variant
-   '--------------------------------------------------------------
-   'Inserts a new record into the table, returning its primary key
-   '--------------------------------------------------------------
-   
-   Dim sql As String
-   Dim fieldslist As New String[]    '[data.count]
-   Dim valueslist As New String[]
-   Dim returned_row As Result
-   Dim field As Variant
-   Dim fname As String
-   
-   For Each field In data
-      fieldslist.Push("\"" & data.Key & "\"")
-      If TypeOf(field) = gb.string Then
-         If Left$(field, 5) = "BLOB:" Then
-            'a fix till Ian fixes the regex
-            If InStr(field, "src") Then
-               fname = Right$(field, -10)
-            Else
-               fname = Right$(field, -5)
-            End If
-            valueslist.Push($hconn.FormatBlob(File.Load(fname)) & "::bytea")
-         Else If field = "now()" Then
-            valueslist.Push("now()")
-         Else
-            valueslist.Push($hconn.Subst("&1", field))
-         End If
+  '--------------------------------------------------------------
+  'Inserts a new record into the table, returning its primary key
+  '--------------------------------------------------------------
+
+  Dim sql As String
+  Dim fieldslist As New String[]    '[data.count]
+  Dim valueslist As New String[]
+  Dim returned_row As Result
+  Dim field As Variant
+  Dim fname As String
+
+  For Each field In data
+    fieldslist.Push("\"" & data.Key & "\"")
+    If TypeOf(field) = gb.string Then
+      If Left$(field, 5) = "BLOB:" Then
+        'a fix till Ian fixes the regex
+        If InStr(field, "src") Then
+          fname = Right$(field, -10)
+        Else
+          fname = Right$(field, -5)
+        End If
+        valueslist.Push($hconn.FormatBlob(File.Load(fname)) & "::bytea")
+      Else If field = "now()" Then
+        valueslist.Push("now()")
       Else
-         If TypeOf(field) = gb.Date Then
-            field = Format$(field, "dd/mm/yyyy")
-         Endif
-         valueslist.Push($hconn.Subst("&1", field))
+        valueslist.Push($hconn.Subst("&1", field))
       End If
-   Next
-   sql = "INSERT INTO " & table & " (" & fieldslist.Join(",") & ") VALUES (" & valueslist.Join(",") & ")"
-   If Not IsNull(pk_name) Then
-      sql &= " RETURNING " & pk_name
-      returned_row = exec_query(sql)
-      Return returned_row[pk_name]
-   Else
-      exec_query(sql)
-      Return Null
-   End If
-   
+    Else
+      If TypeOf(field) = gb.Date Then
+        field = Format$(field, "dd/mm/yyyy")
+      Endif
+      valueslist.Push($hconn.Subst("&1", field))
+    End If
+  Next
+  sql = "INSERT INTO " & table & " (" & fieldslist.Join(",") & ") VALUES (" & valueslist.Join(",") & ")"
+  If Not IsNull(pk_name) Then
+    sql &= " RETURNING " & pk_name
+    returned_row = exec_query(sql)
+    Return returned_row[pk_name]
+  Else
+    exec_query(sql)
+    Return Null
+  End If
+
 End
 
 Public Function Role_Check_If_Exists(role As String) As Boolean
-   '---------------------------------------------------------
-   'Checks if a role (i.e user logon name) already exists
-   'Used when adding a staff member, eg from setupwizard
-   'returns TRUE if it does (!count = field, not record count
-   '---------------------------------------------------------
-   
-   If modDBConnect.exec_query("select count(*) from pg_roles where rolname = $$" & role & "$$")!count Then
-      Return True
-   Else
-      Return False
-   End If
-   
+  '---------------------------------------------------------
+  'Checks if a role (i.e user logon name) already exists
+  'Used when adding a staff member, eg from setupwizard
+  'returns TRUE if it does (!count = field, not record count
+  '---------------------------------------------------------
+
+  If modDBConnect.exec_query("select count(*) from pg_roles where rolname = $$" & role & "$$")!count Then
+    Return True
+  Else
+    Return False
+  End If
+
 End
 
 Public Function update(table As String, old_data As Collection, new_data As Collection, Optional old_pk_name As String = "pk", table_pk_name As String = "pk") As Boolean
-   ' updates a table by comparing old and new data and uploading the difference. At the end the new data is also copied back to old_data.
-   ' old_data can be Null, in which case all values in new_data are assumed to be changes
-   ' if no changes then no database query occurs
-   ' old_pk_name is the name of the primary key field in old_data. because this collection is coming from views, it is often
-   ' not "pk", such "pk_progress_note", or "pk_history" or suchlike and so often must be specified
-   ' table_pk_name is the name of the primary key in the underlying table, as it
-   ' is nearly always "pk", it is optional with this as a default.
-   ' returns True if a database action occurred, otherwise false
-   
-   Dim changes As New String[]
-   Dim field As Variant
-   Dim old_pk As Variant 'was integer, but then can't update data to table with a non-integer primary key
-   
-   changes.Clear()
-   If IsNull(old_data) Then
-      old_pk = new_data[old_pk_name]
-   Else
-      old_pk = old_data[old_pk_name]
-   Endif
-   For Each field In new_data
-      If IsNull(old_data) Then
-         If new_data.Key = old_pk_name Then Continue
+  ' updates a table by comparing old and new data and uploading the difference. At the end the new data is also copied back to old_data.
+  ' old_data can be Null, in which case all values in new_data are assumed to be changes
+  ' if no changes then no database query occurs
+  ' old_pk_name is the name of the primary key field in old_data. because this collection is coming from views, it is often
+  ' not "pk", such "pk_progress_note", or "pk_history" or suchlike and so often must be specified
+  ' table_pk_name is the name of the primary key in the underlying table, as it
+  ' is nearly always "pk", it is optional with this as a default.
+  ' returns True if a database action occurred, otherwise false
+
+  Dim changes As New String[]
+  Dim field As Variant
+  Dim old_pk As Variant 'was integer, but then can't update data to table with a non-integer primary key
+
+  changes.Clear()
+  If IsNull(old_data) Then
+    old_pk = new_data[old_pk_name]
+  Else
+    old_pk = old_data[old_pk_name]
+  Endif
+  For Each field In new_data
+    If IsNull(old_data) Then
+      If new_data.Key = old_pk_name Then Continue
+    Else
+      If field = old_data[new_data.Key] Then Continue
+    Endif
+    If Not IsNull(old_data) Then
+      old_data[new_data.Key] = field ' copy back to old_data
+    Endif
+    If TypeOf(field) = gb.string Then
+      If InStr(field, "BLOB:") Then
+        changes.Push(new_data.Key & "=" & $hconn.FormatBlob(File.Load((Right$(field, -5)))) & ":: bytea ")
+      Else If field = "now()" Then
+        changes.Push(new_data.Key & "= now()")
       Else
-         If field = old_data[new_data.Key] Then Continue
+        changes.Push($hconn.Subst(new_data.Key & " = &1", field))
       Endif
-      If Not IsNull(old_data) Then
-         old_data[new_data.Key] = field ' copy back to old_data
-      Endif
-      If TypeOf(field) = gb.string Then
-         If InStr(field, "BLOB:") Then
-            changes.Push(new_data.Key & "=" & $hconn.FormatBlob(File.Load((Right$(field, -5)))) & ":: bytea ")
-         Else If field = "now()" Then
-           changes.Push(new_data.Key & "= now()")
-         Else
-            changes.Push($hconn.Subst(new_data.Key & " = &1", field))
-         Endif
-      Else If TypeOf(field) = gb.Date Then
-         field = Format$(field, "dd/mm/yyyy")
-         changes.Push($hconn.Subst(new_data.Key & " = &1", field))
-      Else
-         changes.Push($hconn.Subst(new_data.Key & " = &1", field))
-      End If
-   Next
-   If changes.Count > 0 Then
-      If IsInteger(old_pk_name) Then          'Ian talk to me, fix this where primary key of table is string the old way didn't work
-         exec_query("UPDATE " & table & " SET " & changes.Join(",") & " WHERE " & table_pk_name & " = " & old_pk)
-      Else
-         exec_query("UPDATE " & table & " SET " & changes.Join(",") & " WHERE " & table_pk_name & " =$$" & old_pk & "$$")
-      End If
-      Return True
-   End If
-   Return False
-   
+    Else If TypeOf(field) = gb.Date Then
+      field = Format$(field, "dd/mm/yyyy")
+      changes.Push($hconn.Subst(new_data.Key & " = &1", field))
+    Else
+      changes.Push($hconn.Subst(new_data.Key & " = &1", field))
+    End If
+  Next
+  If changes.Count > 0 Then
+    If IsInteger(old_pk_name) Then          'Ian talk to me, fix this where primary key of table is string the old way didn't work
+      exec_query("UPDATE " & table & " SET " & changes.Join(",") & " WHERE " & table_pk_name & " = " & old_pk)
+    Else
+      exec_query("UPDATE " & table & " SET " & changes.Join(",") & " WHERE " & table_pk_name & " =$$" & old_pk & "$$")
+    End If
+    Return True
+  End If
+  Return False
+
 End
 
 Public Sub update_array(tbl As String, old_pk As Variant, fields As String[], vals As Variant[])
-   
-   Dim i As Integer = 0
-   Dim changes As New String[]
-   Dim field As Variant
-   
-   For i = 0 To fields.Max
-      field = vals[i]
-      If TypeOf(field) = gb.string Then
-         If InStr(field, "BLOB:") Then
-            changes.Push("\"" & fields[i] & "\" =" & $hconn.FormatBlob(File.Load((Right$(field, -5)))) & ":: bytea ")
-         Else
-            If TypeOf(field) = gb.Date Then
-               field = Format$(field, "dd/mm/yyyy")
-            Endif
-            changes.Push($hconn.Subst("\"" & fields[i] & "\" = &1", field))
-         Endif
+
+  Dim i As Integer = 0
+  Dim changes As New String[]
+  Dim field As Variant
+
+  For i = 0 To fields.Max
+    field = vals[i]
+    If TypeOf(field) = gb.string Then
+      If InStr(field, "BLOB:") Then
+        changes.Push("\"" & fields[i] & "\" =" & $hconn.FormatBlob(File.Load((Right$(field, -5)))) & ":: bytea ")
       Else
-         changes.Push($hconn.Subst("\"" & fields[i] & "\" = &1", field))
-      End If
-   Next
-   exec_query($hconn.Subst("UPDATE " & tbl & " SET " & changes.Join(",") & " WHERE pk = &1 ", old_pk))
-   
+        If TypeOf(field) = gb.Date Then
+          field = Format$(field, "dd/mm/yyyy")
+        Endif
+        changes.Push($hconn.Subst("\"" & fields[i] & "\" = &1", field))
+      Endif
+    Else
+      changes.Push($hconn.Subst("\"" & fields[i] & "\" = &1", field))
+    End If
+  Next
+  exec_query($hconn.Subst("UPDATE " & tbl & " SET " & changes.Join(",") & " WHERE pk = &1 ", old_pk))
+
 End
 
 Public Function exec_query_collection(sql As String, Optional params As Variant[]) As Collection
-   ' perform a query and return result as a collection of collections
-   
-   Dim thelot As New Collection
-   Dim a_collection As Collection
-   Dim $result As Result
-   Dim resultfield As ResultField
-   Dim generic_pk As Variant
-   Dim pk_field_present As Boolean
-   
-   $result = exec_query(sql, params)
-   For Each $result
-      a_collection = New Collection
-      generic_pk = -1
-      For Each resultfield In $result.Fields
-         If Not IsNull(resultfield.Name) Then
-            a_collection.Add($result[resultfield.Name], resultfield.Name)
-            If Left$(resultfield.Name, 2) = "pk" Then
-               If Not IsNull($result[resultfield.Name]) Then
-                  generic_pk = $result[resultfield.Name]
-                  pk_field_present = True
-               Endif
-            End If
-         End If
-      Next
-      If Not pk_field_present Then
-         Log.PanicMsg("Table in sql " & sql & " must have a field beginning with the letters pk")
-         Error.Raise("Table in sql " & sql & " must have a field beginning with the letters pk")
+  ' perform a query and return result as a collection of collections
+
+  Dim thelot As New Collection
+  Dim a_collection As Collection
+  Dim $result As Result
+  Dim resultfield As ResultField
+  Dim generic_pk As Variant
+  Dim pk_field_present As Boolean
+
+  $result = exec_query(sql, params)
+  For Each $result
+    a_collection = New Collection
+    generic_pk = -1
+    For Each resultfield In $result.Fields
+      If Not IsNull(resultfield.Name) Then
+        a_collection.Add($result[resultfield.Name], resultfield.Name)
+        If Left$(resultfield.Name, 2) = "pk" Then
+          If Not IsNull($result[resultfield.Name]) Then
+            generic_pk = $result[resultfield.Name]
+            pk_field_present = True
+          Endif
+        End If
       End If
-      thelot[generic_pk] = a_collection
-   Next
-   Return thelot
-   
+    Next
+    If Not pk_field_present Then
+      Log.PanicMsg("Table in sql " & sql & " must have a field beginning with the letters pk")
+      Error.Raise("Table in sql " & sql & " must have a field beginning with the letters pk")
+    End If
+    thelot[generic_pk] = a_collection
+  Next
+  Return thelot
+
 End
 
 Public Function exec_query_row(sql As String, Optional params As Variant[]) As Collection
-   ' perform a query and return result as a collection of cRows
-   
-   Dim thelot As New Collection
-   Dim a_collection As Collection
-   Dim $result As Result
-   Dim resultfield As ResultField
-   Dim generic_pk As Variant
-   Dim pk_field_present As Boolean
-   
-   If Not IsNull(params) Then
-      params.Add(sql, 0)
-      sql = Object.Call($hconn, "subst", params)
-   Endif
-   $result = exec_query(sql)
-   For Each $result
-      a_collection = New Collection
-      generic_pk = -1
-      For Each resultfield In $result.Fields
-         If Not IsNull(resultfield.Name) Then
-            a_collection.Add($result[resultfield.Name], resultfield.Name)
-            If Left$(resultfield.Name, 2) = "pk" Then
-               If Not IsNull($result[resultfield.Name]) Then
-                  generic_pk = $result[resultfield.Name]
-                  pk_field_present = True
-               Endif
-            End If
-         End If
-      Next
-      If Not pk_field_present Then
-         Log.PanicMsg("Table in sql " & sql & " must have a field beginning with the letters pk")
-         Error.Raise("Table in sql " & sql & " must have a field beginning with the letters pk")
+  ' perform a query and return result as a collection of cRows
+
+  Dim thelot As New Collection
+  Dim a_collection As Collection
+  Dim $result As Result
+  Dim resultfield As ResultField
+  Dim generic_pk As Variant
+  Dim pk_field_present As Boolean
+
+  If Not IsNull(params) Then
+    params.Add(sql, 0)
+    sql = Object.Call($hconn, "subst", params)
+  Endif
+  $result = exec_query(sql)
+  For Each $result
+    a_collection = New Collection
+    generic_pk = -1
+    For Each resultfield In $result.Fields
+      If Not IsNull(resultfield.Name) Then
+        a_collection.Add($result[resultfield.Name], resultfield.Name)
+        If Left$(resultfield.Name, 2) = "pk" Then
+          If Not IsNull($result[resultfield.Name]) Then
+            generic_pk = $result[resultfield.Name]
+            pk_field_present = True
+          Endif
+        End If
       End If
-      thelot[generic_pk] = New CRow(a_collection)
-   Next
-   Return thelot
-   
+    Next
+    If Not pk_field_present Then
+      Log.PanicMsg("Table in sql " & sql & " must have a field beginning with the letters pk")
+      Error.Raise("Table in sql " & sql & " must have a field beginning with the letters pk")
+    End If
+    thelot[generic_pk] = New CRow(a_collection)
+  Next
+  Return thelot
+
 End
 
 Private Function DbName_Read() As String
-   
-   Return $hconn.Name
-   
+
+  Return $hconn.Name
+
 End
 
 Private Function DbHost_Read() As String
-   
-   If conninfo!ssh Then
-     Return "ssh:" & conninfo!host 
-   Endif
-   If $hconn.Port <> "5432" Then
-      Return $hconn.Host & ":" & $hconn.Port
-   Else
-      Return $hconn.Host
-   Endif
-   
+
+  If conninfo!ssh Then
+    Return "ssh:" & conninfo!host
+  Endif
+  If $hconn.Port <> "5432" Then
+    Return $hconn.Host & ":" & $hconn.Port
+  Else
+    Return $hconn.Host
+  Endif
+
 End
 
 Public Function Esc_Like(s As String) As String
-   ' escapes characters required for doing LIKE and ILIKE
-   
-   Dim s2 As String
-   
-   s2 = Replace$(s, "%", "\\%")
-   s2 = Replace$(s2, "\\", "\\\\")
-   s2 = Replace$(s2, "_", "\\_")
-   Return s2
-   
+  ' escapes characters required for doing LIKE and ILIKE
+
+  Dim s2 As String
+
+  s2 = Replace$(s, "%", "\\%")
+  s2 = Replace$(s2, "\\", "\\\\")
+  s2 = Replace$(s2, "_", "\\_")
+  Return s2
+
 End

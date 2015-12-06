@@ -26,7 +26,6 @@ Private bTransaction As Boolean
 Private bFirstCommand As Boolean
 Private conninfo As Collection
 Private my_current_user As Collection
-Private my_is_admin As Boolean
 Private pg_socket_file As Stream
 Private storedQueries As String
 Private bStoring As Boolean
@@ -34,7 +33,6 @@ Private event_listeners As Collection
 Private backend_pid As Integer
 Private profile_file As File
 Property Read currentUser As Collection
-Property Read IsAdmin As Boolean
 Property Read IsConnected As Boolean
 Property Read DbName As String
 Property Read DbHost As String
@@ -84,43 +82,13 @@ End
 
 Public Function currentUser_FullName() As String
 
-  If IsNull(my_current_user)
-    Return "The Admin User"
-  Else
-    Return my_current_user!title & " " & my_current_user!wholename
-  Endif
+  Return my_current_user!title & " " & my_current_user!wholename
 
 End
 
 Public Function userName() As String
 
-  If IsNull(my_current_user) Then
-    Return "easygp"
-  Else
-    Return my_current_user!logon_name
-  Endif
-
-End
-
-Private Function IsAdmin_Read() As Boolean
-
-  Return my_is_admin
-
-End
-
-Public Function Is_Superuser() As Boolean
-
-  Return my_is_admin
-
-End
-
-Private Function CheckAdminStatus() As Boolean
-
-  Dim r As Result
-
-  r = exec_query("Select 1 From pg_roles r1 where r1.rolname = current_user and (r1.rolsuper or r1.rolcreaterole)")
-  If r.Count = 0 Then Return False
-  Return True
+  Return my_current_user!logon_name
 
 End
 
@@ -162,13 +130,15 @@ Public Sub dbConnect_global(opt As Collection)
     Endif
   Endif
   Actual_Connect()
-
-  'If check_version Then CheckDBVersion()
-  If conninfo!login = "easygp" Then
-    my_is_admin = True
+  my_current_user = ["logon_name": conninfo!username, "title": " "]
+  If conninfo!username = "easygp" Then
+    my_current_user!wholename = "Admin User"
+    my_current_user!role = "sysadmin"
   Else
-    my_is_admin = CheckAdminStatus()                    'IAN another postgres user with super-user rights can slip past here.
+    my_current_user!role = "pending"
+    my_current_user!wholename = "Loading"
   Endif
+  'If check_version Then CheckDBVersion()
   bStoring = False
 
 End
@@ -478,7 +448,7 @@ Public Function CommitTrans() As Result
       If Not IsNull(profile_file) Then
         time_diff = timeDiff(startTime)
         Log.DebugMsg(" COMMIT ( took " & time_diff & "msec )")
-        Print #profile_file, "<TR><TD>"; modUtil.Get_Caller(); "</TD><TD>COMMIT</TD><TD>"; time_diff; "msec </TD></TR>"
+        Print #profile_file, "<TR><TD>"; modUtil.Get_Caller().Join("<BR/>"); "</TD><TD>COMMIT</TD><TD>"; time_diff; "msec </TD></TR>"
       Endif
     Endif
     Try File_Read()
@@ -554,13 +524,14 @@ do_query:
       Error.Raise("Can't find file")
     Else
       RollBack()
+      Log.ErrorMsg("QUERY FAILED: " & sql & " " & errtxt)
       Error.Raise("query failed: " & errtxt)  'IAN URGENTLY NEED A BUG FIX TO EXIT GRACEFULLY AND RES-SET
     Endif
   Else
     If Not IsNull(profile_file) Then
       time_diff = timeDiff(startTime)
       Log.DebugMsg(" ( " & $Result.Count & " rows returned in " & time_diff & "msec )")
-      Print #profile_file, "<TR><TD>"; modUtil.Get_Caller(); "</TD><TD>"; Left$(sql, 500); "</TD><TD>"; time_diff; "msec </TD></TR>"
+      Print #profile_file, "<TR><TD>"; modUtil.Get_Caller().Join("<BR/>"); "</TD><TD>"; Left$(sql, 500); "</TD><TD>"; time_diff; "msec </TD></TR>"
     Endif
     Return $Result
   Endif

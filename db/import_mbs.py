@@ -77,14 +77,15 @@ def xml_mbs_items(etree):
     Go through the XML and yiled a dictionary for each MBS item
     """
     for i in etree.getroot().iter("Data"):
-        item = {'number_of_patients':1}
+        item = {'number_of_patients':0}
         for xml_name,our_name in [('Description','descriptor'),('ItemNum','item'),('ScheduleFee','schedule_fee'),("DerivedFee",'derived_fee'),('FeeType','fee_type'),('BenefitType','benefit_type'),('Benefit75','benefit75'),('Benefit85','benefit85'),('Benefit100','benefit100'),('Group','group')]:
             j = i.find(xml_name)
             if not j is None:
                 item[our_name] = j.text
         yield item
 
-
+0161d83e.6.43.1.2
+'0161d83e.6.40.1.0'
 def to_money(m):
     """Accepts an integer as integer cents
     Rounds to the nearest $0.05, and then to 

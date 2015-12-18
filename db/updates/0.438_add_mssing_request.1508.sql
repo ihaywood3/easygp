@@ -52,7 +52,7 @@ UNION
     lu_request_items.fk_laterality
      FROM clin_requests.lu_requests lu_request_items
      JOIN clin_requests.lu_request_type ON lu_request_items.fk_lu_request_type = lu_request_type.pk
-  WHERE lower(lu_request_items.item) ~~ '%'::text AND lu_request_items.fk_laterality = 0
+  WHERE lower(lu_request_items.item) ~~ '%'::text AND lu_request_items.fk_laterality = null
   ORDER BY 2, 7;
 
 ALTER TABLE clin_requests.vwrequestnames   OWNER TO easygp;

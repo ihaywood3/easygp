@@ -64,7 +64,7 @@ UNION
    FROM clin_requests.lu_requests lu_request_items
      JOIN clin_requests.lu_request_type ON lu_request_items.fk_lu_request_type = lu_request_type.pk
      LEFT JOIN clin_requests.lu_instructions ON lu_request_items.fk_instruction = lu_instructions.pk
-  WHERE lower(lu_request_items.item) ~~ '%'::text AND lu_request_items.fk_laterality = 0
+  WHERE lower(lu_request_items.item) ~~ '%'::text AND lu_request_items.fk_laterality is null
   ORDER BY 2, 7;
 
 ALTER TABLE clin_requests.vwrequestnames   OWNER TO easygp;
@@ -72,7 +72,7 @@ GRANT ALL ON TABLE clin_requests.vwrequestnames TO staff;
 COMMENT ON VIEW clin_requests.vwrequestnames
   IS 'a view of everything which is orderable, including lateralisation eg Xray wrist (LEFT), Xray wrist (RIGHT) or Xray Wrist (BOTH)';
 
-
+drop view clin_requests.vwrequestsordered;
 CREATE OR REPLACE VIEW clin_requests.vwrequestsordered AS 
  SELECT (forms.pk || '-'::text) || forms_requests.pk AS pk_view,
     forms.fk_lu_request_type,

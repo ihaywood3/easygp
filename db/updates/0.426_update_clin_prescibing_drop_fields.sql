@@ -125,4 +125,15 @@ CREATE OR REPLACE VIEW clin_prescribing.vwprescribeditems AS
 ALTER TABLE clin_prescribing.vwprescribeditems   OWNER TO easygp;
 GRANT SELECT ON TABLE clin_prescribing.vwprescribeditems TO staff;
 
+CREATE OR REPLACE VIEW research.vwfentanylpatients AS 
+ SELECT DISTINCT vwpatients.firstname,
+    vwpatients.surname
+   FROM clin_prescribing.vwprescribeditems,
+    contacts.vwpatients
+  WHERE vwprescribeditems.fk_patient = vwpatients.fk_patient AND vwprescribeditems.generic ~~* '%fentanyl%'::text;
+
+ALTER TABLE research.vwfentanylpatients   OWNER TO easygp;
+grant select on research.vwfentanylpatients to staff;
+
+
 update db.lu_version set lu_minor=426;

@@ -1,12 +1,15 @@
 -- start of putting progress notes attached to entering family history
 -- not yet implemented, I'm in two minds about doing so, progress notes will end up really cluttered with stuff
 
-Alter table clin_history.family_conditions add column fk_progressnote integer ;
- DROP VIEW clin_history.vwfamilyhistory;
+Alter table clin_history.family_conditions add column fk_progressnote integer not null ;
+-- this is an anomily, doesn''t refer to the patient''s fk_person, was put in originally thinking about importing from within the database'
+-- this cascades to the  clin_history.vwfamilyhistory
+alter table clin_history.family_members drop column fk_person cascade; 
+
 
 CREATE OR REPLACE VIEW clin_history.vwfamilyhistory AS 
  SELECT family_conditions.pk AS pk_view, family_links.fk_member, family_members.fk_consult AS fk_consult_familymember, 
- family_members.fk_relationship, family_members.fk_person, family_members.name, family_members.birthdate, 
+ family_members.fk_relationship, family_members.name, family_members.birthdate, 
  family_members.age_of_death, family_members.fk_occupation, family_members.fk_country_birth, 
  family_members.deleted AS member_deleted, family_links.fk_patient, family_links.pk AS fk_link, 
  family_conditions.pk AS fk_condition, family_conditions.condition, family_conditions.diagnosis_certain, 

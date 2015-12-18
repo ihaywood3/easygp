@@ -1,4 +1,10 @@
 ﻿ALTER TABLE clin_consult.progressnotes DROP COLUMN fk_code cascade;
+--view clin_consult.vwprogressnotes depends on table clin_consult.progressnotes column fk_code
+--view chronic_disease_management.vwdiabetescycleofcare depends on view clin_consult.vwprogressnotes
+--view clin_pregnancy.vwpregnancies depends on view clin_consult.vwprogressnotes
+--view clin_consult.vwstaffmemberspatientsconsults depends on view clin_consult.vwprogressnotes
+--view clin_consult.vwpatientconsults depends on view clin_consult.vwprogressnotes
+
 ALTER TABLE clin_consult.progressnotes DROP COLUMN fk_problem cascade;
 
 CREATE OR REPLACE VIEW clin_consult.vwprogressnotes AS 

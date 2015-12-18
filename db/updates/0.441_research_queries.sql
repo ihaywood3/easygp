@@ -7,4 +7,4 @@ alter table research.queries owner to easygp;
 grant all on research.queries to staff;
 
 
-update db.lu_version set lu_minor = 428;
+update db.lu_version set lu_minor = 441;

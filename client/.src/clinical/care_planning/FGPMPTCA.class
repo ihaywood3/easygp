@@ -14,8 +14,8 @@
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '-----------------------------------------------------------------------
 'A Form to allow users to claim the GPMP/TCA/Review Item 721/723/732
-'Used in FClinical by clicking the GPMP/TCA Button
-'GPMP = General Practitioner Management Plan
+'Used in FClinical by clicking the 'Care Planning' button
+'
 'TCA  = Team Care Arrangements
 '
 'Note that  for GPMP the document(s) generated is tagged 'Audit Use Only'
@@ -26,65 +26,92 @@
 ' modifications to arrangement/plan - update outcoform_gpmp.mes measures
 ' fax the review back to the team.
 ' 
-' HOW THIS FORM WORKS: (this module is experimental for beta testing)
-' GPMP When this tab first clicked on attempts to get the last GPMP claimed
+' HOW THIS WORKS:
+'      GPMP  A General Practitioner Management Plan a medicare funded item number
+'            meant to generate a wholistic document describing the patients
+'           chronic conditions and those providers who are involved in their care
+'           (if any, aside from the GP)
+'           When this tab first clicked On attempts To get the Last GPMP claimed
 ' 
-' TCA: it the TCA tab is clicked on an attempt is made to pull in the last TCA
-'      If not, user must click on the <New> button in FClinical. This loads the
-'      providers combo with any providers linked to any of the patients health issues
-'      when this combo is clicked, an instance of FTeamCareMembers is added to the
-'      workspace with the providers name as the tab title. This instance has as its tag
-'      the providers collection for that team member, to which is added at instantiation
-'      a empty collection of additional_health_issues, family_members, graphs and documents
-'      If the user selects any additional health issues, family member illnesses, graphs
-'      or documents then these fill these collections. As information is added the 
-'      LaTex of the TCA automatically updates to reflect the additions.
-'-----------------------------------------------------------------------
-Private bExit As Boolean
+'      TCA: Team Care Arrangements are meant to be a plan of action for all persons
+'           looking after a patient with a chronic illness who needs a multi-displinary
+'           Team (At least that's the spirit). Sadly in Australia it has become 
+'           bastardised and Medicare has become the defacto toe-nail-cutting provider
+'           for elderly Austrlians.)
+'
+'           Anyway..... (Sign....)
+'
+'           If the TCA tab Is Clicked On an attempt Is Made To pull In the Last TCA
+'           If not found, user must click on the <New> button in FClinical. This loads the
+'           providers combo with any providers linked to any of the patients health issues.
+'           Alos when this combo is clicked, an instance of FTeamCareMembers is added to the
+'           workspace with the providers name as the tab title. This instance has as its tag
+'           the providers collection for that team member, to which is added at instantiation
+'           a empty collection of additional_health_issues, family_members, graphs and documents
+'           If the user selects any additional health issues, family member illnesses, graphs
+'           or documents then these fill these collections. As information is added the 
+'           LaTex of the TCA automatically updates to reflect the additions.
+'------------------------------------------------------------------------------------------------
+Private currentConsult As CConsult              'the main patient consult class - holds everything together
+Private bExit As Boolean                        'used to exit subroutines to prevent triggering of stuff
 Private bPrintAcceptanceForm As Boolean
 Private bNewTCA As Boolean
-Private currentConsult As CConsult
-Private form_pdf As FPdf 
-Public Providers_Selected_For_TCA As Collection 
+Private bEditing As Boolean
+Private bPreparingGPMP As Boolean               'true if user is preparing the GPMP
+'Database keys
 Private fk_gp_management_plan As Variant         'if non zero then plan has been saved
 Private fk_team_care_arrangement As Variant      'if non zero the TCA has been saved
 Private fk_document_gp_management_plan As Variant 'if non zero GPMP has been saved
 Private fk_tca_progressnote As Variant               'key to clin_consult.progressnotes
 Private fk_gpmp_progressnote As Variant          'key to clin_consult.progressnotes related to saving the GPMP
-Private GPMP_LaTex As String
 Private GPMP As Collection 
+'Collections of stuff
+Private Allied_Health_types As Collection       'populated and passedd to each embedded FTeamCareArrangement
+Private usual_doctor As Collection
 Public TCA As Collection                        'the Team Care Arrangement public as accessed from other forms
 Public Team_Care_Members As Collection           'accessed by FTeamCareMember when it is deleted by the user from a workspace tab
 Private Providers As Collection                  'All providers linked to patient's health issues - these are 'potential' team care members
-Private Providers_Problems As Collection 
-Public cTab_HealthIssues As Integer = 0
-Public cTab_GPMP As Integer = 1
-Public cTab_TCA As Integer = 2
-Private bPreparingGPMP As Boolean               'true if user is preparing the GPMP
 Public Selected_provider As Collection
+Private Providers_Problems As Collection         'the health issues to be included for a provider
+Public Providers_Selected_For_TCA As Collection 
+'Constants
+Public Const cTab_HealthIssues As Integer = 0
+Public Const cTab_GPMP As Integer = 1
+Public Const cTab_TCA As Integer = 2
+'integer's  used in subroutine TCA_Check_If_Due_For_New_One(,)
+Public Const tca_cancel_generation As Integer = 0
+Public Const new_tca As Integer = 1
+Public Const tca_done_today As Integer = 2
+Public Const tca_overdue As Integer = 3
+Public Const tca_not_due As Integer = 4
+Public Const tca_review As Integer = 5
+
+Private GPMP_LaTex As String
 Private TCA_Summary_HTML As String
-Private Allied_Health_types As Collection       'populated and passedd to each embedded FTeamCareArrangement
-Private usual_doctor As Collection
 Private Form_Health_Issues As FPastHistory
-Private bEditing As Boolean
+Private form_pdf As FPdf 
 
 Static Private form_gpmp As FGPMPTCA
 
 Public Sub Init(cons As CConsult) 
+   'Set up the forms, get collections eg of providers for that persons health isues
+   'show any existing GPMP if one exists or if not the latest health summary as a 
+   'start point for a GPMP
    
    form_gpmp = Me                                                      'allow access of this form from anywhere by referencing FGPMPTCA
-   With form_pdf = New FPdf(VBox_PDF)                                       'to show pdf of the latex generated
+   tlNewPlan_Create_Text                                               'lots of text for the label
+   With form_pdf = New FPdf(VBox_PDF)                                  'to show pdf of the latex generated
       .tbShowPDFText.Enabled = False 
    End With
    currentConsult = cons 
-   lblmeasure.text = "Explained Preparation Process   " 
-   With Form_Health_Issues = New FPastHistory(Vbox_HealthIssues)
+   lblmeasure.text = "Explained Preparation Process   "                'make all labels  in edit area the widest of the text we have
+   With Form_Health_Issues = New FPastHistory(Vbox_HealthIssues)       'our own instance of health issues
       .Init(currentConsult)
    End With
-   modEditAreaHelpers.Resize_labels(VBox_EditArea_GPMP, lblmeasure)
-   modEditAreaHelpers.Resize_labels(VBox_EditArea_TCA, lblMeasure)     'setup the gui elements
+   modEditAreaHelpers.Resize_labels(VBox_EditArea_GPMP, lblmeasure)    'resize labels on the GPMP tab
+   modEditAreaHelpers.Resize_labels(VBox_EditArea_TCA, lblMeasure)     'and the TCA tab
    Providers_Selected_For_TCA = New Collection                         'will be those providers selected into the tCA
-   Providers_Refresh                                                   'load combo for all the providers in the Health Issues collection
+   Providers_Refresh                                                   'load combo for all the providers in the patient's Health Issues collection
    Allied_Health_Types = modUtil.Copy_Collection_Keyed_Sequentially(modPastHistoryDBI.Allied_Health_types_Get()) 'eg Dietitian, Podiatrist
    If Not IsNull(currentconsult!patient!fk_doctor) Then 
       usual_doctor = modAdminDBI.Preferred_Doctor_Get(currentconsult!patient!fk_doctor)
@@ -220,8 +247,8 @@ Public Function Family_History_ReOrder_collection(members As Collection) As Coll
    '-----------------------------------------------------------
    
    Dim member As Collection
-   Dim relative_keys As New Integer[]
-   Dim relative_key As Integer
+   Dim relative_keys As New Variant[]
+   Dim relative_key As Variant
    Dim members_reordered As New Collection
    
    For Each member In members
@@ -361,46 +388,55 @@ Public Sub Blank_PDF_Display()
    
 End
 
-Public Sub TCA_New()
+Public Sub TCA_Setup_Data_Entry()
+   'At this point, there is either nothing in the data entry area's
+   'or, if the TCA was done today, all the data is being shown but the screen cannot be edited
+   'Start either a new TCA or Edit and old one, do validation of dates etc first
    
-   bNewTCA = True                                                           'create new Team Care ARrangement
-   If IsNull(GPMP) Then  
+   bNewTCA = True                                                    'Assume new
+   If IsNull(GPMP) Then                                              'care planning button defaults to health issues, GPMP created if click on GPMP tab
       GPMP = modPastHistoryDBI.GP_Management_Plans_Get(currentconsult!patient!fk_patient, True)    'true = latest one
    End If 
-   If Providers_Warn_If_None_Exist() Then
-      Return
+   If Not Providers_Warn_If_None_Exist() Then                            'Check the past health issues have providers
+      Return                                                         'without these we cannot to a TCA (no team!)
    Endif
-   Select Case TCA_Check_If_Due_For_New_One(True)
-      Case 1  'do nothing, just setup for a new one - never ever done
-         lblHideWorkspace.Visible = False
-      Case 2
-         Return   'can just edit the existing on done today
-      Case 3
-         Return 'auto-start a new TCA, the interval is > 2 years
-      Case 4
-         Print    
+   Select Case TCA_Check_If_Due_For_New_One(True)                    'check if valid to do new one, or need review etc
+      Case new_tca,                                                 'do nothing, just setup for a new one - never ever done
+            lblClaimDetails.text = "NO RECORD OF TEAM CARE ARRANGEMENT IN SYSTEM"
+         lblTeamCareMembersAndArrangements.text = "Team Care Arrangements & Members (NEW)" 
+      Case tca_overdue 
+         lblClaimDetails.text = "OVERDUE LAST TCA done on " & Format(TCA!date_claimed, "dd/mm/yyyy")
+         lblTeamCareMembersAndArrangements.text = "Team Care Arrangements & Members (NEW)" 
+      Case tca_done_today                                            'can just edit the existing data on the screen
+         Return                
+      Case tca_not_due, tca_cancel_generation
+         Return  
+      Case tca_review                                                'review an existing TCA = new TCA with different labels
+         lblClaimDetails.text = " EXISTING TCA " & Format(TCA!date_claimed, "dd/mm/yyyy") & " BEING REVIEWED"
+         rbTCAReview.value = True   
+         lblTeamCareMembersAndArrangements.text = "Team Care Arrangements & Members (REVIEW)" 
    End Select
-   form_pdf.Load_pdf(modUtil.Find_File("templates/blank.pdf"),, True) 
+   
+   'From this point on the code sets up for a totally new Team Care arrangement, empty collections & GUI
+   form_pdf.Load_pdf(modUtil.Find_File("templates/blank.pdf"),, True) 'blank pdf showing on right now
    bExit = True
-   TextLabel2.Visible = False   
-   TextLabel1.text = Main_Instructions()
-   VBox_Main.Visible = True   
+   TextLabel2.Visible = False 
+   VBox_Main.Visible = True                                          'the main box holding all the TCA GUI elements
    VBox_Main.Enabled = True   
-   EditArea_Clear
-   WorkspaceEditor_Clear
-   TCA = New Collection
-   TCA!team_care_members = New Collection  'must be lower case
+   EditArea_Clear                                                    'remove any prior text from input areas
+   WorkspaceEditor_Clear                                             'remove any tabs from the providers workspace                                           
+   TCA = New Collection                                              'we want a totally new TCA 
+   TCA!team_care_members = New Collection                            'must be lower case
    HBox_TCA_Prepared_By.Visible = False
    HBox_TCA_Date_Claimed.Visible = False 
-   ' chkTCAClaim.value = True  
-   fk_team_care_arrangement = 0
-   fk_tca_progressnote = 0
+   fk_team_care_arrangement = Null
+   fk_tca_progressnote = Null
    txtTCAReviewDate.text = Format(DateAdd(currentconsult.GetConsultDate(), gb.month, 6), "dd/mm/yyyy")  
    VBox_EditArea_Outer_TCA.Enabled = True 
    Vbox_TCA.Enabled = True 
    VBox_EditArea_TCA.Enabled = True 
    EditArea_Notify_DataChange(False)
-   lblHideWorkspace.Visible = False 'remove overlying transparent label to allow access to the workspace
+   lblHideWorkspace.Visible = False                                     'remove overlying transparent label to allow access to the workspace
    WorkspaceEditor.Enabled = True  
    bExit = False  
    
@@ -450,7 +486,7 @@ Public Sub TCA_Display()
    HBox_TCA_Date_Claimed.Visible = True
    If Not IsNull(TCA!date_claimed) Then
       txtTCADateClaimed.text = Format(TCA!date_claimed, "dd/mm/yyyy")
-      lblClaimDetails.text = "TCA - Claimed on " & Format(TCA!date_claimed, "dd/mm/yyyy")
+      lblClaimDetails.text = "Last TCA - Claimed on " & Format(TCA!date_claimed, "dd/mm/yyyy")
    Else
       lblClaimDetails.text = "TCA - In Preparation"
    End If   
@@ -546,56 +582,58 @@ Public Function Address_Make_Latex(TCM_Prov As Collection) As String
 End
 
 Public Function TCA_Check_If_Due_For_New_One(Optional bNewTCARequested As Boolean = False) As Integer
-   '----------------------------------------------------------------
-   'Allow editing of the TCA if done Today otherwise tell user no-go
-   '
-   '----------------------------------------------------------------
+   'Check if we actually are due for a new Team Care Arrangement
    
    Dim sMsg As String
    Dim sLastClaimed As String
    Dim sNextDue As String
    Dim sClaimDetails As String
    
-   If IsNull(TCA) Then Return 1                                  'never ever had a tCA done  
+   If IsNull(TCA) Then Return new_tca                                               'never ever had a tCA done start a new one
    sLastClaimed = Format(TCA!date_claimed, "dd/mm/yyyy")
    sNextDue = Format(DateAdd(TCA!date_claimed, gb.Year, 2), "dd/mm/yyyy")
    sClaimDetails = "Existing TCA - last claimed: " & sLastClaimed & " next due:" & sNextDue
-   If modUtil.IsSameDay(currentconsult.GetConsultDate(), TCA!date_claimed) Then 
+   lblTeamCareMembersAndArrangements.text = "Team Care Arrangements & Members (LAST DONE:" & sLastClaimed & ")" 
+   If modUtil.IsSameDay(currentconsult.GetConsultDate(), TCA!date_claimed) Then     'can edit this if done today 
       lblClaimDetails.text = sClaimDetails
-      Return 2  'can edit this if done today 
+      Return tca_done_today 
    End If   
-   If DateDiff(TCA!date_claimed, currentconsult.GetConsultDate(), gb.day) > 730 Then                           'if claimed > 2 years ago tell them new one due
+   If DateDiff(TCA!date_claimed, currentconsult.GetConsultDate(), gb.day) > 730 Then 'if claimed > 2 years ago tell them new one due
       If bNewTCARequested = False Then    
          SMsg = "It is over 2  years since this patient last had a Team Care Arrangement claimed."
          If Message.Question("Would you like to start a new TCA?", "Yes Start New TCA", "Cancel") = 2 Then Return  
-         New_Entry
-         Return 3
+         Return tca_overdue
       Else
-         Return 1
+         Return tca_cancel_generation
       End If   
-      
-   Else   
-      If bNewTCARequested Then    
-         smsg &= "The recommended interval for a Team Care Arrangement is once every two years which in theory will fall on or about " & sNextDue & ",\n\n"
-         smsg &= " How do you want to action this?"
-         Select Case Message.Question(sMsg, "New Team Care Arrangement", "Review TCA", "Cancel")
+   Else                                                                              'was claimed less than 2 years ago 
+      If bNewTCARequested Then  
+         Message.Title = "Care Planning"  
+         sMsg = "<HTML><P><B>New Team Care Arrangements</B></P>"
+         smsg &= "<P>The recommended interval for a Team Care Arrangement is once every two years which in theory will fall on or about " & sNextDue & "</P>"
+         smsg &= "<P>A new TCA is not due unless there are exceptional circumstances.</P>"
+         sMsg &= "<P>To review an existing TCA you will have to do the following:"
+         sMsg &= "<UL>"
+         sMsg &= "<LI>Go through the agreement steps again with the patient"
+         sMsg &= "<LI>Review the health issues tab if you wish to update details or change providers"
+         sMsg &= "<LI>Select again the providers from the combo box"
+         sMsg &= "<LI>Enter some text about the progress made towards the goals of your TCA in the appropriate text box"
+         sMsg &= "<UL></P><P>How would you like to proceed?</P>"
+         Select Case Message.Question(sMsg, "New Team Care Arrangement", "Do a Team Care Arrangement Review", "Cancel")
             Case 1
-               New_Entry
-               Return 3
+               Return new_tca
             Case 2
-               Return 5
+               Return tca_review
             Case 3
-               Return 0
+               Return tca_cancel_generation
          End Select
       Else                                                                  
          sMsg &= "<P>The current Team Care Arrangement was claimed on " & sLastClaimed & ", you can only edit an existing TCA On the same Day it was created.</P>"                                                                                                       'TCA has been claimed"
-         smsg &= "<P>The recommended interval for a Team Care Arrangement is once every two years which in theory will fall on or about " & sNextDue 
-         sMsg &= ". You can however over-ride this by clicking on the 'New' button above </P>"
-         sMsg &= "<P>You can re-print the documents for each of the providers in this  Team Care Arrangement any time"
+         sMsg &= "<P>You can re-print the documents for each of the providers in this  Team Care Arrangement any time "
          smsg &= "by selecting the Plans Tab (on the  Tabbed Lists on the right hand side of the screen) and selecting the desired document.</P>"
          textlabel1.text = sMsg
          lblClaimDetails.text = sClaimDetails
-         Return 4
+         Return tca_not_due
       End If 
    End If   
    
@@ -604,7 +642,7 @@ End
 Public Function Main_Instructions() As String
    
    Return ""
-   "<P>Once saved <B><I>you can modify this TCA any time on the same date as it was claimed </I></B> After that time, you may view the documents in the TCA (which are kept for  medicare audit purposes) in the Plans List.</P>"
+   "<P>Once saved <B><I>you can modify this TCA any time on the same date as it was claimed. </I></B> After that time, you may view the documents in the TCA (which are kept for  medicare audit purposes) in the Plans List.</P>"
    "<P>Remember that all the information for this TCA must be entered in the Past History section of the program or on the 'Manage Health Issues' tab before generating the TCA.</P>"
    "<P><B>NB: Read your completed document - as this is auto-generated from your Health Issues it may contact syntax errors which you will need to correct!</B></P>"
    
@@ -746,7 +784,7 @@ Public Function TCA_Create_LaTex(provider As Collection) As String
    Dim sGPRole As String
    Dim sProviderRole As String
    Dim sRelevantHistory As String
-   Dim sHealthIssues As String   ' If Team_Care_Members_Forms[ListContainer1.index].Additional_Health_Issues_Get().count Then
+   Dim sHealthIssues As String  
    Dim sLaterality As String
    Dim reordered_family_history As Collection 
    Dim provider_comms As Collection
@@ -758,11 +796,11 @@ Public Function TCA_Create_LaTex(provider As Collection) As String
    'patient and provider related details
    '-------------------------------------------------------------------
    
-   sString = "TEAM CARE ARRANGEMENTS Item"
+   sString = "TEAM CARE ARRANGEMENTS \\\\"
    If rbTCA.value = True Then
-      sstring &= " 723"
+      sstring &= "NEW Item 723"
    Else
-      sstring &= " 732"
+      sstring &= "REVIEW Item 732"
    End If
    templ.Subst("introductory-text", introductory_text())
    sstring &= "\\\\" 
@@ -878,7 +916,7 @@ Public Function TCA_Create_LaTex(provider As Collection) As String
    templ.Row(sPatientRole, sGPRole, sProviderRole)
    templ.Table("treatment-arrangements")
    modProgressNotes.Selected_Health_Issues_Make_Latex(templ, provider!additional_health_issues)  'Now add the text of any additional problems the user wants to include in the TCA
- 
+   
    If chkTCACopyToPatient.value = True Then
       templ.Checkbox("copy-offered-to-patient", True)
    Else
@@ -921,246 +959,6 @@ Catch
    
 End
 
-Public Function TCA_Create_LaTex_old(provider As Collection) As String
-   '----------------------------------------------------------------------------------------
-   'Construsts the LaTex for the team care arrangement for one provider
-   'If the provider is involved in >1  health issue they are included on same page
-   'fixme alot of this code is duplicated in modProgressNotes.Health_Summary_Construct_Latex
-   '----------------------------------------------------------------------------------------
-   
-   Dim Templ As New CTemplate("team-care-arrangements-multi-cols", "tex")
-   Dim sstring As String
-   Dim x As Integer
-   Dim PH As Collection    'individual past history item
-   Dim sNeeds As String
-   Dim sGoals As String
-   Dim sPatientRole As String
-   Dim sGPRole As String
-   Dim sProviderRole As String
-   Dim sRelevantHistory As String
-   Dim sHealthIssues As String   ' If Team_Care_Members_Forms[ListContainer1.index].Additional_Health_Issues_Get().count Then
-   Dim sLaterality As String
-   Dim reordered_family_history As Collection 
-   Dim provider_comms As Collection
-   Dim comm As Collection
-   
-   Inc Application.Busy
-   '-------------------------------------------------------------------
-   'Put in headings, doctors name (if not being prepared by the nuser
-   'patient and provider related details
-   '-------------------------------------------------------------------
-   
-   sString = "TEAM CARE ARRANGEMENTS Item"
-   If rbTCA.value = True Then
-      sstring &= " 723"
-   Else
-      sstring &= " 732"
-   End If
-   templ.Subst("introductory-text", introductory_text())
-   sstring &= "\\\\" 
-   sString &= "\\\\USUAL GP: " 
-   If modDBConnect.currentUser!fk_role = const.StaffRole_Doctor Or modDBConnect.currentUser!fk_role = const.StaffRole_Practice_Principal Then
-      sstring &= modDBConnect.currentUser!title & " " & modDBConnect.currentUser!wholename & "\\\\"
-   Else
-      sString &= "<insert on completion>\\\\"
-   End If   
-   sString &= "Date claimed:" & Format(currentconsult.GetConsultDate(), "dd/mm/yyyy") & "\\\\"
-   sString &= "Due for review on:" & txtTCAReviewDate.text & "\\\\"
-   templ.Subst_common(currentconsult)
-   templ.Subst("heading", sstring)
-   TCA_Summary_HTML = Replace(sstring, "\\\\", "<BR>")
-   templ.Subst("fname-provider", modStrings.Capitalise_Words_In_String(provider!firstname))
-   templ.Subst("provider", Provider_Create_Name_Address_Latex_String(provider))
-   templ.Subst("wholenametcmember", modStrings.Capitalise_Words_In_String(provider!wholename))
-   If Not IsNull(provider!special_note) Then
-      sstring = "\\\\" & modUtil.Ucase_Word_First_Letter(provider!special_note) & "\\\\"
-      templ.Subst("team-member-extra-notes", sstring)
-   Else
-      templ.Subst("team-member-extra-notes", "\\relax")
-   Endif
-   If Not IsNull(provider!progress_towards_goals) Then
-      sstring = "\\textbf{Progress Against Goals}\\\\" & modUtil.Ucase_Word_First_Letter(provider!progress_towards_goals) & "\\\\"
-      templ.Subst("tca-progress", sstring)
-   Else
-      templ.Subst("tca-progress", "\\relax")
-   Endif
-   
-   modProgressNotes.Medications_Make_Latex_Table(templ, currentConsult)   'medications generic/strength/instruction/why prescribed
-   modProgressNotes.Allergies_Make_Latex(templ, currentconsult)           'unknown, nil or atc details
-   modProgressNotes.Habits_Make_Latex_Rows(templ, currentconsult)         'construct alcohol & nicotine rows
-   modProgressNotes.Measurements_Make_Latex_Rows(templ, currentConsult)   'basic measurements, egfr, hba1c
-   templ.Table("habits-measurements")                                     'put these in the same table
-   '---------------------------------------------------------------------------------------------------------
-   'the provider!family_history collection is keyed according to the order in form_inclusion.lblfamilyhistory
-   'As the order is random, it could be mother condition 1, father condition 1, mother condition 2 etc
-   'but we want the family history to be grouped
-   'we can't permanantly re-order the provider!family history collection otherwise if the user goes to
-   'delete someone in the form_inclusion, the incorrect member of the underlying collection will be removed
-   '---------------------------------------------------------------------------------------------------------
-   reordered_family_history = Family_History_ReOrder_collection(provider!family_history) 'unmix random family members
-   If reordered_family_history.count Then    
-      templ.Subst("family-history", modProgressNotes.Family_History_Create_Latex(templ, reordered_family_history)) 
-   Else
-      templ.Subst("family-history", "Nil relevant to this TCA")
-      ' Templ.subst("Family History", "")
-   End If   
-   '----------------------------------------------------------------------------------------------
-   'For each health issue the provider is involved in, construct the text for the body of the plan
-   '----------------------------------------------------------------------------------------------
-   x = 0
-   For Each PH In provider!providers_problems
-      sHealthIssues &= PH!description & ", "
-      sRelevantHistory &= PH!condition_summary & ", " 
-      If x = 0 Then 
-         If Not IsNull(PH!health_need) Then  
-            sNeeds &= modUtil.Ucase_Word_First_Letter(PH!health_need) & ", "
-         End If   
-      Else
-         If Not IsNull(PH!health_need) Then  
-            sNeeds &= PH!health_need & ", "
-         End If  
-      End If   
-      If x = 0 Then 
-         If Not IsNull(PH!aim_of_plan) Then  
-            sGoals &= modUtil.Ucase_Word_First_Letter(PH!aim_of_plan) & ", "
-         End If   
-      Else
-         If Not IsNull(PH!aim_of_plan) Then    
-            sGoals &= PH!aim_of_plan & ", "
-         End If   
-      End If   
-      If x = 0 Then 
-         If IsNull(PH!plan_contribution_patient) Then
-            sPatientRole = "<missing contribution by patient>"
-         Else
-            sPatientRole &= currentConsult!patient!firstname & " will " 
-         End If
-      End If   
-      If Not IsNull(PH!plan_contribution_patient) Then
-         sPatientRole &= PH!plan_contribution_patient
-         If Right(PH!plan_contribution_patient) <> "." Then sPatientRole &= ". "
-      Endif
-      If x = 0 Then sGPRole &= "The GP will "
-      sGPRole &= PH!plan_contribution_gp & ". "
-      If x = 0 Then
-         If Not IsNull(PH!contribution_to_plan) Then
-            sProviderRole &= modStrings.Capitalise_Words_In_String(provider!wholename) & " will "
-            sProviderRole &= modUtilGui.lcase_Word_First_Letter(PH!contribution_to_plan)
-            If Right(PH!contribution_to_plan) <> "." Then sProviderRole &= ". "
-         End If 
-      Else
-         If Not IsNull(PH!contribution_to_plan) Then
-            sProviderRole &= modUtil.Ucase_Word_First_Letter(PH!contribution_to_plan) & ". "
-         End If 
-      End If   
-      Inc x
-   Next
-   templ.Subst("relevant-history", modUtilGUI.Strip_Last_Character(sRelevantHistory))
-   templ.Subst("health-issue", modUtilGUI.Strip_Last_Character(sHealthIssues))
-   templ.Subst("needs", modUtilGUI.Strip_Last_Character(sNeeds))
-   templ.Subst("goals", modUtilGUI.Strip_Last_Character(sGoals))
-   
-   If modDBConnect.currentUser!fk_role = const.StaffRole_Doctor Or modDBConnect.currentUser!fk_role = const.StaffRole_Practice_Principal Then
-      templ.Row("\\begin{center}\\textbf{" & currentConsult!patient!wholename & "}\\\\(Patient)\\end{center}", "\\begin{center}\\textbf{" & modDBConnect.currentUser!title & " " & modDBConnect.currentUser!wholename & "}\\\\(GP)\\end{center}}", "\\begin{center}\\textbf{" & provider!wholename & "}\\\\(" & provider!occupation & ")\\end{center}}")
-      templ.Subst("claimed-by-name", modDBConnect.currentUser!title & " " & modDBConnect.currentUser!wholename)
-   Else
-      templ.Row("\\begin{center}\\textbf{" & currentConsult!patient!wholename & "}\\\\(Patient)\\end{center}", "\\begin{center}\\textbf{<insert on completion>}\\\\(GP)\\end{center}}", "\\begin{center}\\textbf{" & provider!wholename & "}\\\\(" & provider!occupation & ")\\end{center}}")
-      templ.Subst("claimed-by-name", "<insert on completion>")
-   End If   
-   templ.Row(sPatientRole, sGPRole, sProviderRole)
-   templ.Table("treatment-arrangements")
-   '--------------------------------------------------------------------------------
-   'Now add the text of any additional problems the user wants to include in the TCA
-   '--------------------------------------------------------------------------------
-   sString = ""
-   If provider!additional_health_issues.count Then   
-      sstring = "\\textbf{\\footnotesize \\underline{OTHER HEALTH ISSUES YOU SHOULD KNOW ABOUT}}"
-      For Each PH In provider!additional_health_issues
-         Select Case PH!fk_laterality
-            Case const.LateralityBoth
-               sLaterality = "(Bilateral)"
-            Case const.LateralityLeft
-               sLaterality = "(Left)"
-            Case const.LateralityRight
-               sLaterality = "(Right)"
-            Case const.LateralityNone
-               sLaterality = ""
-         End Select
-         sstring &= "\\item[\\footnotesize " & PH!year_onset & "]"
-         sstring &= "\\textbf{\\footnotesize " & UCase(PH!description) & " " & sLaterality & " " & modProgressNotes.age_onset(PH) & "}\\\\"
-         'If the user is using this as a management plan, must have aims, goals and management
-         If Not IsNull(PH!aim_of_plan) Then
-            If Not IsNull(PH!condition_summary) Then    
-               sstring &= "\\textbf{" & "Relevant History: " & "}" & PH!condition_summary & "." & "\\\\"
-            End If  
-            If Not IsNull(PH!health_need) Then  
-               sstring &= "\\textbf{" & "Needs to address: " & "}" & PH!health_need & ". \\\\"
-            End If   
-            sstring &= "\\textbf{" & "Goals                  : " & "}" & PH!aim_of_plan & ". \\\\" & "\\textbf{" & "Plan:    " & "}"  ' & PH!management_summary & "."
-            If Not IsNull(ph!plan_contribution_gp) Then
-               sstring &= "GP will " & ph!plan_contribution_gp & ". "
-            Endif
-            If Not IsNull(PH!plan_contribution_patient) Then
-               sstring &= "Patient will " & PH!plan_contribution_patient & ". "
-            Endif
-            If Not IsNull(Ph!plan_contribution_others) Then
-               sstring &= Ph!plan_contribution_others & "."
-            End If
-         Else
-            sstring &= "\\text{"
-            If Not IsNull(PH!condition_summary) Then 
-               sstring &= PH!condition_summary & ". "
-            Endif
-            If Not IsNull(Ph!management_summary) Then
-               sSTring &= PH!management_summary & "."
-            End If
-         End If
-      Next
-      templ.Subst("additional-health-issues", sstring) 
-   Else
-      templ.Subst("additional-health-issues", "\\relax")
-   Endif     
-   If chkTCACopyToPatient.value = True Then
-      templ.Checkbox("copy-offered-to-patient", True)
-   Else
-      templ.Checkbox("copy-offered-to-patient", False)
-   Endif
-   If rbTCAPatientHasCarerYes.value = True Then
-      templ.Checkbox("patient-has-carer-checkbox", True)
-   Else
-      templ.Checkbox("patient-has-carer-checkbox", False)
-   End If 
-   If chkTCAPatientAllowsCarerCopy.value = True Then
-      templ.Checkbox("copy-given-to-carer-checkbox", True)
-   Else
-      templ.Checkbox("copy-given-to-carer-checkbox", False)
-   End If   
-   If provider!include_gp_management_plan Then
-      templ.Checkbox("include-gp-management-plan", True)
-   Else
-      templ.Checkbox("include-gp-management-plan", False)
-   End If 
-   templ.Row("", "Your Signature") 'fixme stupid way to right justify
-   Templ.Row("", "")
-   Templ.Row("", "")
-   Templ.Row("", "Date")
-   templ.Table("team-care-member-signature")
-   '-------------------------------------------------------------------
-   'Make list of team care members and other providers involved in care
-   '------------------------------------------------------------------- 
-   Providers_Make_Latex_Table(templ)
-   '-----------------------------------------------------------------
-   'when plan will be reviewed and create the pdf for viewing
-   '-----------------------------------------------------------------
-   templ.Subst("review-date", txtTCAReviewDate.Text)
-   Dec Application.Busy
-   Print templ.GetData()
-   
-   Return Templ.GetData()
-Catch
-   Dec Application.Busy 
-   
-End
 Public Sub Print_Content()
    
    Dim sMsg As String
@@ -1226,16 +1024,19 @@ Public Sub Edit()
 End
 
 Public Sub New_Entry() 
-   '---------------------------------------------------------------
-   'Start a new GPMP or TCA, the New button is clicked in FClinical
-   'see FClinical.MainToolbar_Click()
-   '---------------------------------------------------------------
+   '----------------------------------------------------------------------
+   'Start a new GPMP or TCA
+   '---------------------------------------------------------------------
+   'Called from FClinicalToolbar, called this because can't use New() and
+   'all across easyp this is the wording I've chosen
+   'see FClinicalToolbar.MainToolbar_Click for details
+   '---------------------------------------------------------------------- 
    
    Select Case TabStrip1.Index
       Case cTab_GPMP
          GPMP_New 
       Case cTab_TCA   
-         TCA_New
+         TCA_Setup_Data_Entry
    End Select
    
 End
@@ -1561,8 +1362,10 @@ Public Function Providers_Warn_If_None_Exist() As Boolean
             sMsg &= "Having said all this, you can proceed and swap back to the 'Manage Health Issues' tab at any time and any changes "
             sMsg &= "you make there will automatically appear on this form, including an updated listing of providers in the drop down combo."
       End Select
-      If Message.Warning(sMsg, "Proceed and prepare the " & sButtonText, "Cancel") = 2 Then Return True
-      Return 
+      If Message.Warning(sMsg, "Proceed and prepare the " & sButtonText, "Cancel") = 2 Then Return 
+      Return True 
+   Else
+      Return True
    Endif
    
 End
@@ -1630,7 +1433,6 @@ Public Sub Team_Member_New()
    Dim form_inclusions As FTeamCareMember
    Dim PH As Collection
    Dim Prov As Collection 
-   ' Dim fk_pasthistory As Variant 
    Dim Selected_Provider_Problem_Involved As Collection
    
    bExit = True   
@@ -1659,6 +1461,9 @@ Public Sub Team_Member_New()
       Next
       .Init(currentconsult, providers[cmbProviders.index]!wholename, Allied_Health_Types, VBox_EditArea_Outer_TCA) 'currentConsult!past_history is keyed by the pk_pasthistory
    End With
+   'the providers collection could contain unwanted data
+   Try Providers[cmbProviders.index]!fk_team_care_member = Null
+   Try Providers[cmbProviders.index]!fk_document_tca = Null
    Providers[cmbProviders.index]!providers_problems = Providers_Problems
    Providers[cmbProviders.index]!family_history = New Collection     'may be populated in  form_inclusions
    Providers[cmbProviders.index]!team_care_form = form_inclusions
@@ -1666,6 +1471,8 @@ Public Sub Team_Member_New()
    Providers[cmbProviders.index]!special_note = Null
    Providers[cmbProviders.index]!progress_towards_goals = Null
    Providers[cmbProviders.index]!fk_lu_allied_health_care_type = Null
+   Providers[cmbProviders.index]!fk_document_tca = Null 'added 04dec15
+   Providers[cmbProviders.index]!fk_document_allied_health_form = Null
    Providers[cmbProviders.index]!additional_health_issues = New Collection
    Providers[cmbProviders.index]!family_history = New Collection
    TCA!team_care_members.Add(providers[cmbProviders.index], providers[cmbProviders.index]!fk_provider_of_care)
@@ -1686,8 +1493,8 @@ Public Sub Team_Member_Reload(tcm As Collection, Optional bPreventAccess As Bool
    Dim PH As Collection
    Dim Prov As Collection 
    Dim Selected_Provider_Problem_Involved As Collection
-   Dim keys As Integer[]
-   Dim key As Integer
+   Dim keys As Variant[]
+   Dim key As Variant
    
    bExit = True   
    Providers_Problems = New Collection                                     'those problems the provider is involved with
@@ -1716,9 +1523,8 @@ Public Sub Team_Member_Reload(tcm As Collection, Optional bPreventAccess As Bool
          End If   
       Next
       .Init(currentconsult, providers[cmbProviders.index]!wholename, Allied_Health_Types, VBox_EditArea_Outer_TCA) 'currentConsult!past_history is keyed by the pk_pasthistory
-      Print .VBox_EditArea.Enabled
+      If rbTCAReview.value = True Then .HBox_TCAReview_Progress.visible = False  
    End With
-   
    Providers[cmbProviders.index]!providers_problems = Providers_Problems
    '--------------------------------------------------------
    'Now reload (if any) family history user wants to include
@@ -1764,7 +1570,6 @@ Public Sub Team_Member_Reload(tcm As Collection, Optional bPreventAccess As Bool
       form_inclusions.txtProgressTowardsGoals.text = TCM!progress_towards_goals
       form_inclusions.copy_TCA_Progress_Against_Goals = TCM!progress_towards_goals  'see FTeamCareMembers.Hbox_TCA_Progress_Against_Goals_leave()
    Endif
-   
    If Not IsNull(TCM!fk_document_gp_management_plan) Then
       form_inclusions.chkIncludeGPMP.value = True   
       TCM!include_gp_management_plan = True
@@ -1901,7 +1706,7 @@ Public Sub TCA_Save()
       'give them the spiel, different message for different roles
       'Inform who the team care members are, the selected num of epc sesssions
       '-----------------------------------------------------------------------
-      sMsg = "Your team care members are:<BR><BR>"
+      sMsg = "<B>Your team care members are:</B><BR><BR>"
       If modDBConnect.currentUser!fk_role = const.StaffRole_Registered_Nurse Then
          sMsg &= "General Practitioner: <insert on completion>"
       Else
@@ -1914,10 +1719,11 @@ Public Sub TCA_Save()
          sMsg &= "<BR>"
       Next
       sMsg &= "<BR>"
-      sMsg &= "How to you want to action this team care arrangement?<BR><BR>"
+      sMsg &= "<B>How to you want to action this team care arrangement</B>?<BR><BR>"
       Select Case modDBConnect.currentUser!fk_role
          Case const.StaffRole_Doctor, const.StaffRole_Practice_Principal
-            Message.title = "Actioning of Team Care Arrangements" 
+            If rbTCA.Value = True Then Message.title = "NEW Team Care Arrangements" 
+            If rbTCAReview.value = True Then Message.Title = "REVIEW OF EXISTING Team Care Arrangements" 
             If TCA!team_care_members.count >= 2 Then  
                smsg &= "Save as claimed:"
                sMsg &= "<UL><LI>EasyGP will log that you have claimed this item number (" & Str(item_number) & ") today"
@@ -1964,21 +1770,20 @@ Public Sub TCA_Save()
    'First the progress note, must be saved before the TCA as needs its  pk for the TCA collection
    '--------------------------------------------------------------------------------------------
    ProgressNote = New CRow
-   If fk_tca_progressnote Then
+   If Not IsNull(fk_tca_progressnote) Then
       ProgressNote.put_unchanged(fk_tca_progressnote, "fk_progressnote")
    Endif
    ProgressNote!fk_consult = currentConsult.GetPK()
    ProgressNote!notes = TCA_ProgressNotes_Create(bClaimed)
    ProgressNote!fk_section = const.cSection_CarePlan
    ProgressNote!problem = "Team Care Arrangements"
-   ProgressNote!fk_problem = 0
    ProgressNote!fk_audit_action = const.cAuditAction_Insert
    ProgressNote.Save("clin_consult.progressnotes", "fk_progressnote")
    '---------------------------------------------------------
    'next save the actual team care arrangement with its Latex
    '---------------------------------------------------------
    TCA_Save = New CRow   
-   If fk_team_care_arrangement Then
+   If Not IsNull(fk_team_care_arrangement) Then
       TCA_Save.Put_unchanged(fk_team_care_arrangement, "fk_team_care_arrangement")
    End If   
    TCA_Save!fk_consult = currentConsult.GetPK()
@@ -2297,8 +2102,7 @@ Public Sub TCA_Save()
       Endif
    Next
    EditArea_Notify_DataChange(False)
-  ' FClinical.Refresh_AllPreviousNotes()
-   FClinical.Refresh_Section(const.cSection_CarePlan)
+   FClinical.Refresh_Section(const.cSection_Lists_GPMP_TCA)
    bNewTCA = False 
    WorkspaceEditor_Clear 'removes all existing tabs
    TCA_Reload
@@ -2330,7 +2134,7 @@ Public Function Allied_Health_Referral_Make_Latex(TCM As Collection) As Collecti
    Dim pdf_path As String = modUtil.Find_File("templates" &/ "epc-referral.pdf")
    Dim latex_path_modified As String
    Dim latex_col As New Collection
-  
+   
    templ.subst_common(currentconsult)
    templ.Subst("postcode", "\\relax")
    templ.Subst("patient-has-gpmp-and-tca", "X")
@@ -2414,7 +2218,7 @@ Public Sub GPMP_New()
    
    Dim sMsg As String
    
-   If Providers_Warn_If_None_Exist() Then Return                                       'allow user to cancel if no providers yet entered in FPastHistory
+   If Not Providers_Warn_If_None_Exist() Then Return                                       'allow user to cancel if no providers yet entered in FPastHistory
    If Not IsNull(GPMP) Then                                                            'A GPMP already exists
       If DateDiff(GPMP!date_claimed, GPMP!review_date, gb.month) > -1 Then             'check it is at least 12 months since last plan
          sMsg = "You have tried to create a new plan sooner than the 12 month period allowed.\n\n"
@@ -2424,14 +2228,16 @@ Public Sub GPMP_New()
          If Message.Question(smsg, "Proceed with new plan", "Cancel") = 2 Then Return  'User wants to cancel? 
          HBox_Exceptional_Circumstance.Visible = True                                  'User wants to proceed, expose the txtGPMPExceptionalCircumstances texbox
       End If 
+   Else
+      Health_Summary_Reload  
    Endif
    bPreparingGPMP = True
    bEditing = False  
    EditArea_Clear                                                                       'clear appropriate edit area as per tabindex
    GPMP = New Collection
-   fk_document_gp_management_plan = 0
-   fk_gp_management_plan = 0 
-   fk_gpmp_progressnote = 0
+   fk_document_gp_management_plan = Null
+   fk_gp_management_plan = Null
+   fk_gpmp_progressnote = Null
    VBox_EditArea_GPMP.Enabled = True  
    rbGPMP.value = True
    lblClaimDetails.text = "New GP Management Plan"
@@ -2444,6 +2250,8 @@ Public Sub GPMP_New()
       chkGPMPExplainedStepsInvolved.SetFocus
    Endif
    Health_Summary_Reload                                                                'load the medical record data for the GPMP
+   VBox_EditArea_GPMP_Outer.Visible = True   
+   tlNewPlan.Visible = False  
    
 End
 
@@ -2494,9 +2302,7 @@ Public Sub GPMP_Save()
    '-----------------------------------------------------------
    'If not already saved, different message for different roles
    '-----------------------------------------------------------
-   If fk_gp_management_plan = 0 Then                                                      'not as yet prepared or saved
-      'If IsNull(GPMP!fk_gp_management_plan) Then 
-      fk_gp_management_plan = 0
+   If IsNull(fk_gp_management_plan) Then                                                      'not as yet prepared or saved
       Message.title = "Actioning of the GP Management Plan"  
       smsg1 = "<UL>"
       "<LI>The data you have entered will be saved to the database"
@@ -2518,7 +2324,6 @@ Public Sub GPMP_Save()
       Else
          sMsg &= "<BR>"
       End If       
-      
       If modDBConnect.currentUser!fk_role = const.StaffRole_Doctor Or modDBConnect.currentUser!fk_role = const.StaffRole_Practice_Principal Then   'If a doctor then can save claim this 
          smsg &= "If you save this as prepared:"
          sMsg &= sMsg1
@@ -2562,39 +2367,29 @@ Public Sub GPMP_Save()
                bClaimed = False
             End If  
       End Select   
-      'Else                                                                             'no providers, can't finalise this
-      '    sMsg = "No providers have been added to the GP Management Plan"               'just give the the message saying
-      '   sMsg &= sMsg1                                                  
-      '   If Message.Question(sMsg, "Save as Prepared", "Cancel") = 2 Then Return
-      '  bClaimed = False  
-      ' End If   
    Else                                           'previously claimed but need to check still valid
       If Not GPMP_Valid() Then Return        'no valid data existing plan > out of here
-      ' fk_gp_management_plan = GPMP!fk_gp_management_plan
       bClaimed = True   
    End If 
    '----------------------------------------------------------------------------------------------------
    'First the progress note, must be saved before the GPMP as needs its  pk for the GPMP_Save collection
    '----------------------------------------------------------------------------------------------------
    ProgressNote = New CRow
-   If fk_gpmp_progressnote Then
+   If Not IsNull(fk_gpmp_progressnote) Then
       ProgressNote.put_unchanged(fk_gpmp_progressnote, "fk_progressnote")
    Endif
    ProgressNote!fk_consult = currentConsult.GetPK()
    ProgressNote!notes = GPMP_ProgressNotes_Create(bClaimed)
    ProgressNote!fk_section = const.cSection_CarePlan
    ProgressNote!problem = "GP Management Plan"
-   ProgressNote!fk_problem = 0
    ProgressNote!fk_audit_action = const.cAuditAction_Insert
    ProgressNote.Save("clin_consult.progressnotes", "fk_progressnote")
    '----------------------------------------------------------------------
    'Now the GP Management Plan but can't save this till after the document
    '----------------------------------------------------------------------
    GPMP_Save = New CRow   
-   If fk_gp_management_plan <> 0 Then
+   If Not IsNull(fk_gp_management_plan) Then
       GPMP_Save.Put_unchanged(fk_gp_management_plan, "fk_gp_management_plan")
-   Else
-      Print "it was zero"
    End If   
    GPMP_Save!fk_consult = currentConsult.GetPK()
    GPMP_Save!date_claimed = currentconsult.GetConsultDate()                                              'claim today only
@@ -2664,9 +2459,8 @@ Public Sub GPMP_Save()
    '   CONSTRAINT documents_pkey PRIMARY KEY (pk )
    ' )
    '----------------------------------------------------------------------------------------------------------------
-   ' Latex = modProgressNotes.Health_Summary_Construct_LaTex(currentconsult, GPMP_Save, Providers_Selected_For_TCA).GetData() 'true = bGPMP in that routine now true
    document = New CRow  
-   If fk_document_gp_management_plan Then
+   If Not IsNull(fk_document_gp_management_plan) Then
       Document.put_unchanged(fk_document_gp_management_plan, "fk_document")
    Endif
    Document!fk_sending_entity = modInboxDBI.SendingEntity_GetPK(const.Document_Display_As_Letter, "", modDBConnect.currentUser!fk_branch)
@@ -2707,8 +2501,8 @@ Public Sub GPMP_Save()
    modDBConnect.CommitTrans()
    Hbox_GPMP_Text.Visible = False 'remove the strongly worded text of GPMP has changed
    EditArea_Notify_DataChange(False)
- '  FClinical.Refresh_AllPreviousNotes()
-   FClinical.Refresh_Section(const.cSection_CarePlan)
+   FClinicalToolbar.GPMP_Reload_External
+   FClinical.Refresh_Section(const.cSection_Lists_GPMP_TCA)
    GPMP_Display  'refetch from back-end, regenerates the keys
 Catch
    modDBConnect.RollBack()
@@ -2754,7 +2548,13 @@ End
 
 Public Sub TCA_Reload()
    '------------------------------------------------------------
-   'Reload the team care arrangement collection from the backend
+   'Get the last Team Care Arrangement if it exsits
+   'i.e the single latest TCA (Item 721 (intial) or  732 (review)
+   'the collection looks like this
+   'TCA!team_care_members
+   '    each team_care_member in TCA!team_care_members has
+   '                                     health_issue_keys
+   '                                     family_history_keys etc
    '------------------------------------------------------------   
    
    TCA = modPastHistoryDBI.TCA_Get(currentconsult!patient!fk_patient)         'fetch the latest TCA from the backend
@@ -2842,6 +2642,7 @@ Public Sub GPMP_Display()
    GPMP = modPastHistoryDBI.GP_Management_Plans_Get(currentconsult!patient!fk_patient, True)    'true = latest one
    If IsNull(GPMP) Then 
       Blank_PDF_Display                                                       'there is no existing GPMP 'PDF is a blank form
+      VBox_EditArea_GPMP_Outer.Visible = False
       Return
    End If   
    If IsNull(TCA) Then TCA = modPastHistoryDBI.TCA_Get(currentconsult!patient!fk_patient)     'need TCA if exists to get any team care members    
@@ -3052,6 +2853,25 @@ Public Function TCA_Valid_Data() As Boolean
          If IsNull(TCM!fk_lu_allied_health_care_type) Then
             Message.info("You have allocated " & Str(TCM!num_epc_sessions) & " EPC sessions to " & TCM!wholename & " but you have not indicated the type of session to be printed on the EPC form.")
             Return
+         Endif
+         If TCA!item_number = "732" Then
+            If IsNull(TCM!progress_towards_goals) Then
+               sMsg = "You have not written anything about the progress this patient is making "
+               sMsg &= "under the care of yourself and " & TCM!wholename & " (" & TCM!occupation & ") "
+               sMsg &= "towards the goals you have set for the management of "
+               If TCM!providers_problems.count > 1 Then
+                  smsg &= "these health issues"
+               Else
+                  sMsg &= "this health issue"
+               Endif
+               smsg &= ":\n\n"
+               For Each PH In TCM!providers_problems
+                  sMsg &= PH!description & "\n" 
+               Next
+               sMsg &= "\nPlease fix this before saving."
+               Message.Info(sMsg)
+               Return 
+            Endif
          Endif
       Endif
       sMsg = ""
@@ -3426,9 +3246,11 @@ Public Sub rbEditArea_Click()
    
    Select Case Last.tag
       Case "tca item 723"
+       lblTeamCareMembersAndArrangements.text = "Team Care Arrangements & Members (NEW)"
          Try TCA_Setup_For_Review(False) 'try because selected provider may be null
       Case "tca review item 732"
          Try TCA_Setup_For_Review(True)
+         lblTeamCareMembersAndArrangements.text = "Team Care Arrangements & Members (REVIEW)" 
       Case "tca carer yes"
          lblCopyToCarerTCA.Foreground = Color.TextForeground
          lblPatientGivesPermissiontca.Foreground = Color.TextForeground
@@ -3621,7 +3443,7 @@ Public Sub TabStrip1_Click()
          End If  
       Case cTab_TCA
          VBox_Plan_PDF.Visible = True                                                   'Show pdf to the right 
-         If IsNull(TCA) Then                                                            'No TCA Yet?                                          
+         If IsNull(TCA) Then                                                            'No TCA Yet this instance of the form?                                         
             TCA_Reload()                                                                'try and get a TCA
             Try HSplit_GPMP.layout = Settings["FGPMPTCA/GPMPTCA_HSplit_GPMP.layout"] 
          End If  
@@ -3736,5 +3558,33 @@ Public Sub VBox_EditArea_GPMP_Leave()
    '---------------------------------------------------------------------
    
    If VBox_EditArea_GPMP_Outer.padding Then Health_Summary_Reload
+   
+End
+
+Public Sub tlNewPlan_Create_Text()
+   
+  tlNewPlan.text = ""
+  "<P><B>Creating a new GP Management Plan</B></P>"
+     "<P> If you are happy the entire medical record is up to date, click on the 'New' Button on the main toolbar "
+     " and the plan will be automatically generated. Aside from verifying the details of the claim, there is no data entry " 
+     "for the plan done here.</P><P>To be a compliant plan, the patient must have at least one medical condition that "
+     "has been (or is likely to be) present for at least six months or is terminal. </P>"
+     "<P>The plan details should contain a summary of the history of the condition, the goals or aims of the plan, "
+     "together with the actions and responsibilities of the plan members - the GP, the patient, and, if applicable, "
+     "other health providers with whom the patient will access additional advice and services needed for their care.<P>"
+     "<P>If you need to update any aspect of the plan now, you must do so in the appropriate sections of EasyGP "
+     "and save your changes. These modifications will automatically appear in the pdf displayed here.</P>"
+     "<P>Once you save this plan - <B><I><U>you can modify this copy any time on the same date as you have claimed Item 721.</U></I></B> " 
+     "After that time, you may view this copy of the plan for medicare audit purposes via the tab labelled 'Plans' which is located "
+     "on the upper right side of the main clinical screen on the multi-tabbed control. <B><I>The copy is not intended for distribution "
+     "at a future date - it is only a 'snapshot' in time and will quickly be out of date.</P>"
+     "<P>Fortunately, EasyGP will automatically create an up-to-date GPMP every time  change any apsect of the medical record. "
+     "To print out or distribute an up-to-date copy of the GPMP  click on the 'View GPMP' button on the toolbar and then the 'Print' button</P> "
+     "<HR>"
+     "<P><B>BEFORE SAVING THE PLAN PLEASE READ IT CAREFULLY AND ENSURE THE SENTENCES MAKE SENSE WHEN READ - IF NOT GO BACK TO THE "
+      "MEDICAL RECORD AND MAKE ANY NECESSARY CORRECTIONS. IF YOU FIND IT A BIT HARD TO READ ON THIS SCREEN, CLICK ON THE "
+      "'Open in External Viewer' BUTTON LOCATED ABOVE THE PDF OF THE PLAN AND READ YOUR PLAN OUTSIDE OF EASYGP OR PRINT IT OUT.</B></P> "
+     " <P><B><U>Remember that many other health providers will see your plan, and the opinions your colleagues have of you "
+     "and your practice will be a reflection of its quality and accuracy!!!!<U></B></P><HR>" 
    
 End

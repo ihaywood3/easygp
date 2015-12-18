@@ -1,6 +1,6 @@
 ' Gambas module file
 
-' Copyright (C) 2008-2015 Dr. Richard Terry, Dr. Ian Haywood
+' Copyright (C) 2008-2016 Dr. Richard Terry, Dr. Ian Haywood
 ' This program is free software: you can redistribute it and/or modify
 ' it under the terms of the GNU General Public License as published by
 ' the Free Software Foundation, either version 3 of the License, or
@@ -55,15 +55,13 @@ Public Sub Auto_Process()
    notification_panel.Visible = False  
    Return
 NoAccessError:
-    modUtilGUI.SingleWarning("nohl7load", "EasyGP was not able to access the directories necessary to allow you to import hl7 or scanned documents.\n\n"
+   modUtilGUI.SingleWarning("nohl7load", "EasyGP was not able to access the directories necessary to allow you to import hl7 or scanned documents.\n\n"
    "Please check your Admin.Global Settings")
 Catch
-    Log.ErrorMsg(Error.Text & " " & Error.Where)
+   Log.ErrorMsg(Error.Text & " " & Error.Where)
    Message.info("An error occurred whilst trying to import new hl7 files.\n\nPlease contact the system administrator for assistance.") 
    
 End Sub
-
-
 
 Private Sub Process_Dir_Or_File(fname As String)
    '------------------------------------------------------------------------
@@ -84,7 +82,7 @@ Private Sub Process_Dir_Or_File(fname As String)
    Dim filecount As Integer
    Dim x As Integer 
    Dim R As Result
-   Dim unique_filename_key As Integer 
+   Dim unique_filename_key As Variant 
    Dim unique_filename As String
    
    If IsDir(fname) Then
@@ -165,6 +163,8 @@ Private Sub Process_Dir_Or_File(fname As String)
             Try Processing_Log.Clear()
             Process_File(hl7, fname)
          Endif
+         Print fname 
+         Print modUtil.filepath_fix_Blanks(File.Name(fname))
          Move fname To importdir &/ "processed" &/ modUtil.filepath_fix_Blanks(File.Name(fname))
          processing_log.Add("Executed: Move " & fname & " to " & "processed" &/ modUtil.filepath_fix_Blanks(File.Name(fname)))
          modDBConnect.CommitTrans()
@@ -512,10 +512,9 @@ Private Sub Process_File(hl7 As CHL7, fname As String)
       '------------------------------------------------------------------------------------------------------------------------------
       msh_seg_sender = modHL7Process.Get_SendingEntity(hl7[modHL7Constants.MSH_Sending_Facility], processing_log)
       sending_application = modHL7Process.Get_Sending_Application(hl7[modHL7Constants.MSH_Sending_Application], processing_log)
-      Sender = Get_Sender(msh_seg_sender, sending_application)   'msh_seg_sender = !name and !!fk_lu_message_display_style
+      Sender = Get_Sender(msh_seg_sender, sending_application)  
       any_msh = True
       processing_log.Add("Analysed the message header segment and have determined the sender - " & sender!msh_sending_entity)
-      
       '---------------------------------------------------------------------------------------
       'Some messages may be only for one patient, eg gpAccess discharge
       'and have PRD  segment(s) at the top  e.g one or more, often 3! 
@@ -698,7 +697,7 @@ Private Sub Process_File(hl7 As CHL7, fname As String)
                   fallback_staff = modAdminDBI.Preferred_Doctor_Get(staff_IDs!fk_staff)
                   processing_log.Add("Have allocated document to  the fallback staff member " & fallback_staff!title & " " & fallback_staff!wholename)
                End If   
-               staff_IDs!fk_unmatched_staff = 0
+               staff_IDs!fk_unmatched_staff = Null
             End If   
             processing_log.Add("Creating a new document collection prior to saving to the back end")
             document = New Collection
@@ -714,10 +713,10 @@ Private Sub Process_File(hl7 As CHL7, fname As String)
             Else
                document!date_created = Val(Format(DateString_Decode(hl7[modHL7Constants.OBR_Collect_Date]), "dd/mm/yyyy"))
             End If   
-            If patient!fk_patient <> 0 Then document!fk_patient = patient!fk_patient
-            If patient!fk_unmatched_patient <> 0 Then document!fk_unmatched_patient = patient!fk_unmatched_patient   
-            If staff_IDs!fk_staff <> 0 Then document!fk_staff_destination = staff_IDs!fk_staff
-            If staff_IDs!fk_unmatched_staff <> 0 Then document!fk_unmatched_staff = staff_IDs!fk_unmatched_staff
+            If Not IsNull(patient!fk_patient) Then document!fk_patient = patient!fk_patient
+            If Not IsNull(patient!fk_unmatched_patient) Then document!fk_unmatched_patient = patient!fk_unmatched_patient   
+            If Not IsNull(staff_IDs!fk_staff) Then document!fk_staff_destination = staff_IDs!fk_staff
+            If Not IsNull(staff_IDs!fk_unmatched_staff) Then document!fk_unmatched_staff = staff_IDs!fk_unmatched_staff
             ' If IsNull(document_originator) Then ' Now if not yet collected from PRD|CP (consulting provider) or ORC(12) ordering provider get the document_originator
             If IsNull(document_originator) Or sender!fk_lu_message_display_style = const.Document_Display_As_Letter Then ' Now if not yet collected from PRD|CP (consulting provider) or ORC(12) ordering provider get the document_originator
                processing_log.Add("Not yet sure  who ordered/created/authored this message, will look in OBR segment")
@@ -792,13 +791,15 @@ Private Sub Process_File(hl7 As CHL7, fname As String)
             Do While hl7.Next("OBX", "OBR", "PID", "MSH")
                '-------------------------------------------------
                ' table documents.observations is the obx segment:
+               ' CREATE TABLE documents.observations
+               ' (
                '   pk serial NOT NULL,
                '   fk_document integer,
                '   set_id integer,
                '   value_type text,
                '   identifier text,
                '   sub_identifier text,
-               '   "value" text,
+               '   value text,
                '   units text,
                '   reference_range text,
                '   abnormal text,
@@ -807,11 +808,20 @@ Private Sub Process_File(hl7 As CHL7, fname As String)
                '   result_status text,
                '   date_last_normal date,
                '   user_defined_access_checks text,
-               '   observation_date date,hl7
-               '   value_numeric double precision,
-               '   loinc text
+               '   observation_date date,
+               '   value_numeric numeric,
+               '   loinc text,
+               '   pit boolean DEFAULT false, -- if true, the FT segment contains PIT lines ie a PIT report
+               '   value_numeric_qualifier text, -- numerical qualifier eg < or > for example egfr <60)
+               '   CONSTRAINT observations_pkey PRIMARY KEY (pk),
+               '   CONSTRAINT observations_fk_document_fkey FOREIGN KEY (fk_document)
+               '       REFERENCES documents.documents (pk) MATCH SIMPLE
+               '       ON UPDATE NO ACTION ON DELETE NO ACTION
+               ' )
+               ' WITH (
+               '   OIDS=FALSE
+               ' );
                '---------------------------------------------------
-               
                obx = New Collection
                obx!fk_document = document!pk
                obx!set_id = hl7[1]
@@ -979,7 +989,7 @@ Public Function Get_Staff_Member(staff_member As Collection, fname As String) As
    End If 
    If Not IsNull(unmatched_staff) Then
       staff_ID!fk_staff = unmatched_staff!fk_staff
-      staff_ID!fk_unmatched_staff = 0
+      staff_ID!fk_unmatched_staff = Null
    Else
       '---------------------------------------------------------------------------------------------------------------
       'Ok, can't find this recipient on our premises, see if we've a previous message for them in unmatched staff
@@ -1003,17 +1013,17 @@ Public Function Get_Staff_Member(staff_member As Collection, fname As String) As
             '---------------------------------------------------
             'Still failed, bumma, give up and create a new entry
             '---------------------------------------------------
-            staff_ID!fk_staff = 0
+            staff_ID!fk_staff = Null
             staff_ID!fk_unmatched_staff = modDBConnect.insert("documents.unmatched_staff", staff_member)
          Else
-            staff_ID!fk_staff = 0
+            staff_ID!fk_staff = Null
             staff_ID!firstname = unmatched_staff!firstname
             staff_ID!surname = unmatched_staff!surname
             staff_ID!fk_unmatched_staff = unmatched_staff!pk
          End If
          
       Else
-         staff_ID!fk_staff = 0
+         staff_ID!fk_staff = Null
          staff_ID!firstname = unmatched_staff!firstname
          staff_ID!surname = unmatched_staff!surname
          staff_ID!fk_unmatched_staff = unmatched_staff!pk
@@ -1024,16 +1034,20 @@ Public Function Get_Staff_Member(staff_member As Collection, fname As String) As
 End
 
 Public Function Get_Sender(msh_seg_sender As Collection, SendingApplication As String) As Collection 
-   '------------------------------------------------------------------------------------
-   'using the sending_entity from the MSH segment, looks to see if this sending_entity
-   'has been encountered before. If not if the sending entity was a NATA lab, use the msh_seg_sender!fk_lu_message_display_style
-   'otherwise, when new messages end up in the inbox they will look like letters and confuse the user
-   'No: saves it to documents.sending_entities
+   '----------------------------------------------------------------------------------------------------------------
+   ' using the sending_entity from the MSH segment, looks to see if this sending_entity has been encountered before.
+   ' If not if the sending entity was a NATA lab, use the msh_seg_sender!fk_lu_message_display_style
+   ' otherwise, when new messages end up in the inbox they will look like letters and confuse the user
+   ' If sending_entity has not been encountered saves it to documents.sending_entities
+   ' If sending_entity is known, returns a sender collection 
+   '-----------------------------------------------------------------------------------------------------------------
+   ' CREATE TABLE documents.sending_entities
+   ' (
    '   pk serial NOT NULL,
-   '   fk_lu_request_type integer, -- The type of provider eg pathology provider, radiology provider
+   '   fk_lu_request_type integer, -- The type of provider eg pathology provider, radiology provider however this may often be null
    '   msh_sending_entity text NOT NULL, -- the entity sending, could be unintelligable eg a NATA/number or a recognizable name eg Hunter Radiology, however often bears no relationship to a real person or company
    '   msh_transmitting_entity text, -- could be the sending entity or third party transmitter eg Medical Objects, or the name of a computer program generating the hl7
-   '   fk_lu_message_display_style integer NOT NULL, -- display as letter or result style
+   '   fk_lu_message_display_style integer NOT NULL, -- display as letter or result style...
    '   fk_branch integer,
    '   fk_employee integer,
    '   fk_person integer,
@@ -1042,14 +1056,36 @@ Public Function Get_Sender(msh_seg_sender As Collection, SendingApplication As S
    '   exclude_pit boolean DEFAULT false, -- if contains PIT segments if true these will not be shown (often duplicated the hl7 data itself)
    '   abnormals_foreground_color integer DEFAULT 16711680,
    '   abnormals_background_color integer DEFAULT 16777215,
-   '   CONSTRAINT sending_entities_pkey PRIMARY KEY (pk)
-   
-   'Yes:returns a sender collection 
-   '------------------------------------------------------------------------------------
+   '   deleted boolean DEFAULT false,
+   '   CONSTRAINT sending_entities_pkey PRIMARY KEY (pk),
+   '   CONSTRAINT sending_entities_fk_branch_fkey FOREIGN KEY (fk_branch)
+   '       REFERENCES contacts.data_branches (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT sending_entities_fk_employee_fkey FOREIGN KEY (fk_employee)
+   '       REFERENCES contacts.data_employees (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT sending_entities_fk_lu_message_display_style_fkey FOREIGN KEY (fk_lu_message_display_style)
+   '       REFERENCES documents.lu_message_display_style (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT sending_entities_fk_lu_message_standard_fkey FOREIGN KEY (fk_lu_message_standard)
+   '       REFERENCES documents.lu_message_standard (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT sending_entities_fk_lu_request_type_fkey FOREIGN KEY (fk_lu_request_type)
+   '       REFERENCES clin_requests.lu_request_type (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT sending_entities_fk_person_fkey FOREIGN KEY (fk_person)
+   '       REFERENCES contacts.data_persons (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   '-------------------------------------------------------------------------------------------------------------
+
    Dim sql As String 
    Dim Sender As New Collection
-   Dim senders As Collection 'not used but needed for save
-   Dim pk_view As Integer    'not used but needed for save
+   Dim senders As Collection                    'not used but needed for save
+   Dim pk_view As Variant                       'not used but needed for save
    Dim r As Result
    '------------------------------------------------------------------------------------------------
    'Have we saved this one before? If so, it could already be matched to contacts, so retreive

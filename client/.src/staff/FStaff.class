@@ -1,6 +1,6 @@
 ' Gambas class file
 
-' Copyright (C) 2008-2015 Dr. Richard Terry
+' Copyright (C) 2008-2016 Dr. Richard Terry
 
 ' This program is free software: you can redistribute it and/or modify
 ' it under the terms of the GNU General Public License as published by
@@ -30,7 +30,7 @@ Private address As Collection
 Private occupations As Collection 
 Private bNewAddress As Boolean
 Private employees_place_of_work As Collection
-Private iAddress As Integer
+Private fk_address As Variant
 Private branches As Collection
 Private branch_comms As Collection
 Private roles As Collection
@@ -39,13 +39,15 @@ Private bNewCommunication As Boolean
 Private comm As Collection
 Private comms As Collection
 Private iCommunication As Integer
-Private staff_member As Collection
 Private fk_staff As Variant
 Private fk_image As Variant
+Private cvwPersonsAddresses_key As Variant
+Private cvwStaffMembers_key As Variant
 Private employee As Collection
 Private staff_Members As Collection
+Private Staff_Old_Data As Collection
 Private person As Collection
-Private pk_view As String     'staff member can have multiple addresses
+Private pk_view As Variant                              'staff member can have multiple addresses
 Private pk_view_address As Variant
 Private fk_branch As Variant
 Private fk_clinic As Variant
@@ -57,6 +59,7 @@ Private fk_town_employee As Variant
 Private fk_town_organisation As Variant
 Private fk_link_staff_clinic As Variant
 Public FHelp As FHtmlViewer
+Private Form_Contacts_Person As FCommunicationData
 
 Static Public form_staff As FStaff 'form_staff = Me declared in Form_Open()
 
@@ -99,7 +102,6 @@ End
 Public Sub Init()
    
    form_staff = Me
-   
    FHelp = New FHtmlViewer(Vbox_Main)
    FHelp.Visible = False
    FHelp.Help_Show("practice-staff.html")
@@ -116,8 +118,12 @@ Public Sub Init()
       .Columns[2].text = "Occupation"
       .Columns[4].text = "Location"
    End With
-   cvwPersonContacts.Columns.count = 3
    cvwPersonsAddresses.Columns.count = 3
+   With form_contacts_person = New FCommunicationData(VBox_Contacts_Person) 'form to display/create employee contacts
+      .Init(Vbox_EditArea, tbSave)  'pass the outer edit area to allow it to set the data-change
+      modEditAreaHelpers.Resize_labels(form_contacts_person.VBox_EditArea_Outer, lblMeasure)
+      modEditAreaHelpers.Resize_labels(form_contacts_person.VBox_EditArea, lblMeasure)
+   End With
    Settings_Load()
    Reload()
    
@@ -147,16 +153,6 @@ Public Sub Combos_Load()
    'as these combo - filling actions used
    'extensively throughout the database.
    '-------------------------------------------
-   
-   cmbEmployeeCommunicationType.Add("At Home", 0)
-   cmbEmployeeCommunicationType.Add("At Work", 1)
-   cmbEmployeeCommunicationType.Add("Fax", 2)
-   cmbEmployeeCommunicationType.Add("Email", 3)
-   cmbEmployeeCommunicationType.Add("Mobile", 4)
-   cmbEmployeeCommunicationType.Add("VOIP", 5)
-   cmbEmployeeCommunicationType.Add("Web URL", 6)
-   cmbEmployeeCommunicationType.Add("Phone", 7)
-   cmbEmployeeCommunicationType.Add("Toll Free ", 8)
    
    cmbSex.Add("Male", 0)
    cmbSex.Add("Female", 1)
@@ -218,6 +214,7 @@ Private Sub Settings_Load()
    VSplit_DataEntry.Layout = Settings["FStaff/VSplit_DataEntry.Layout", modUtilGUI.VSplit([335, 579])]
    HSplit_Staff_EditArea.layout = Settings["FStaff/HSplit_Staff_EditArea.Layout", modUtilGUI.HSplit([830, 867])]
    cvwStaffMembers.Font = Font[Settings["FStaff/cvwStaffMembers.font", "DejaVu Sans,9"]]
+   VSplit_Left.Layout = Settings["FStaff/VSplit_Left.Layout", modUtilGUI.VSplit([3, 2])]
    
 End
 
@@ -240,32 +237,16 @@ Public Sub EditArea_TextBox_Change()
          End If
       Case "occupation"
          If Trim(Last.text) = "" Then 'Or Trim(Last.text) = "" And Listview1.Visible = False Then
-            fk_occupation = 0
+            fk_occupation = Null
             listview1.Visible = False 'could be showing if user backspaced
          End If
       Case "employee suburb"
          If Trim(Last.text) = "" Then
-            fk_town_employee = 0
+            fk_town_employee = Null
             txtEmployee_State.text = ""
             txtEmployee_Postcode.text = ""
             listview1.Visible = False 'could be showing if user backspaced
-            tbnAcceptAddress_Employee.Foreground = Color.red
          End If
-      Case "employee street1", "employee street2"
-         tbnAcceptAddress_Employee.Foreground = Color.red
-      Case "employee comm value"
-         If InStr(Last.text, "@") Then
-            cmbEmployeeCommunicationType.index = const.CommModalityEmail
-         Else If Left$(Trim(Last.text), 2) = "04" Then
-            cmbEmployeeCommunicationType.index = const.CommModalityMobile
-         Else If InStr(Last.text, "www") Then
-            cmbEmployeeCommunicationType.index = const.CommModalityWeb
-         Else If InStr(Last.text, "1800") Then
-            cmbEmployeeCommunicationType.index = Const.CommModalityTollFree
-         End If
-         btnAddContact_Employee.Foreground = Color.red
-      Case "employee comm notes"
-         btnAddContact_Employee.Foreground = Color.red
    End Select
    EditArea_Notify_DataChange(True)
    
@@ -309,7 +290,7 @@ Public Sub EditArea_TextBox_KeyPress()
                'If user hits <enter> assume they want no futher addresses > contacts
                '--------------------------------------------------------------------
                If Trim(Last.text) = "" Then
-                  cmbEmployeeCommunicationType.SetFocus()
+                  form_contacts_person.txtCommunication.SetFocus
                Else
                   txtEmployee_suburb.SetFocus()
                End If
@@ -317,23 +298,8 @@ Public Sub EditArea_TextBox_KeyPress()
                txtEmployee_suburb.SetFocus()
             Case "employee suburb"
                tbnAcceptAddress_Employee.SetFocus()
-            Case "employee postcode"
-            Case "employee state"
-               
-            Case "employee comm value"
-               txtEmployee_CommNotes.SetFocus()
-            Case "employee comm notes"
-               'skip this section if nothing to keep
-               If Trim(txtEmployee_CommValue.text) = ""
-                  txtMemo.SetFocus()
-               Else
-                  btnAddContact_Employee.SetFocus()
-               End If
             Case "employee memo"
                cmbStaffStatus.SetFocus()
-               
-            Case "organisation"
-               '  txtBranch.SetFocus()
             Case "branch"
                txtBranch_Street1.SetFocus()
             Case "branch street1"
@@ -354,7 +320,7 @@ Public Sub EditArea_TextBox_KeyPress()
             Case "staff_password_new"
                txtPasswordRepeat.SetFocus()
             Case "staff_password_repeat"
-               tbAccept.SetFocus()
+               tbSave.SetFocus()
                
          End Select
    End Select
@@ -372,35 +338,32 @@ Public Sub Employee_New()
    Comms = New Collection
    addresses = New Collection
    Views_addresses = New Collection
-   pk_view_address = -1
+   pk_view_address = Null
    StaffPicture = New Collection
-   fk_staff = 0
-   fk_person = 0
-   fk_employee = 0
-   fk_image = 0
-   fk_link_staff_clinic = 0
-   pk_view = 0
+   Staff_Old_Data = Null
+   fk_staff = Null
+   fk_person = Null
+   fk_employee = Null
+   fk_image = Null
+   fk_link_staff_clinic = Null
+   pk_view = Null
    EditArea_Clear()
    cmbAccessLevel.index = -1
    cmbStaffStatus.index = -1
    With tbnAcceptAddress_Employee
-      .text = "Save new address to the list "
+      .text = "Save Address"
+      .Foreground = Color.Red
    End With
-   With btnAddContact_Employee
-      .text = "Save new contact to the list "
-   End With
-   
-   cmbEmployeeCommunicationType.index = Const.CommModalityHome
    txtValidFrom.text = Format(Now, "dd/mm/yyyy")
    lblPasswordCurrent.Enabled = False
    txtPasswordCurrent.Enabled = False
    cvwPersonsAddresses.Clear()
-   Employee_Address_New()       'res-sets variables for new address
-   Employee_Communication_New() 'res-sets variables for new communcation
+   Form_Contacts_Person.form_Clear
    Show_Head_Office()           'default to having them at head office
    EditArea_Notify_DataChange(False)
    cmbStaffStatus.index = cmbStaffStatus.Find("Active")
    bExit = False
+   VBox_EditArea_Outer.Enabled = True 
    txtSurname.SetFocus()
    
 End
@@ -469,7 +432,6 @@ Public Sub EditArea_Clear()
    'Now clear the employee's picture
    '--------------------------------
    Picture_Staff_Clear()
-   cvwPersonContacts.Clear()
    cvwPersonsAddresses.Clear()
    Listview1.Visible = False
    
@@ -508,7 +470,7 @@ Public Sub Picture_Staff_Clear()
       .Refresh()
    End With
    Wait        'otherwise, visually, picture won't disappear
-   If fk_image Then
+   If Not IsNull(fk_image) Then
       StaffPicture!path = "icons/misc/no_photo.png"
       StaffPicture!picture = Picturebox2.picture
    End If
@@ -608,168 +570,11 @@ Public Sub EditArea_Buttons_Click()
          Employee_Address_New()
       Case "accept address employee"
          Employee_Address_Accept()
-      Case "add communication employee"
-         Employee_Communication_Accept()
-      Case "new communication employee"
-         Employee_Communication_New()
-         txtEmployee_CommValue.SetFocus
       Case "new staff member"
          Employee_New()
       Case "accept"
          Save()
    End Select
-   
-End
-
-Public Sub Employee_Communication_Accept()
-   '---------------------------------------------------------------------------------------
-   'PURPOSE:   Either adds a new communication for branch or employee
-   '           Or updates an edited existing one
-   '----------------------------------------------------------------------------------------
-   
-   Dim sMsg As String           'used to show message on status bar as to what we are doing
-   
-   If Trim(txtEmployee_CommValue.Text) = "" Then
-      '--------------------------------------------------------------
-      'If no value to save, change background to pink, re-set cursor
-      'and notify user in status bar
-      '--------------------------------------------------------------
-      txtEmployee_CommValue.SetFocus
-      sMsg = "Hint: Contacts must consist of at least one value eg phone number, email address etc"
-      Return
-   End If
-   
-   If bNewCommunication = True Then
-      '-------------------------------------------------------------------------
-      'problem here:
-      'When the communications were loaded for the organisation or employee,
-      'the data_communications.pk primary key was used as the key to the
-      'lvwContacts (hence could be 1,2,3.... etc) so what to use for the key
-      'for the new communication which is unique
-      
-      'add the new data into the contacts list below
-      'Call Communication_New() to clear input area and
-      'create a new communication instance
-      '------------------------------------------------------------------------
-      comm = New Collection
-      cvwPersonContacts.Add(iCommunication, 0)
-      cvwPersonContacts[iCommunication][0] = cmbEmployeeCommunicationType.text
-      cvwPersonContacts[iCommunication][1] = txtEmployee_CommValue.text
-      cvwPersonContacts[iCommunication][2] = txtEmployee_CommNotes.Text
-      Comm!fk_type = cmbEmployeeCommunicationType.Index
-      Comm!type = cmbEmployeeCommunicationType.text 'need this for display
-      Comm!value = txtEmployee_CommValue.Text
-      Comm!note = txtEmployee_CommNotes.Text
-      If chkemployeePreferredCommunication.value Then
-         Comm!preferred_method = True
-      Else
-         Comm!preferred_method = False
-      End If
-      If chkEmployeeCommunicationConfidential.Value Then
-         Comm!confidential = True
-      Else
-         Comm!confidential = False
-      End If
-      Comms.Add(Comm, iCommunication)
-   Else
-      '-------------------------------------------------------------
-      'we are editing existing contact, write the new values to the
-      'appropriate spot in the array
-      '------------------------------------------------------------
-      
-      Comms[iCommunication]!value = txtEmployee_CommValue.Text
-      Comms[iCommunication]!note = txtEmployee_CommNotes.Text
-      
-      If chkemployeePreferredCommunication.value Then
-         Comms[iCommunication]!preferred_method = True
-      Else
-         Comms[iCommunication]!preferred_method = False
-      End If
-      If chkEmployeeCommunicationConfidential.Value Then
-         Comms[iCommunication]!confidential = True
-      Else
-         Comms[iCommunication]!confidential = False
-      End If
-      Comms[iCommunication]!fk_type = cmbEmployeeCommunicationType.index
-      Comms[iCommunication]!type = cmbEmployeeCommunicationType.text
-      '-------------------------
-      'then re-load the listview
-      '-------------------------
-      Employee_Communications_FillList()
-   End If
-   'default to adding new one
-   Employee_Communication_New()
-   txtEmployee_CommValue.SetFocus
-   
-End
-
-Public Sub Employee_Communication_Edit()
-   '------------------------------------------------------
-   'PURPOSE: Display the currently highlighted row of data
-   '         back in the text boxes above for editing
-   '------------------------------------------------------
-   
-   bExit = True
-   bNewCommunication = False
-   cvwPersonContacts.MoveCurrent 'move internal cursor to the item showing
-   iCommunication = cvwPersonContacts.Item.Key
-   comm = Comms[iCommunication]
-   txtEmployee_CommValue.text = Comms[iCommunication]!value
-   txtEmployee_CommNotes.text = Comms[iCommunication]!note
-   cmbEmployeeCommunicationType.index = Comms[iCommunication]!fk_type
-   chkEmployeeCommunicationConfidential.value = Comms[iCommunication]!confidential
-   chkEmployeePreferredCommunication.Value = Comms[iCommunication]!preferred_method
-   bExit = False
-   
-End
-
-Public Sub Employee_Communications_FillList()
-   '----------------------------------------------------
-   'Fills the contacts list with list of communications
-   'Comms = the existing collection of org/emp comms
-   'key to comms = position in the listview 0-n
-   '---------------------------------------------------
-   
-   Dim comm As Collection
-   Dim x As Integer
-   
-   If IsNull(Comms) Then Return
-   cvwPersonContacts.Clear()
-   If comms.count Then
-      For Each Comm In comms
-         x = cvwPersonContacts.Count
-         cvwPersonContacts.Add(x, 0)
-         cvwPersonContacts[x][0] = comm!type
-         cvwPersonContacts[x][1] = comm!value
-         cvwPersonContacts[x][2] = comm!note
-      Next
-   End If
-   
-End
-
-Public Sub Employee_Communication_New()
-   '------------------------------------------------------------------
-   'clears comms input prior to adding new comms info
-   'note this does not save it to database
-   'the new iCurrentOrgComm is one greater than the zero based count
-   'of the contacts list
-   '------------------------------------------------------------------
-   
-   bExit = True
-   bNewCommunication = True
-   
-   comm = New Collection
-   iCommunication = cvwPersonContacts.Count 'if 3, then this is 0,1,2 so 3 will be new
-   txtEmployee_CommValue.text = ""
-   txtEmployee_CommNotes.text = ""
-   cmbEmployeeCommunicationType.index = const.CommModalityPhone
-   chkEmployeeCommunicationConfidential.Value = False
-   chkEmployeePreferredCommunication.Value = False
-   txtEmployee_CommValue.enabled = True
-   txtEmployee_CommNotes.enabled = True
-   chkEmployeeCommunicationConfidential.Enabled = True
-   chkEmployeePreferredCommunication.Enabled = True
-   bExit = False
    
 End
 
@@ -779,9 +584,8 @@ Public Sub Employee_Address_New()
    '-----------------------------------------------------------
    
    bExit = True
-   bNewAddress = True
+   fk_address = Null
    address = New Collection
-   iAddress = cvwPersonsAddresses.count
    txtEmployee_Street1.text = ""
    txtEmployee_Street2.Text = ""
    txtEmployee_Suburb.text = ""
@@ -790,7 +594,7 @@ Public Sub Employee_Address_New()
    chkEmployeeAddressPostal.value = False
    chkEmployeeAddressPreferred.Value = False
    cmbEmployeeAddressType.index = 0
-   fk_town_employee = 0
+   fk_town_employee = Null
    bExit = False
    txtEmployee_Street1.SetFocus()
    
@@ -806,10 +610,9 @@ Public Sub Employee_Address_Accept()
    
    If Not Employee_Address_Valid() Then Return
    
-   If bNewaddress Then
+   If IsNull(fk_address) Then
       '------------------------------------------------------------------------
       address = New Collection
-      cvwPersonsAddresses.Add(iAddress, cmbEmployeeAddressType.text & ": " & Trim(txtEmployee_Street1.text & " " & txtEmployee_Street2.text) & " " & txtEmployee_Suburb.text)
       address!fk_lu_address_type = cmbEmployeeAddressType.Index
       address!type = cmbEmployeeAddressType.Text           'kept for display purposes
       address!street1 = Trim(txtEmployee_Street1.text)
@@ -825,41 +628,36 @@ Public Sub Employee_Address_Accept()
       If chkEmployeeAddressPreferred.value = True Then
          address!preferred_address = True
       End If
-      addresses.Add(address, iAddress)
+      addresses.Add(address, addresses.count)
    Else
       '-------------------------------------------------------------
       'we are editing existing address, write the new values to the
       'appropriate spot in the array
       '------------------------------------------------------------
-      addresses[iAddress]!fk_lu_address_type = cmbEmployeeAddressType.Index
-      addresses[iAddress]!type = cmbEmployeeAddressType.text
-      addresses[iAddress]!street1 = Trim(txtEmployee_Street1.text)
-      addresses[iAddress]!street2 = Trim(txtEmployee_Street2.text)
-      addresses[iAddress]!fk_town = fk_town_employee
-      addresses[iAddress]!country_code = "AU"
-      addresses[iAddress]!town = Trim(txtEmployee_suburb.text)
-      addresses[iAddress]!state = Trim(txtEmployee_State.text)
-      addresses[iAddress]!postcode = Trim(txtEmployee_Postcode.text)
+      addresses[fk_address]!fk_lu_address_type = cmbEmployeeAddressType.Index
+      addresses[fk_address]!address_type = cmbEmployeeAddressType.text
+      addresses[fk_address]!street1 = Trim(txtEmployee_Street1.text)
+      addresses[fk_address]!street2 = Trim(txtEmployee_Street2.text)
+      addresses[fk_address]!fk_town = fk_town_employee
+      addresses[fk_address]!country_code = "AU"
+      addresses[fk_address]!town = Trim(txtEmployee_suburb.text)
+      addresses[fk_address]!state = Trim(txtEmployee_State.text)
+      addresses[fk_address]!postcode = Trim(txtEmployee_Postcode.text)
       If chkEmployeeAddressPostal.value = True Then
-         addresses[iAddress]!postal_address = True
+         addresses[fk_address]!postal_address = True
       End If
       If chkEmployeeAddressPreferred.value = True Then
-         addresses[iAddress]!preferred_address = True
+         addresses[fk_address]!preferred_address = True
       End If
-      '-------------------------
-      'then re-load the listview
-      '-------------------------
-      Employee_Addresses_FillList()
    End If
-   '---------------------------------
-   'default to adding new address now
-   '---------------------------------
-   Employee_Address_New()
+   tbnAcceptAddress_Employee.Foreground = Color.Black
+   cvwPersonsAddresses_Load        'reload the address columview  
+   Employee_Address_New()          'default to adding new address now
    txtEmployee_Street1.SetFocus()
    
 End
 
-Public Sub Employee_Addresses_FillList()
+Public Sub cvwPersonsAddresses_Load()
    '-------------------------------------------------
    'Fills the employee address list with addresses
    'Addresses = the existing collection of addresses
@@ -867,14 +665,23 @@ Public Sub Employee_Addresses_FillList()
    '------------------------------------------------
    
    Dim address As Collection
+   Dim x As Integer
    
    If IsNull(Addresses) Then Return
-   cvwPersonsAddresses.Clear()
+   With cvwPersonsAddresses
+      .Clear()
+      .Columns.count = 3
+   End With
    If Addresses.count Then
       For Each address In Addresses
-         cvwPersonsAddresses.Add(cvwPersonsAddresses.count, address!type & ": " & Trim(address!street1 & " " & address!street2) & " " & address!town)
+         cvwPersonsAddresses.Add(x, 0)
+         cvwPersonsAddresses[x][0] = address!address_type
+         cvwPersonsAddresses[x][1] = Trim(address!street1 & " " & address!street2)
+         cvwPersonsAddresses[x][2] = address!town
+         Inc x
       Next
    End If
+   modUtilGUI.Columnview_Columns_Set_Size(cvwPersonsAddresses, lblmeasure)
    
 End
 
@@ -950,46 +757,30 @@ Public Sub Save()
    'rewriting FIXME
    '--------------------------------------------------------------------
    
-   Dim person_employee As Collection
-   Dim fk_unmatched_staff As Variant
-   Dim image As CRow
+   Dim toolbar_button As CRow  
    Dim data_numbers As CRow
    Dim data_numbers_persons As CRow
+   Dim employee As CRow 
+   Dim image As CRow
+   Dim person As CRow   
+   Dim staff As CRow 
+   Dim employee_address As CRow  
+   Dim user_provider_default As CRow 
+   Dim coll As Collection
+   Dim address_link As CRow
+   Dim link_staff_clinic As CRow                   'the clinical the staff member is in
+   Dim fk_unmatched_staff As Variant
    Dim R As Result
-   Dim toolbar_button As CRow  
    Dim clinical_modules As Collection
    Dim clinical_module As Collection
    Dim display_order As Integer
    Dim Request_Provider_Defaults As Collection
    Dim RPD As Collection
    Dim bNewStaffMember As Boolean
-   Dim user_provider_default As CRow   
    
+   If Vbox_EditArea.Padding = 0 Then Return 'nothing to change\
    If Not Employee_Valid() Then Return
    
-   '---------------------------------------------------------------
-   'remove these, they were only kept in case address was re-edited
-   '---------------------------------------------------------------
-   For Each address In addresses
-      address.Remove("type")
-      address.Remove("town")
-      address.Remove("state")
-      address.Remove("postcode")
-   Next
-   '------------------------------------------------------------------
-   'Encapsulate in transaction in case something fails
-   'BeginTrans is not needed, it's a noop, I just like the look of it!
-   'for calming my symmetrical mind
-   '------------------------------------------------------------------
-   modDBConnect.BeginTrans()
-   '------------------------------------------------------------------------
-   'First thing: is this new person in the umatched staff table in documents
-   'if a match, returned fk_unmatched_staff = documents.unmatched_staff.pk
-   'After staff members saved and its real pk retreived, then reconcile.
-   '------------------------------------------------------------------------
-   If fk_staff = 0 Then
-      fk_unmatched_staff = New_Staff_Match_To_Umatched_Staff()
-   End If
    '-------------------------------------------------------------------------------------
    'An employee must first be a person, but we don't need the sort of info
    'we would need if that person was patient, so all these fields not used **
@@ -1001,16 +792,16 @@ Public Sub Save()
    '      **fk_country_birth
    '      **fk_ethnicity
    '      **fk_languageStaff_Members[pk_view]!
-   '      ** memo              'FIXME FIND ME SPACE
+   '      ** memo            
    '        fk_marital
    '        fk_title
    '        fk_sex
    '      **country_code  = country of birth
    '        retired            note this boolean value is property of person not employee
    '-------------------------------------------------------------------------------------
-   person = New Collection
-   If fk_person <> 0 Then
-      person!fk_person = fk_person
+   person = New CRow 
+   If Not IsNull(fk_person) Then
+      person.put_unchanged(fk_person, "fk_person")
    End If
    person!firstname = Trim(txtFirstname.text)
    person!surname = Trim(txtSurname.text)
@@ -1023,50 +814,10 @@ Public Sub Save()
    Else
       person!retired = False
    End If
-   bExit = False                                   'allow change event to calc age
-   Try person!birthdate = Format(Val(txtBirthdate.text), "dd/mm/yyyy")
-   bExit = True
-   '----------------------------------------
-   'Now the employee
-   'data_employees:   pk (as fk_employee here)
-   '                  fk_branch integer,
-   '                  fk_person integer,
-   '                  fk_occupation integer,
-   '                  memo text,
-   '-----------------------------------------
-   employee = New Collection
-   If fk_employee <> 0 Then
-      employee!fk_employee = fk_employee
-   End If
-   employee!fk_branch = fk_branch
-   If fk_occupation Then
-      employee!fk_occupation = fk_occupation
-   Else
-      employee!occupation = Trim(txtOccupation.text)
-      If Trim(txtOccupation.text) <> "" Then             'have an occupation but no key - is a new occupation
-         employee!fk_occupation = modCommonDBI.Occupation_Save(Lower(Trim(txtOccupation.text)))
-      End If
-      
-   End If
-   employee!memo = Trim(txtMemo.text)
-   '----------------------------------------------------------------------
-   'The picture belongs to the person and stored in contacts.data_persons,
-   'Either save or edit the record and return the key
-   '----------------------------------------------------------------------
-   ' If fk_image = 0
-   '    If Not InStr(PictureBox2.tag, "no_photo.png") Then
-   '       ' If StaffPicture!fk_image Then
-   '       '-------------------------------------------------------------------
-   '       'An image has already been saved, may have been changed. If deleted
-   '       'then the image saved is the empty person icon
-   '       '-------------------------------------------------------------------
-   '       StaffPicture!path = PictureBox2.tag
-   '       person!fk_image = modContactsDBI.Image_Save(StaffPicture)
-   '    End If
-   ' End If
+   Try person!birthdate = Val(txtBirthdate.text)
    If Not IsNull(StaffPicture) Then
       If StaffPicture!path Then
-         If fk_image Then                                            'patient has existing photo
+         If Not IsNull(fk_image) Then                                            'patient has existing photo
             If StaffPicture!path = "icons/misc/no_photo.png" Then  'if is a 'no photo' then must have deleted the real image
                person!fk_image = Null                                'set this back to null in backend
                modDBConnect.exec_query("update contacts.data_persons set fk_image = null where pk=" & person!fk_person)
@@ -1083,70 +834,197 @@ Public Sub Save()
          End If
       End If
    End If
+   person.Save("contacts.data_persons", "fk_person")
+   '---------------------------------------------------------------------------
+   'Now the employee
    '--------------------------------------------------------------------------
-   'person_employee = person_employee!fk_person andperson_employee!fk_employee
-   '--------------------------------------------------------------------------
-   person_employee = modContactsDBI.employee_save(Staff_Members, pk_view, person, employee, comms, views_comms) ', ' ' ' branch_comms)
-   modContactsDBI.Person_Addresses_Save(Views_addresses, pk_view_address, addresses, person) 'remove pk_view_address not used.
+   'CREATE TABLE contacts.data_employees
+   ' (
+   '   pk serial NOT NULL,
+   '   fk_branch integer,
+   '   fk_person integer,
+   '   fk_occupation integer,
+   '   memo text,
+   '   deleted boolean DEFAULT false, 
+   '   fk_status integer DEFAULT 0, 
+   '   CONSTRAINT data_employees_pkey PRIMARY KEY (pk),
+   '   CONSTRAINT data_employees_fk_occupation_fkey FOREIGN KEY (fk_occupation)
+   '       REFERENCES common.lu_occupations (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT data_employees_fk_person_fkey FOREIGN KEY (fk_person)
+   '       REFERENCES contacts.data_persons (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT data_employees_fk_status_fkey FOREIGN KEY (fk_status)
+   '       REFERENCES contacts.lu_employee_status (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT fk_branch_fkey FOREIGN KEY (fk_branch)
+   '       REFERENCES contacts.data_branches (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   '-----------------------------------------------------------------------------
+   employee = New CRow  
+   If Not IsNull(fk_employee) Then
+      employee.put_unchanged(fk_employee, "fk_employee")
+   End If
+   employee!fk_branch = fk_branch
+   employee!fk_person = person!fk_person
+   employee!fk_occupation = fk_occupation          'was validated/created in  Employee_Valid
+   employee!memo = Trim(txtMemo.text)
+   employee.Save("contacts.data_employees", "fk_employee")
+   '----------------------
+   'Now the employee comms
+   '----------------------
+   '  employee = modContactsDBI.employee_save(Staff_Members, pk_view, person, employee, comms, views_comms) ', ' ' ' branch_comms)
+   '------------------------------------------------
+   'Save any addresses, creating links if necessary
+   '------------------------------------------------
+   For Each coll In Addresses
+      employee_address = New CRow
+      If Not IsNull(coll!fk_address) Then
+         employee_address.put_unchanged(coll!fk_address, "fk_address")
+      Endif
+      employee_address!fk_town = coll!fk_town
+      employee_address!street1 = coll!street1
+      employee_address!street2 = coll!street2
+      employee_address!fk_lu_address_type = coll!fk_lu_address_type
+      employee_address!country_code = coll!country_code
+      employee_address!postal_address = coll!postal_address
+      employee_address!preferred_address = coll!preferred_address
+      employee_address.Save("contacts.data_addresses", "fk_address")
+      If IsNull(coll!fk_address) Then
+         address_link = New CRow
+         address_link!fk_person = person!fk_person
+         address_link!fk_address = address!fk_address
+         address_link.Save("contacts.links_persons_addresses", "fk_link_person_address")
+      End If    
+   Next
    '---------------------------------------------------------------------------------------------------------
-   'At this point, the employee is linked to the branch of the orgainsation
+   'At this point, the employee is linked to the branch of the organisation
    'Remember that the contacts datbase is 'generic', ie nothing whatsoever to do with the general practice or
    'organisation using EasyGP, except as a repository of the organisation and employee's
    'Now, they must be registered as an actual staff member in admin.staff, given a role, linked to a clinic
+   '---------------------------------------------------------------------------------------------------------
+   ' CREATE TABLE admin.staff
+   ' (
+   '   pk serial NOT NULL,
+   '   fk_person integer NOT NULL,
+   '   fk_role integer NOT NULL,
+   '   fk_status integer NOT NULL,
+   '   logon_name text NOT NULL,
+   '   logon_date_from date,
+   '   logon_date_to date,
+   '   fk_lu_staff_type integer NOT NULL DEFAULT 12, -- type of staff e.g 12 - clerical. As I added this later it couldn't be null due to join ...
+   '   qualifications text,
+   '   CONSTRAINT staff_pkey PRIMARY KEY (pk),
+   '   CONSTRAINT staff_fk_lu_staff_type_fkey FOREIGN KEY (fk_lu_staff_type)
+   '       REFERENCES admin.lu_staff_type (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT staff_fk_person_fkey FOREIGN KEY (fk_person)
+   '       REFERENCES contacts.data_persons (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT staff_fk_role_fkey FOREIGN KEY (fk_role)
+   '       REFERENCES admin.lu_staff_roles (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT staff_fk_status_fkey FOREIGN KEY (fk_status)
+   '       REFERENCES admin.lu_staff_status (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
    '--------------------------------------------------------------------------------------------------------
-   staff_member = New Collection
-   staff_member!fk_person = person_employee!fk_person
-   If fk_staff > 0 Then
-      staff_member!fk_staff = fk_staff
-   Else
+   staff = New CRow
+   If Not IsNull(fk_staff) Then
+      staff.put_unchanged(fk_staff, "fk_staff")
+   Else  
       bNewStaffMember = True  
    End If
-   staff_member!fk_status = cmbStaffStatus.Index            'because zero based, should fix at some point
-   staff_member!fk_lu_staff_type = StaffTypes[cmbStafftype.index]!pk 'this collection has been re-set to zero based.
-   staff_member!logon_name = Trim(txtLogonName.text)    'logon name
-   staff_member!password = Trim(txtPasswordNew.text)    'password
-   staff_member!logon_date_from = Val(txtValidFrom.text)
-   staff_member!logon_date_to = Val(txtExpires.Text)  'bug in next few lines
-   staff_member!fk_role = roles[cmbAccessLevel.Index]!pk_role
-   staff_member!qualifications = Trim(txtQualifications.text)
-   employees_place_of_work = New Collection
-   If fk_link_staff_clinic <> 0 Then
-      employees_place_of_work!fk_link_staff_clinic = fk_link_staff_clinic
-   End If
-   employees_place_of_work!fk_clinic = fk_clinic
-   staff_member!fk_staff = modContactsDBI.Staff_Member_Save(Staff_Members, pk_view, staff_member, employees_place_of_work) 'fixme Replace With crow
-   
-   If staff_member!fk_staff = 0 Then   'we encountered a major error
-      modDBConnect.RollBack()
+   staff!fk_person = employee!fk_person
+   staff!fk_role = roles[cmbAccessLevel.Index]!pk_role
+   staff!fk_status = cmbStaffStatus.Index            'because zero based, should fix at some point
+   staff!logon_name = Trim(txtLogonName.text)    'logon name
+   ' staff!password = Trim(txtPasswordNew.text)    'password
+   staff!logon_date_from = Val(txtValidFrom.text)
+   staff!logon_date_to = Val(txtExpires.Text) 
+   staff!fk_lu_staff_type = StaffTypes[cmbStafftype.index]!pk 'this collection has been re-set to zero based.
+   staff!qualifications = Trim(txtQualifications.text)
+   If Not modContactsDBI.Staff_Postres_User_Save(staff, txtPasswordNew.text, staff_old_data) Then
       Goto Reload_StaffList
-   End If   
+   Endif
+   staff.Save("admin.staff", "fk_staff")
+   ' -----------------------------------------------------------------------------
+   ' Create TABLE admin.link_staff_clinics
+   ' (
+   '   pk serial NOT NULL,
+   '   fk_staff integer NOT NULL,
+   '   fk_clinic integer NOT NULL,
+   '   CONSTRAINT link_staff_clinics_pkey PRIMARY KEY (pk),
+   '   CONSTRAINT link_staff_clinics_fk_clinic_fkey FOREIGN KEY (fk_clinic)
+   '       REFERENCES admin.clinics (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT link_staff_clinics_fk_staff_fkey FOREIGN KEY (fk_staff)
+   '       REFERENCES admin.staff (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   '------------------------------------------------------------------------------
+   link_staff_clinic = New CRow
+   If Not IsNull(fk_link_staff_clinic) Then
+      link_staff_clinic.put_unchanged(fk_link_staff_clinic, "fk_link_staff_clinic")
+   End If
+   link_staff_clinic!fk_staff = staff!fk_staff
+   link_staff_clinic!fk_clinic = fk_clinic 
+   link_staff_clinic.Save("admin.link_staff_clinics", "fk_link_staff_in_clinic")
    '-----------------------------------------------------------------------------
-   'put in default toolbar for clinical users who are doctors 'fixme later nurses
+   ' Check default toolbar for clinical users
+   ' - needed if the user is new OR if a user has become a doctor eg could have
+   '   been student graduating, nurse becoming a doctor, or just a data entry
+   '   mistake in the first place
    '-----------------------------------------------------------------------------
-   If staff_member!fk_role = const.StaffRole_Doctor Or staff_member!fk_role = const.StaffRole_locum Or staff_member!fk_role = const.StaffRole_Practice_Principal Or staff_member!fk_role = const.StaffRole_Registered_Nurse Then   
-      If modAdminDBI.Clinical_Toolbuttons_Get(fk_staff).count = 0 Then  'no buttons yet for this staff member   
-         modAdminDBI.Toolbuttons_Add_All(staff_member!fk_staff)
+   If staff!fk_role = const.StaffRole_Doctor Or staff!fk_role = const.StaffRole_locum Or staff!fk_role = const.StaffRole_Practice_Principal Or staff!fk_role = const.StaffRole_Registered_Nurse Then   
+      If modAdminDBI.Clinical_Toolbuttons_Get(staff!fk_staff).count = 0 Then                    'no buttons yet for this staff member   
+         modAdminDBI.Toolbuttons_Add_All(staff!fk_staff)
       End If   
       '---------------------------------------------------------------------------------------------------
-      'next check and see if this (new only) staff member has default providers for all that are available
+      'next check and see if this staff member has default providers for all that are available
+      '---------------------------------------------------------------------------------------------------
       ' CREATE TABLE clin_requests.user_provider_defaults
       ' (
       '   pk serial NOT NULL,
       '   fk_staff integer NOT NULL, -- key to admin.staff table ie describes the user
-      '   fk_default_branch integer NOT NULL, -- key to contacts.branches table...
       '   fk_request_provider integer, -- foreign key to clin_requests.requests_provideris which ultimately will point to contact details of person/employee or organisation...
       '   send_electronically boolean DEFAULT false,
       '   print_paper boolean DEFAULT true,
       '   deleted boolean DEFAULT false,
       '   fk_lu_request_type integer NOT NULL,
-      '   FIXME - will later need to add to FRequestProviders these last flags
+      '   CONSTRAINT user_provider_defaults_pkey PRIMARY KEY (pk),
+      '   CONSTRAINT user_provider_defaults_fk_default_branch_fkey FOREIGN KEY (fk_default_branch)
+      '       REFERENCES contacts.data_branches (pk) MATCH SIMPLE
+      '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+      '   CONSTRAINT user_provider_defaults_fk_lu_request_type_fkey FOREIGN KEY (fk_lu_request_type)
+      '       REFERENCES clin_requests.lu_request_type (pk) MATCH SIMPLE
+      '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+      '   CONSTRAINT user_provider_defaults_fk_request_provider_fkey FOREIGN KEY (fk_request_provider)
+      '       REFERENCES clin_requests.request_providers (pk) MATCH SIMPLE
+      '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+      '   CONSTRAINT user_provider_defaults_fk_staff_fkey FOREIGN KEY (fk_staff)
+      '       REFERENCES admin.staff (pk) MATCH SIMPLE
+      '       ON UPDATE NO ACTION ON DELETE NO ACTION
+      ' )
+      ' WITH (
+      '   OIDS=FALSE
+      ' );
       '---------------------------------------------------------------------------------------------------
-      If bNewStaffMember Then    
+      If Not modPreferencesDBI.User_Provider_Defaults_Get(staff!fk_staff).count Then
          Request_Provider_Defaults = modRequestsDBI.Request_Provider_Staff_Defaults_Get()
          For Each RPD In Request_Provider_Defaults
             user_provider_default = New CRow   
-            user_provider_default!fk_staff = staff_member!fk_staff
-            user_provider_default!fk_default_branch = RPD!fk_default_branch
+            user_provider_default!fk_staff = staff!fk_staff
             user_provider_default!fk_request_provider = RPD!pk_request_provider
             user_provider_default!fk_lu_request_type = RPD!fk_lu_request_type
             user_provider_default.Save("clin_requests.user_provider_defaults", "fk_user_provider_default")
@@ -1154,9 +1032,9 @@ Public Sub Save()
       End If   
    End If   
    
-   '-------------------------------------------------------------------------------------------------------------------------
-   ' finally save the prescriber/provider numbers in their special table FIX ME FIX THIS WHOLE MODULE REWRITE IT INTERIM CODE
-   '-----------------------------------------------------------------------------------------------------------------
+   '-----------------------------------------------------------------------------------------------
+   ' finally save the prescriber/provider numbers in their special table, if they have been entered
+   '------------------------------------------------------------------------------------------------
    'Save in numbers, the adress specific numbers go into data_numbers in staff case this is only the provider_number
    '-----------------------------------------------------------------------------------------------------------------
    ' CREATE TABLE contacts.data_numbers
@@ -1183,7 +1061,7 @@ Public Sub Save()
    ' );
    ' 'flaws with this logic - what if they move from a branch
    '-------------------------------------------------------------------------------------------------------------------------------
-   R = modDBConnect.exec_query("Select * from contacts.data_numbers where fk_branch = " & fk_branch & " AND fk_person =" & staff_member!fk_person)
+   R = modDBConnect.exec_query("Select * from contacts.data_numbers where fk_branch = " & fk_branch & " AND fk_person =" & staff!fk_person)
    If R.count Then                                                                     'the organisation already an entry in data numbers
       data_numbers = New CRow
       data_numbers.put_unchanged(R!pk, "fk_data_numbers")
@@ -1192,7 +1070,7 @@ Public Sub Save()
    Else                                                                                'the organisation does not yet have an entry in data numbers
       If Employee_Has_Data_for_Data_Numbers() Then                                      'No data saved to this table yet, if there is data to save here
          data_numbers = New CRow
-         data_numbers!fk_person = staff_member!fk_person
+         data_numbers!fk_person = staff!fk_person
          data_numbers!fk_branch = fk_branch  
          data_numbers!provider_number = Trim(txtProviderNumber.text)
          data_numbers.Save("contacts.data_numbers", "fk_data_numbers")
@@ -1219,7 +1097,7 @@ Public Sub Save()
    ' );
    ' FIXME put the keys in the view to make this easier
    '------------------------------------------------------------------------------------------------ 
-   R = modDBConnect.exec_query("Select * from contacts.data_numbers_persons where fk_person =" & staff_member!fk_person)
+   R = modDBConnect.exec_query("Select * from contacts.data_numbers_persons where fk_person =" & staff!fk_person)
    If R.count Then                                                                     'the organisation already an entry in data numbers
       data_numbers_persons = New CRow
       data_numbers_persons.put_unchanged(R!pk, "fk_data_numbers")
@@ -1229,7 +1107,7 @@ Public Sub Save()
    Else                                                                                'the organisation does not yet have an entry in data numbers
       If Employee_Has_Data_for_Data_Numbers_Persons() Then                                      'No data saved to this table yet, if there is data to save here
          data_numbers_persons = New CRow
-         data_numbers_persons!fk_person = staff_member!fk_person
+         data_numbers_persons!fk_person = staff!fk_person
          data_numbers_persons!prescriber_number = Trim(txtPrescriberNumber.text)                   'prescriber number gets carried with the person 
          data_numbers_persons!hpii = Trim(TxtHealthProviderNumberIndividual.text)
          data_numbers_persons.Save("contacts.data_numbers_persons", "fk_data_numbers")
@@ -1241,23 +1119,23 @@ Public Sub Save()
    '------------------------------------------------------------------------------------------
    If Not IsNull(modDBConnect.currentUser) Then  '<< if user is easygp then this will be null
       If Trim(txtPrescriberNumber.text) <> "" Then
-         If staff_member!fk_staff = modDBConnect.currentUser!fk_staff Then
+         If staff!fk_staff = modDBConnect.currentUser!fk_staff Then
             modDBConnect.currentUser!prescriber_number = Trim(txtPrescriberNumber.text)
          Endif
       Endif
       If Trim(txtProviderNumber.text) <> "" Then
-         If staff_member!fk_staff = modDBConnect.currentUser!fk_staff Then
+         If staff!fk_staff = modDBConnect.currentUser!fk_staff Then
             modDBConnect.currentUser!provider_number = Trim(txtProviderNumber.text) 
          Endif
       Endif
       If Trim(txtQualifications.text) <> "" Then
          modDBConnect.currentUser!qualifications = Trim(txtQualifications.text)
       Endif
-      
    Endif   
-   If fk_unmatched_staff Then
-      modInboxDBI.Reconcile_Umatched_Staff(fk_unmatched_staff, staff_member!fk_staff)
+   If Not IsNull(fk_unmatched_staff) Then
+      modInboxDBI.Reconcile_Umatched_Staff(fk_unmatched_staff, staff!fk_staff)
    End If
+   form_contacts_person.Save(, fk_person) 
    modDBConnect.CommitTrans()
    Goto Reload_StaffList
    
@@ -1268,11 +1146,11 @@ Reload_StaffList:
    'in gambas if the control getting focus is a button and then a text
    'box could be left 'green'.
    '----------------------------------------------------------------------
+   VBox_EditArea_Outer.Enabled = False   
    modEditAreaHelpers.EditArea_ResetTextBox_BackColor(VBox_EditArea_Left)
    modEditAreaHelpers.EditArea_ResetTextBox_BackColor(Vbox_EditArea_Right)
-   btnAddContact_Employee.Foreground = Color.Black
-   tbnAcceptAddress_Employee.Foreground = Color.Black
-   tbAccept.Foreground = Color.Black
+   tbSave.Foreground = Color.Black
+   modContactsDBI.Staff_Cache_Wipe 
    Reload()
    
 Catch
@@ -1290,69 +1168,80 @@ Public Function Employee_Valid() As Boolean
    Dim sMsg As String
    
    If Trim(txtSurname.text) = "" Then
+      smsg = "surname"
       txtSurname.SetFocus()
-      Return
+      Goto missing_data
    End If
    If Trim(txtFirstname.text) = "" Then
+      smsg = "firstname"
       txtFirstname.SetFocus()
-      Return
+      Goto missing_data
    End If
    If Trim(txtOccupation.text) = "" Then
+      smsg = "occupation"
       txtOccupation.SetFocus()
-      Return
+      Goto missing_data
    Else
       fk_occupation = modCommonDBI.Occupation_Check_Valid(txtOccupation)
-      If fk_occupation = -1 Then Return
+      If IsNull(fk_occupation) Then 
+         smsg = "occupation"
+         txtOccupation.SetFocus()
+         Goto missing_data
+      End If   
    End If   
    If cmbAccessLevel.index = -1 Then
+      smsg = "access level"
       cmbAccessLevel.SetFocus()
-      Return
+      Goto missing_data
    End If
    If cmbStaffStatus.index = -1 Then
+      smsg = "staff status - e.g active/inactive "
       cmbStaffStatus.SetFocus()
-      Return
+      Goto missing_data
    End If
    If cmbBranches.index = -1 Then
       cmbBranches.SetFocus()
       Return
    End If
-   
    If Trim(txtLogonName.text) = "" Then
+      smsg = "logon name"
       txtLogonName.SetFocus()
-      Return
+      Goto missing_data
+   End If   
+   If IsNull(fk_staff) Then
+      'has the logon name been taken in thet staff table
+      If modContactsDBI.Staff_Logon_Name_Exists(txtLogonName.Text) Then Goto Logon_Name_Taken
+      'Now, check there is no postgres  user of the same name
+      If modDBConnect.Role_Check_If_Exists(txtLogonName.Text) Then Goto Logon_Name_Taken
    Else
-      If fk_staff = 0 Then
-         If modContactsDBI.Staff_Exists(Lower$(txtLogonName.Text)) Then
-            Message.title = "Database User Name"
-            smsg = "Each user of EasyGP must have a unique logon name.\n\n"
-            smsg &= "Your choice: " & txtLogonName.Text & "is already in use in your system.\n\n"
-            smsg &= "Please select an alternate logon mame."
-            Message.Info(sMsg, "Ok")
-            txtLogonName.Clear()
-            txtLogonName.Background = Color.rgb(95, 255, 175)
-            txtLogonName.SetFocus()
-            Return
-         End If
-      End If
-   End If
-   
+      If staff_old_data!logon_name <> Trim(txtLogonName.text) Then
+         If modContactsDBI.Staff_Logon_Name_Exists(txtLogonName.Text) Then Goto Logon_Name_Taken
+         'Now, check there is no postgres  user of the same name
+         If modDBConnect.Role_Check_If_Exists(txtLogonName.Text) Then Goto Logon_Name_Taken 
+      End If 
+   End If     
    '--------------------------------------------------
    'Validate dates and check that date to not < date 1
    '--------------------------------------------------
    If Not IsDate(txtValidFrom.text) Then
+      smsg = "the date the staff members access is valid from"
       txtValidFrom.SetFocus()
-      Return
+      Goto missing_data
    End If
    If Not IsDate(txtExpires.text) Then
+      smsg = "the date the staff members access expires"
       txtExpires.SetFocus()
-      Return
+      Goto missing_data
    End If
-   If DateDiff(Val(txtValidFrom.text), Val(txtExpires.text), gb.day) < 0 Then
-      Message.info("Invalid Expiry date for the staff members access permissions.")
-      txtExpires.Text.SetFocus()
-      txtExpires.Background = Color.rgb(95, 255, 175)
-      Return
+   If DateDiff(Val(txtValidFrom.text), Val(txtExpires.text), gb.day) < 0 Then    
+      sMsg = "Invalid Expiry date for the staff members access permissions."
+      Goto InvalidExpiryDate
    End If
+   If DateDiff(Now(), Val(txtExpires.text), gb.Date) < 0 Then
+      sMsg = "The expiry date for this user is invalid as it is < today's date.\n\n"
+      "This effectively means that the user will be locked out of the database."
+      Goto InvalidExpiryDate
+   Endif
    '----------------------------------------------------
    'If new password typed in, then check it is accurate
    'at moment, only validate this if a new employee
@@ -1367,10 +1256,11 @@ Public Function Employee_Valid() As Boolean
          Return
       End If
    Else
-      If fk_staff = 0 Then
-         'password can't be blank with new patient
+      If IsNull(fk_staff) Then
+         'password can't be blank with new staff
+         smsg = "password"
          txtPasswordNew.SetFocus()
-         Return
+         Goto missing_data
       End If
    Endif
    If Trim(txtProviderNumber.text) <> "" Then
@@ -1380,9 +1270,28 @@ Public Function Employee_Valid() As Boolean
          Return
       Endif
    Endif
-   
-   'Nothing much else matters, so move on
    Return True
+Missing_Data:
+   Message.Title = "Missing Data"
+   smsg = "Some essential data is missing:\n\n" & smsg & "\n\nPlease rectify this before trying to save this record." ""
+   Message.Warning(smsg)
+   Return
+Logon_Name_Taken:
+   'could either be in admin.staff or postgres role
+   Message.title = "Database User Logon Name"
+   smsg = "Each user of EasyGP must have a unique logon name.\n\n"
+   smsg &= "Your choice: \n\n" & txtLogonName.Text & "\n\nis already in use in your system.\n\n"
+   smsg &= "Please select an alternate logon name."
+   Message.Info(sMsg, "Ok")
+   txtLogonName.Clear()
+   txtLogonName.Background = Color.rgb(95, 255, 175)
+   txtLogonName.SetFocus()
+   Return
+   
+InvalidExpiryDate:
+   Message.Info(smsg)  
+   txtExpires.Background = Color.rgb(95, 255, 175)
+   txtExpires.SetFocus()
    
 End
 
@@ -1394,10 +1303,12 @@ Public Sub Reload()
    Dim x$ As String 'for readability
    Dim col_widths As New Integer[7]
    Dim x As Integer
+   Dim staff_member As Collection
    
    lblmeasure.font = cvwStaffMembers.Font
    
    Unmatched_staff_Get()
+   
    Staff_Members = modContactsDBI.Staff_Get()
    
    cvwStaffMembers.Clear()
@@ -1672,7 +1583,7 @@ Public Sub mnuSTaff_Click()
    
    Select Case Last.tag
       Case "edit"
-         
+         VBox_EditArea_Outer.Enabled = True   
       Case "delete"
          modUtilGUI.NotImplemented("Deleting an employee")
       Case "font"
@@ -1682,30 +1593,6 @@ Public Sub mnuSTaff_Click()
    End Select
 Catch
    Return 
-   
-End
-
-Public Sub mnuEmployeeContacts_Click()
-   
-   Select Case Last.tag
-      Case "add contact details"
-         Employee_Communication_New()
-      Case "delete contact details"
-         modUtilGUI.NotImplemented(Last.tag)
-      Case "edit contact details"
-         Employee_Communication_Edit()
-      Case "font"
-         modUtilGUI.Columnview_SetFont(cvwStaffMembers, "FStaff")
-   End Select
-Catch
-   Return 
-   
-End
-
-Public Sub cvwPersonContacts_Menu()
-   
-   If cvwPersonContacts.Count = 0 Then Return
-   mnuEmployeeContacts.Popup
    
 End
 
@@ -1780,12 +1667,11 @@ Public Sub Surname_Duplicates_Selection(action As String, Optional calling_contr
          Try cmbTitle = Collection_Members[Listview1.Item.key]!fk_title
          txtLogonName.text = UCase(Left(txtFirstname.text) & Left(txtSurname.text))
          Try fk_image = Collection_Members[Listview1.Item.key]!fk_image
-         If fk_image Then
+         If Not IsNull(fk_image) Then
             Picture_Display()
          End If
-         Employee_Comms_Get()
-         Employee_Communication_New()
-         Employee_Addresses_get()
+         Person_Show_Comms
+         form_contacts_person.
          Employee_Address_New()
          bExit = False
          txtOccupation.SetFocus()
@@ -1809,8 +1695,6 @@ Public Sub EditArea_Combo_KeyPress()
                txtBirthdate.SetFocus()
             Case "staff address type"
                txtEmployee_Street1.SetFocus()
-            Case "employee comm type"
-               txtEmployee_CommValue.SetFocus()
             Case "staff type"
                cmbAccessLevel.SetFocus()
             Case "staff status"
@@ -1836,7 +1720,7 @@ Public Sub EditArea_Combo_Click()
       Case "staff status"
          cmbStaffType.SetFocus()
       Case "employee comm type"
-         btnAddContact_Employee.Foreground = Color.red
+         ' btnAddContact_Employee.Foreground = Color.red
    End Select
    EditArea_Notify_DataChange(True)
    
@@ -1846,10 +1730,10 @@ Public Sub EditArea_Notify_DataChange(bflag As Boolean)
    
    If bFlag Then
       Vbox_EditArea.Padding = 1
-      tbAccept.Foreground = Color.Red
+      tbSave.Foreground = Color.Red
    Else
       Vbox_EditArea.Padding = 0
-      tbAccept.Foreground = Color.Black
+      tbSave.Foreground = Color.Black
    End If
    
 End
@@ -1874,7 +1758,7 @@ Public Function Employee_Address_Valid() As Boolean
       txtEmployee_Street1.SetFocus()
       Return False
    End If
-   If fk_town_employee = 0 Then
+   If IsNull(fk_town_employee) Then
       txtEmployee_Suburb.text = ""
       txtEmployee_Suburb.SetFocus()
       Return False
@@ -1886,32 +1770,32 @@ End
 Public Sub Employee_Address_Edit()
    '--------------------------------------------------------------------------
    'User has clicked on the edit option on the popup address menu for employee
+   'Display address in its editing area to allow editing
    '--------------------------------------------------------------------------
    
    bExit = True
    bNewAddress = False
-   cvwPersonsAddresses.MoveCurrent
-   iAddress = cvwPersonsAddresses.Item.Key
-   address = addresses[iAddress]
-   txtEmployee_Street1.text = addresses[iAddress]!street1
-   txtEmployee_Street2.text = addresses[iAddress]!street2
-   txtEmployee_suburb.text = addresses[iAddress]!town
-   fk_town_employee = addresses[iAddress]!fk_town
-   txtEmployee_State.text = addresses[iAddress]!state
-   txtEmployee_Postcode.text = addresses[iAddress]!postcode
-   cmbEmployeeAddressType.index = addresses[iAddress]!fk_lu_address_type
-   If addresses[iAddress]!preferred_address = True Then
+   fk_address = cvwPersonsAddresses_key
+   address = addresses[cvwPersonsAddresses_key]
+   txtEmployee_Street1.text = address!street1
+   txtEmployee_Street2.text = address!street2
+   txtEmployee_suburb.text = address!town
+   fk_town_employee = address!fk_town
+   txtEmployee_State.text = address!state
+   txtEmployee_Postcode.text = address!postcode
+   cmbEmployeeAddressType.index = address!fk_lu_address_type
+   If address!preferred_address = True Then
       chkEmployeeAddressPreferred.Value = True
    Else
       chkEmployeeAddressPreferred.Value = False
    End If
-   If addresses[iAddress]!postal_address = True Then
+   If address!postal_address = True Then
       chkEmployeeAddressPostal.value = True
    Else
       chkEmployeeAddressPostal.value = False
    End If
    With tbnAcceptAddress_Employee
-      .text = "Save modified address to the list "
+      .text = "Save Modifications "
       .Foreground = Color.Red
    End With
    bExit = False
@@ -1924,19 +1808,22 @@ Public Sub Employee_Address_Delete()
    
 End
 
-Public Sub mnuEmployeeAddressesPopup_Click()
+Public Sub mnuEmployeeAddresses_Click()
    '----------------------------------------------------------------
    'the popup menu over the employee's address list has been clicked
    '----------------------------------------------------------------
    
    Select Case Last.tag
-      Case "delete employee address"
+      Case "delete"
          Employee_Address_Delete()
-      Case "new employee address"
+      Case "new"
          Employee_Address_New()
-      Case "edit employee address"
+      Case "edit"
          Employee_Address_Edit()
+      Case "font"
+         modUtilGUI.Columnview_SetFont(cvwPersonsAddresses, "FStaff")
    End Select
+   
 Catch
    Return 
    
@@ -1944,14 +1831,15 @@ End
 
 Public Sub cvwPersonsAddresses_Menu()
    
-   If Last.count Then
-      mnuEmployeeAddressesPopup.Popup()
-   End If
+   If VBox_EditArea_Outer.Enabled = False Then Return 
+   If cvwPersonsAddresses.count Then mnuEmployeeAddresses.Popup()
    
 End
 
-Public Sub cvwStaffMembers_Click()
+Public Sub cvwStaffMembers_Select()
    
+   cvwStaffMembers.MoveCurrent
+   cvwStaffMembers_key = cvwStaffMembers.Item.Key
    Employee_Display()
    
 End Sub
@@ -1959,6 +1847,8 @@ End Sub
 Public Sub Employee_Display()
    '-----------------------------------------------------------------------------------
    'User has clicked on an existing staff member > display the member ready for editing
+   'Staff_Old_Data is needed to be able to compare old to new for updating postgres
+   'user and logon stuff (see save) and Staff_Postres_User_Save
    '-----------------------------------------------------------------------------------
    
    Dim bAddOccupation As Boolean
@@ -1967,13 +1857,11 @@ Public Sub Employee_Display()
    employee = New Collection
    comms = New Collection
    addresses = New Collection
-   fk_image = 0
+   fk_image = Null
    Show_Head_Office()
-   
-   '---------------------------
-   'Keep all the necessary keys
-   '---------------------------
-   pk_view = cvwStaffMembers.Item.Key
+   VBox_EditArea_Outer.Enabled = False
+   pk_view = cvwStaffMembers_key 
+   Staff_Old_Data = Staff_Members[pk_view] 
    fk_staff = Staff_Members[pk_view]!fk_staff
    fk_employee = Staff_Members[pk_view]!fk_employee
    Try fk_occupation = Staff_Members[pk_view]!fk_occupation 'imported persons may not have an occupation
@@ -1990,12 +1878,6 @@ Public Sub Employee_Display()
    EditArea_Clear()
    bexit = True
    bEditing = True
-   With tbnAcceptAddress_Employee
-      .text = "Save modifications to list "
-   End With
-   With btnAddContact_Employee
-      .text = "Save modifications to list "
-   End With
    '-----------------------------------------------------------------
    'Put up the organisations name and the branch where employee works
    '-----------------------------------------------------------------
@@ -2049,31 +1931,15 @@ Public Sub Employee_Display()
    bexit = True
    txtOccupation.text = Staff_Members[pk_view]!occupation
    txtMemo.text = Staff_Members[pk_view]!memo
-   '------------------------------------------------------
-   'Get the person's comms, and default to a new comm
-   'Note: the existing comms are kept in view_comms
-   'comms is hence a mixture of old comms (with a fk_comm)
-   'and new comms without a fk_comm.  Ditto for addresses
-   '-----------------------------------------------------
-   Employee_Comms_Get()
-   Employee_Communication_New()
+   Person_Show_Comms
    '------------------------------------------------------------
    'Get any addresses for the person, there could be more than 1
    '------------------------------------------------------------
-   ' views_addresses = modContactsDBI.person_addresses_get(fk_person)
-   ' cvwPersonsAddresses.Clear()
-   ' For Each address In views_addresses
-   '      x = cvwPersonsAddresses.Count
-   '      addresses.Add(address, x)
-   '      cvwPersonsAddresses.Add(x, 0)
-   '      cvwPersonsAddresses[x][0] = address!type
-   '      cvwPersonsAddresses[x][1] = address!street
-   '      cvwPersonsAddresses[x][2] = address!town & " " & address!state & " " & address!postcode
-   ' Next
-   Employee_Addresses_get()
+   Addresses = modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.person_addresses_get(fk_person))
+   cvwPersonsAddresses_Load
    Employee_Address_New()
    Try fk_image = Staff_Members[pk_view]!fk_image
-   If fk_image Then
+   If Not IsNull(fk_image) Then
       Picture_Display()
    End If
    bexit = False
@@ -2082,6 +1948,22 @@ Public Sub Employee_Display()
       .Enabled = True
    End With
    If bAddOccupation Then txtOccupation.SetFocus()
+   
+End
+
+Public Sub Person_Show_Comms()
+   '------------------------------------------------------
+   'Get the person's comms, and default to a new comm
+   'Note: the existing comms are kept in view_comms
+   'comms is hence a mixture of old comms (with a fk_comm)
+   'and new comms without a fk_comm.  Ditto for addresses
+   '-----------------------------------------------------
+   
+   With form_contacts_person
+      .form_Clear
+      .comms_Load(modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.person_comms_get(fk_person)))
+      .comm_new
+   End With
    
 End
 
@@ -2108,64 +1990,11 @@ Public Function Employee_Has_Data_for_Data_Numbers_Persons() As Boolean
    
 End
 
-Public Sub Employee_Comms_Get()
-   
-   Dim x As Integer
-   Dim col_widths As New Integer[3]
-   
-   lblmeasure.font = cvwPersonContacts.Font
-   comms = New Collection
-   views_comms = modContactsDBI.person_Comms_Get(fk_person)
-   cvwPersonContacts.Clear()
-   For Each comm In views_comms
-      x = cvwPersonContacts.Count
-      comms.Add(comm, x)
-      cvwPersonContacts.Add(x, 0)
-      cvwPersonContacts[x][0] = comm!type
-      lblmeasure.text = comm!type & " "
-      col_widths[0] = Max(lblmeasure.Width, col_widths[0])
-      cvwPersonContacts[x][1] = comm!value
-      lblmeasure.text = comm!value & " "
-      col_widths[1] = Max(lblmeasure.Width, col_widths[1])
-      cvwPersonContacts[x][2] = comm!note
-   Next
-   cvwPersonContacts.Columns[0].Width = col_widths[0]
-   cvwPersonContacts.Columns[1].Width = col_widths[1]
-   
-End
-
-Public Sub Employee_Addresses_get()
-   
-   Dim x As Integer
-   '------------------------------------------------------------
-   'Get any addresses for the person, there could be more than 1
-   '------------------------------------------------------------
-   views_addresses = modContactsDBI.person_addresses_get(fk_person)
-   cvwPersonsAddresses.Clear()
-   For Each address In views_addresses
-      x = cvwPersonsAddresses.Count
-      addresses.Add(address, x)
-      cvwPersonsAddresses.Add(x, 0)
-      cvwPersonsAddresses[x][0] = address!type
-      cvwPersonsAddresses[x][1] = Trim(address!street1 & " " & address!street2)
-      cvwPersonsAddresses[x][2] = address!town & " " & address!state & " " & address!postcode
-   Next
-   
-End
-
 Public Sub ToolButtons_Click()
    
    Select Case Last.tag
       Case "help"
-         '  Select Case TabStrip1.index
-         '  Case 0
-         
-         '   Case 1
-         '  PnlRequestPreferences.FPreview.Visible = True
-         '  PnlRequestPreferences.Help()
          Help_Show("practice-staff.html", True)
-         
-         'End Select
    End Select
    
 End
@@ -2174,12 +2003,12 @@ Public Sub EditAreaChkBox_Click()
    
    Select Case Last.tag
       Case "employee communication confidential", " employee communication preferred"
-         btnAddContact_Employee.Foreground = Color.Red
+         ' btnAddContact_Employee.Foreground = Color.Red
    End Select
    
 End
 
-Public Function New_Staff_Match_To_Umatched_Staff() As Integer
+Public Function New_Staff_Match_To_Umatched_Staff() As Variant
    '--------------------------------------------------------------------------
    'looks at the new staff member, tries to match to documents.unmatched_staff
    'returns pk of documents.unmatched_staff or 0 if unsuccessful
@@ -2203,7 +2032,7 @@ Public Function New_Staff_Match_To_Umatched_Staff() As Integer
       sMsg &= "Is this the same person?"
       Goto Matchfound
    End If
-   Return 0
+   Return Null
    
 Matchfound:
    Message.title = "Unmatched staff member reconciliation"
@@ -2215,7 +2044,7 @@ Matchfound:
          sMsg &= "Is it ok to do this?"
          Message.Title = "Confirm - Update all umatched documents"
          If Message.Warning(smsg, "Yes, update all unmatched documents", "No, don't proceed") = 2 Then
-            Return 0
+            Return Null
          Else
             Return r!pk
          End If
@@ -2258,9 +2087,23 @@ Public Sub chkShowUnmatchedStaff_Click()
 End
 
 Public Sub cvwStaffMembers_Menu()
+   'User has clicked on the list of staff members at the top of the screen
    
    If cvwStaffMembers.count Then
       mnuStaff.Popup()
    Endif
+   
+End
+
+Public Sub cvwPersonsAddresses_Select()
+   
+   cvwPersonsAddresses.MoveCurrent
+   cvwPersonsAddresses_key = cvwPersonsAddresses.item.Key
+   
+End
+
+Public Sub VSplit_Left_Resize()
+   
+   Settings["FStaff/VSplit_Left.Layout"] = VSplit_Left.Layout
    
 End

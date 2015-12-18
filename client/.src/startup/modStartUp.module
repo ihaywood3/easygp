@@ -19,19 +19,17 @@
 ' if returns false will cause FMain to close immediately.
 
 Public Function Startup(form_main As FMain) As Boolean
-
+   
    Dim opt As New Collection
    Dim sMsg As String
    Dim args As Variant[]
    Dim arg As String
-   Dim have_setup_clinic As String = "no"
-
+   
    modUtilGUI.Check_Utilities_Missing()
    opt = modCmdLine.GetOptions()
    Log.InfoMsg("EasyGP client version " & Application.Version & " running on Gambas " & System.Version)
    If Logon(opt) Then
       If opt.Exist("run") Then
-         Load_User() ' do it synchronously as we are running a batch job
          args = New Variant[] ' arguments to the function we want to call
          For Each arg In opt!extras
             args.Add(Eval(arg))
@@ -39,21 +37,7 @@ Public Function Startup(form_main As FMain) As Boolean
          RunCmd(opt!run, args)
          Return False
       Else
-         modLater.Add(Me, "Load_User") ' load the user info later, as we don't need it right right now
-         modLater.Add(Me, "CheckDBVersion")
-         have_setup_clinic = Settings["Cache/have_setup_clinic", "no"]
-         If have_setup_clinic = "no" Then
-            ' Ok we need to ask the DB now to figure out if we need the wizard
-            If modAdminDBI.Clinics_Setup() Then
-               have_setup_clinic = "yes"
-               Settings["Cache/have_setup_clinic"] = "yes" ' save so we don't ask again
-            Endif
-         Else
-            ' we have set up the clinic before: and we found out from local settings, so
-            ' need to call the function to load clinics data later
-            modLater.Add(Class.Load("modContactsDBI"), "Clinics_Get")
-         Endif
-         If have_setup_clinic = "yes" Then
+         If modAdminDBI.Clinics_Setup() Then
             form_main.Init()
             If opt.Exist("test") Then RunCmd(opt!test, [form_main])
             Return True
@@ -64,10 +48,9 @@ Public Function Startup(form_main As FMain) As Boolean
                "purchase these separately. Please read the help files or contact the develpers for assistance.\n\n"
                "*Copyright of ICPC-2 PLUS is held by the University of Sydney. http://www.fmrc.org.au/icpc2plus/licensing.htm"
                Message.Info(sMsg)
-               Quit
+               Quit  
             Endif
             If FSetupWizard.ShowModal() = 1 Then 'fixme I've just put in code to close the wizard and make user re-logon- talk to IAN
-               Settings["Cache/have_setup_clinic"] = "yes"
                Return True
             Else
                Return False
@@ -77,21 +60,16 @@ Public Function Startup(form_main As FMain) As Boolean
    Else
       Return False
    Endif
-
+   
 End
 
 Private Function Logon(opt As Collection) As Boolean
-
-   Dim result As String
-   Dim host As String
-   Dim username As String
-   Dim dbase As String
-   Dim password As String
+   
    Dim FLogOn As New Frmlogon
-
+   
    If Not IsNull(opt!host) Then
-      Try modDBConnect.dbConnect_global(opt)
-      If Error Then
+      Try dbConnect(opt)
+      If Error Then 
          Log.ErrorMsg(Error.Text & Error.Where)
       Else
          Return True
@@ -104,16 +82,16 @@ Private Function Logon(opt As Collection) As Boolean
       Case 0
          Return False
    End Select
-
+   
 End
 
 Private Sub CheckDBVersion()
-
+   
    Dim db_version As Collection
    Dim app_version As New Collection
    Dim s As String[]
    Dim msg As String
-
+   
    Try db_version = modDBConnect.exec_query_first("Select lu_minor as minor, lu_major as major  from db.lu_version")
    If Error Then
       msg = Error.Text
@@ -130,40 +108,39 @@ Private Sub CheckDBVersion()
    s = Split(Application.Version, ".")
    app_version!major = CInt(s[0])
    app_version!minor = CInt(s[1])
-
+   
    If db_version!major <> app_version!major Or If db_version!minor < app_version!minor Then
       msg = "You are running client version " & Application.Version
       msg &= " but the database is version " & db_version!major & "." & db_version!minor
       msg &= "\nThese are not compatible, you cannot login to this database.\n\n"
       msg &= "Update scripts are located in the db/updates directory of the svn. Your system administrator should know how to deal with these."
-      Log.PanicMsg("incompatible database version")
-      Error.Raise(msg)
+      Log.PanicMsg(msg)
+      Message.Error(msg)
+      Error.Raise("Incompatible database version")
    Endif
-
-Catch
-   modUtilGUI.SingleWarning("db_invalid", Error.Text, "Logon Failure", True)
-
+   
 End
 
-Public Sub Load_User()
+Public Function dbConnect(opt As Collection)
 
    Dim the_user As Collection
-
+   
+   modDBConnect.dbConnect_global(opt) ' errors get propagated as exceptions
    the_user = modConsultDBI.Staff_member_Get()
-   If IsNull(the_user) And If modDBConnect.currentUser!logon_name <> "easygp" Then
-      modUtilGUI.SingleWarning("nouser", "No user information in database, this usually means there is serious problem with the DB setup and most of EasyGP won't work", "Invalid Database", True)
-   Else
-      modDBConnect.Set_User(the_user)
+   If IsNull(the_user) And If opt!username <> "easygp" Then
+      Error.Raise("No user information in database")
    Endif
-
+   modDBConnect.Set_User(the_user)
+   CheckDBVersion()
+   
 End
 
 Private Sub RunCmd(test As String, args As Variant[])
-
+   
    Dim s As String[]
    Dim kls As Class
    Dim func As String
-
+   
    s = Split(test, ".")
    kls = Class.Load(s[0])
    If s.Length = 1 Then
@@ -172,7 +149,7 @@ Private Sub RunCmd(test As String, args As Variant[])
       func = s[1]
    Endif
    Object.Call(kls, func, args)
-
+   
 End
 
 Public Function Clinical_Modules_Get() As Collection
@@ -180,7 +157,7 @@ Public Function Clinical_Modules_Get() As Collection
    'Returns a collection of modules which can be accessed
    'from the toolbar or section menu in FClinical
    '------------------------------------------------------
-
+   
    Return modDBConnect.exec_query_collection("Select * from admin.lu_clinical_modules")
-
+   
 End

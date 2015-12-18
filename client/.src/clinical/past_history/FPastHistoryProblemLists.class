@@ -1,6 +1,6 @@
 ' Gambas class file
 
-' Copyright (C) 2008-2015 Dr. Richard Terry
+' Copyright (C) 2008-2016 Dr. Richard Terry
 
 ' This program is free software: you can redistribute it and/or modify
 ' it under the terms of the GNU General Public License as published by
@@ -20,29 +20,50 @@ Public healthissue As String
 Public currentProblem As Collection
 Public cvwSelected As ColumnView
 Public ParentForm As String
+Public iTotalMostSignificant As Integer     ' returned to FClinical for the TabStripProblemLists label
+Public itotalActiveSignificant As Integer   ' ditto
+Public iTotalInactive As Integer            ' ditto
+
+Public Sub _new()
+   
+   cvwProblemsActive.Columns.count = 2
+   cvwProblemsInActive.Columns.count = 2
+   cvwProblemsMajor.Columns.count = 2
+   
+End
 
 Public Sub Init(cons As Cconsult, PF As String)  
    
    ParentForm = PF
    currentconsult = cons
-   Try Settings_Load()
+   Settings_Load()
    ReLoad()
    
 End
 
 Private Sub Settings_Load()
    
-   HSplit_ProblemLists.layout = Settings["FPastHistoryProblemLists_" & ParentForm & "/HSplit_ProblemLists"]
+   Try HSplit_ProblemLists.layout = Settings["FPastHistoryProblemLists_" & ParentForm & "/HSplit_ProblemLists"]
    cvwProblemsActive.font = Font[Settings["FPastHistoryProblemLists_" & ParentForm & "/problemlists_font", "DejaVu Sans,9"]]
    cvwProblemsMajor.font = cvwProblemsActive.font
    cvwProblemsInActive.font = cvwProblemsActive.font
    
 End
 
-Public Sub Settings_Save()
+Public Function GetMajor_Problem_Count() As Integer
    
-   Settings["FPastHistoryProblemLists_" & ParentForm & "/HSplit_ProblemLists"] = HSplit_ProblemLists.layout
+   Return iTotalMostSignificant + itotalActiveSignificant
    
+End
+Public Function GetActiveSignficant_Problem_Count() As Integer
+   
+   Return itotalActiveSignificant
+   
+End
+Public Function Get_Inactive_Problem_Count() As Integer
+
+   Return iTotalInactive
+
 End
 
 Public Sub Update(sMenuTAg As String)
@@ -75,7 +96,7 @@ End
 
 Public Sub Update_Care_Planning()
    'If user doing care planning, update those forms in use 
-
+   
    Try FGPMPTCA.TCM_Providers_Update_Problems_Static()     'if user working on team care arrangements and GPMP update these
    Try FGPMPTCA.GPMP_Update()
    
@@ -85,9 +106,17 @@ Public Sub FClinical_Refresh()
    
    If FClinical.IsSamePatient(currentconsult!patient!fk_patient) Then
       FClinical.Refresh_Section(const.cSection_PastHistory)    'refresh lists on main screen FClinical
-     ' FClinical.Refresh_AllPreviousNotes()
       FClinical.Refresh_Section(const.cSection_HealthSummary)    'check if health summary showing, if so update it as it has occupations on it
    End If
+   
+End
+
+Public Sub Clear_Lists()
+  ' Clear the problems lists 
+  ' Also accessed From FClinical where this form can be embeddded
+   cvwProblemsActive.Clear()
+   cvwProblemsInActive.Clear()
+   cvwProblemsMajor.Clear()  
    
 End
 
@@ -102,7 +131,7 @@ Public Sub ReLoad(Optional bReLoad As Boolean = False)
    'i.e visual notification to the user of saved/unsaved status
    'if Centrelink certificate forms open re-load the problem lists
    '--------------------------------------------------------------------
-   
+
    Dim health_issue As Collection
    Dim bDataChanged As Boolean
    Dim bMajorProblemChanged As Boolean
@@ -112,12 +141,11 @@ Public Sub ReLoad(Optional bReLoad As Boolean = False)
    '-------------------------------------------------------------------------
    'clear the lists, loop through all members, add to active or inactive list
    '-------------------------------------------------------------------------
-   cvwProblemsActive.Clear()
-   cvwProblemsInActive.Clear()
-   cvwProblemsMajor.Clear()
-   cvwProblemsActive.Columns.count = 2
-   cvwProblemsInActive.Columns.count = 2
-   cvwProblemsMajor.Columns.count = 2
+   Clear_Lists
+   iTotalMostSignificant = 0
+   itotalActiveSignificant = 0
+   iTotalInactive = 0
+   
    If bReload Then currentconsult.Refresh("past_history")
    For Each health_issue In currentconsult!past_history
       If health_issue!data_changed Then
@@ -140,6 +168,7 @@ Public Sub ReLoad(Optional bReLoad As Boolean = False)
          If health_issue!data_changed = True Then
             bMajorProblemChanged = True
          End If
+         Inc iTotalMostSignificant
       Else
          If health_issue!active = True
             cvwProblemsActive.Add(Str$(health_issue!pk_pasthistory), 0)     'add new row, key = row count fixme to pk?
@@ -148,6 +177,7 @@ Public Sub ReLoad(Optional bReLoad As Boolean = False)
             If health_issue!data_changed = True Then
                bSignificantProblemChanged = True
             End If
+            Inc itotalActiveSignificant
          Else
             cvwProblemsInActive.Add(Str$(health_issue!pk_pasthistory), 0)     'add new row, key = row count fixme to pk?
             cvwProblemsInActive[Str$(health_issue!pk_pasthistory)][0] = health_issue!year_onset
@@ -155,10 +185,11 @@ Public Sub ReLoad(Optional bReLoad As Boolean = False)
             If health_issue!data_changed = True Then
                bInactiveProblemChanged = True
             End If
+            Inc iTotalInactive
          Endif
       Endif
    Next
- 
+   
 End
 
 Public Sub ProblemLists_Menu()
@@ -170,8 +201,9 @@ Public Sub ProblemLists_Menu()
       healthissue = currentconsult!past_history[pk_pasthistory]!description
       MnuProblemLists.Popup()
    End If
-  Catch
-  Return    'bug here on occasions with key not set  'fixme ?not identify list by last 
+Catch
+   Return    'bug here on occasions with key not set  'fixme ?not identify list by last 
+   
 End
 
 Public Sub mnuProblemLists_Click()
@@ -242,4 +274,11 @@ Public Sub mnuProblemLists_Click()
 Catch
    Return 
    
+End
+
+Public Sub HSplit_ProblemLists_Resize()
+   
+   Settings["FPastHistoryProblemLists_" & ParentForm & "/HSplit_ProblemLists"] = HSplit_ProblemLists.layout
+  
+
 End

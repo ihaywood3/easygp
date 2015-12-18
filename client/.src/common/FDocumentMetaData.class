@@ -1,6 +1,6 @@
 ' Gambas class file
 
-' Copyright (C) 2008-2015 Dr. Richard Terry
+' Copyright (C) 2008-2016 Dr. Richard Terry
 ' This program is free software: you can redistribute it and/or modify
 ' it under the terms of the GNU General Public License as published by
 ' the Free Software Foundation, either version 3 of the License, or
@@ -35,9 +35,9 @@ Public StaffTypes As Collection              'eg 'medical', 'nursing'
 Public Contact_Type As Integer
 Public iDisplay_As As Integer
 Public sTypeDocument As String               'const.Document_Display_As_Letter * [iDisplay_As]
-Public fk_organisation As Variant
 Private organisations As Collection
 Public organisation As Collection 'leave public unless write function to get this from inbox see INbox.Sender_ReAllocate()
+Public fk_organisation As Variant
 Public fk_branch As Variant
 Public fk_employee As Variant
 Public fk_person As Variant
@@ -47,19 +47,21 @@ Private fk_town_organisation As Variant
 Private fk_town_person As Variant
 Private fk_occupation As Variant
 Private fk_address_person As Variant
-Private fk_code As String
+Private fk_code As Variant
 Private fk_coding_system As Variant
 Public fk_urgency As Variant
+Private fk_patient As Variant
+Public fk_staff_destination As Variant
+Private fk_lu_urgency As Variant
 Private fk_sending_entity As Variant
+Private fk_lu_type As Variant
+Private fk_pasthistory As Variant
 Private bHas_sending_entity_fk_lu_request_type As Boolean  'true if a sending entity has a fk_lu_result_type
 Public bExit As Boolean
 Private comms As Collection   'If not null these are the patients comms
 Private Allpatients As Collection
 Private Request_Types As Collection
 Private pk_document As Variant
-Private fk_patient As Variant
-Public fk_staff_destination As Variant
-Private fk_lu_urgency As Variant
 Private terms As Collection
 Private patient As Collection
 Private Embedded_in_form_name As String
@@ -69,14 +71,12 @@ Private bReAllocating_Patient As Boolean 'if true, user in the indbox is realloc
 Public bReAllocating_Sender As Boolean
 Private member As Collection
 Private The_Collection As Collection
-Private fk_lu_type As Variant
 Private CurrentRequest As Collection
 Private request_items_text As String
 Private lastpos As Integer
 Private currentconsult As CConsult
 Private cProgressNote_Section As Integer
-Private fk_pasthistory As Variant
-Private Laterality As Integer
+Private Laterality As Variant  'fixme ?should be fk_laterality??
 Private Staff As Collection
 Private Staff_Member As Collection
 Private Documents As Collection
@@ -88,22 +88,15 @@ Private PatientAsSender As Collection
 Private Document As Collection
 Private document_prior_to_edit As String 'the guts of the document details prior to an edit
 
-Public Sub Form_KeyPress()
-   
-   ' Dim CtrlDown As Boolean
-   '  Dim FnDown As Boolean
-   'FIXME, i JUST WANT TO DETECT CTL + COMBINATION KEYS
-   ' Select Case Key.Code
-   '    Case key.F12
-   '       Save() 'fixme check if this is used, I've over-ridden this in FInbox
-   '
-   ' End Select
-   
-End
-
 Public Sub Set_Comms(C As Collection)
    
    Comms = C
+   
+End
+
+Public Function Filed_As() As Variant
+   
+  Return Document_Display_As_Types[cmbDocumentDisplayAstypes.index]!pk
    
 End
 
@@ -143,7 +136,6 @@ Public Sub SetFilename(path As String)
 End
 
 ' convert a given file to PDF
-
 Private Sub Force_To_PDF(fname As String) As String
    
    Dim ext As String
@@ -209,7 +201,7 @@ Private Sub SaveInScanning()
    '------------------------------------------------------------
    'Saves changes to the currently displayed document's metadata
    'Returns true if successful
-   'if this save is from an exiting document:
+   'if this save is from an existing document:
    '   documents = the collection of old documents
    '   pk_document = key to the documents collection
    '   only either new data or changes collected in collection d
@@ -245,21 +237,13 @@ Private Sub SaveInScanning()
       Case const.contacttype_patient
          d!originator = PatientAsSender!firstname & " " & PatientAsSender!surname
    End Select
-   '  d!fk_sending_entity = modInboxDBI.SendingEntity_GetPK(Get_Display_Style(), d!originator, fk_branch, fk_employee, fk_person)
    d!fk_sending_entity = modInboxDBI.SendingEntity_GetPK(Document_Display_As_Types[cmbDocumentDisplayAstypes.index]!pk, d!originator, fk_branch, fk_employee, fk_person)
-   
-   ' If rbDisplayAsLetter.value = True Then
-   '    d!tag = d!originator & " - scanned letter"
-   ' Else
-   '    d!tag = d!originator & " - scanned result"
-   ' End If
    d!tag = d!originator & " - " & cmbDocumentDisplayAstypes.Text
    d!comment = Trim(txtComment.text)
    d!fk_lu_urgency = fk_urgency
    Exec ["/usr/bin/md5sum", txtFilename.text] To md5Output
    d!md5sum = Left(md5Output, InStr(md5Output, " ") - 1)
    d!fk_staff_destination = fk_staff_destination
-   '  d!fk_lu_display_as = Get_Display_Style()
    d!fk_lu_display_as = Document_Display_As_Types[cmbDocumentDisplayAstypes.index]!pk
    If chkReferral.Value = chkReferral.True Then
       d!incoming_referral = True
@@ -294,7 +278,6 @@ Private Sub SaveInScanning()
       d!pk = pk_document
       ' FIXME: check uploading one-page jpegs
       d!source_file = Document_Filename_Construct(d)
-      '  d!source_file = Document_Filename_Construct(d, fname) 'this was Ian's r1882 I commented out
       
       If modFiles.Dir_Status("document_archiving_directory") = modFiles.DirRemote Then
          upload = New CUploadFileTask(d)
@@ -346,7 +329,9 @@ Private Sub SaveNotInScanning()
          modAudit.MakeAudit(currentconsult, "document metadata edited", "documents.documents", pk_document, const.cSection_Documents, sProgressNotes)
       Else                                                                       'Not an audit - this is the first time filed
          document!tag_user = Trim(txtUserObservationName.text)                   'add the new tag user has added
-         If get_laterality() > const.LateralityNone Then                         'fix laterality
+         Message.info("richard stop and check: FdocumentMetadata.SaveNotInScanning: line 347")
+         '  If get_laterality() > const.LateralityNone Then                         'fix laterality
+         If Not IsNull(get_laterality()) Then                         'fix laterality
             D!tag_user = Replace$(D!tag_user, ";", " (" & UCase(const.LateralityText[get_laterality()]) & ");") 'FIXME, NOT ACCURATE EG FOR xRAY PELVIS + xRAY hIP (RIGHT)
          End If
          sProgressNotes = modArchiveDocumentsDBI.Audit_Trail_Make_Progress_notes("file", document)
@@ -365,14 +350,13 @@ Private Sub SaveNotInScanning()
    Else
       D!incoming_referral = False
    Endif
-   If get_laterality() > const.LateralityNone Then
+   If Not IsNull(get_laterality()) Then
       D!tag_user = Replace$(D!tag_user, ";", " (" & UCase(const.LateralityText[get_laterality()]) & ");") 'FIXME, NOT ACCURATE EG FOR xRAY PELVIS + xRAY hIP (RIGHT)
    End If
    '-----------------------------------------
    'Is this document being sent to all staff? FIXME THIS SECTION SHOULD BE REMOVED,ONLY NEEDED IN SCANNING
    '-----------------------------------------
    If cmbStaffType.index <> -1 Then
-      Message.Info("IF THIS IS SHOWING STOP AND CHECK WITH RICHARD")
       For Each member In Staff_Members
          If member!fk_lu_staff_type = StaffTypes[cmbStaffType.index]!pk Then
             document!fk_staff_destination = member!fk_staff
@@ -398,7 +382,7 @@ Public Sub Get_Request_Type_PK() As Variant
    
 End
 
-Public Sub Get_laterality() As Integer
+Public Sub Get_laterality() As Variant
    
    Return laterality
    
@@ -407,14 +391,6 @@ End
 Public Sub Get_fk_Patient() As Variant
    
    Return fk_patient
-   
-End
-
-Public Sub Get_Display_Style() As Integer
-   
-   Message.info("Richard Fdocumentmetdata.Get_display_stype() should not be in here")
-   '  If rbDisplayAsResult.value = True Then Return 2
-   '   Return 1
    
 End
 
@@ -472,7 +448,7 @@ Public Sub InitGui_Display_As_Letter()
       Hbox_Lateralisation.visible = False
    End If
    rbLateralityNone.value = True
-   laterality = const.LateralityNone
+   laterality = Null ' const.LateralityNone
    chkCodeDocument.Visible = True
    txtDocumentDate.ReadOnly = False    'batched re-sent letters date <> date written.
    lblDocumentDate.text = "Date of Letter"
@@ -657,12 +633,11 @@ Public Sub EditArea_Clear()
    Else
       txtDocumentTag.text = ""
    End If
-   fk_patient = 0
+   fk_patient = Null
    lblBirthdate.text = ""
    chkReferral.Value = chkReferral.False
    fk_lu_urgency = const.UrgencyLevelRoutine
    rbUrgencyRoutine.value = True
-   ' rbDisplayAsLetter.value = True
    cmbDocumentDisplayAstypes.index = cmbDocumentDisplayAstypes.Find("letter")
    If Embedded_in_form_name = "Scanning" Then
       Reset_Keys()
@@ -671,7 +646,7 @@ Public Sub EditArea_Clear()
       chkLockPatient.value = True
       Patient_Show(patient)
    Else
-      fk_patient = 0
+      fk_patient = Null
       patient = Null
    Endif
    
@@ -682,10 +657,9 @@ Public Sub EditArea_Clear()
          txtPatient.SetFocus()
       End If
    Else
-      fk_staff_destination = 0
+      fk_staff_destination = Null
       staff_member = Null
    Endif
-   Print fk_staff_destination
    If bSenderLocked = True Then
       chkLockSender.value = True
       Select Case Contact_Type
@@ -798,7 +772,7 @@ Public Sub Edit(d As Collection)
    lblBirthdate2.text = lblBirthdate.text 'stupid I know, but acts as an identical spacer
    txtStreet1.text = Trim(document!patient_street1 & " " & document!patient_street2)
    txtSuburb.text = document!patient_town & " " & document!patient_postcode
-   If fk_patient Then
+   If Not IsNull(fk_patient) Then
       Try Show_comms()
    End If
    
@@ -815,7 +789,7 @@ Public Sub Edit(d As Collection)
    'so in this case, this flag is set so we can automatically correct this
    '---------------------------------------------------------------------------------------------
    bHas_sending_entity_fk_lu_request_type = False   'default to now knowing how to handle doc if usually a letter but is a request
-   If Not IsNull(document!sending_entity_fk_lu_request_type) Or (document!sending_entity_fk_lu_request_type <> -1) Then
+   If Not IsNull(document!sending_entity_fk_lu_request_type) Or (Not IsNull(document!sending_entity_fk_lu_request_type)) Then
       bHas_sending_entity_fk_lu_request_type = True
    Endif
    If document!msh_sending_entity <> "" Then
@@ -1202,7 +1176,7 @@ Public Sub RequestItem_Selection(action As String, txtbox As TextBox, Optional c
          The_Collection = modRequestsDBI.requests_get_items(sSearchText, Request_Types[cmbRequestTypes.index]!pk)
          With columnview1
             .Clear()
-            If fk_lu_type Then
+            If Not IsNull(fk_lu_type) Then
                .Columns.Count = 1
                .Columns[0].width = 400
             Else
@@ -1217,7 +1191,7 @@ Public Sub RequestItem_Selection(action As String, txtbox As TextBox, Optional c
          If The_Collection.count Then
             For Each member In The_Collection
                columnview1.Add(member!pk_view, 0)
-               If fk_lu_type Then
+               If Not IsNull(fk_lu_type) Then
                   columnview1[member!pk_view][0] = member!item
                Else
                   columnview1[member!pk_view][0] = member!type
@@ -1296,7 +1270,7 @@ Public Sub EditArea_TextBox_Change()
          Endif
       Case "patient"
          If Trim(Last.text) = "" Then
-            fk_patient = 0
+            fk_patient = Null
             txtStreet1.text = ""
             txtSuburb.text = ""
             lblBirthdate.text = ""
@@ -1315,8 +1289,6 @@ Public Sub EditArea_TextBox_Change()
          Endif
          If Left(Last.text, 2) = "wc" Then
             bexit = True
-            '  Last.text = "Workcover "
-            ' rbDisplayAsCertificate.value = True
             Set_Display_As_Type("certificate")
             bExit = False
          Endif
@@ -1346,7 +1318,7 @@ Public Sub EditArea_TextBox_Change()
             Last.text = "Injury Management Plan "
             Set_Display_As_Type("letter")
             bExit = False
-          Endif
+         Endif
          If Left(Last.text, 3) = "cfp" Then
             bexit = True
             Last.text = "Consent for procedure "
@@ -1356,14 +1328,12 @@ Public Sub EditArea_TextBox_Change()
          If Left(Last.text, 3) = "rmr" Then
             bexit = True
             Last.text = "Request for medical records transfer "
-            '  rbDisplayAsCertificate.value = True
             Set_Display_As_Type("letter")
             bExit = False
          Endif
          If Left(Last.text, 3) = "anf" Then
             bexit = True
             Last.text = "Accident Notification Form "
-            '  rbDisplayAsCertificate.value = True
             Set_Display_As_Type("letter")
             bExit = False
          Endif
@@ -1371,27 +1341,23 @@ Public Sub EditArea_TextBox_Change()
             bexit = True
             Last.text = "Diabetes Annual Cycle of Care "
             Set_Display_As_Type("letter")
-            '  rbDisplayAsCertificate.value = True
             bExit = False
          Endif
          If Left(Last.text, 3) = "o75" Then
             bexit = True
             Last.text = "Over 75 Health Care Assessment "
             Set_Display_As_Type("letter")
-            ' rbDisplayAsCertificate.value = True
             bExit = False
          Endif
          If Left(Last.text, 3) = "tca" Then
             bexit = True
             Last.text = "Team Care Arrangements "
             Set_Display_As_Type("team care arrangement")
-            ' rbDisplayAsCertificate.value = True
             bExit = False
          Endif
          If Left(Last.text, 3) = "icr" Then
             bexit = True
             Last.text = "Insurance Company Request for Information "
-            'rbDisplayAsCertificate.value = True
             Set_Display_As_Type("letter")
             bExit = False
          Endif
@@ -1399,28 +1365,24 @@ Public Sub EditArea_TextBox_Change()
             bexit = True
             Last.text = "Imported Patient Summary/Records"
             Set_Display_As_Type("letter")
-            ' rbDisplayAsCertificate.value = True
-            bExit = False
+             bExit = False
          Endif
          If Left(Last.text, 3) = "impl" Then
             bexit = True
             Last.text = "Injury Management Plan"
             Set_Display_As_Type("letter")
-            '  rbDisplayAsCertificate.value = True
             bExit = False
          Endif
          If Left(Last.text, 3) = "aeb" Then
             bexit = True
             Last.text = "Arranged excision BCC"
             Set_Display_As_Type("letter")
-            '  rbDisplayAsCertificate.value = True
-            bExit = False
+             bExit = False
          Endif
          If Left(Last.text, 3) = "aes" Then
             bexit = True
             Last.text = "Arranged excision SCC"
             Set_Display_As_Type("letter")
-            ' rbDisplayAsCertificate.value = True
             bExit = False
          Endif
          If Embedded_In_Form_Name = "FInbox" Then
@@ -1528,29 +1490,14 @@ Catch
    
 End
 
-Public Sub mnuHealthIssues_Click()
-   
-   Select Case Last.tag
-      Case "general notes", "remove link"
-         txtHealthIssue.text = "General Notes"
-         cProgressNote_Section = const.cSection_GeneralNotes
-         fk_pasthistory = 0
-      Case Else
-         txtHealthIssue.text = currentconsult!past_history[Last.tag]!description
-         fk_pasthistory = Last.tag
-         cProgressNote_Section = const.cSection_Referrals
-   End Select
-   
-End
-
 Public Sub Terms_Get()
    
    Dim term As Collection
-   Dim key As String
+   Dim key As Variant
    
    If Trim(txtUserObservationName.text) = "" Or chkCodeDocument.value = False Then
-      fk_code = 0
-      fk_coding_system = 0
+      fk_code = Null
+      fk_coding_system = Null
       VBox_ColumnView.Visible = False
       Return
    End If
@@ -1608,7 +1555,7 @@ Public Sub rblaterality_Click()
    
    Try laterality = Last.tag 'only works for 1-2-3 (left/right/both)
    If Error Then
-      laterality = const.LateralityNone
+      laterality = Null ' const.LateralityNone
    End If
    
 End
@@ -1739,7 +1686,7 @@ Public Sub Person_Employee_Select()
    If person.Exist("fk_employee") Then
       fk_employee = person!fk_employee
    Else
-      fk_employee = 0
+      fk_employee = Null
    Endif
    lblContactDetails.text = Person!title & " " & " " & Person!firstname & " " & Person!surname
    txtDocumentTag.text = lblContactDetails.text  'fixme should not be in here
@@ -1800,14 +1747,14 @@ End
 
 Public Sub Reset_Keys()
    
-   fk_organisation = 0
-   fk_category_organisation = 0
-   fk_town_organisation = 0
-   fk_address_organisation = 0
-   fk_person = 0
-   fk_address_person = 0
-   fk_branch = 0
-   fk_employee = 0
+   fk_organisation = Null
+   fk_category_organisation = Null
+   fk_town_organisation = Null
+   fk_address_organisation = Null
+   fk_person = Null
+   fk_address_person = Null
+   fk_branch = Null
+   fk_employee = Null
    
 End
 
@@ -1919,7 +1866,7 @@ Public Sub Organisation_Display()
    Try fk_employee = Organisation!fk_employee
    fk_branch = Organisation!fk_branch
    lblContactDetails.text = ""
-   If fk_employee <> 0 Then
+   If Not IsNull(fk_employee) Then
       lblContactDetails.text = Organisation!wholename & "\n"
    Endif
    lblContactDetails.text &= Organisation!organisation & "\n"
@@ -1927,17 +1874,11 @@ Public Sub Organisation_Display()
    lblContactDetails.text &= Trim(Organisation!street1 & " " & Organisation!street2) & "\n"
    lblContactDetails.text &= Organisation!town & " " & Organisation!state & " " & Organisation!postcode
    fk_category_organisation = Organisation!fk_category
-   If fk_employee <> 0 Then
+   If Not IsNull(fk_employee) Then
       txtDocumentTag.text = Organisation!wholename
    Else
       txtDocumentTag.text = Organisation!organisation
    Endif
-   
-   ' If rbDisplayAsResult.value = True Then
-   '    txtDocumentTag.text &= "- result"
-   ' Else
-   '    txtDocumentTag.text &= " - letter"
-   ' Endif
    txtDocumentTag.text &= " - " & cmbDocumentDisplayAstypes.text
    txtDocumentDate.SetFocus()
 Catch
@@ -2070,17 +2011,16 @@ Public Sub Valid_Document()
    Dim sMsg As String
    
    If txtFilename.text = "" Then Error.Raise("Please select a document to file")
-   If fk_patient = 0 Then 
+   If IsNull(fk_patient) Then 
       txtPatient.SetFocus()
       Error.Raise("No patient selected")
    Endif
-   If fk_staff_destination = 0 And cmbStaffType.index = -1 Then
+   If IsNull(fk_staff_destination) And cmbStaffType.index = -1 Then
       txtRecipient.SetFocus()
-      '  Error.Raise("No staff selected")
    Endif
    If Embedded_in_form_name = "Scanning" Then
-      If fk_organisation = 0 Then
-         If fk_person = 0 Then
+      If IsNull(fk_organisation) Then
+         If IsNull(fk_person) Then
             txtfindSender.SetFocus()
             sMsg = "Each scanned or faxed document will have been sent by someone, be they a person, organisation, or employee of an organisation "
             "or perhaps even a patient.\n\nYou must allocate documents before filing."
@@ -2190,6 +2130,3 @@ Public Sub cmbDocumentDisplayAsTypes_Click()
    Endif
    
 End
-
-
-

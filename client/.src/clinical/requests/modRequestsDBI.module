@@ -1,6 +1,6 @@
 ' Gambas module file
 
-' Copyright (C) 2008-2015 Dr. Richard Terry
+' Copyright (C) 2008-2016 Dr. Richard Terry
 
 ' This program is free software: you can redistribute it and/or modify
 ' it under the terms of the GNU General Public License as published by
@@ -28,24 +28,45 @@ Private sql As String
 
 Public Function RequestTypes_Get() As Collection
    'Get the types of requests e.g pathology, radiology, ophthalmology etc  
+   
    Return modCache.Get("clin_requests.lu_request_type")
    
 End
 
-
-Public Function Provider_Type_Get(fk_type As Integer) As String
+Public Function Provider_Type_Get(fk_type As Variant) As String
    
    Return modCache.Get("clin_requests.lu_request_type", fk_type, "pk")
    
 End
 
-Public Function Request_GetPk(request As String) As Integer
+Public Function Provider_Branches_And_Comms_Get(fk_organisation As Variant) As Collection
+   '---------------------------------------------------------------------------------------
+   'Gets branches for an organisation as a collection including comms using fk_organisation
+   '---------------------------------------------------------------------------------------
+   
+   Dim sql As String
+   Dim branches As Collection 
+   Dim branch As Collection 
+   Dim comms As Collection 
+   
+   sql = " Select * From contacts.vwOrganisationsEmployees where fk_organisation =" & fk_organisation & " AND branch_deleted = false"
+   sql &= " AND fk_employee is null  order by branch" 
+   branches = modDBConnect.exec_query_collection(sql)
+   For Each branch In branches
+      sql = "Select * from contacts.vwBranchesComms WHERE fk_branch = " & branch!fk_branch 
+      comms = modDBConnect.exec_query_collection(sql)
+      branch!comms = comms
+   Next
+   Return branches    
+   
+End
+Public Function Request_GetPk(request As String) As Variant
    
    Return modDBConnect.exec_query("Select pk from clin_requests.lu_requests where item ILIKE $$" & request & "$$")!pk
    
 End
 
-Public Sub Request_Delete(fk_request As Integer)
+Public Sub Request_Delete(fk_request As Variant)
    '---------------------------------------------------------------------------------------
    'Marks as deleted a request in clin_requests.lu_requests, does not remove from the table
    '---------------------------------------------------------------------------------------
@@ -55,31 +76,38 @@ Public Sub Request_Delete(fk_request As Integer)
    
 End
 
-Public Function Request_Save(old_data As Collection, pk_view As Integer, term As Collection) As Integer
-   
-   If IsNull(term!pk) Then
-      Return modDBConnect.insert("clin_requests.lu_requests", term)
-   Else
-      modDBConnect.update("clin_requests.lu_requests", old_data[pk_view], term) 
-   End If 
-   
-End
-
 Public Sub Request_Save_loinc(item As String)
    'FIXME - put type of test into loinc, and fix the fk_section to reflect this eg serum, bacto etc
-   'temporary
-   
+   ' CREATE TABLE clin_requests.lu_requests
+   ' (
+   '   pk serial NOT NULL,
+   '   fk_lu_request_type integer NOT NULL, -- foreign key to clin_requests.lu_request_type table
+   '   item text NOT NULL, -- the actual request eg Xray of wrist
+   '   fk_laterality integer DEFAULT 0, -- foreign key to common.lu_laterality, ie left/right/both
+   '   deleted boolean DEFAULT false,
+   '   CONSTRAINT lu_requests_pkey PRIMARY KEY (pk),
+   '   CONSTRAINT lu_requests_fk_laterality_fkey FOREIGN KEY (fk_laterality)
+   '       REFERENCES common.lu_laterality (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT lu_requests_fk_lu_request_type_fkey FOREIGN KEY (fk_lu_request_type)
+   '       REFERENCES clin_requests.lu_request_type (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   '------------------------------------------------------------------------------
    Dim c As New Collection
    
    c!fk_lu_request_type = 1
    c!item = item
-   c!fk_laterality = 0
-   c!fk_decision_support = 0
-   c!fk_instruction = 0
+   c!fk_laterality = Null
    modDBConnect.insert("clin_requests.lu_requests", c)
    
 End
-
+'
+'gets an employee
+'
 Public Function Employee_Get(employee As String) As Collection 
    
    sql = " Select * From contacts.vwOrganisationsEmployees where surname ILIKE $$"
@@ -98,7 +126,14 @@ Public Function User_Get_Default_Type() As Collection
    
 End
 
-Public Function User_Save_Default_Type(old_data As Collection, user_default_type As Collection) As Integer
+Public Function RequestProviders_Exist() As Integer
+   ' returns integer value of request count 
+
+   Return modDBConnect.exec_query("Select count (pk_request_provider) as provider_count from clin_requests.vwRequestProviders")!provider_count
+   
+End
+
+Public Function User_Save_Default_Type(old_data As Collection, user_default_type As Collection) As Variant
    
    If IsNull(user_default_type!fk_user_default_type) Then
       user_default_type!fk_staff = modDBConnect.currentUser!fk_staff
@@ -110,7 +145,7 @@ Public Function User_Save_Default_Type(old_data As Collection, user_default_type
    
 End
 
-Public Function Providers_GetBy_RequestType(fk_lu_request_type As Integer) As Collection
+Public Function Providers_GetBy_RequestType(fk_lu_request_type As Variant) As Collection
    '---------------------------------------------------------------
    'Gets a list of distinct organisations for a particular category
    'e.g all the Pathology Providers
@@ -124,29 +159,8 @@ Public Function Providers_GetBy_RequestType(fk_lu_request_type As Integer) As Co
    
 End
 
-Public Function Provider_Branches_Get(fk_organisation As Integer, Optional fk_category As Integer = 0) As Collection
-   '---------------------------------------------------------------------------------------
-   'Gets branches for an organisation as a collection including comms using fk_organisation
-   '---------------------------------------------------------------------------------------
-   
-   Dim sql As String
-   Dim branches As Collection 
-   Dim branch As Collection 
-   Dim comms As Collection 
-   
-   sql = " Select * From contacts.vwOrganisationsEmployees where fk_organisation =" & fk_organisation & " AND branch_deleted = false"
-   sql &= " AND fk_employee = 0  order by branch" 
-   branches = modDBConnect.exec_query_collection(sql)
-   For Each branch In branches
-      sql = "Select * from contacts.vwBranchesComms WHERE fk_branch = " & branch!fk_branch 
-      comms = modDBConnect.exec_query_collection(sql)
-      branch!comms = comms
-   Next
-   Return branches    
-   
-End
 
-Public Function Provider_Get_Default_For_Request_type(fk_lu_request_type As Integer) As Collection 
+Public Function Provider_Get_Default_For_Request_type(fk_lu_request_type As Variant) As Collection 
    '------------------------------------------------------------------------------------------------
    'CALLED BY  FRequests.Get_Default_Provider()
    'RETURNS    collection (as a result) with head office and default branch for the type of provider
@@ -169,12 +183,12 @@ Public Function Organisation_Branches_Get_Like_Text(sSearchtext As String) As Co
    
    sSearchtext = modDBConnect.Esc_Like(sSearchtext)
    sql = " Select * From contacts.vwOrganisationsEmployees where organisation ILIKE $$%"
-   sql = sql & sSearchtext & "%$$ AND fk_employee = 0 ORDER BY organisation, branch"
+   sql = sql & sSearchtext & "%$$ AND fk_employee is null ORDER BY organisation, branch"
    Return modDBConnect.exec_query_collection(sql)
    
 End
 
-Public Function Requests_Get_Notes(sSearchtext As String, fk_lu_type As Integer) As Collection 
+Public Function Requests_Get_Notes(sSearchtext As String, fk_lu_type As Variant) As Collection 
    '-------------------------------------------------------------------------
    'Gets a collection of notes user has previously written for their requests
    'on a per type (clin_requests.lu_type) and per user basis
@@ -189,7 +203,16 @@ Public Function Requests_Get_Notes(sSearchtext As String, fk_lu_type As Integer)
    
 End
 
-Public Function Request_Item_?exists(item As String, Optional fk_lu_request_type As Integer = 0) As Boolean
+Public Function Request_Has_Been_Ordered(fk_lu_request As Variant) As Boolean
+   'returns true if  a request has been ordered
+   
+   Dim R As Result
+   
+   If modDBConnect.exec_query("Select * from clin_requests.forms_requests where fk_lu_request =" & fk_lu_request).count > 0 Then Return True
+   
+End
+
+Public Function Request_Item_?exists(item As String, Optional fk_lu_request_type As Variant = Null) As Boolean
    '--------------------------------------------------------------------------------
    'Tries to get exact match for an item, returns true if does
    'Used by inbox, when looks up a loinc code
@@ -198,7 +221,7 @@ Public Function Request_Item_?exists(item As String, Optional fk_lu_request_type
    Dim R As Result
    
    sql = "Select * from clin_requests.vwRequestNames where item ILIKE $$" & item & "$$"
-   If fk_lu_request_type Then 
+   If Not IsNull(fk_lu_request_type) Then 
       sql &= " AND fk_lu_request_type = " & fk_lu_request_type
    End If
    sql &= " AND deleted = false"
@@ -207,7 +230,7 @@ Public Function Request_Item_?exists(item As String, Optional fk_lu_request_type
    
 End
 
-Public Function requests_get_items(sSearchText As String, fk_lu_request_type As Integer) As Collection
+Public Function requests_get_items(sSearchText As String, fk_lu_request_type As Variant) As Collection
    '---------------------------------------------------------------------------------------------------------
    'Fetch all requests like searchtext, if already have a fixed type e.g pathology, search with that criteria
    'Note this is with laterality taken into account  .FIXME bring category names into line with
@@ -215,13 +238,13 @@ Public Function requests_get_items(sSearchText As String, fk_lu_request_type As 
    '---------------------------------------------------------------------------------------------------------
    
    sql = "Select * from clin_requests.vwRequestNames where lower(item) ILIKE $$%" & sSearchText & "%$$" 
-   If fk_lu_request_type Then sql &= " AND fk_lu_request_type = " & fk_lu_request_type
-   sql = sql & " AND deleted = false ORDER BY type, item " ' LIMIT 20 "
+   If Not IsNull(fk_lu_request_type) Then sql &= " AND fk_lu_request_type = " & fk_lu_request_type
+   sql = sql & " AND deleted = false ORDER BY type, item "
    Return modDBConnect.exec_query_collection(sql)
    
 End
 
-Public Function Requests_Get_By_Request_Type(fk_lu_request_type As Integer, Optional request_name As String = "") As Collection
+Public Function Requests_Get_By_Request_Type(fk_lu_request_type As Variant, Optional request_name As String = "") As Collection
    '------------------------------------------------------------------------------------------   
    'return a collection of all requests of particular type filtered by request_name if present
    'unless fk_lu_request_type is 0, then entire table is searched.
@@ -230,7 +253,7 @@ Public Function Requests_Get_By_Request_Type(fk_lu_request_type As Integer, Opti
    Dim sql As String 
    
    sql = "Select * from clin_requests.lu_requests WHERE "
-   If fk_lu_request_type Then 
+   If Not IsNull(fk_lu_request_type) Then 
       sql &= "fk_lu_request_type = " & fk_lu_request_type & " AND "
    End If
    sql &= " item ILIKE $$%" & request_name & "%$$"
@@ -239,12 +262,11 @@ Public Function Requests_Get_By_Request_Type(fk_lu_request_type As Integer, Opti
    
 End 
 
-
-Public Function Results_Get_Excluding_INR(fk_patient As Integer) As Collection
+Public Function Results_Get_Excluding_INR(fk_patient As Variant) As Collection
    
 End
 
-Public Function Results_Get(fk_patient As Integer) As Collection
+Public Function Results_Get(fk_patient As Variant) As Collection
    '----------------------------------------------------------------------------
    'Get all documents that could be considered a result - may not be 'numerical'
    'e.g could be a scanned in old Xray or path, ecg etc
@@ -264,8 +286,7 @@ Public Function Results_Get(fk_patient As Integer) As Collection
    
 End
 
-
-Public Function RequestForms_Get(fk_patient As Integer, Optional Order_by As String = "consult_date", Optional Asc_Desc As String = "DESC") As Collection 
+Public Function RequestForms_Get(fk_patient As Variant, Optional Order_by As String = "consult_date", Optional Asc_Desc As String = "DESC") As Collection 
    '----------------------------------------------------------------------------------------------------
    'Retrieve all request forms for patient, optionally ordered by a field in ascending/descending order
    'Default = order by consult_date in descending (latest to oldest) order
@@ -304,10 +325,10 @@ Public Sub RequestForm_Delete(currentconsult As Cconsult, requestform As Collect
    'to the progress notes showing who deleted it and why and put in an audit trail 
    '-----------------------------------------------------------------------------------
    
-   Dim fk_progressnote As Integer
-   Dim fk_form As Integer
+   Dim fk_progressnote As Variant
+   Dim fk_form As Variant
    Dim pn As Collection
-   Dim fk_reason As Integer
+   Dim fk_reason As Variant
    Dim reason As String
    Dim audit_notes As String
    
@@ -344,7 +365,7 @@ Public Sub RequestForm_Delete(currentconsult As Cconsult, requestform As Collect
    modDBConnect.update("clin_requests.forms", Null, ["pk": RequestForm!fk_form, "deleted": True])
    modDBConnect.exec_query("Update clin_requests.forms_requests set deleted = True where fk_form = " & RequestForm!fk_form)
    modDBConnect.CommitTrans() 
-  ' FClinical.Refresh_AllPreviousNotes() 
+   ' FClinical.Refresh_AllPreviousNotes() 
    FClinical.Refresh_Section(const.cSection_Requests)
    
 End
@@ -407,7 +428,7 @@ Public Sub RequestForm_Note_Save(Note As CRequestNote)
    
 End
 
-Public Function RequestForm_Save(currentconsult As Cconsult, old_pk As String, RequestForm As Collection, Old_FormsRequests As Collection, formsRequests As Collection, Pictures As Collection) As Integer   
+Public Function RequestForm_Save(currentconsult As Cconsult, old_pk As String, RequestForm As Collection, Old_FormsRequests As Collection, formsRequests As Collection, Pictures As Collection) As Variant   
    '--------------------------------------------
    'PURPOSE    :Saves a request form
    'EXPECTS    :
@@ -418,7 +439,7 @@ Public Function RequestForm_Save(currentconsult As Cconsult, old_pk As String, R
    
    Dim notes As String[]
    Dim note As String 
-   Dim fk_note As Integer
+   Dim fk_note As Variant
    Dim newnote As Collection 
    Dim RQ As Collection 
    '--------------------------------------------------------------------
@@ -525,7 +546,7 @@ Public Function Notes_Parse_For_Images(Notes As String) As String
    Dim afile As String
    Dim someFiles As String[]
    Dim sHtml As String
-   Dim image_pk As Integer
+   Dim image_pk As Variant
    Dim acopy As String
    
    acopy = notes
@@ -549,26 +570,8 @@ Public Function Notes_Parse_For_Images(Notes As String) As String
    
 End
 
-Public Function Inbox_Get_Person(F As FInbox) As Integer 
-   '-------------------------------------------------
-   'Attempts to get a person as the sender of the hl7
-   '------------------------------------------------- 
-   
-   With F
-      .txtOrganisation!text = ""
-      .txtSendingentity.Background = Color.White
-      .txtBranch.text = ""
-      .txtSuburb.text = ""
-      .txtStreet1.text = ""  
-      .txtState.text = ""
-      .txtPostcode.text = ""
-      .txtCategory.text = ""
-      .chkHeadOffice.value = False
-   End With
-   
-End
 
-Public Function Request_Provider_Get(pk_request_provider As Integer) As Collection
+Public Function Request_Provider_Get(pk_request_provider As Variant) As Collection
    'Returns a collection representing a specific request provider   
    
    Return modDBConnect.exec_query_first("Select * from clin_requests.vwRequestProviders where pk_request_provider = " & pk_request_provider)
@@ -578,20 +581,21 @@ End
 Public Function Request_Provider_Staff_Defaults_Get() As Collection
    '-------------------------------------------------------------------------------- 
    'returns a collection of all the default providers (if set) for all request types
+   ' eg the default provider for pathology ordering
    '-------------------------------------------------------------------------------- 
    
    Return modDBConnect.exec_query_collection("Select * from clin_requests.vwRequestProviders where staff_default is true")
    
 End
 
-Public Sub Request_Providers_Get(fk_lu_request_type As Integer) As Collection
+Public Sub Request_Providers_Get(fk_lu_request_type As Variant) As Collection
    'Collection is keyed to pk of clin_requests.request_provider as pk_request_provider
    
    Return modDBConnect.exec_query_collection("Select * from clin_requests.vwRequestProviders where fk_lu_request_type = " & fk_lu_request_type & " And request_provider_deleted = False ")
    
 End
 
-Public Sub Request_Providers_Save(old_data As Collection, pk_view As Integer, request_provider As Collection) 
+Public Sub Request_Providers_Save(old_data As Collection, pk_view As Variant, request_provider As Collection) 
    '---------------------------------------------------------------------------------------
    'Saves or modifies info about those who can be sent requests by the practice, eg for FBC
    '---------------------------------------------------------------------------------------

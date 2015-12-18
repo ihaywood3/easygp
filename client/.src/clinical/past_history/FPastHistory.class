@@ -1,6 +1,6 @@
 ' Gambas class file
 
-' Copyright (C) 2008-2015 Dr. Richard Terry
+' Copyright (C) 2008-2016 Dr. Richard Terry
 ' This program is free software: you can redistribute it and/or modify
 ' it under the terms of the GNU General Public License as published by
 ' the Free Software Foundation, either version 3 of the License, or
@@ -21,41 +21,37 @@
 '             - TCA  = Team Care Arrangements
 '             - GPMP = General Practitioner Management Plan
 '----------------------------------------------------------------------------------------------------
+Private ReferenceHboxForPopupControls As HBox
+Private currentconsult As CConsult
+Private SpellChecker As ClskSpell
+Private obs As Observer
+Private bEmbedded As Boolean             'If true the form is embedded in a frmConsultNotes editor
+Private bExit As Boolean
+Private bEditing As Boolean 'True if we are editing an existing saved or unsaved record.
 Private bUserWantsSpellCheck As Boolean      'True if User has set this preference in FPreferencesClinical
+Private bKeyValid As Boolean            'used in textbox routines
 Private POC_Row As Integer
 Private POC_Col As Integer
+Private iAgeOnsetUnits As Integer
+Private embedded_in_form As String
+Private yesno As String[]
 Private provider_contributions As String[] 'kept because I can't control the tableview reliably - losing focus > dosn't save a cells contents
 Private bOver_ride_DontShow As Boolean 
 Private Control_with_Focus As Control
 Private table_row_height As Integer
+Private tvProvidersOfCare_Row As Integer
 Private Persons As Collection
 Private PersonWritingTo As Collection
 Private ProvidersOfCare As Collection
-Private tvProvidersOfCare_Row As Integer
-Private ReferenceHboxForPopupControls As HBox
-Private currentconsult As CConsult
-Private bEmbedded As Boolean             'If true the form is embedded in a frmConsultNotes editor
-Private SpellChecker As ClskSpell
-Private bKeyValid As Boolean            'used in textbox routines
 Private currentPastHistory As Collection
 Private currentTerm As Collection
 Public pk_pasthistory As Variant
-Private bExit As Boolean
-Private bEditing As Boolean 'True if we are editing an existing saved or unsaved record.
-Private obs As Observer
-Private iAgeOnsetUnits As Integer
 Private fk_progressnote As Variant
 Private fk_laterality As Variant
 Private fk_significance As Variant
-Private fk_code As String
+Private fk_code As Variant
 Private fk_coding_system As Variant
 Private fk_consult As Variant
-Private yesno As String[]
-'------------------------------
-'stuff for the components grid
-'-----------------------------
-
-Private embedded_in_form As String
 Private Form_Terms As FCodedTermSelector
 Public ProblemLists As FPastHistoryProblemLists 'do not make this private
 
@@ -638,11 +634,9 @@ Public Sub HealthIssue_Display()
    'is no fk_progress note yet
    'FIXME: What if a different user is doing this? Must put in some auditing here
    '-----------------------------------------------------------------------------
-   fk_progressnote = 0
-   If PH_From_View!fk_progressnote <> 0 Then
-      If Format(currentconsult.GetConsultDate(), "dd/mm/yyyy") = Format(PH_From_View!date_noted, "dd/mm/yyyy") Then
-         fk_progressnote = PH_From_View!fk_progressnote
-      End If
+   fk_progressnote = Null
+   If Format(currentconsult.GetConsultDate(), "dd/mm/yyyy") = Format(PH_From_View!date_noted, "dd/mm/yyyy") Then
+      fk_progressnote = PH_From_View!fk_progressnote
    End If
    txtCondition.text = PH_From_View!description
    txtCodedTerm.text = PH_From_View!combined_term_code
@@ -751,7 +745,7 @@ Public Sub EditArea_Clear()
    '----------------------------------------------------------------------
    EditArea_Notify_DataChange(False)
    listview2.Visible = False
-   fk_laterality = const.LateralityNone
+   fk_laterality = Null
    fk_significance = const.healthIssue_Major
    rbMajor.Value = True
    iAgeOnsetUnits = const.Units_year
@@ -773,18 +767,19 @@ End
 
 Public Sub Reset_Keys()
    
-   pk_pasthistory = 0
-   fk_coding_system = 0
-   fk_code = ""
-   fk_progressnote = 0
+   pk_pasthistory = Null
+   fk_coding_system = Null
+   fk_code = Null
+   fk_progressnote = Null
    
 End
 
 Public Sub New_Entry()
-   '----------------------------------------------------------------------
-   'Called from FClinical where the button tag is a generic 'New Entry'
-   'I've left the orginal nomenclature here for easier reading of the code
-   '----------------------------------------------------------------------
+   '---------------------------------------------------------------
+   'Called from FClinical, called this because can't use New() and
+   'all across easyp this is the wording I've chosen
+   'see FClinicalToolbar.MainToolbar_Click for details
+   '---------------------------------------------------------------   
    
    HealthIssue_New()
    
@@ -820,7 +815,6 @@ Public Sub Reload()
    currentconsult.Refresh("past_history")                   'remove key from cache > later forces a reload
    If FClinical.IsSamePatient(currentconsult!patient!fk_patient) Then
       FClinical.Refresh_Section(const.cSection_PastHistory)    'refresh lists on main screen FClinical
-      ' FClinical.Refresh_AllPreviousNotes()
    End If
    ProblemLists.Reload(True)   'refresh the lists                             'reload lists on embedded form
    HealthIssue_New()
@@ -829,10 +823,6 @@ Public Sub Reload()
 End
 
 Public Function ProgressNotes_Summary(PH As CRow) As String
-   '---------------------------------------------------------------------
-   'Note this is sort-of-duplicated in FClinical.Care_Plan_construct_html
-   'so probably should change design and combine
-   '---------------------------------------------------------------------
    
    Dim sText As String
    
@@ -868,24 +858,25 @@ Public Function ProgressNotes_Summary(PH As CRow) As String
    End If
    sText &= "<BR>"
    If Not IsNull(ph!plan_contribution_gp) Then
-      sText &= "GP will " & ph!plan_contribution_gp & ". "
+      sText &= "- GP will " & ph!plan_contribution_gp & ". "
    Endif
    If Not IsNull(PH!plan_contribution_patient) Then
-      sText &= "Patient will " & PH!plan_contribution_patient & ". "
+      sText &= "<BR>- Patient will " & PH!plan_contribution_patient & ". "
    Endif
    If Not IsNull(Ph!plan_contribution_others) Then
-      sText &= Ph!plan_contribution_others & "."
+      sText &= "<BR>- " & Ph!plan_contribution_others & "."
    End If
    Return sText
    
 End
 
-Public Function Save() As Boolean 'called from FProgressNotesPage.Save also 
-   '--------------------------------------------------
+Public Function Save() As Boolean          'was called from FProgressNotesPage.Save currently not used
+   '--------------------------------------------------------------------------------------------
    ' Save the past history condition (ie health issue)
    ' Returns True is successful (used in FInbox to auto-save new health issues if uses forgets)
    ' Minimally needed data validated
    ' The Audit information is collected here
+   '--------------------------------------------------------------------------------------------
    ' CREATE TABLE clin_history.past_history
    ' (
    '   pk serial NOT NULL,
@@ -893,7 +884,7 @@ Public Function Save() As Boolean 'called from FProgressNotesPage.Save also
    '   age_onset integer NOT NULL,
    '   age_onset_units integer NOT NULL,
    '   description text NOT NULL,
-   '   fk_laterality integer DEFAULT 0,
+   '   fk_laterality integer,
    '   year_onset text NOT NULL,
    '   active boolean DEFAULT false,
    '   operation boolean DEFAULT false,
@@ -907,40 +898,53 @@ Public Function Save() As Boolean 'called from FProgressNotesPage.Save also
    '   fk_coding_system integer NOT NULL, -- key to coding.lu_coding_system containing name of coding system ...
    '   fk_code text,
    '   aim_of_plan text,
-   '   health_need text,
    '   fk_progressnote integer, -- foreign key to clin_consult.progressnotes table, used only during each consultation...
    '   plan_contribution_gp text,
    '   plan_contribution_patient text,
    '   plan_contribution_others text,
-   '   CONSTRAINT past_history_pkey PRIMARY KEY (pk )
+   '   health_need text,
+   '   CONSTRAINT past_history_pkey PRIMARY KEY (pk),
+   '   CONSTRAINT past_history_fk_coding_system_fkey FOREIGN KEY (fk_coding_system)
+   '       REFERENCES coding.lu_systems (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT past_history_fk_consult_fkey FOREIGN KEY (fk_consult)
+   '       REFERENCES clin_consult.consult (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT past_history_fk_laterality_fkey FOREIGN KEY (fk_laterality)
+   '       REFERENCES common.lu_laterality (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT past_history_fk_progressnote_fkey FOREIGN KEY (fk_progressnote)
+   '       REFERENCES clin_consult.progressnotes (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION
    ' )
    ' WITH (
    '   OIDS=FALSE
-   ' );FClini
-   '--------------------------------------------------
+   ' );
+   '---------------------------------------------------------------------------------------------
    
-   Dim sProgressNotes As String
+  
    Dim PastHistory As CRow
-   Dim ProgressNote As CRow
+  
    Dim ProviderOfCare As CRow 
    Dim member As Collection  
    Dim sString As String
    
-   If Vbox_EditingArea.Padding = 0 Then 
-      Return  'the outer vbox if no padding = no change of data
-   End If   
-   If Not Valid_EditArea_Contents() Then
-      Return
-   End If   
+   If Vbox_EditingArea.Padding = 0 Then Return  'the outer vbox if no padding = no change of data
+   If Not Valid_EditArea_Contents() Then Return
+
    PastHistory = New CRow
-   If pk_pasthistory <> 0 Then
+   If Not IsNull(pk_pasthistory) Then
       PastHistory.put_unchanged(pk_pasthistory, "pk_pasthistory")
    End If
    PastHistory!fk_consult = currentconsult.GetPK()
    PastHistory!age_onset = Val(txtAgeOnset.text) 'CHECK THIS IS VALIDATED ABOVE
    PastHistory!age_onset_units = iAgeOnsetUnits
    PastHistory!description = Trim(txtCondition.text) ' modUtil.Ucase_Word_First_Letter(Trim(txtCondition.text))
-   PastHistory!fk_laterality = fk_laterality
+   If Not IsNull(fk_laterality) Then   
+      PastHistory!fk_laterality = fk_laterality
+   Else
+      PastHistory!fk_laterality = Null
+   End If   
    PastHistory!year_onset = Trim(txtYearOnset.text) 'eg could be 1993 or 08/1993
    Select Case fk_significance
       Case const.healthIssue_Major
@@ -967,7 +971,6 @@ Public Function Save() As Boolean 'called from FProgressNotesPage.Save also
    Else
       PastHistory!confidential = False
    End If
-   
    PastHistory!health_need = modUtilGUI.Strip_Last_Character(Lower(txtHealthNeed.text), True)  'rips of last period or comma
    PastHistory!plan_contribution_gp = modUtilGUI.Lcase_Word_First_Letter(modUtilGUI.Strip_Last_Character(txtPlanContributionGP.text, True))
    PastHistory!plan_contribution_patient = modUtilGUI.Lcase_Word_First_Letter(modUtilGUI.Strip_Last_Character(txtPlanContributionPatient.text, True))
@@ -986,8 +989,7 @@ Public Function Save() As Boolean 'called from FProgressNotesPage.Save also
    PastHistory!aim_of_plan = modUtilGUI.Strip_Last_Character(txtAim.text, True)
    PastHistory!fk_coding_system = fk_coding_system
    PastHistory!fk_code = fk_code
-   sProgressNotes = ProgressNotes_Summary(PastHistory)
-   modDBConnect.BeginTrans()
+   PastHistory!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, ProgressNotes_Summary(PastHistory), const.cSection_Pasthistory, fk_progressnote, "Past History")
    PastHistory.Save("clin_history.past_history", "pk_pasthistory")
    '----------------------------------------------------------------------------------
    'Now link any providers of care to the past history item
@@ -1020,20 +1022,20 @@ Public Function Save() As Boolean 'called from FProgressNotesPage.Save also
    '------------------------------------------------------------------------------------
    For Each member In ProvidersOfCare
       ProviderOfCare = New CRow
-      If member!fk_provider_of_care Then
+      If Not IsNull(member!fk_provider_of_care) Then
          ProviderOfCare.put_unchanged(member!fk_provider_of_care, "fk_provider_of_care")
       End If   
-      If member!fk_branch Then
+      If Not IsNull(member!fk_branch) Then
          ProviderOfCare!fk_branch = member!fk_branch
       Else
          member!fk_branch = Null
       End If   
-      If member!fk_employee Then 
+      If Not IsNull(member!fk_employee) Then 
          ProviderOfCare!fk_employee = member!fk_employee
       Else
          ProviderOfCare!fk_employee = Null
       End If
-      If member!fk_person Then 
+      If Not IsNull(member!fk_person) Then 
          ProviderOfCare!fk_person = member!fk_person
       Else
          ProviderOfCare!fk_person = Null
@@ -1042,30 +1044,9 @@ Public Function Save() As Boolean 'called from FProgressNotesPage.Save also
       ProviderOfCare!contribution_to_plan = member!contribution_to_plan
       ProviderOfCare.Save("clin_history.link_pasthistory_providers", "fk_provider_of_care")
    Next
-   '----------------------
-   'Save the progress note
-   '----------------------
-   ProgressNote = New CRow
-   If fk_progressnote Then
-      ProgressNote.put_unchanged(fk_progressnote, "fk_progressnote")
-   Endif
-   ProgressNote!fk_consult = PastHistory!fk_consult
-   ProgressNote!notes = sProgressNotes
-   ProgressNote!fk_section = const.cSection_Pasthistory
-   '  ProgressNote!fk_code = fk_code  FIXME Fix THE VWPROGRESSNOTES And UNCOMMENT THIS Line
-   ProgressNote!problem = "Past History"
-   ProgressNote!fk_problem = PastHistory!pk_pasthistory
-   ProgressNote!fk_audit_action = const.cAuditAction_Insert
-   ProgressNote.Save("clin_consult.progressnotes", "fk_progressnote")
-   '-----------------------------------------------------------------------------------------------
-   'difficult - the fk_progressnote can't exist until this is saved as it needs the pk_past history
-   'so as an interim stupid solution I've re-saved it after the progress note is saved.
-   '-----------------------------------------------------------------------------------------------
-   modPastHistoryDBI.Link_To_ProgressNote(PastHistory!pk_pasthistory, ProgressNote!fk_progressnote)
    modDBConnect.CommitTrans()
    'Past history can be embedded
    If FClinical.IsSamePatient(currentconsult!patient!fk_patient) Then 
-      '  FClinical.Refresh_AllPreviousNotes()
       FClinical.Refresh_Section(const.cSection_HealthSummary)    'check if health summary showing, if so update it as it has occupations on it
    End If  
    Try FGPMPTCA.TCM_Providers_Update_Problems_Static() 
@@ -1272,7 +1253,7 @@ Public Function Valid_EditArea_Contents() As Boolean
          If Message.Question(sMsg, "Yes", "No - I'm happy with confusing language!") = 1 Then Return
       Endif
    End If
-   If fk_code = "" Or fk_coding_system = 0 Then  'remember fk_code is string see coding schema for details
+   If IsNull(fk_code) Or IsNull(fk_coding_system) Then  'remember fk_code is string see coding schema for details
       txtCodedTerm.SetFocus()
       Return
    End If
@@ -1613,11 +1594,22 @@ Public Sub Auto_Fill_Care_Plan_Fields(health_Issue_template As Collection)
    ' );
    ' ---------------------------------------------------------------------------
    
+   Dim sSex As String
+   
    health_Issue_template = modPastHistoryDBI.health_care_template_Get(modDBConnect.currentUser!fk_staff, fk_code)
    If Not IsNull(health_Issue_template) Then
       txtAim.text = health_Issue_template!aim_of_plan
       txtPlanContributionGP.text = health_Issue_template!plan_contribution_gp
       txtPlanContributionPatient.text = health_Issue_template!plan_contribution_patient
+   Endif
+   If InStr(txtPlanContributionGP.text, "<insert-sex-patient>") Then
+      Select Case currentconsult!patient!sex
+         Case "M"
+            sSex = "his"
+         Case "F"
+            sSex = "her"
+      End Select
+      txtPlanContributionGP.text = Replace(txtPlanContributionGP.text, "<insert-sex-patient>", sSex)
    Endif
    
 End
@@ -1641,7 +1633,6 @@ Public Sub Settings_Save()
    Else
       Settings["FPastHistory/VSplit_PastHistory"] = VSplit_PastHistory.Layout
    End If
-   ProblemLists.Settings_Save()
    
 End
 
@@ -1888,7 +1879,7 @@ Public Sub EditArea_Buttons_Click()
          If Trim(txtCondition.text) = "" Then
             sMsg = "<LI>The name of the health issue"
          Endif
-         If Not fk_code Then
+         If IsNull(fk_code) Then 'was If not fk_code
             sMsg &= "<LI>The coded term"
          Endif
          If Trim(txtAim.text) = "" Then

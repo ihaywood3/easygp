@@ -1,6 +1,6 @@
 ' Gambas module file
 
-' Copyright (C) 2008-2015 Dr. Richard Terry, Dr. Ian Haywood
+' Copyright (C) 2008-2016 Dr. Richard Terry, Dr. Ian Haywood
 
 ' This program is free software: you can redistribute it and/or modify
 ' it under the terms of the GNU General Public License as published by
@@ -16,6 +16,7 @@
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '----------------------------------------------------------------------
 
+
 Public Function Gnuplot_Run(width As Integer, height As Integer, gnuplot As String, data As Result, Optional font_size As Integer = 3, Optional data_file As Boolean = True) As String
 
    Dim sGraphFontSize As String
@@ -28,53 +29,49 @@ Public Function Gnuplot_Run(width As Integer, height As Integer, gnuplot As Stri
    Dim d1 As Date
    Dim gnuplot_errors As String
    Dim l As String
-
    If data.Count < 1 Then
       Return "insufficient_data.png"
    End If
-
+   
    Select Case font_size
       Case 1
          sGraphFontSize = "tiny"
       Case 2
          sGraphFontSize = "small"
-      Case 3
+      Case 3 
          sGraphFontSize = "medium"
-      Case 4
+      Case 4 
          sGraphFontSize = "large"
    End Select
-   If data_file Then
-      Let dfn = Temp$("data1")
-      datafile = Open dfn For Output Create
-      For Each data
-         For Each i In data.Fields
-            If i.Type = gb.Date Then
-               d1 = data[i.Name]
-               Print #datafile, Format$(d1, "dd/mm/yyyy"); " ";
-            Else If i.Type = gb.String Then
-               Print #datafile, "\""; data[i.Name]; "\" ";
-            Else
-               Print #datafile, data[i.Name]; " ";
-            Endif
-         Next
-         Print #datafile
-      Next
-      Close #datafile
+   If data_file Then   
+     Let dfn = Temp$("data1")
+     datafile = Open dfn For Output Create
+     For Each data
+       For Each i In data.Fields
+          If i.Type = gb.Date Then
+             d1 = data[i.Name]
+           Print #datafile, Format$(d1, "dd/mm/yy"); " ";
+          Else
+             Print #datafile, data[i.Name]; " ";
+          Endif
+        Next
+       Print #datafile  
+     Next
+     Close #datafile
    Endif
    Let tempfile = Temp() & ".png"
    Let gnuplot_errors = Temp("err")
    Let gs_path = modUtil.FindProgram("gnuplot", "gnuplot")
    If IsNull(gs_path) Then Return Null
    Let pro = Shell gs_path & " 2> " & gnuplot_errors For Write
-   gnuplot = Replace$(gnuplot, "set terminal png", "set terminal png transparent nocrop enhanced " & sGraphFontSize & " size " & width & ", " & height)
-   Let gnuplot = Replace$(gnuplot, "output.png", tempfile)
+   Print #pro, "set terminal png transparent nocrop enhanced " & sGraphFontSize & " size " & width & ", " & height & "\n"
+   Print #pro, "set output '" & tempfile & "'\n"
    Let gnuplot = Replace$(gnuplot, "data.dat", dfn)
    Print #pro, gnuplot
    Print #pro, "quit"
    Close #pro
    pro.Wait()
-   If Not Exist(tempfile) Or If Stat(tempfile).Size < 10 Then
-      Try Kill tempfile
+   If Not Exist(tempfile) Then
       If Exist(gnuplot_errors) Then
          Error.Raise(File.Load(gnuplot_errors))
       Else
@@ -82,9 +79,9 @@ Public Function Gnuplot_Run(width As Integer, height As Integer, gnuplot As Stri
       Endif
    Endif
    Return tempfile
-Finally
-   Try Kill gnuplot_errors
-   Try Kill dfn
+   Finally
+      Try Kill gnuplot_errors
+      Try Kill dfn
 
 End
 
@@ -95,30 +92,32 @@ Public Function Gnuplot_LineGraph(data As Result, Optional title As String, ytit
    ' returns a gnuplot script to draw a linegraph
    ' of the result first column must be a Date and second some numeric data type
    ' a third numeric column is allowed, causing two lines to be drawn
-   ' returns a string containing a gnuplot program to draw the plot.
 
    Dim s As String
-   Dim third As String
-
-   s = "set terminal png\nset output 'output.png'\n"
-   "set xdata time\n"
+   Dim third As String  
+   
+   s = "set xdata time\n"
    "set timefmt x \"%d/%m/%Y\"\n"
    "set format x \"%m/%y\"\n"
    "set grid xtics nomxtics ytics nomytics\n"
    "set grid layerdefault linetype 0 linewidth 1.000, linetype 0 linewidth 1.000\n"
-   "set xlabel \"Date\" textcolor lt 1\n"
+   "set xlabel \"Date\" textcolor lt 1\n" 
    "set pointsize 2\n"
-   If Not IsNull(title) Then s &= "set title \"" & title & "\"\n"
-   If Not IsNull(ytitle) Then s &= "set ylabel \"" & ytitle & "\" textcolor rgb \"black\"\n"
-
-   If data.Count < 4 Then
-      linetype = "unique" ' the only one that makes sense with less than 4 points.
+   If Not IsNull(title) Then s &= "set title \"" & title & "\"\n" 
+   If Not IsNull(ytitle) Then s &= "set ylabel \"" & ytitle & "\" textcolor lt 1\n"
+   
+   If data.Count < 3 Then
+      linetype = "unique"
    End If
    third = ""
    If linetype = "acsplines" Then
-      third = ":(1.0)"
+      If data.Count < 4 Then
+         linetype = "unique"
+      Else
+         third = ":(10.0)"
+      Endif
    Endif
-   s &= "plot 'data.dat' using 1:2" & third & " notitle smooth " & linetype & ", '' using 1:2 notitle with points"
+   s &= "plot 'data.dat' using 1:2" & third & " t '' smooth " & linetype & ", '' using 1:2 t '' with points"
    If data.Fields.Count = 3 Then
       s &= ",'data.dat' using 1:3" & third & " t '' smooth " & linetype & ", '' using 1:3 t '' with points"
    End If
@@ -127,154 +126,91 @@ Public Function Gnuplot_LineGraph(data As Result, Optional title As String, ytit
 
 End
 
-Public Const cHeight As Integer = 1
-Public Const cWeight As Integer = 2
-Public Const cHeadCirc As Integer = 3
-
-Public Function Gnuplot_LineGraph_With_Growth_Chart(data As Result, currentconsult As Cconsult, chart_type As Integer, title As String) As String
-
-   ' a specialisation of Gnuplot_LineGraph, will draw a linegraph of data in the same way, but
-   ' with appropriate growth curves for the measurement type
-   ' values for chart_type are found as constants above in code
-   ' of the result first column must be a Date and second some numeric data type (like LineGraph)
-   ' third column cannot used (unlike Gnuplot_LineGraph)
-
-   Dim s As String
-   Dim growth_data_file As String
-
-   s = "set terminal unknown\n"
-   "set xdata time\n"
-   "set timefmt x \"%d/%m/%Y\"\n"
-   "set format x \"%m/%y\"\n"
-   "set grid xtics nomxtics ytics nomytics\n"
-   "set grid layerdefault linetype 0 linewidth 1.000, linetype 0 linewidth 1.000\n"
-   "set xlabel \"Date\" textcolor rgb \"black\"\n"
-   "set pointsize 3\n"
-   "age_to_date(x) = (x*2592000)+birthdate\n"
-
-   s = "birthdate = strptime(\"%d/%m/%Y\",\"" & Format$(currentconsult!patient!birthdate, "dd/mm/yyyy") & "\")\n" & s
-   s &= "set title \"" & title & "\"\n"
-   Select Case chart_type
-      Case cHeight
-         s &= "set ylabel \"cm\" textcolor rgb \"black\"\n"
-         growth_data_file = "height"
-      Case cWeight
-         s &= "set ylabel \"cm\" textcolor rgb \"black\"\n"
-         growth_data_file = "weight"
-      Case cHeadCirc
-         s &= "set ylabel \"cm\" textcolor rgb \"black\"\n"
-         growth_data_file = "headcirc"
-   End Select
-   If currentconsult!patient!sex = "M" Then
-      growth_data_file &= ".male.dat"
-   Else
-      growth_data_file &= ".female.dat"
-   Endif
-   growth_data_file = modUtil.Find_File("data" &/ growth_data_file)
-   s &= "set xrange [] writeback\n"
-   s &= "plot 'data.dat' using 1:2 notitle with points\n"
-   s &= "set xrange restore\n"  ' use the x range form our actual data, not the growth datafiles
-   s &= "set terminal png\n"
-   s &= "set output 'output.png'\n" ' now use real output file
-
-   s &= "plot '" & growth_data_file & "' using (age_to_date($1)):2 smooth unique linecolor rgb \"skyblue\" notitle, " ' 2.5/3th percentile
-   s &= "'' using (age_to_date($1)):3 smooth unique linecolor rgb \"skyblue\" notitle, " ' 5th percentile
-   s &= "'' using (age_to_date($1)):4 smooth unique linecolor rgb \"skyblue\" notitle, " ' 10th percentile
-   s &= "'' using (age_to_date($1)):5 smooth unique linecolor rgb \"skyblue\" notitle, " ' 25th percentile
-   s &= "'' using (age_to_date($1)):6 smooth unique linecolor rgb \"skyblue\" notitle, " ' 50th percentile
-   s &= "'' using (age_to_date($1)):7 smooth unique linecolor rgb \"skyblue\" notitle, " ' 75th percentile
-   s &= "'' using (age_to_date($1)):8 smooth unique linecolor rgb \"skyblue\" notitle, " ' 90th percentile
-   s &= "'' using (age_to_date($1)):9 smooth unique linecolor rgb \"skyblue\" notitle, " ' 95th percentile
-   s &= "'' using (age_to_date($1)):10 smooth unique linecolor rgb \"skyblue\" notitle, " ' 97.5th percentile
-   s &= "'data.dat' using 1:2 notitle smooth unique linecolor rgb \"red\","
-   s &= "'' using 1:2 notitle with points pt 1 lc rgb \"red\"\n"
-   Return s
-
-End
-
 Public Function LineGraph(width As Integer, height As Integer, data As Result, Optional title As String, ytitle As String, font_size As Integer = 3, Optional line_type As String = "unique") As String
-
+   
    Return Gnuplot_Run(width, height, Gnuplot_LineGraph(data, title, ytitle, line_type), data, font_size)
-
+   
 End
 
 Public Function ScatterPlot(data As Result, Optional title As String) As String
-
-   Dim s As String = ""
-
-   s &= "set ylabel \"" & data.Fields[1].Name & "\"\n"
-   s &= "set xlabel \"" & data.Fields[0].Name & "\"\n"
-   If Not IsNull(title)
+   
+  Dim s As String = ""
+  
+  s &= "set ylabel \"" & data.Fields[1].Name & "\"\n"
+  s &= "set xlabel \"" & data.Fields[0].Name & "\"\n"
+  If Not IsNull(title) 
       s &= "set title \"" & title & "\"\n"
-   Endif
-   s &= "set terminal png\nset output 'output.png'\n"
-   s &= "f(x) = a*x + b\n"
-   "fit f(x) 'data.dat' using 1:2 via a, b\n"
-   "title_func(a,b) = sprintf('f(x) = %.2fx + %.2f', a, b)\n"
-   s &= "plot 'data.dat' using 1:2 with points notitle, f(x) title title_func(a,b)\n"
-   Return s
-
+  Endif
+  s &= "f(x) = a*x + b\n"
+       "fit f(x) 'data.dat' using 1:2 via a, b\n"
+       "title_func(a,b) = sprintf('f(x) = %.2fx + %.2f', a, b)\n"
+  s &= "plot 'data.dat' using 1:2 with points notitle, f(x) title title_func(a,b)\n" 
+  Return s 
+   
 End
+
+
 
 Public Function PieChart(data As Result) As String
+   
+  Dim s As String
+  Dim n As Integer = 0
+  Dim labels As New Collection
+  Dim values As New Collection
+  Dim total As Float = 0
+  Dim start_deg As Float = 0
+  Dim end_deg As Float
+  Dim i As Integer
+  Dim colours As String[]
+  
+  colours = ["red", "blue", "green", "magenta", "orange", "pink", "purple", "black", "royalblue", "dark-red", "aquamarine", "goldenrod"]
+  s = "reset\n"
+      "set size square\n"
+      "set style fill solid 1.0 border -1\n"
+  n = 0
+  For Each data
+     values[n] = data[1]
+     labels[n] = data[0]
+     total += data[1]
+     n += 1
+  Next
+  start_deg = 0
+  For i = 0 To n - 1
+     end_deg = start_deg + (values[i] / CFloat(total) * 360)
+     s &= Subst$("set object &1 circle at screen 0.4, 0.5 size screen 0.2 arc[&2: &3] fillcolor rgb \"&4\" front\n", i + 1, start_deg, end_deg, colours[i])
+     start_deg = end_deg
+  Next
 
-   Dim s As String
-   Dim n As Integer = 0
-   Dim labels As New Collection
-   Dim values As New Collection
-   Dim total As Float = 0
-   Dim start_deg As Float = 0
-   Dim end_deg As Float
-   Dim i As Integer
-   Dim colours As String[]
-
-   colours = ["red", "blue", "green", "magenta", "orange", "pink", "purple", "black", "royalblue", "dark-red", "aquamarine", "goldenrod"]
-   s = "reset\nset terminal png\nset output 'output.png'\n"
-   "set size square\n"
-   "set style fill solid 1.0 border -1\n"
-   n = 0
-   For Each data
-      values[n] = data[1]
-      labels[n] = data[0]
-      total += data[1]
-      n += 1
-   Next
-   start_deg = 0
-   For i = 0 To n - 1
-      end_deg = start_deg + (values[i] / CFloat(total) * 360)
-      s &= Subst$("set object &1 circle at screen 0.4, 0.5 size screen 0.2 arc[&2: &3] fillcolor rgb \"&4\" front\n", i + 1, start_deg, end_deg, colours[i])
-      start_deg = end_deg
-   Next
-
-   start_deg = 0.95
-   For i = 0 To n - 1
-      s &= Subst$("set label &1 \"&2\" at screen 0.95, &3 right tc rgb \"&4\" front\n", i + 1, labels[i], start_deg, colours[i])
-      start_deg -= 0.08
-   Next
-   s &= "show label\n#plot a white Line , i.e., plot nothing\n"
-   "unset border\n"
-   "unset tics\n"
-   "unset key\n"
-   "plot x with lines lc rgb \"#ffffff\"\n"
-   Return s
-
+  start_deg = 0.95
+  For i = 0 To n - 1
+     s &= Subst$("set label &1 \"&2\" at screen 0.95, &3 right tc rgb \"&4\" front\n", i + 1, labels[i], start_deg, colours[i])
+    start_deg -= 0.08
+  Next
+    s &= "show label\n#plot a white Line , i.e., plot nothing\n"
+      "unset border\n"
+      "unset tics\n"
+      "unset key\n"
+      "plot x with lines lc rgb \"#ffffff\"\n"
+  Return s
 End
+
+
 
 Public Function Gnuplot_BoxGraph(data As Result, Optional style As String = "rowstacked") As String
    ' generates gnuplot for a boxed graph
    ' styles can be rowstacked or cluster gap NN
-
+   
    Dim s As String
    Dim df As String
    Dim j As Integer
-
-   s = "set grid xtics nomxtics ytics nomytics\nset terminal png\nset output 'output.png'\n"
+   
+   s = "set grid xtics nomxtics ytics nomytics\n"
    "set grid layerdefault linetype 0 linewidth 1.000, linetype 0 linewidth 1.000\n"
    "set boxwidth 0.75 absolute\n"
    "set style fill solid 1.00 border -1\n"
    "set style data histograms\n"
    s &= "set style histogram " & style & "\n"
-   s &= "set xlabel \"" & data.Fields[0].Name & "\" textcolor lt 1\n"
+   s &= "set xlabel \"" & data.Fields[0].Name & "\" textcolor lt 1\n" 
    's &= "set yrange[0: 200]"
    s &= "plot "
    Let j = 1
@@ -287,7 +223,20 @@ Public Function Gnuplot_BoxGraph(data As Result, Optional style As String = "row
 
 End
 
-Public Sub Graph_Measurement(F As FProgressNotePage, fk_patient As Integer, measurement_text As String)
+Public Function Gnuplot_Scatter() As String
+   
+   Dim s As String
+   
+   s = "set key bmargin center horizontal right noreverse enhanced nobox\n"
+   "l(x) = y0 + m*x\n"
+   "fit l(x) 'data.dat' via y0, m\n"
+   "plot 'data.dat', l(x)\n"
+   
+   Return s
+
+End
+
+Public Sub Graph_Measurement(F As FProgressNotePage, fk_patient As Variant, measurement_text As String)
    '-----------------------------------------------------------
    'Note: like it or not, rightly or wrongly for the moment
    'measurments WE ie the user inputted such as BP, height
@@ -303,25 +252,25 @@ Public Sub Graph_Measurement(F As FProgressNotePage, fk_patient As Integer, meas
    Dim sql_end As String
    Dim units As String
    Dim $Result As Result
-   Dim Graph_title As String
+   Dim Graph_title As String  
    Dim Ref_Range As String
-   ' Dim fk_type As Variant = F.lvwAvailableMeasurements.Item.Key 'string or number
+  ' Dim fk_type As Variant = F.lvwAvailableMeasurements.Item.Key 'string or number
    ' Dim measurement_text As String = Trim(F.lvwAvailableMeasurements.Item.Text)
    Dim x As Integer
    Dim Bp As String
    '-----------------------------------------------------
    'This sql will apply to: weight, height as the default
    '-----------------------------------------------------
-   sql = "Select distinct consult_date As Date, measurement"
+   sql = "Select distinct consult_date As Date, measurement"  
    '-----------------------------------------------
    'The ending of sql is same for every measurement
    '-----------------------------------------------
    sql_end = " From clin_measurements.vwmeasurements"
-   sql_end &= " WHERE fk_patient = " & fk_patient ' " AND  fk_type = " & fk_type
+   sql_end &= " WHERE fk_patient = " & fk_patient ' " AND  fk_type = " & fk_type 
    sql_end &= "  And lower(type) = $$" & Lower(measurement_text) & "$$"
    sql_end &= " AND age(consult_date) < $$" & f.cmbGraphDateRange.Text & "$$ "
    sql_end &= " ORDER BY date"
-
+   
    Select Case Lower(measurement_text)
       Case "bp"
          'Get three columns: date, systolic,diastolic
@@ -334,7 +283,7 @@ Public Sub Graph_Measurement(F As FProgressNotePage, fk_patient As Integer, meas
       Case "weight"
          units = "Kg"
          sql = sql & sql_end
-      Case "height"
+      Case "height" 
          units = "cm"
          sql = sql & sql_end
       Case Else
@@ -345,7 +294,7 @@ Public Sub Graph_Measurement(F As FProgressNotePage, fk_patient As Integer, meas
          'reference range [i.e mixed labs could be different ranges]
          '-----------------------------------------------------------
          sql = "select distinct reference_range "
-         sql &= "From clin_requests.vwResults "
+         sql &= "From clin_requests.vwResults " 
          sql &= " WHERE fk_patient = " & f.patient.pk_patient
          sql &= " AND Lower(vwresults.result) = $$"
          sql &= Lower(measurement_text) & "$$"
@@ -354,17 +303,17 @@ Public Sub Graph_Measurement(F As FProgressNotePage, fk_patient As Integer, meas
             Ref_Range = $Result!reference_range
          End If
          'Ok, now have the range to display, get the measurements
-
+         
          sql = "Select distinct date, value_as_number as measurement From clin_requests.vwResults "
          sql &= " WHERE fk_patient = " & f.patient.pk_patient
          sql &= " AND Lower(vwresults.result) = $$"
          sql &= Lower(measurement_text) & "$$ ORDER BY  vwresults.date"
-
+         
    End Select
    '---------------
    'Get the records
    '---------------
-
+   
    $Result = modDBConnect.exec_query(sql)
    F.lvMeasurementValues.Clear
    'At this point there must be at least
@@ -374,17 +323,17 @@ Public Sub Graph_Measurement(F As FProgressNotePage, fk_patient As Integer, meas
       'first show the very last one somewhere obvious
       'and put that first on the list of all measurements
       '--------------------------------------------------
-      Graph_Title = measurement_text
+      Graph_Title = measurement_text 
       If Ref_Range <> "" Then
          Graph_title &= " [" & ref_range & "]"
       End If
       Graph_title &= Format($Result!date, "dd/mm/yyyy") & "-"
-      $Result.MoveLast
+      $Result.MoveLast 
       Graph_title &= Format($Result!date, "dd/mm/yyyy")
       x = 0
       F.TextLabel1.text = "<small><B>Latest measurement</B>:"
       F.TextLabel1.text &= Format($Result!date, "dd/mm/yyyy")
-
+      
       Select Case Lower(measurement_text)
          Case "bp"
             'Special case, convert to a string
@@ -407,7 +356,7 @@ Public Sub Graph_Measurement(F As FProgressNotePage, fk_patient As Integer, meas
             Case Else
                F.lvMeasurementValues.Add(x, Format($Result!date, "dd/mm/yyyy") & " " & $Result!measurement)
          End Select
-         Inc x
+         Inc x 
       Loop
       Try F.Picturebox2.Picture = Picture.Load(modPlot.LineGraph(F.Picturebox2.Width, F.Picturebox2.Height, $Result, Graph_Title, units))
       If Not Error Then
@@ -423,10 +372,10 @@ Public Sub Graph_Measurement(F As FProgressNotePage, fk_patient As Integer, meas
    F.HBox_Picture.Padding = 10
    F.Picturebox2.Visible = False
    F.tlPLottingError.Visible = True
-
+   
 End
 
-Public Sub Graph_And_Values_Get(currentconsult As Cconsult, loinc As String, measurement_text As String, PicHeight As Integer, picWidth As Integer, font_size As Integer, Optional line_type As String = "unique", Optional number_months As Integer = 0) As Collection
+Public Sub Graph_And_Values_Get(fk_patient As Variant, loinc As String, measurement_text As String, PicHeight As Integer, picWidth As Integer, font_size As Integer, Optional line_type As String = "unique", Optional number_months As Integer = 0) As Collection
    '-----------------------------------------------------------
    'PURPOSE    For a given patient return a png of the graph
    '           and the values in graph for given interval
@@ -445,20 +394,17 @@ Public Sub Graph_And_Values_Get(currentconsult As Cconsult, loinc As String, mea
    Dim units As String
    Dim $Result As Result
    Dim Ref_Range As String
-   Dim Graph_Title As String
+   Dim Graph_Title As String 
    ' Dim fk_type As Variant = F.lvwAvailableMeasurements.Item.Key 'string or number
-   Dim Graph_And_Values As Collection
-   Dim chart_type As Integer = -1
-   Dim gnuplot_program As String
-
+   Dim Graph_And_Values As Collection 
    '-------------------------------------------------------------
    'IF loinc code, then measurement is from an observation result
    '-------------------------------------------------------------
    If loinc <> "" Then
-      sql = "Select distinct reference_range from documents.vwGraphableobservations where fk_patient = " & currentconsult!patient!fk_patient & " and loinc = $$" & loinc & "$$ "
+      sql = "Select distinct reference_range from documents.vwGraphableobservations where fk_patient = " & fk_patient & " and loinc = $$" & loinc & "$$ "
       Try ref_range = modDBConnect.exec_query(sql)!reference_range 'may not have a range
       sql = "Select distinct observation_date as date, value_numeric as measurement from documents.vwGraphableobservations where fk_patient = "
-      sql &= currentconsult!patient!fk_patient & " and loinc = $$" & loinc & "$$ "
+      sql &= fk_patient & " and loinc = $$" & loinc & "$$ "
       If number_months Then
          sql &= " AND observation_date between $$" & Format(DateAdd(Now, gb.month, -6), "dd/mm/yyyy") & "$$  AND $$" & Format(Now, "dd/mm/yyyy") & "$$ "
       End If
@@ -468,13 +414,13 @@ Public Sub Graph_And_Values_Get(currentconsult As Cconsult, loinc As String, mea
       'Otherwise, is from our clin_measurements.lu_type table 1=bp, 2=weight 3 = pf 4 =height
       'FIXME PUT IN PEAK FLOW
       '--------------------------------------------------------------------------------------
-      sql = "Select distinct consult_date As Date, measurement"
+      sql = "Select distinct consult_date As Date, measurement"  
       sql_end = " From clin_measurements.vwmeasurements"
-      sql_end &= " WHERE fk_patient = " & currentconsult!patient!fk_patient
+      sql_end &= " WHERE fk_patient = " & fk_patient
       sql_end &= "  And lower(name_full) = $$" & Lower(measurement_text) & "$$"
       ' sql_end &= " AND age(consult_date) < $$" & number_months & "$$ "
       sql_end &= " ORDER BY date"
-
+      
       Select Case measurement_text
          Case "blood pressure"
             'Get three columns: date, systolic,diastolic
@@ -487,42 +433,33 @@ Public Sub Graph_And_Values_Get(currentconsult As Cconsult, loinc As String, mea
          Case "weight"
             units = "Kg"
             sql = sql & sql_end
-            chart_type = cWeight
-         Case "height"
+         Case "height" 
             units = "cm"
-            chart_type = cHeight
             sql = sql & sql_end
          Case "peak flow"
             units = "l/min"
             sql = sql & sql_end
-         Case "head circumference"
-            chart_type = cHeadCirc
-            units = "cm"
-            sql = sql & sql_end
       End Select
    End If
-   If currentconsult!patient!age_numeric > 22 Then
-      chart_type = -1 '' don't do growth charts for adults
-   Endif
    $Result = modDBConnect.exec_query(sql)
-   Graph_And_Values = New Collection
-   Graph_Title = measurement_text
-
+   Graph_And_Values = New Collection 
+   Graph_Title = measurement_text 
+   
    If $Result.count Then
       '----------------------------------------------------------------
       'If there are measurements, construct the title to look like this
       ' Measurement [range] fromdate todate
       '----------------------------------------------------------------
-      Graph_Title = measurement_text
+      Graph_Title = measurement_text 
       If Ref_Range <> "" Then
          Graph_title &= " [" & ref_range & "] "
       Else
-         Graph_title &= " "
+         Graph_title &= " " 
       End If
       Graph_title &= Format($Result!date, "dd/mm/yyyy") & "-"
-      $Result.MoveLast
+      $Result.MoveLast 
       Graph_title &= Format($Result!date, "dd/mm/yyyy")  'bug here null object - no date
-
+      
       '--------------------------------------------------
       'If there are measurements, show these on a list
       'first show the very last one somewhere obvious
@@ -531,15 +468,10 @@ Public Sub Graph_And_Values_Get(currentconsult As Cconsult, loinc As String, mea
       picWidth = 500
       PicHeight = 200
       Graph_And_Values!values = $Result
-      If chart_type = -1 Then
-         gnuplot_program = modPlot.Gnuplot_LineGraph($Result, Graph_Title, measurement_text, line_type)
-      Else
-         gnuplot_program = modPlot.Gnuplot_LineGraph_With_Growth_Chart($Result, currentconsult, chart_type, Graph_Title)
-      Endif
-      Graph_And_Values!graph_filename = modPlot.Gnuplot_Run(picWidth, picHeight, gnuplot_program, $Result, font_size)
+      Graph_And_Values!graph_filename = modPlot.LineGraph(picWidth, picHeight, $Result, Graph_Title, measurement_text, font_size, line_type)
    End If
    Return Graph_And_Values
-
+   
 End
 
 Public Sub Create_View(result_name As String)
@@ -556,18 +488,18 @@ Public Sub Create_View(result_name As String)
    sql &= "vwresults.fk_lu_request, vwresults.fk_form, vwresults.deleted, vwresults.request_result_html, "
    sql &= "vwresults.pk_requests_results, vwresults.episode_key, vwresults.result, vwresults.value, vwresults.value_as_number, "
    sql &= "vwresults.units, vwresults.reference_range, vwresults.abnormal, vwresults.probability "
-   sql &= " FROM clin_requests.vwresults"
+   sql &= " FROM clin_requests.vwresults" 
    sql &= " WHERE lower(vwresults.item) = $$" & Lower(result_name) & "$$ :: text "
    sql &= " ORDER BY vwresults.fk_patient, vwresults.date"
    $Result = modDBConnect.exec_query(sql)
-
+   
 End
 
 Public Sub TestGraph() '(form_main As FMain)
-
+   
    Dim s As String
    Dim r As Result
-
+   
    ' modDBConnect.exec_query("create temporary table testgraph (d1 timestamp, n integer, pk serial)")
    ' modDBConnect.insert("testgraph", ["d1": "5/1/2010", "n": 26])
    ' modDBConnect.insert("testgraph", ["d1": "19/3/2010", "n": 17])
@@ -579,7 +511,7 @@ Public Sub TestGraph() '(form_main As FMain)
    ' s = LineGraph(500, 500, r, "test data", "foobles", 3)
    ' Exec ["/usr/bin/eog", s] Wait
 
-   modDBConnect.exec_query("create temporary table tg2 (\"month\" text, first float, second float, third float, pk serial)")
+   modDBConnect.exec_query("create temporary table tg2 (\"month\" text, first float, second float, third float, pk serial)") 
    modDBConnect.insert("tg2", ["month": "Jan", "first": 20.2, "second": 30.4, "third": 14.7])
    modDBConnect.insert("tg2", ["month": "Feb", "first": 14, "second": 25, "third": 12])
    modDBConnect.insert("tg2", ["month": "Mar", "first": 24, "second": 32, "third": 11])
@@ -593,14 +525,14 @@ Public Sub TestGraph() '(form_main As FMain)
    s = Gnuplot_Run(500, 500, Gnuplot_BoxGraph(r, "cluster gap 1"), r)
    Exec ["/usr/bin/eog", s] Wait
    modDBConnect.exec_query("create temporary table tg3 (one float, two float, pk serial)")
-   modDBConnect.insert("tg3", ["one": 1.3, "two": 1.3])
-   modDBConnect.insert("tg3", ["one": 2, "two": 2.1])
-   modDBConnect.insert("tg3", ["one": 3, "two": 2.9])
-   modDBConnect.insert("tg3", ["one": 4.1, "two": 4])
-   modDBConnect.insert("tg3", ["one": 4.9, "two": 5.2])
-   modDBConnect.insert("tg3", ["one": 6.1, "two": 5.9])
+   modDBConnect.insert("tg3", ["one": 1.3, "two": 1.3]) 
+   modDBConnect.insert("tg3", ["one": 2, "two": 2.1]) 
+   modDBConnect.insert("tg3", ["one": 3, "two": 2.9]) 
+   modDBConnect.insert("tg3", ["one": 4.1, "two": 4]) 
+   modDBConnect.insert("tg3", ["one": 4.9, "two": 5.2]) 
+   modDBConnect.insert("tg3", ["one": 6.1, "two": 5.9]) 
    r = modDBConnect.exec_query("select one,two from tg3")
-   's = Gnuplot_Run(500, 500, Gnuplot_Scatter(), r)
-   Exec ["/usr/bin/eog", s] Wait
+   s = Gnuplot_Run(500, 500, Gnuplot_Scatter(), r)
+   Exec ["/usr/bin/eog", s] Wait  
 
 End

@@ -1,6 +1,6 @@
 ' Gambas class file
 
-' Copyright (C) 2008-2015 Dr. Richard Terry
+' Copyright (C) 2008-2016 Dr. Richard Terry
 ' This program is free software: you can redistribute it and/or modify
 ' it under the terms of the GNU General Public License as published by
 ' the Free Software Foundation, either version 3 of the License, or
@@ -35,7 +35,7 @@ Private bSampleData As Boolean
 Private iDefault_Distress_Tool As Integer    'currently not used
 Private ReferralTo_SearchBy_Criteria As Integer  'eg organisation/employee/person etc
 Private sex_filter As Integer                'e.g const.cSexUnknown for searching for team members with option buttons
-Private cvwPlans_Key As Integer
+Private cvwPlans_Key As Variant
 'All database keys refer to schema clin_mental health
 'unless otherwise designated then the form is schema.table
 Private fk_lu_risk_to_others As Variant      'key lu_risk_to_others table
@@ -45,7 +45,6 @@ Private fk_lu_plan_type As Variant           'key to lu_plan_type = 0=initial 1 
 Private fk_plan As Variant                   'key to mentalhealth_plan table
 Private fk_code As String                    'key to coding.generic_terms table (icd10 or ICPC terms)
 Private fk_coding_system As Variant          'key to coding.lu_systems eg icd10 or icpc2Plus or = const.coding_none_selected
-Private fk_pasthistory As Variant            'key to clin_history.past_history table, links plan to condition
 Private fk_progressnote As Variant           'key to clin_consult.progressnotes points to last progress note for the plan
 'used for editing purpose
 Private cProgressNote_Section As Integer     'key to clin_consult.lu_progressnotes_sections
@@ -73,7 +72,6 @@ Private iTeamCareMember As Integer              'the key to the TeamCareMembers 
 Private currentK10 As Collection                'the K10 which is/has been just edited
 Private Old_K10 As Collection                   'Previous K10 of existing plan
 Private SpellChecker As ClskSpell
-Private bHaveSpellChecked As Boolean            'if true have at least attempted to spell check once (see Save())
 
 Static Private form_mentalhealth As FMentalHealth
 
@@ -120,8 +118,8 @@ Public Sub Init(cons As CConsult)
    iDefault_Distress_Tool = const.mentalhealth_assessmentdistresstool_K10
    columnview1.Columns.count = 2          'the popup columnview for terms
    
-    With SpellChecker = New ClskSpell
-       .EditorControlToCheck = teForSpelling
+   With SpellChecker = New ClskSpell
+      .EditorControlToCheck = teForSpelling
       .TempFileForSpelling = User.home &/ "myspelltemp.txt"
       .TempFileForErrors = User.home &/ "myspellerrors.txt"
    End With
@@ -165,15 +163,17 @@ Public Sub Save()
    Dim bNewPlan As Boolean
    Dim mentalhealthplan As CRow
    Dim TeamCareMember As CRow
+   Dim ProgressNote As CRow   
    '----------------------------------------------------------------------
    'If no padding, then no data was changed, or if sample data, don't save
    '----------------------------------------------------------------------
-   If Not (HBox_EditArea.Padding) Then Return  'no data to save
-   If Not Plan_Is_Valid() Then Return
-   '----------------------------
+   If Not (HBox_EditArea.Padding) Then Return      'no data to save
+   If Not Plan_Is_Valid() Then Return              'is plan valid?
+   '--------------------------------------------------------------------------------------------------------
+   ' CREATE TABLE clin_mentalhealth.mentalhealth_plan
+   ' (
    '   pk serial NOT NULL,
    '   fk_consult integer NOT NULL, -- key to clin_consult.consult > gives Dr and date plan formulated
-   '   fk_pasthistory integer, -- key to clin_history.past_history if not null is linked to health issue
    '   diagnosis text NOT NULL, -- the diagnosis may be free text but could be coded
    '   fk_coding_system integer, -- if not null this is the coding system used for the coded diagnosis
    '   fk_code text,
@@ -181,25 +181,46 @@ Public Sub Save()
    '   bio_psycho_social text,
    '   mental_state_examination text,
    '   fk_lu_risk_to_others integer, -- key to lu_risk_to_others table
-   '   fk_stress_assessment integer, -- key to stress_assessment table eg results of K10
    '   risk_harm_comments text,
    '   goals text,
    '   treatment_referrrals text,
    '   patient_action text,
    '   review_date date,
-   '   html text,
-   '
+   '   html text, -- the plan in html
+   '   deleted boolean DEFAULT false,
+   '   fk_lu_plan_type integer,
+   '   fk_progressnote integer, -- foreign key to clin_consult.progressnotes, and points to the progress note for the consultation...
+   '   relapse_plan text,
+   '   CONSTRAINT mentalhealth_plan_pkey PRIMARY KEY (pk),
+   '   CONSTRAINT mentalhealth_plan_fk_coding_system_fkey FOREIGN KEY (fk_coding_system)
+   '       REFERENCES coding.lu_systems (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT mentalhealth_plan_fk_consult_fkey FOREIGN KEY (fk_consult)
+   '       REFERENCES clin_consult.consult (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT mentalhealth_plan_fk_lu_plan_type_fkey FOREIGN KEY (fk_lu_plan_type)
+   '       REFERENCES clin_mentalhealth.lu_plan_type (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT mentalhealth_plan_fk_lu_risk_to_others_fkey FOREIGN KEY (fk_lu_risk_to_others)
+   '       REFERENCES clin_mentalhealth.lu_risk_to_others (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+    '   CONSTRAINT mentalhealth_plan_fk_progressnote_fkey FOREIGN KEY (fk_progressnote)
+   '       REFERENCES clin_consult.progressnotes (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
    '  OK: First prompt the user if they seem to be reviewing an existing plan
    '-------------------------------------------------------------------------
    Inc Application.Busy
-   
-   If fk_plan And fk_lu_plan_type = Const.mentalhealth_plantype_review Then
+   If Not IsNull(fk_plan) And fk_lu_plan_type = Const.mentalhealth_plantype_review Then
       sMsg = "You are saving an existing plan.\n\n"
       "Confirm save as a review?"
       If Message.Warning(smsg, "Yes", "No") = 2 Then
          Return
       End If
-      fk_plan = 0
+      fk_plan = Null
       bNewPlan = True
    End If
    If bSkipK10 = False Then                              'will only be true is user answered Yes to skin on plan validation
@@ -207,23 +228,18 @@ Public Sub Save()
       sK10html = K10_construct_html(currentK10)
    End If
    mentalhealthplan = New CRow
-   If fk_plan <> 0 Then
+   If Not IsNull(fk_plan) Then
       mentalhealthplan.put_unchanged(fk_plan, "fk_plan")
    End If
    mentalhealthplan!fk_lu_plan_type = fk_lu_plan_type
    mentalhealthplan!fk_consult = currentconsult.GetPK()
-   If fk_pasthistory <> 0 Then
-      mentalhealthplan!fk_pasthistory = fk_pasthistory
-   End If
    mentalhealthplan!diagnosis = Trim(txtdiagnosis.text)
    mentalhealthplan!fk_coding_system = fk_coding_system
    mentalhealthplan!fk_code = fk_code
    mentalhealthplan!presenting_problems = Trim(txtpresentingProblems.text)
    mentalhealthplan!bio_psycho_social = Trim(txtBioPsychoSocial.text)
    mentalhealthplan!mental_state_examination = Trim(txtMentalStateExamination.text)
-   If fk_lu_risk_to_others <> const.mentalhealth_risk_undefined Then
-      mentalhealthplan!fk_lu_risk_to_others = fk_lu_risk_to_others
-   End If
+   mentalhealthplan!fk_lu_risk_to_others = fk_lu_risk_to_others
    mentalhealthplan!risk_harm_comments = Trim(txtRisk.text)
    mentalhealthplan!goals = Trim(txtGoals.text)
    mentalhealthplan!treatment_referrrals = Trim(txtTreatment.text)
@@ -237,12 +253,23 @@ Public Sub Save()
    If Not bSkipK10 Then
       sProgressNoteHtml &= K10_construct_html(currentK10) & "</small></small><HR>"
    End If
-   '-----------------------------------------------------------------------------------------------------------------txtSamplePlan
+   '-----------------------------------------------------------------------------------------------------------------
    'ok, save the progress note first, to have the fk_progressnote to add to the mentalhealthplan table, then the plan
    'or edit progress note if this plan was done within the context of today's consultation.
    '------------------------------------------------------------------------------------------------------------------
-   mentalhealthplan!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNoteHtml, const.cSection_MentalHealth, fk_progressnote, "mental health plan", 0, False)
-   ' fk_plan = modMentalHealthDBI.Save(currentconsult, pk_view, fk_plan, mentalhealthplan)
+   ProgressNote = New CRow
+   If Not IsNull(fk_progressnote) Then                                            'If the progress note was written on today, we can edit it, otherwise, create a new one
+      ProgressNote.put_unchanged(fk_progressnote, "fk_progressnote")  'am editing todays progress note
+      ProgressNote!fk_audit_action = const.cAuditAction_Edit
+   Else
+      ProgressNote!fk_audit_action = const.cAuditAction_Insert
+   End If   
+   ProgressNote!fk_consult = currentconsult.GetPK()
+   ProgressNote!notes = sProgressNoteHtml
+   ProgressNote!fk_section = const.cSection_MentalHealth
+   ProgressNote!problem = "Mental Health Plan"
+   ProgressNote.Save("clin_consult.progressnotes", "fk_progressnote")
+   mentalhealthplan!fk_progressnote = ProgressNote!fk_progressnote
    mentalhealthplan.Save("clin_mentalhealth.mentalhealth_plan", "fk_plan")
    If Not bSkipK10 Then
       modMentalHealthDBI.Save_K10(currentConsult, old_K10, mentalhealthplan!fk_plan, currentK10)
@@ -257,10 +284,10 @@ Public Sub Save()
          TeamCareMember.put_unchanged(collection_member!pk, "fk_member")
       Endif
       TeamCareMember!fk_plan = mentalhealthplan!fk_plan
-      If collection_member!fk_organisation <> 0 Then TeamCareMember!fk_organisation = collection_member!fk_organisation
-      If collection_member!fk_branch <> 0 Then TeamCareMember!fk_branch = collection_member!fk_branch
-      If collection_member!fk_employee <> 0 Then TeamCareMember!fk_employee = collection_member!fk_employee
-      If collection_member!fk_person <> 0 Then TeamCareMember!fk_person = collection_member!fk_person
+      If Not IsNull(collection_member!fk_organisation) Then TeamCareMember!fk_organisation = collection_member!fk_organisation
+      If Not IsNull(collection_member!fk_branch) Then TeamCareMember!fk_branch = collection_member!fk_branch
+      If Not IsNull(collection_member!fk_employee) Then TeamCareMember!fk_employee = collection_member!fk_employee
+      If Not IsNull(collection_member!fk_person) Then TeamCareMember!fk_person = collection_member!fk_person
       TeamCareMember!responsibility = collection_member!responsibility
       TeamCareMember.Save("clin_mentalhealth.team_care_members", "fk_member")
    Next
@@ -296,9 +323,7 @@ Public Sub Plans_Refresh()
    'Display the plan: Date/diagnosis/Type/Prepared By
    '-------------------------------------------------
    For Each mentalhealthplan In mentalhealthplans
-      Print "above the break"
       cvwPlans.Add(x, 0)
-      Print "below the break"
       cvwPlans[x][0] = Format(mentalhealthplan!plan_date, "dd/mm/yyyy") & "  "
       cvwPlans[x][1] = mentalhealthplan!diagnosis & "  "
       cvwPlans[x][2] = mentalhealthplan!type & "  "
@@ -374,10 +399,10 @@ Public Sub Terms_Get()
    '-------------------------------------------------------------------------------------
    
    Dim term As Collection
-   Dim key As String
+   Dim key As Variant
    
    If Trim(txtCodedTerm.text) = "" Then
-      fk_code = ""
+      fk_code = Null
       fk_coding_system = const.coding_none_selected
       VBox_ColumnView.Visible = False
       Return
@@ -449,8 +474,9 @@ Public Sub Decision_support()
    'Displays 'entry level' first point of contact basic how to use this module
    'to develop a good mental health plan
    '---------------------------------------------------------------------------
+   
    modUtilGUI.Decision_Support_Help_Show(General_Help(), "Mental Health - Decision Support")
-
+   
 End
 
 Public Function EditArea_TxtBox_ExcludeKeys(keycode As Integer, tag As String) As Boolean
@@ -474,6 +500,7 @@ Public Function Plan_Is_Valid() As Boolean
    '----------------------------------------------
    
    Dim sMsg As String
+   Dim TCM As Collection 
    
    If bsampledata Then
       Message.info("The sample plan cannot be saved")
@@ -516,11 +543,28 @@ Public Function Plan_Is_Valid() As Boolean
    If Trim(txtpresentingProblems.text) = "" Then
       txtpresentingProblems.SetFocus()
    End If
+   
    If Not (IsDate(txtReviewDate.text)) Then
       txtReviewDate.text = ""
+      Message.Info("Please enter the date for review of the mental health plan.")
       txtReviewDate.SetFocus
       Return
    End If
+   If TeamCareMembers.count <> 2 Then
+      Message.info("You have not selected a psychologist who is present in the contacts database.")
+      txtTeamCareMembers.SetFocus
+      Return 
+   Else
+      For Each TCM In TeamCareMembers
+         If IsNull(TCM!responsibility) Then
+            Message.Info("Each person on the team must be give a responsiblity - ie what you expect them do to.\n\n"
+            "This also includes the patient.\n\n"
+            "Please complete this before proceeding.")
+            txtTeamCareMember_Responsibility.SetFocus()
+            Return 
+         Endif
+      Next
+   Endif
    Return True
    
 End
@@ -596,7 +640,11 @@ Public Sub Plan_Preview()
    '----------------------------------------------------------------------------
    
    If Not Plan_Is_Valid() And bSampleData = False Then Return
-   FClinical.Editor_ShowPage_External("browser", "Preview Mental Health Plan", Plan_Html_Construct().GetData())
+   If Not IsNull(mentalhealthplans[cvwPlans_Key]) Then
+      FClinical.Editor_ShowPage_External("browser", "Preview Mental Health Plan", mentalhealthplans[cvwPlans_Key]!html)
+   Else
+      FClinical.Editor_ShowPage_External("browser", "Preview Mental Health Plan", Plan_Html_Construct().GetData())
+   End If   
    
 End
 
@@ -625,13 +673,14 @@ Public Sub Plan_New()
    currentTerm = New Collection
    ReferralTo_SearchBy_Criteria = Const.contacttype_employee
    fk_lu_risk_to_others = Const.mentalhealth_risk_undefined
+   
    fk_lu_plan_type = Const.mentalhealth_plantype_initial
-   fk_progressnote = -1
-   fk_plan = 0
-   fk_organisation = 0
-   fk_employee = 0
-   fk_person = 0
-   fk_branch = 0
+   fk_progressnote = Null
+   fk_plan = Null
+   fk_organisation = Null
+   fk_employee = Null
+   fk_person = Null
+   fk_branch = Null
    fk_code = ""
    fk_coding_system = const.coding_none_selected
    bSkipK10 = False   'default to making sure we get a K10
@@ -645,9 +694,9 @@ Public Sub Plan_New()
    txtPlanDate.text = Format(currentconsult.GetConsultDate(), "dd/mm/yyyy")
    bExit = True
    TeamCareMembers_Init()
+   rbHarmUnknown.value = True
    bExit = False
    txtpresentingProblems.SetFocus()
-   '  Help_Prompt_Input(txtpresentingProblems.tag)
    lblK10Score.text = ""
    EditArea_Notify_Datachanged(False)
    HBox_EditArea.Enabled = True
@@ -656,10 +705,10 @@ End
 
 Public Sub Plan_Undelete()
    
-   If last_fk_plan <> 0 Then
+   If Not IsNull(last_fk_plan) Then
       modDBConnect.BeginTrans()
       modMentalHealthDBI.Plan_Mark_Deleted(currentconsult, mentalhealthplans[fk_plan], last_fk_plan, False)
-      last_fk_plan = 0
+      last_fk_plan = Null
       modDBConnect.CommitTrans()
    End If
    Plans_Refresh()
@@ -689,7 +738,7 @@ Public Sub Plan_Delete()
          modDBConnect.exec_query("update clin_mentalhealth.k10_results set deleted = true where fk_plan =" & fk_plan)    'remove K10 components if exist
          If modAudit.MakeAudit(currentconsult, "mark deleted", "clin_mentalhealth.mentalhealth_plan", fk_plan, const.cSection_MentalHealth, audit_notes) Then
             modDBConnect.CommitTrans
-         '   Try FClinical.Refresh_AllPreviousNotes() 'may not be open
+            '   Try FClinical.Refresh_AllPreviousNotes() 'may not be open
          Else
             Message.Info("An error occurred whilst attempting to delete the plan.\n\nIf this persists please contacts your sysadmin or the developers.")
             modDBConnect.RollBack
@@ -732,7 +781,7 @@ Public Sub Plan_Display(plan As Collection)
    '--------------------------------------------------------------------
    'Associated progress notes - difficult: arbitary decision
    'Allow editing of the progress note when changed on the same day only
-   'otherwise a new note is associated with it ie fk_progressnote = -1
+   'otherwise a new note is associated with it ie fk_progressnote = null
    '--------------------------------------------------------------------
    If Not IsNull(Plan!fk_progressnote) Then
       If Format(currentconsult.GetConsultDate(), "dd/mm/yyyy") = Format(Plan!plan_date, "dd/mm/yyyy") Then
@@ -766,6 +815,8 @@ Public Sub Plan_Display(plan As Collection)
          rbHarmMedium.value = True
       Case Const.mentalhealth_risk_high
          rbHarmHigh.value = True
+      Case const.mentalhealth_risk_undefined
+         rbHarmUnknown.Value = True
    End Select
    txtRisk.text = Plan!risk_harm_comments
    txtGoals.text = Plan!goals
@@ -848,12 +899,11 @@ Public Sub EditArea_Clear()
    listview2.Clear
    Vbox_Psychologists.Visible = False
    taMemo.Clear
-   pk_view = 0
-   fk_progressnote = 0
+   pk_view = Null
+   fk_progressnote = Null
    bSampleData = False
    VBox_ColumnView.Visible = False
    bExit = False
-   fk_pasthistory = 0
    cProgressNote_Section = const.cSection_GeneralNotes
    
 End
@@ -914,12 +964,12 @@ Public Sub EditArea_TxtBox_LostFocus()
    Last.BackGround = color.White
    Select Case Last.tag
       Case "review date"
-           If Not IsDate(Last.text) Then
-         txtReviewDate.text = ""
-         txtReviewDate.SetFocus
-      End If
+         If Not IsDate(Last.text) Then
+            txtReviewDate.text = ""
+            txtReviewDate.SetFocus
+         End If
       Case "presenting problems", "biopsychosocial history", "mental state", "risk comments", "goals", "treatment", "relapse plan"
-           If Last Is TextArea Then 'which it should be but for safety
+         If Last Is TextArea Then 'which it should be but for safety
             bExit = True
             teForSpelling.text = Last.Text
             SpellChecker.init()
@@ -928,7 +978,7 @@ Public Sub EditArea_TxtBox_LostFocus()
             bExit = False
          End If   
    End Select
-  
+   
    Last.pos = 0 'ensure the first bit of text is showing
    
 End
@@ -973,7 +1023,6 @@ Public Sub EditArea_TxtBox_Change()
       Case "treatment"
          If InStr(Last.text, "\n\n") Then
             Last.text = Replace(Last.text, "\n\n", "")
-            ' txtPatientActions.SetFocus()
             txtReviewDate.SetFocus()
          End If
       Case "responsibility"
@@ -1067,7 +1116,7 @@ Public Sub cvwPlans_Menu()
    
    If Not currentconsult!mentalhealthplans.count Then Return
    cvwPlans.MoveCurrent()
-   If last_fk_plan <> 0 Then
+   If Not IsNull(last_fk_plan) Then
       mnuMentalHealthPlans_UndoDelete.Enabled = True
    Else
       mnuMentalHealthPlans_UndoDelete.Enabled = False
@@ -1178,10 +1227,7 @@ Public Sub TeamCareMember_Selection(action As String, Optional calling_control A
             '------------------------------------------------------------
             collection_members = modContactsDBI.Employee_Get_With_Memo_Like(Trim(txtTeamCareMembers.text), Trim(txtSearchFilter.text), sex_filter)
          End If
-         With listview2
-            .Clear
-            '     .Visible = False
-         End With
+         listview2.Clear
          '-----------------------------------------------------------------
          'If categories exist to match the text, auto-select or show a list
          '-----------------------------------------------------------------
@@ -1270,6 +1316,8 @@ Public Sub TeamCareMembers_Get()
    TeamCareMembers_RefreshList()
    cvwTeamCareMembers.MoveFirst()
    cvwTeamCareMembers.Item.Selected = True
+Catch
+   Return 'whilst I debug
    
 End
 
@@ -1313,7 +1361,7 @@ Public Sub TeamCareMembers_UnDelete()
    '---------------------
    
    Dim c As Collection
-   Dim the_key As Integer
+   Dim the_key As Variant
    
    If TeamCareMember_Deleted.Count Then
       For Each c In TeamCareMember_Deleted
@@ -1345,7 +1393,7 @@ Public Sub TeamCareMembers_Delete()
    Endif
    sMsg = TeamCareMembers[iTeamCareMember]!wholename
    If Message.Warning("Are you sure you want to delete the current team member " & sMsg & "?", " Yes ", " No ") = 2 Then Return
-   If fk_plan = -1 Then
+   If IsNull(fk_plan) Then
       '---------------------------------------------------------------------
       'this is an entirely new plan, so just remove the member from the list
       '---------------------------------------------------------------------
@@ -1521,7 +1569,7 @@ Public Function teamcare_member_check_duplicated(Member As Collection) As Boolea
    '--------------------------------
    
    Dim sMsg As String = "You have selected:\n\n"
-   
+   ' If IsNull(fk_organisation) Or IsNull(fk_branch) Or IsNull(fk_employee) Then  
    If Not (fk_organisation Or fk_branch Or fk_employee Or fk_person) Then
       sMsg = "The person that you are looking for does not yet exist in the contacts database.\n\n"
       sMsg &= "You cannot enter free text here.\n\n"
@@ -1784,6 +1832,7 @@ Private Function General_Help() As String
    "persons will popup who have an interst in these areas. Of course, you must maintain your database entries for this to work."
    "<P>For some an on-line list of psychologist and their particular interests  copy and past this link into your browser:</P><P>https://www.psychology.org.au/FindaPsychologist/Default.aspx?mode=Issue </P>"
    "</BODY></HMTL>"
+   
 End
 
 Public Function mental_health_presenting_symptoms_prompts() As String

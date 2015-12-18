@@ -1,6 +1,6 @@
 ' Gambas module file
 
-' Copyright (C) 2008-2015 Dr. Richard Terry
+' Copyright (C) 2008-2016 Dr. Richard Terry
 
 ' This program is free software: you can redistribute it and/or modify
 ' it under the terms of the GNU General Public License as published by
@@ -57,20 +57,7 @@ Public Sub Set_local_variables(CurrentRecall As Collection, cons As CConsult)
    
 End
 
-Public Function Reason_Save(reason As String) As Integer
-   '-----------------------------------
-   'Saves a new reason, returns its key
-   '-----------------------------------
-   
-   Dim sql As String
-   
-   sql = "insert into clin_recalls.lu_reasons (reason) Values(" 
-   sql &= "$$" & Trim(reason) & "$$) returning pk"
-   Return modDBConnect.exec_query(sql)!pk
-   
-End
-
-Public Function Get_Single_Recall(pk_recall As Integer) As Collection 
+Public Function Get_Single_Recall(pk_recall As Variant) As Collection 
    '---------------------------------------------------------------------------
    'Maybe a temporary routine
    'I'm just using this to get a single recall from a view after I've saved it
@@ -126,11 +113,11 @@ End
 
 Public Function Recalls_Get() As Collection 
    
-   Return modDBConnect.exec_query_collection("SELECT * FROM clin_recalls.vwRecalls") ' WHERE  fk_status = " & const.cAuditAction_OverDue)
+   Return modDBConnect.exec_query_collection("SELECT * FROM clin_recalls.vwRecalls")
    
 End
 
-Public Function Get_Logged(fk_patient As Integer, Optional active As Boolean = True, Optional bshowAll As Boolean = False, Optional bDeleted As Boolean = False) As Collection
+Public Function Get_Logged(fk_patient As Variant, Optional active As Boolean = True, Optional bshowAll As Boolean = False, Optional bDeleted As Boolean = False) As Collection
    '-------------------------------------------------------------------
    'PURPOSE: Gets all previously logged recalls for display 
    'EXPECTS: key to consult.patients table
@@ -157,7 +144,8 @@ Public Function Get_Logged(fk_patient As Integer, Optional active As Boolean = T
    
 End
 
-Public Function Recalls_Inclusions_Save(pk_recall As Integer, INclusions As Collection)
+Public Function Recalls_Inclusions_Save(pk_recall As Variant, INclusions As Collection)
+   ' not currently used the intent was to use it to include e.g form to do hba1c, cholesterol etc posted to patient when recall sent out
    
    Dim Inclusion As Collection
    
@@ -169,7 +157,7 @@ Public Function Recalls_Inclusions_Save(pk_recall As Integer, INclusions As Coll
    
 End
 
-Public Function Save(currentconsult As Cconsult, old_pk As Integer, recall As Collection) As Integer
+Public Function Save(currentconsult As Cconsult, old_pk As Variant, recall As Collection) As Variant
    '-------------------------------------------------------
    'Saves a single recall (which is a collection of fields)
    '-------------------------------------------------------
@@ -199,7 +187,7 @@ Public Function Save(currentconsult As Cconsult, old_pk As Integer, recall As Co
    
    '-----------------------------------------------------
    audit!notes = recall!reason & " due on " & Format(recall!due, "dd/mm/yyyy")
-   If recall!fk_reason = 0 Then
+   If IsNull(recall!fk_reason) Then
       ' fixme use reason_save() fix also in care planning save
       sql = "insert into clin_recalls.lu_reasons (reason) Values(" 
       sql &= "$$" & Trim(recall!reason) & "$$) returning pk"
@@ -222,7 +210,7 @@ Public Function Save(currentconsult As Cconsult, old_pk As Integer, recall As Co
    recall.Remove("reason")
    recall.Remove("default_interval")
    recall.Remove("fk_default_interval_unit")
-   If old_pk < 0 Then 
+   If IsNull(old_pk) Then 
       recall!fk_consult = currentconsult.GetPK()
       old_pk = modDBConnect.insert("clin_recalls.recalls", recall)
       audit!action = "recall logged"
@@ -238,7 +226,7 @@ Public Function Save(currentconsult As Cconsult, old_pk As Integer, recall As Co
    
 End
 
-Public Sub Mark_Completed(pk_recall As Integer, Optional bActive As Boolean = False, Optional bDeleted As Boolean = False)
+Public Sub Mark_Completed(pk_recall As Variant, Optional bActive As Boolean = False, Optional bDeleted As Boolean = False)
    'FIXME, PROBABLY DONT' NEED to both make status as inactive and deleted as false ??
    
    Dim sql As String
@@ -277,10 +265,8 @@ Public Sub Staff_Get_Clinical(txtbox As Textbox, listview1 As Listview, lbl As L
       listview1.Clear
       For Each $Result 
          sStaff = $Result!Surname & "," & $Result!title & " " & $Result!firstname
-         
          listview1.Add(Str$($Result!fk_staff), sStaff)
          $Result.MoveNext
-         
       Next 
       listview1.tag = txtbox
       listview1.Raise
@@ -295,15 +281,38 @@ Public Sub Staff_Get_Clinical(txtbox As Textbox, listview1 As Listview, lbl As L
    
 End
 
-Public Function Get_Reason_pk(reason As String) As Integer
+' Public Function Get_Reason_pk(reason As String) As Variant
+'    
+'    Dim $Result As Result
+'    
+'    sql = "Select pk from clin_recalls.lu_reasons WHERE reason ILIKE $$" & reason & "$$"
+'    $Result = modDBConnect.exec_query("Select pk from clin_recalls.lu_reasons WHERE reason ILIKE $$" & reason & "$$")
+'    If $Result.COUNT Then Return $Result!pk
+'    Return Null
+'    
+' End
+
+Public Function Reason_Save(reason As String) As Variant
+   '--------------------------------------------------------
+   'Save a new reason for the recall
+   '
+   ' CREATE TABLE clin_recalls.lu_reasons
+   ' (
+   '   pk serial NOT NULL,
+   '   reason text NOT NULL, -- the reason for the recall
+   '   CONSTRAINT lu_reasons_pkey PRIMARY KEY (pk)
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   '--------------------------------------------------------
+
+   Dim recall_reason As New CRow 
    
-   Dim $Result As Result
-   
-   sql = "Select pk from clin_recalls.lu_reasons WHERE reason ILIKE $$" & reason & "$$"
-   $Result = modDBConnect.exec_query("Select pk from clin_recalls.lu_reasons WHERE reason ILIKE $$" & reason & "$$")
-   If $Result.COUNT Then Return $Result!pk
-   Return 0
-   
+   recall_reason!reason = reason
+   recall_reason.Save("clin_recalls.lu_reasons", "fk_reason")
+   Return recall_reason!fk_reason 
+
 End
 
 Public Function Get_Reasons(reason As String) As Collection 
@@ -333,17 +342,17 @@ Public Function Templates_Get() As Collection
    
 End
 
-Public Sub Template_Delete(fk_template As Integer)
+Public Sub Template_Delete(fk_template As Variant)
    
 End
 
-Public Function Templates_Save(old_data As Collection, fk_template As Integer, template As Collection) As Integer
+Public Function Templates_Save(old_data As Collection, fk_template As Variant, template As Collection) As Variant
    '---------------------------------------
    'saves a new or modified letter template
    'see Clerical.FRecallLetterTemplates
    '---------------------------------------
    
-   If fk_template = 0 Then
+   If IsNull(fk_template) Then
       fk_template = modDBConnect.insert("clin_recalls.lu_templates", template)
    Else
       modDBConnect.update("clin_recalls.lu_templates", old_data[fk_template], template)

@@ -1,0 +1,595 @@
+' Gambas class file
+
+' Gambas class filePrivate   bexit  as Boolean
+
+' Copyright (C) 2008-2016 Dr. Richard Terry
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+' -----------------------------------------------------------------------
+' PURPOSE     - To allow user to search for a responsible person or Carer
+'               Is embedded in either FPatientBillingCards on a tab or
+'               Two instances in FPsychoSocialHistory - one to find the
+'               the Next Of Kind (aka responsible person) or the Carer
+'               who could be the same or could be different people
+'------------------------------------------------------------------------
+
+Private currentconsult As CConsult
+Private bexit As Boolean
+Private sSearchType As Integer
+Private timer_count As Integer
+Private Const cCarer As Integer = 0
+Private Const cResponsiblePerson As Integer = 1
+Private fk_carer As Variant
+Private fk_responsible_person As Variant
+Private fk_town As Variant
+Private columnview1_key As Variant
+Private pk_view_persons As Variant
+Private country_code As Variant
+Private country As Collection
+Private countries As Collection
+Private persons As Collection
+Private town As Collection
+Private towns As Collection
+Private Parent_Form As String
+Private Data As Collection       'either for the responsible person or the carer
+
+Public Sub _new()
+   
+   lblMeasure.text = "   Do Not Print Confidential History   "
+   modEditAreaHelpers.Resize_labels(Vbox_Editarea, lblMeasure) 
+   
+End
+
+Public Sub Init(Cons As Cconsult)
+   
+   currentconsult = Connection 
+   txtSearch.SetFocus
+   timer1.Enabled = False   
+   
+End
+
+Public Function Get_Person() As String
+   'Used when the responsible person or carer doesn't have a key in the database
+   
+   Return Trim(txtWholename.text) 
+   
+End
+
+Public Function Get_Street1() As String
+   'Used when the responsible person or carer doesn't have a key in the database
+   
+   Return Trim(txtStreet1.text)
+   
+End
+
+Public Function Get_Street2() As String
+   'Used when the responsible person or carer doesn't have a key in the database
+   
+   Return Trim(txtStreet2.text)
+   
+End
+
+Public Function Get_Town() As String
+   'Used when the responsible person or carer doesn't have a key in the database
+   
+   Return Trim(txtTown.Text)
+   
+End
+
+Public Function Get_postcode() As String
+   'Used when the responsible person or carer doesn't have a key in the database
+   
+   Return Trim(txtPostcode.text)
+   
+End
+
+Public Function Get_State() As String
+   'Used when the responsible person or carer doesn't have a key in the database
+   
+   Return Trim(txtState.text)
+   
+End
+
+Public Function Get_Notes() As String
+   'Used when the responsible person or carer doesn't have a key in the database
+   
+   Return Trim(teNotes.text)
+   
+End
+
+Public Function Get_Contacts() As String
+   'Used when the responsible person or carer doesn't have a key in the database
+   
+   Return Trim(txtContactNumber.text)
+   
+End
+
+Public Sub Set_Data(D As Collection)
+   
+   Data = D
+   fk_responsible_person = Data!fk_responsible_person
+   txtWholename.text = Data!person_responsible_title & " " & Data!person_responsible_firstname & " " & Data!person_responsible_surname
+   With txtStreet1
+      .text = Data!person_responsible_street1
+      .Enabled = False  
+   End With
+   With txtStreet2
+      .text = Data!person_responsible_street2
+      .Enabled = False  
+   End With
+   With txtTown
+      .text = Data!person_responsible_town
+      .Enabled = False  
+   End With
+   With txtState
+      .text = Data!person_responsible_state
+      .Enabled = False  
+   End With
+   With txtPostcode
+      .text = Data!person_responsible_postcode
+      .Enabled = False  
+   End With
+   With txtContactNumber 
+      Try .text = Person_Get_Comms(fk_responsible_person) 'get comms for this fk_person from contacts
+      .Enabled = False  
+   End With 
+   teNotes.text = Data!responsible_person_notes
+   
+End
+
+Public Sub Set_Parent_Form(inForm As String)
+   
+   Parent_Form = inForm   
+   
+End
+
+Public Sub Form_Leave()
+   
+   timer1.Enabled = False
+   
+End
+
+Public Sub Form_Resize()
+   
+   If listview1.Visible Then
+      listview1.width = txtTown.Width
+   Endif
+   If columnview1.Visible Then
+      columnview1.width = txtTown.Width 'fixme.
+   Endif
+   
+End
+
+Public Sub Set_Search_Type(iType As Integer)
+   
+   sSearchType = iType   
+   
+End
+
+Public Sub Reload()
+   
+   ' Display existing data if present    
+   
+End
+
+Public Sub Person_Select()
+   '-----------------------------------------------------------------------------
+   'User has clicked on a name in the list, accept this as the responsible person
+   '-----------------------------------------------------------------------------
+   
+   timer1.stop
+   pk_view_persons = columnview1.Item.key
+   bexit = True
+   txtSearch.text = ""
+   TxtWholename.text = persons[pk_view_persons]!wholename
+   With txtStreet1
+      .text = persons[pk_view_persons]!street1
+      .Enabled = False
+   End With
+   With txtStreet2
+      .text = persons[pk_view_persons]!street2
+      .Enabled = False
+   End With
+   With txtTown
+      .text = persons[pk_view_persons]!town
+      .Enabled = False
+   End With
+   With txtState
+      .text = persons[pk_view_persons]!state
+      .Enabled = False
+   End With
+   With txtPostcode
+      .text = persons[pk_view_persons]!postcode
+      .Enabled = False
+   End With
+   fk_responsible_person = persons[pk_view_persons]!fk_person
+   With txtContactNumber
+      .text = Person_Get_Comms(fk_responsible_person) 'get the latest comms
+      .Enabled = False
+   End With
+   teNotes.SetFocus
+   bexit = False
+   
+End
+
+Public Function Person_Get_Comms(fk_person As Variant) As String
+   '------------------------------------------------------------- 
+   'if the responsible person is in our database, get their comms
+   '------------------------------------------------------------ 
+   
+   Dim comm As Collection
+   Dim sComms As String
+   
+   For Each comm In modContactsDBI.person_comms_get(fk_person)
+      If comm!fk_type = const.CommModalityMobile Then
+         scomms &= " Mobile:" & comm!value
+      End If
+      If comm!fk_type = const.CommModalityHome Then
+         scomms &= " Phone:" & comm!value
+      Endif
+      If comm!fk_type = const.CommModalityPhone Then
+         scomms &= " Phone:" & comm!value
+      Endif
+   Next 
+   Return Trim(sComms)
+   
+End
+
+Public Sub tbRemoveResponsiblePerson_Click()
+   
+   ' If Message.Question("Do you want to remove the current responsible person?", "Yes", "No") = 2 Then
+   '    txtResponsiblePerson.SetFocus
+   '    Return 
+   ' End If      
+   ' Responsible_Person_Remove
+   
+End
+
+Public Sub Reset_Keys()
+   'Dosn't matter which form 
+   
+   fk_responsible_person = Null
+   fk_carer = Null    
+   fk_town = Null
+   
+End
+
+Public Sub EditArea_Clear()
+   
+   modEditAreaHelpers.EditArea_Clear(Vbox_Editarea)
+   Reset_Keys  
+   
+End
+
+Public Sub Person_Remove()
+   
+   Reset_Keys  
+   bExit = True
+   EditArea_Clear
+   ' chkDoNotPrintConfidential.value = True
+   txtStreet1.Enabled = True  
+   txtStreet2.Enabled = True
+   txtTown.Enabled = True  
+   txtContactNumber.Enabled = True
+   txtCountry.Enabled = True
+   txtPostcode.Enabled = True 
+   txtState.Enabled = True 
+   bExit = False
+   If Parent_Form = "FPatientBillingCards" Or Parent_Form = "FRecordVisit" Then
+      EditArea_Notify_Data_Change(False)
+   Endif
+   columnview1.Visible = False
+   
+End
+
+Public Sub Person_Find()
+   '-----------------------------------------------------------------------
+   'Search for (amongst the patients) a person who will be the next of kin
+   'aka, now-a-days as the 'responsible person
+   '----------------------------------------------------------------------
+   
+   Dim x As Integer
+   Dim person As Collection
+   
+   With columnview1
+      .Visible = False
+      .clear()
+      .Columns.count = 3
+   End With
+   If Trim(txtSearch.text) = "" Then Return
+   timer1.Stop()  'fixme or at least checkme out
+   Inc Application.Busy
+   persons = modContactsDBI.Person_Get(Trim(txtSearch.text), const.contacttype_PersonsAndPatients)
+   persons.Remove("sql_in_english")
+   persons = modUtil.Copy_Collection_Keyed_Sequentially(persons)
+   If persons.count Then
+      For Each Person In Persons
+         columnview1.Add(x, 0)
+         columnview1[x][0] = Person!surname & ", " & Person!firstname
+         columnview1[x][1] = Trim(Person!street1 & " " & Person!street2)
+         columnview1[x][2] = Person!town
+         Inc x
+      Next
+      If Person.count = 1 Then
+         Person_Select()
+      Else
+         lblmeasure.font = columnview1.Font
+         modUtilGUI.Columnview_Columns_Set_Size(columnview1, lblmeasure)
+         With columnview1
+            .Visible = True
+            .Raise
+         End With
+      End If
+   Endif
+   Dec Application.Busy
+   
+End
+
+Public Sub Timer1_Timer()
+   
+   Inc timer_count          'constantly being zero'd by editarea_keypress until user pauses typign
+   If timer_count > 2 Then  'arbitary should be user configured depending on typing speed FIXME
+      timer1.Stop
+      Person_Find()
+   End If
+   
+End
+
+Public Sub EditArea_TextBox_KeyRelease()
+   
+   Select Case Last.tag
+      Case "search"
+         timer_count = 0
+         timer1.Start()
+      Case "suburb"
+         Suburb_get()
+      Case "country"
+         Country_Find()
+   End Select
+   
+End
+
+Public Sub EditArea_TextBox_KeyPress()
+   
+   Select Case key.code
+      Case key.Down
+         If Listview1.Visible Then
+            ListView1.MoveFirst
+            Listview1.SetFocus()
+            Listview1.Item.Selected = True
+         Endif
+         If columnview1.Visible Then
+            columnview1.MoveFirst
+            columnview1.SetFocus()
+            columnview1.Item.Selected = True
+         Endif
+      Case key.return, key.Tab
+         Select Case Last.tag
+            Case "search"
+               txtSearch.SetFocus()
+            Case "name"
+               If txtStreet1.text = "" Then
+                  txtStreet1.SetFocus
+               End If
+            Case "street1"
+               txtTown.SetFocus() 'skip street2, usually don't have one.
+            Case "street2"
+            Case "suburb"
+               txtContactNumber.SetFocus
+            Case "contact number"
+               teNotes.SetFocus()
+            Case "responsible person notes"
+               '   tbSave.SetFocus()
+         End Select
+   End Select
+   
+End
+
+Public Sub EditArea_Notify_Data_Change(bFlag As Boolean)
+   
+End
+
+Public Sub EditArea_TextBox_Change()
+   
+   If Bexit Then Return
+   EditArea_Notify_Data_Change(True)
+   Select Case Last.tag
+      Case "name"                                           'no name = no keys or data
+         If Trim(Last.text) = "" Then
+            Person_Remove()
+         Else
+            fk_responsible_person = Null
+            fk_carer = Null   
+         End If
+      Case "search"
+         If Trim(Last.text) = "" Then
+            Person_Remove()
+         Else
+            If Not IsNull(fk_responsible_person) Then
+               ' If Message.Question("Do you want to remove the current responsible person?", "Yes", "No") = 1 Then
+               '    modEditAreaHelpers.EditArea_Clear(VBox_ResponsiblePerson)
+               '    If Parent_Form = "FPatientBillingCards" Then
+               '       EditArea_Notify_Data_Change(False)
+               '    Endif
+               '    fk_responsible_person = Null
+               ' Else
+               '    txtSearchCarer.SetFocus
+               ' End If
+            Endif
+         End If
+         timer_count = 0 'once count = 3 then timer1_timer fires , ie user stopped typing
+   End Select
+   
+End
+
+Public Sub EditArea_TextBox_Lostfocus()
+   
+   Last.BackGround = Color.white
+   timer1.Stop()
+   
+End
+
+Public Sub EditArea_TextBox_GotFocus()
+   
+   Last.BackGround = Color.rgb(95, 255, 175)
+   columnview1.Visible = False
+   Select Case Last.tag
+      Case "search", "country", "suburb"
+         With ListView1
+            .top = Last.Parent.Parent.top + Last.Parent.height
+            .left = Last.Parent.Left
+            .width = txtTown.Width
+            .Raise
+            .tag = Last
+         End With
+         With columnview1
+            .top = Last.Parent.Parent.top + Last.Parent.height
+            .left = Last.Parent.Left
+            .width = Last.width
+            .Raise
+            .tag = Last
+         End With
+         If Last.tag = "search" Then
+            ' If Not IsNull(fk_responsible_person) Then
+            '    If Message.Question("Do you want to remove the current responsible person?", "Yes", "No") = 2 Then
+            '       txtSearchCarer.SetFocus
+            '       Return 
+            '    End If      
+            ' Endif
+            ' Responsible_Person_Remove
+         Endif
+         
+   End Select
+   
+End
+
+Public Sub Suburb_Select()
+   '-------------------------------------------------------------------
+   'Select the suburb. The Town collection is set in listview1_dblclick
+   '-------------------------------------------------------------------
+   
+   bExit = True
+   txtTown.text = Town!town
+   txtState.text = Town!state
+   txtPostcode.text = Town!postcode
+   fk_town = Town!pk
+   bExit = False
+   
+End
+
+Public Sub Suburb_get()
+   '-------------------------------------------------
+   'Get the suburb where the responsible person lives
+   '-------------------------------------------------
+   
+   With listview1
+      .Clear
+      .Visible = False
+   End With
+   If Trim$(txtTown.text) = "" Then Return
+   Inc Application.Busy
+   Towns = modContactsDBI.Get_Town(Lower(Trim$(txtTown.text)))
+   If Towns.count Then
+      For Each town In Towns
+         listview1.Add(town!pk, town!town & " " & town!state & " " & town!postcode)
+      Next
+      If Towns.count = 1 Then
+         Suburb_Select()
+         txtContactNumber.SetFocus
+      Else
+         With listview1
+            .Visible = True
+            .Raise
+            .tag = txtTown
+         End With
+      End If
+   End If
+   Dec Application.Busy
+   
+End
+
+Public Sub ListView1_KeyPress()
+   '------------------------------------------------------------------
+   'User has scrolled onto the popup list and his a key, allow <enter>
+   'to accept the line contents to the edit area
+   '------------------------------------------------------------------
+   
+   If Key.code = Key.Return Then
+      listview1_DblClick
+   End If
+   
+End
+
+Public Sub listview1_DblClick()
+   
+   listview1.MoveCurrent()
+   Select Case Last.tag.tag
+      Case "suburb"
+         town = Towns[listview1.Item.key]
+         Suburb_Select
+         txtContactNumber.SetFocus
+      Case "country"
+         Country_Select
+         txtContactNumber.SetFocus
+   End Select
+   listview1.Visible = False
+Catch
+   Return
+   
+End
+
+Public Sub Country_Find()
+   '----------------------------------------------------------
+   'Allocate country if the default Australia is not acceptable
+   '-----------------------------------------------------------
+   
+   Dim country As Collection
+   
+   With listview1
+      .Visible = False
+      .Clear
+   End With
+   If Trim$(txtCountry.text) = "" Then Return
+   countries = modContactsDBI.country_get(Lower(Trim$(txtCountry.text)))
+   If countries.count Then
+      For Each country In countries
+         listview1.Add(country!pk, country!country)
+      Next
+      If countries.count = 1 Then
+         Country_Select
+      Else
+         listview1.Visible = True
+         listview1.Raise
+         listview1.tag = txtCountry
+      End If
+   Else
+      listview1.Visible = False
+   End If
+   
+End
+
+Public Sub Country_Select()
+   '--------------------------------------------
+   'User selecting a country from the popup list
+   '--------------------------------------------
+   
+   bExit = True
+   Listview1.MoveCurrent()
+   txtCountry.text = Countries[Listview1.Item.key]!country
+   country_code = Countries[Listview1.Item.key]!country_code
+   Listview1.Visible = False
+   bExit = False
+Catch
+   bexit = False
+   Return
+   
+End

@@ -1,6 +1,6 @@
 ' Gambas class file
 
-' Copyright (C) 2008-2015 Dr. Richard Terry
+' Copyright (C) 2008-2016 Dr. Richard Terry
 ' This program is free software: you can redistribute it and/or modify
 ' it under the terms of the GNU General Public License as published by
 ' the Free Software Foundation, either version 3 of the License, or
@@ -215,7 +215,7 @@ End
 Private Sub Save()
    '-------------------------------------------------------------------------------------
    ' Saves the shortcut
-   'CREATE TABLE clin_consult.shortcuts_user
+   ' CREATE TABLE clin_consult.shortcuts_user
    ' (
    '  pk integer NOT NULL DEFAULT nextval('clin_consult.lu_shortcut_pk_seq'::regclass),
    '  fk_staff integer, -- if true, the shortcut will be shared with other users
@@ -247,7 +247,7 @@ Private Sub Save()
    If Not bHaveSpellChecked Then           '    And If Not bSuppressSpellCheck Then
       Spelling_Check()
    Endif 
-   If fk_shortcut Then                                    'existing shortcut being edited?
+   If Not IsNull(fk_shortcut) Then                                    'existing shortcut being edited?
       Shortcut.put_unchanged(fk_shortcut, "fk_shortcut")    
    Endif
    Shortcut!shortcut = Trim(txtShortcut.text)
@@ -272,6 +272,7 @@ Private Sub Save()
    Shortcut.Save("clin_consult.shortcuts_user", "fk_shortcut")
    modDBConnect.CommitTrans()
    FShortcutsAvailable.Reload_Available
+   FProgressNoteEditor.Shortcuts_Reload   
    HBox_Tool_Buttons.Enabled = True 
    Reload()
    
@@ -346,8 +347,9 @@ Private Sub Reload()
    shortcuts_user_specific = New Collection 
    With gvwShortCuts
       .Clear
+      .Height = -1
    End With
-   shortcuts_user_and_system = modUtil.Copy_Collection_Keyed_Sequentially(modConsultDBI.Shortcuts_For_User_get(modDBConnect.currentUser!fk_staff))
+   shortcuts_user_and_system = modUtil.Copy_Collection_Keyed_Sequentially(modConsultDBI.Shortcuts_For_User_get(modDBConnect.currentUser!fk_staff, True))
    For Each shortcut In shortcuts_user_and_system
       If Not IsNull(shortcut!fk_staff) Then 
          shortcuts_user_specific.Add(shortcut, x)
@@ -355,19 +357,14 @@ Private Sub Reload()
          With gvwShortCuts[x, 0]
             .Text = shortcut!shortcut
             .Alignment = Align.TopLeft
-            With gvwShortCuts.Rows[x]
-               .Height = -1 
-            End With
          End With 
          With gvwShortCuts[x, 1]
             .RichText = shortcut!expanded
             .WordWrap = True  
             .Alignment = Align.TopLeft
-            With gvwShortCuts.Rows[x]
-               .Height = -1 
-            End With
          End With  
          With gvwShortCuts[x, 2]
+             .Alignment = Align.TopLeft
             If shortcut!shared Then
                .Text = "Yes"
             Else
@@ -377,7 +374,6 @@ Private Sub Reload()
          Inc x    
       End If   
    Next
-   
 End
 
 Public Sub TeNotes_Change()
@@ -453,7 +449,7 @@ Public Sub ShortCut_New(Optional sct As String)
    '------------------------------------------------------------ 
    
    EditArea_Clear
-   fk_shortcut = 0
+   fk_shortcut = Null
    Vbox_EditArea_Outer.Enabled = True  
    form_text_editor.teNotes.RichText = sct
    EditArea_Notify_Data_Change(False)
@@ -529,6 +525,17 @@ End
 
 Private Sub ShortCut_Delete()
    
+   Message.Title = "Delete User Shortcut"
+   If Message.Question("Please confirm you wish to delete this user shortcut.", "Delete", "Cancel") = 2 Then Return 
+   If modDBConnect.update("clin_consult.shortcuts_user", Null, ["pk": fk_shortcut, "deleted": True]) Then
+      modDBConnect.CommitTrans  
+      Reload
+      FProgressNoteEditor.Shortcuts_Reload
+   Else
+      Message.Info("Failed to delete the shortcut.\n\nIf the problem continues please discuss with your SysAdmin")
+   Endif
+   
+   
 End
 
 Private Sub ShortCut_Display()
@@ -551,7 +558,7 @@ Private Sub ShortCut_Display()
       rbSharedNo.Value = True 
    Endif
    cmbShortCutCategory.Index = cmbShortCutCategory.Find(shortcut!category)
-   fk_shortcut = Shortcut!pk  
+   fk_shortcut = Int(Shortcut!fk_shortcut)    
    form_html_editor.edHTML.text = shortcut!expanded
    bSystem_Shortcut = shortcut!system_shortcut
    bexit = False  

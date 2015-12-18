@@ -44,13 +44,11 @@ Private fk_document_history_items As Variant             'key to documents.docum
 Private fk_document_form As Variant                      'ditto for that of the form itself
 Private diabetes_referral_forms As Collection
 Private diabetes_referral_form As Collection
-Private cvwDiabetesGroupAlliedReferrals_key As Integer
-Private lvHealthIssues_Key As Integer
+Private cvwDiabetesGroupAlliedReferrals_key As Variant
+Private lvHealthIssues_Key As Variant
 Private sSupportHeading As String = "Diabetes Allied Health Group Services"
 
 Public Sub Init(cons As CConsult)
-   
-   Dim tl As TextLabel
    
    currentconsult = cons 
    lblmeasure.text = "Relevant Information   "
@@ -143,11 +141,9 @@ Private Function Decision_Support_Text() As String
    
 End
 
-
-
 Public Sub Save()
    '------------------------------------------------------------------------------------
-   ' CREATE TABLE chronic_disease_management.diabetes_group_allied_health_services
+   ' CREATE TABLE chronic_disease_management.group_allied_health_services
    ' (
    '   pk serial NOT NULL,
    '   fk_consult integer NOT NULL,
@@ -155,7 +151,7 @@ Public Sub Save()
    '   gpmp_new boolean DEFAULT false, -- the doctor has  referred the patient whilst doing a new gp management plan
    '   gpmp_review boolean DEFAULT false, -- the doctor has referred the patient whilst claiming a gp management plan review
    '   age_care_plan_review boolean DEFAULT false, -- the doctor has contributed to or reviewed an aged care facility management plan
-   '   latex_form text NOT NULL, -- the LaTeX definition of the group alllied  health services form, this is kept as a 'backup' strictly not needed
+   '   latex text NOT NULL, -- the LaTeX definition of the group alllied  health services form
    '   health_issue_keys text, -- If not null, this field contains | (pipe) delimited keys to a patient's relevant health issues
    '   fk_branch integer, -- key to contacts.data_branches if not null then points to the branch hence the organisation
    '   fk_employee integer, -- key to contacts.data_employees if not null then points to the employee in the branch/organisation who is a sole trader
@@ -163,13 +159,22 @@ Public Sub Save()
    '   sessions_dietitian integer, -- the number of group sessions allocated to the dietitian
    '   sessions_exercise integer, -- the number of group sessions allocated to the exercise physiologist
    '   sessions_education integer, -- the number of group sessions allocated to the diabetic educator
-   '   include_allergies    boolean DEFAULT true, -- if true then the allergies are included on the information sent to the provider
+   '   include_allergies boolean DEFAULT true, -- if true then the allergies are included on the information sent to the provider
    '   include_medications boolean DEFAULT true, -- if true then the patient's medications are included on the information sent to the provider
    '   special_notes text, -- any extra information to pass on to the provider(s) of diabetic group services
-   '   CONSTRAINT diabetes_group_allied_health_services_pkey PRIMARY KEY (pk),
-   '   CONSTRAINT diabetes_group_allied_health_services_fk_consult_fkey FOREIGN KEY (fk_consult)
+   '   CONSTRAINT group_allied_health_services_pkey PRIMARY KEY (pk),
+   '   CONSTRAINT group_allied_health_services_fk_branch_fkey FOREIGN KEY (fk_branch)
+   '       REFERENCES contacts.data_branches (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT group_allied_health_services_fk_consult_fkey FOREIGN KEY (fk_consult)
    '       REFERENCES clin_consult.consult (pk) MATCH SIMPLE
    '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT group_allied_health_services_fk_employee_fkey FOREIGN KEY (fk_employee)
+   '       REFERENCES contacts.data_employees (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT group_allied_health_services_fk_person_fkey FOREIGN KEY (fk_person)
+   '       REFERENCES contacts.data_persons (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION
    ' )
    ' WITH (
    '   OIDS=FALSE
@@ -177,15 +182,8 @@ Public Sub Save()
    '------------------------------------------------------------------------------------       
    
    Dim DGAHS_Form As Crow
-   Dim PH As Collection
-   Dim keys As String
    Dim Document_Diabetic_Group_Allied_Health_Form As CRow
    Dim Document_Additional_Health_Issues As CRow 
-   Dim LaTexes_to_print As Collection   'of latex - if save successful we will print these
-   Dim latex_to_print As String
-   Dim Additional_history_latex As String
-   Dim Filename As String
-   Dim md5Output As String
    Dim ProgressNote As CRow   
    
    If VBox_EditArea_Outer.padding = 0 Then Return 'no data to save
@@ -194,18 +192,18 @@ Public Sub Save()
    bExit = True   
    Inc Application.Busy
    DGAHS_Form = New CRow 
-   ProgressNote = New CRow  'If the progress note was written on today, we can edit it, otherwise, create a new one
-   If fk_progressnote And txtDate.text = Format(currentconsult.GetConsultDate(), "dd/mm/yyyy") Then  'if originally entered on today
-      ProgressNote.put_unchanged(fk_progressnote, "fk_progressnote")            'am editing todays progress note
-      ProgressNote!fk_audit_action = const.cAuditAction_Insert                  'is an insert
-   Else     
-      ProgressNote!fk_audit_action = const.cAuditAction_Edit
+   ProgressNote = New CRow  
+   If Not IsNull(fk_progressnote) Then
+      ProgressNote.put_unchanged(fk_progressnote, "fk_progressnote")      
    End If   
+   ProgressNote!fk_audit_action = const.cAuditAction_Insert 
    ProgressNote!fk_consult = currentconsult.GetPK()
    ProgressNote!notes = Progress_Notes_Create()
    ProgressNote!fk_section = const.cSection_GeneralNotes
    ProgressNote!problem = "Diabetes Group Referral"
    ProgressNote.Save("clin_consult.progressnotes", "fk_progressnote")
+   'DGAHS_Form!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, Progress_Notes_Create(), const.cSection_GeneralNotes, fk_progressnote, "Diabetes Group Referral")
+   
    DGAHS_Form!fk_progressnote = progressnote!fk_progressnote
    
    '-------------------------------------------------------------------------------------------------------------------------
@@ -216,7 +214,7 @@ Public Sub Save()
    'the fk_document_dgah_form = points to the document as a true file.. created and added later down the sub
    'the LaTex of the additional health information is saved in documents.documents and shown as a pdf on the fly in FClinical
    '-------------------------------------------------------------------------------------------------------------------------
-   If pk_diabetes_group_allied_health_services Then
+   If Not IsNull(pk_diabetes_group_allied_health_services) Then
       DGAHS_Form.put_unchanged(pk_diabetes_group_allied_health_services, "pk_diabetes_group_allied_health_services")
    Endif
    DGAHS_Form!fk_consult = currentConsult.GetPK()
@@ -231,17 +229,17 @@ Public Sub Save()
    End If     
    DGAHS_Form!latex_form = Diabetes_Group_Allied_Services_Latex_Form() 'see note above
    DGAHS_Form!latex_history_items = Diabetes_Group_Allied_Services_Latex_History_Items()
-   If fk_branch <> 0 Then
+   If Not IsNull(fk_branch) Then
       DGAHS_Form!fk_branch = fk_branch
    Else
       DGAHS_Form!fk_branch = Null
    Endif
-   If fk_employee <> 0 Then
+   If Not IsNull(fk_employee) Then 
       DGAHS_Form!fk_employee = fk_employee
    Else 
       DGAHS_Form!fk_employee = Null
    Endif
-   If fk_person <> 0 Then
+   If Not IsNull(fk_person) Then
       DGAHS_Form!fk_person = fk_person
    Else
       DGAHS_Form!fk_person = Null
@@ -251,7 +249,7 @@ Public Sub Save()
    Else
       DGAHS_Form!sessions_dietitian = Null
    Endif
-   If txtNumberDietitian.text <> "" Then
+   If txtNumberExercise.text <> "" Then
       DGAHS_Form!sessions_exercise = Val(txtNumberExercise.text)
    Else
       DGAHS_Form!sessions_exercise = Null
@@ -266,7 +264,7 @@ Public Sub Save()
    DGAHS_Form!special_notes = Trim(txtSpecialNotes.text)
    'Now save the latex for history items as a document so it can be displayed in the clinical tab with the TCA/GPMP stuff
    Document_Additional_Health_Issues = New CRow  
-   If fk_document_history_items Then
+   If Not IsNull(fk_document_history_items) Then
       Document_Additional_Health_Issues.put_unchanged(fk_document_history_items, "fk_document_history_items")
    End If   
    Document_Additional_Health_Issues!fk_sending_entity = modInboxDBI.SendingEntity_GetPK(const.Document_Display_As_Letter, "", modDBConnect.currentUser!fk_branch)
@@ -302,7 +300,7 @@ Public Sub Save()
    DGAHS_Form!fk_document_history_items = Document_Additional_Health_Issues!fk_document_history_items
    'Now the document for the form itself
    Document_Diabetic_Group_Allied_Health_Form = New CRow 
-   If fk_document_form Then
+   If Not IsNull(fk_document_form) Then
       Document_Diabetic_Group_Allied_Health_Form.put_unchanged(fk_document_form, "fk_document_form")
    End If 
    Document_Diabetic_Group_Allied_Health_Form!fk_sending_entity = modInboxDBI.SendingEntity_GetPK(const.Document_Display_As_Letter, "", modDBConnect.currentUser!fk_branch)
@@ -340,8 +338,10 @@ Public Sub Save()
    modPrinting.Print_latex(DGAHS_Form!latex_history_items) 'prints plain latex
    bExit = False
    VBox_EditArea_Outer.Padding = 0
-   FClinical.Refresh_Section(const.cSection_CarePlan) 'force update of lists in this section
+   FClinical.Refresh_Section(const.cSection_Lists_GPMP_TCA) 'force update of lists in this section
    Reload()
+Catch
+   bExit = False   
    
 End
 
@@ -533,11 +533,6 @@ Public Sub Person_Select()
    Try txtSuburb.text = person!town
    Try txtPostcode.text = person!postcode
    Try txtOccupation.text = person!occupation
-   'this is a bit arbitrary fixme test me
-   ' If fk_branch Then Branch_Comms_Get()
-   '  If IsNull(comms) Then
-   'If fk_person Then Person_Comms_Get()
-   ' End If
    bExit = False
    
 End
@@ -555,8 +550,8 @@ Public Sub Organisation_Get()
       .Clear
    End With
    If Trim(txtOrganisation.text) = "" Then Return
-   fk_organisation = 0
-   fk_branch = 0
+   fk_organisation = Null
+   fk_branch = Null
    branches = modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.Organisations_Get(Trim(txtOrganisation.text)))
    If Not branches.count Then Return
    '-----------------------------------------------------------------------------------
@@ -594,7 +589,6 @@ Public Sub Branch_Select()
    txtPostcode.text = branch!postcode
    fk_branch = branch!fk_branch
    fk_organisation = branch!fk_organisation
-   ' Branch_Comms_Get()
    bexit = False
    
 End
@@ -666,8 +660,8 @@ Public Sub EditArea_TxtBox_Change()
       Case "organisation"
          If Trim(Last.text) = "" Then
             bexit = True
-            fk_organisation = 0
-            fk_branch = 0
+            fk_organisation = Null
+            fk_branch = Null
             txtOrganisation.text = ""
             txtBranch.Text = ""
             txtStreet1.Text = ""
@@ -676,12 +670,9 @@ Public Sub EditArea_TxtBox_Change()
             txtPostcode.text = ""
             txtPractitioner.text = ""
             txtOccupation.text = ""
-            '   lvworgcontacts.Clear()
-            '   cvwPersonContacts.Clear()
             branch = Null
             person = Null
             bexit = False
-            
          Endif
       Case "practitioner"
          '-----------------------------------------------------
@@ -693,10 +684,10 @@ Public Sub EditArea_TxtBox_Change()
             '  lvworgcontacts.Clear()
             ' cvwPersonContacts.Clear()
             bExit = True
-            fk_organisation = 0
-            fk_branch = 0
-            fk_employee = 0
-            fk_person = 0
+            fk_organisation = Null
+            fk_branch = Null
+            fk_employee = Null
+            fk_person = Null
             txtOccupation.text = ""
             txtOrganisation.text = ""
             txtBranch.Text = ""
@@ -805,6 +796,7 @@ Public Sub EditArea_Notify_DataChange(flag As Boolean)
    Else
       Vbox_EditArea_Outer.Padding = 0
    End If    
+   
 End
 
 Public Sub New_Entry()
@@ -922,7 +914,6 @@ Public Function Diabetes_Group_Allied_Services_Latex_History_Items() As String
    
 End
 
-
 Public Function Diabetes_Group_Allied_Services_Latex_Form() As String
    '---------------------------------------------------------------
    'Prepares the LaTeX definition to be printed on the actual form
@@ -1014,8 +1005,8 @@ Private Function Diabetes_Group_Allied_Service_Valid() As Boolean
       rbDGAS_NewGPMP.SetFocus
       Return
    Endif
-   If fk_branch = 0 Then
-      If fk_person = 0 Then
+   If IsNull(fk_branch) Then
+      If IsNull(fk_person) Then
          sMsg = "Please select a person or organisation you will be sending the patient to."
          Message.Warning(smsg, "OK")
          txtPractitioner.SetFocus
@@ -1124,15 +1115,15 @@ Public Sub EditArea_Clear()
    bExit = True
    modEditAreaHelpers.EditArea_Clear(VBox_EditArea)
    lvHealthIssues.Clear()
-   pk_diabetes_group_allied_health_services = 0
-   fk_document_form = 0
-   fk_document_history_items = 0
-   fk_progressnote = 0
-   fk_branch = 0
-   fk_organisation = 0
-   fk_employee = 0
-   fk_person = 0
-   pk_diabetes_group_allied_health_services = 0
+   pk_diabetes_group_allied_health_services = Null
+   fk_document_form = Null
+   fk_document_history_items = Null
+   fk_progressnote = Null
+   fk_branch = Null
+   fk_organisation = Null
+   fk_employee = Null
+   fk_person = Null
+   pk_diabetes_group_allied_health_services = Null
    bExit = False  
    
 End
@@ -1183,8 +1174,8 @@ Public Sub Diabetes_Group_Allied_Service_Display()
    '------------------------------------------------------------------ 
    
    Dim PH As Collection
-   Dim PH_Keys As String[] 
-   Dim PH_Key As String
+   Dim PH_Keys As Variant[] 
+   Dim PH_Key As Variant
    
    bExit = True   
    diabetes_referral_form = diabetes_referral_forms[cvwDiabetesGroupAlliedReferrals_key]
@@ -1264,8 +1255,15 @@ Public Sub Health_issue_Delete()
 End
 
 Public Sub Diabetes_Group_Allied_Service_Edit()
+   '--------------------------------------------------------------------
+   'If editing the document, then if not the same date as it was written
+   'put in fresh progress notes
+   '---------------------------------------------------------------------   
    
    VBox_EditArea_Outer.Enabled = True   
+   If txtDate.text <> Format(currentconsult.GetConsultDate(), "dd/mm/yyyy") Then
+      fk_progressnote = Null
+   Endif
    
 End
 
@@ -1340,5 +1338,3 @@ Public Sub chkEditArea_Click()
    EditArea_Notify_DataChange(True)
    
 End
-
-

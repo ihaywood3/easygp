@@ -1,6 +1,6 @@
 ' Gambas class file
 
-' Copyright (C) 2008-2015 Dr. Richard Terry
+' Copyright (C) 2008-2016 Dr. Richard Terry
 
 ' This program is free software: you can redistribute it and/or modify
 ' it under the terms of the GNU General Public License as published by
@@ -67,7 +67,6 @@ Public Sub Init()
       .tbWebBrowserZoomIn.Visible = True
       .tbWebBrowserZoomOut.Visible = True 
    End With
-   
    With Form_PDF = New FPdf(HBox_Schedules)
       .BtOpen.Visible = False                      'don't allow external files to be opened
       .btZoomIn.Visible = True
@@ -199,11 +198,11 @@ Public Sub EditArea_TextBox_GotFocus()
          With columnview1
             .top = Last.parent.Parent.top + Last.parent.height
             .left = Last.Parent.left
-            .width = Last.width + chkVaccineFemaleOnly.Width
+            .width = Last.Parent.width
             .Raise
          End With
          cvwVaccines.UnselectAll()
-         fk_vaccine = 0
+         fk_vaccine = Null
    End Select
    
 End
@@ -258,7 +257,7 @@ Public Sub EditArea_TextBox_Change()
    Select Case Last.tag
       Case "find vaccine"
          If Trim(Last.text) = "" Then
-            fk_vaccine = 0
+            fk_vaccine = Null
          Endif
          
    End Select
@@ -317,8 +316,8 @@ Public Sub Schedule_New()
    cvwVaccines.clear()
    Vaccines_in_schedule = New Collection
    Vbox_EditArea_Inner.Enabled = True
-   fk_schedule = 0
-   pk_view = -1
+   fk_schedule = Null
+   pk_view = Null
    With lblEditAreaHeading
       .Foreground = Color.Red
       .text = "New Schedule or Target Disease"
@@ -378,7 +377,7 @@ Public Sub Schedule_Display()
    End If
    Vaccines_In_Schedule_Refresh()
    Vaccines_In_Schedule_Display()
-   fk_vaccine = 0 'no vaccine selected
+   fk_vaccine = Null 'no vaccine selected
    Vbox_EditArea_Inner.Enabled = False   
    bExit = False
    EditArea_Notify_DataChanged(False)
@@ -395,17 +394,30 @@ End
 Public Sub Schedule_Save()
    '------------------------------------------------------------
    'Saves the schedule details and any vaccines in this schedule
+   '------------------------------------------------------------   
+   ' REATE TABLE clin_vaccination.lu_schedules
+   ' (
    '   pk serial NOT NULL,
    '   age_due_from_months integer,
    '   age_due_to_months integer,
    '   schedule text NOT NULL, -- either a target disease name eg 'yellow fever' or a schedule name to describe course of combined vaccines eg Hepatits A + Hepatitis B.Hence this allows unlimited and user defined schedules.
    '   female_only boolean DEFAULT false,
-   '   aboriginal_tsi_only boolean DEFAULT false, -- australian requirement, some schedules apply only to aboriginal or torres strait islanders at particular ages
+   '   atsi_only boolean DEFAULT false, -- australian requirement, some schedules apply only to aboriginal or torres strait islanders at particular ages
    '   fk_season integer, -- eg. influenza prompts only wanted at particular time of year
    '   inactive boolean DEFAULT false,
    '   date_inactive date,
    '   deleted boolean DEFAULT false,
-   '------------------------------------------------------------   
+   '   multiple_vaccines boolean DEFAULT false, -- if TRUE this vaccine schedule aka target contains muliple separate vaccines...
+   '   notes text, -- any additional notes, eg the NSW 12-13yrs schedule is a school program only
+   '   CONSTRAINT lu_schedules_pkey PRIMARY KEY (pk),
+   '   CONSTRAINT lu_schedules_fk_season_fkey FOREIGN KEY (fk_season)
+   '       REFERENCES common.lu_seasons (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   '----------------------------------------------------------------------------------------------
    
    Dim x As Integer
    Dim Schedule As CRow 
@@ -415,8 +427,7 @@ Public Sub Schedule_Save()
    If Not Schedule_Valid() Then Return
    
    Schedule = New CRow
-   If fk_schedule Then
-      '   Schedule!pk = fk_schedule
+   If Not IsNull(fk_schedule) Then
       Schedule.put_unchanged(fk_schedule, "fk_schedule")
    End If
    schedule!schedule = Trim(txtSchedule.text)
@@ -424,9 +435,7 @@ Public Sub Schedule_Save()
    schedule!age_due_to_months = Val(txtAgeDueTo.text)
    schedule!female_only = bScheduleFemaleOnly
    schedule!atsi_only = bScheduleIsAboriginalTSI_Only
-   If fk_season Then    
-      schedule!fk_season = fk_season   'IAN FIXME: THE PROBLEM OF REVERTING TO NULL
-   End If  
+   schedule!fk_season = fk_season  
    If rbScheduleActiveYes.value = True Then schedule!inactive = False  
    If rbScheduleActiveNo.value = True Then schedule!inactive = True   
    schedule!multiple_vaccines = bMultipleVaccinesInSchedule
@@ -450,7 +459,6 @@ Public Sub Schedule_Save()
    '   OIDS=FALSE
    ' );
    '---------------------------------------------------------------
-   '   modVaccinationDBI.Vaccines_In_Schedule_Save(Vaccines_in_schedule, fk_schedule)
    For Each Vaccine In Vaccines_in_schedule
       Try fk_vaccine = Split(Vaccine!pk_view, "-")[1]
       If Not Error Then
@@ -475,16 +483,25 @@ Public Sub Schedule_Save()
    
 End 
 
-Public Sub Reload()
+Public Sub Reload(Optional bRefresh As Boolean = True)
    
    EditArea_Clear()
    cvwSchedules.Clear()
    cvwVaccines.Clear()
-   schedules = modVaccinationDBI.Schedules_get(Trim(txtFilterSchedule.text), iDisplay_Schedules)
+   If bRefresh Then                                    'won't refresh if being filtered
+      schedules = modVaccinationDBI.Schedules_get(Trim(txtFilterSchedule.text), iDisplay_Schedules)
+   End If   
    If Not schedules.count Then Return 
    For Each schedule In schedules
-      cvwSchedules.Add(schedule!pk, 0)
-      cvwSchedules[schedule!pk][0] = Schedule!schedule
+      If Trim(txtFilterSchedule.text) <> "" Then
+         If InStr(Lower(schedule!schedule), Lower(Trim(txtFilterSchedule.text))) Then
+            cvwSchedules.Add(schedule!pk, 0)
+            cvwSchedules[schedule!pk][0] = Schedule!schedule
+         Endif
+      Else
+         cvwSchedules.Add(schedule!pk, 0)
+         cvwSchedules[schedule!pk][0] = Schedule!schedule
+      Endif
    Next
    Select Case iDisplay_Schedules
       Case 1
@@ -497,11 +514,11 @@ Public Sub Reload()
    
    EditArea_Notify_DataChanged(False)
    Vbox_EditArea_Inner.Enabled = False 
-   With cvwSchedules   'crash bug here
-      .MoveFirst()
-      .Item.Selected = True
-      .SetFocus()
-   End With 
+   ' With cvwSchedules   'crash bug here
+   '    .MoveFirst()
+   '    .Item.Selected = True
+   '    .SetFocus()
+   ' End With 
    
 End
 
@@ -549,7 +566,7 @@ Public Sub rbSeasonal_Click()
    Else
       cmbSeasons.Visible = False
       cmbSeasons.index = -1
-      fk_season = 0
+      fk_season = Null
    End If 
    EditArea_Notify_DataChanged(True)
    
@@ -619,7 +636,7 @@ Public Sub mnuVaccines_Click()
    End Select
 Catch
    Return 
-
+   
 End
 
 Public Sub rbScheduleStatus_Click()
@@ -738,7 +755,7 @@ Public Sub Vaccine_Add()
    Dim Schedule_Vaccine As New Collection
    Dim sMsg As String
    
-   If Not fk_vaccine Then 
+   If IsNull(fk_vaccine) Then 
       sMsg = "Please select a new vaccine to add to the schedule by clicking in the 'Find Vaccine' textbox and search for an existing vaccine.\n\n"
       "If you do not find the vaccine  you want, and, having checked you are spelling it correctly, then you may add a new vaccine "  
       "by clicking on the Maintain Vaccines tab and adding the details for the new vaccine."
@@ -755,7 +772,7 @@ Public Sub Vaccine_Add()
       Schedule_Vaccine!female_only = True
    Endif
    Schedule_Vaccine!vaccine_description = vaccine!description
-  ' Schedule_Vaccine!description = vaccine!description
+   ' Schedule_Vaccine!description = vaccine!description
    Schedule_Vaccine!form = vaccine!form
    Schedule_Vaccine!pk_view = Str(fk_schedule & "-" & fk_vaccine) '?FIXME THIS IS NOT TRUE
    Try Vaccines_in_schedule.Add(Schedule_Vaccine, Str(fk_schedule & "-" & fk_vaccine)) 
@@ -781,33 +798,33 @@ Public Sub Vaccines_In_Schedule_Display()
    'Display all vaccines in a particular schedule
    '---------------------------------------------
    
-   Dim key As String 
+   Dim vaccine_key As Variant 
    
    cvwVaccines.Clear()
    
    For Each vaccine In Vaccines_in_schedule
-      key = vaccine!pk_view
-      cvwVaccines.Add(key, 0)
-      cvwVaccines[key][0] = vaccine!brand
-      cvwVaccines[key][1] = vaccine!form
+      vaccine_key = vaccine!pk_view
+      cvwVaccines.Add(vaccine_key, 0)
+      cvwVaccines[vaccine_key][0] = vaccine!brand
+      cvwVaccines[vaccine_key][1] = vaccine!form
       If vaccine!vaccine_atsi_only Then
-         cvwVaccines[key][2] = "ATSI Only"
+         cvwVaccines[vaccine_key][2] = "ATSI Only"
       Else
-         cvwVaccines[key][2] = ""
+         cvwVaccines[vaccine_key][2] = ""
       End If
       If vaccine!vaccine_female_only = True Then
-         cvwVaccines[key][3] = "female only"
+         cvwVaccines[vaccine_key][3] = "female only"
       Else
-         cvwVaccines[key][3] = ""
+         cvwVaccines[vaccine_key][3] = ""
       Endif
-      cvwVaccines[key][4] = vaccine!vaccine_description
+      cvwVaccines[vaccine_key][4] = vaccine!vaccine_description
    Next
    
 End
 
 Public Sub txtFilterSchedule_KeyRelease()
    
-   Reload()
+   Reload(False) 'don't pull from the backend
    
 End
 

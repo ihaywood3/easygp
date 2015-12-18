@@ -1,6 +1,6 @@
 ' Gambas class file
 
-' Copyright (C) 2008-2015 Dr. Richard Terry
+' Copyright (C) 2008-2016 Dr. Richard Terry
 
 ' This program is free software: you can redistribute it and/or modify
 ' it under the terms of the GNU General Public License as published by
@@ -26,29 +26,14 @@
 '                    - user prompted if validation fails on save.
 '
 ' TODO
-'                 - backend and include skin, pulses and sensation check by checking podiatrists
-'                 - currently none of the saves linked to a diabetic PH item, are just in 'general'
-'                 - implement the 'don't bug me with this again in Valid_data
 '                 - Edit() "delete the DACC'
-'                 - put in hyperlink from eye/podiatrist document to the document
-'                 - Implement a combo box up top in place of label, with dates previous DACCs
-'                 - implement if FClinical updates bp/weight > then update in the DACC
+'                 - implement if FClinical updates bp/weight > then update in the DACC automatically
 '                 - decide about "old DACCS" e.g should they be on a list, or should they
-'                   just end up as a document in the documents list? (probably not -too many over the years
-'
-' > Aspirin is indicated for men >50  and women >60 with more than one other
-' > risk factors from Dyslipidaemia or Hypertension. Patients who already
-' > have evidence of small vessel disease (nephropathy, retinopathy) or
-' > known CV events (coronary or cerebral) should be aspirin anyway. There
-' > should be a data field to check for aspirin or other antiplatelet or
-' > warfarin.
-'
-' > Would be easier to pick up the abnormals if we can code red colour for
-' > overdue tests and abnormal results (not on target)
-
+'                   just end up as a document in the documents list? (probably not -too many over the years 
 '                 - when recall is saved, this is not being stated so in the progress notes.
-' BUGS            Please report to rterry@internode.on.net
-'                 If your microalbumin seems not to come  up - different Loinc - notify me
+'       
+'    BUGS         Please report to rterry@internode.on.net
+'                  If your microalbumin seems not to come  up - different Loinc - notify me
 '-----------------------------------------------------------------------------------------------
 
 Private bExit As Boolean                        'Stop re-entry into subroutines
@@ -56,15 +41,14 @@ Private currentconsult As CConsult
 Private fk_pasthistory As Variant
 Private fk_consult As Variant
 Private fk_patient As Variant                   'from currentconsult to save typing ( see Init)
-Private pk_view As String                       'Key to DACCS = current DACC being accessed
+Private pk_view As Variant                       'Key to DACCS = current DACC being accessed
 Private DACCS As Collection                     'All previous Diabetic Annual Cycle of Care's
 Private DACC As Collection
 Private date_last_Claimed As Date               'date of last DACC mediDACCcare billing
 Private date_completed As Date                  'date the DACC was completed
 Private date_saved As Date                      'date the DACC was saved may <> date_completed which can be  null
 Private fk_diabetes_annual_cycle_of_care As Variant
-Private fk_progressnote_components As Variant     'if not 0 = key to clin_consult.progressnotes = the components table as html
-Private fk_progressnote_comments As Variant       'if not 0 = key to clin_consult.progressnotes = any notes on the DACC
+Private fk_progressnote As Variant              'if not 0 = key to clin_consult.progressnotes = the components table as html
 Private NextTextBoxDetails As TextEdit
 Private NextTextBoxLast As TextEdit
 Private NextTextboxDue As TextEdit
@@ -89,7 +73,7 @@ End
 Public Sub DACC_Template_Missing() 
    
    Dim sMsg As String
-
+   
    sMsg = "The template necessary To generate the Diabetes Cycle Of Care Is missing.\n\n"
    "You will not be able to save this cycle of care.\n\n"
    "You should speak to the sysadmin to resolve this issue"
@@ -108,10 +92,9 @@ Public Sub Recall_Log()
    Dim sql As String
    Dim R As Result
    Dim recall As Collection
-   Dim bRecallExists As Boolean
    Dim sProgressNote As String
    Dim fk_progressnote As Variant
-   Dim pk_recall As Variant = -1
+   Dim pk_recall As Variant = Null
    
    '-----------------------------------------------------------------------------------
    'Firstly, is a recall for DACC already lodged?, if so get its key and the reason key
@@ -127,7 +110,7 @@ Public Sub Recall_Log()
       If R.count Then
          recall!fk_reason = R!pk
       Else
-         recall!fk_reason = 0
+         recall!fk_reason = Null
          recall!reason = "Diabetes Annual Cycle of Care (DACC)"
       Endif
       recall!fk_urgency = const.UrgencyLevelRoutine
@@ -135,7 +118,6 @@ Public Sub Recall_Log()
       recall!fk_default_interval_unit = const.Units_year
       recall!fk_interval_unit = const.Units_year
       recall!interval = 1
-      ' recall!due = DateAdd(Now, gb.Year, 1)
       recall!due = DateAdd(currentconsult.GetConsultDate(), gb.Year, 1)
       recall!fk_contact_method = const.ContactMethodLetter  'fixme read the combo
       recall!fk_appointment_length = const.AppointmentLengthLong
@@ -146,14 +128,7 @@ Public Sub Recall_Log()
       recall!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNote, const.cSection_GeneralNotes, fk_progressNote, "General Notes", fk_pasthistory, False)
       recall!pk_recall = modRecallsDBI.Save(currentconsult, pk_recall, recall)
       FClinical.Refresh_Section(const.cSection_Recalls)
-   Else
-      '-------------------------------------------------------------------------------------------------
-      'Exists, just reload this for 12 months
-      'str$(here) because uses the same module called from Fclinical dealing with the popup recalls menu
-      'over the recalls list, and some tags = strings, some are numbers , all kept as strings
-      '-------------------------------------------------------------------------------------------------
-      bRecallExists = True
-      modRecallsMenu.Process(recall, Str$(const.cAuditAction_CompletedRepeatSameInterval), currentconsult)  'fixme shouldn't be general notes
+      FClinicalToolbar.Recalls_Update
    End If
    
 End
@@ -321,27 +296,11 @@ Public Sub MedicationList_Insert()
    
 End
 
-Public Sub Form_Show()
-   
-End
-
-Public Sub Form_Close()
-   'this causes a Sig11 ?why
-   ' If Vbox_EditArea.Padding = 1 Then
-   '    If Valid_Data() Then
-   '       If Message.Question("Do you want to save this Diabetes Cycle of Care before closing the form?", "Yes", "No") = 1 Then
-   '         Save()
-   '       End If
-   '    Endif
-   ' Endif
-   '
-   
-End
-
 Public Sub Save()
    '---------------------------------------------------------------------------------------------------------
    ' Save the annual cycle of care, refreshes the data and progress notes in FClinical
-   '
+   ' CREATE TABLE chronic_disease_management.diabetes_annual_cycle_of_care
+   ' (
    '   pk serial NOT NULL,
    '   fk_consult integer NOT NULL,
    '   date_completed date,
@@ -366,9 +325,6 @@ Public Sub Save()
    '   microalbumin_date date,
    '   microalbumin_date_due date,
    '   microalbumin_details text,
-   '   renalfunction_date date,If Not Valid_Data()
-   '   renalfunction_date_due date,
-   '   renalfunction_details text,
    '   education_date date,
    '   education_date_due date,
    '   education_details text,
@@ -377,7 +333,7 @@ Public Sub Save()
    '   diet_details text,
    '   exercise_date date,
    '   exercise_date_due date,
-   '   exercise_details text,DACC
+   '   exercise_details text,
    '   smoking_date date,
    '   smoking_date_due date,
    '   smoking_details text,
@@ -385,20 +341,25 @@ Public Sub Save()
    '   medication_review_date_due date,
    '   medication_review_details text,
    '   deleted boolean DEFAULT false,
-   '   fk_progressnote_components integer
-   '   latex text
+   '   fk_progressnote integer, -- html of the tabulated DACC if not null
+   '   renalfunction_date date,
+   '   renalfunction_date_due date,
+   '   renalfunction_details text,
+   '   latex text, 
    ' ----------------------------------------------------------------------------------------
    
-   Dim sProgressNotes_Components As String            '=the tabulated DACC plus any clinical notes for this section
+   Dim DACC As CRow  
    
    If Vbox_EditArea.Padding = 0 Then Return        'no changes to main DACC
-   
    If Not Valid_Data() Then Return
    If bPreventSave Then  ' set in Init if main template is missing
       DACC_Template_Missing
       Return   
    Endif
-   DACC = New Collection
+   DACC = New CRow
+   If Not IsNull(fk_diabetes_annual_cycle_of_care) Then
+      DACC.put_unchanged(fk_diabetes_annual_cycle_of_care, "fk_diabetes_annual_cycle_of_care")
+   Endif
    DACC!date_completed = Val(Format(currentconsult.GetConsultDate(), "dd/mm/yyyy"))  'can only be completed today and edited today
    DACC!fk_consult = currentconsult.GetPK()
    DACC!hba1c_date = Val(teNotesHBA1cLast.text)
@@ -436,21 +397,17 @@ Public Sub Save()
    DACC!exercise_details = teNotesActivity.Text
    DACC!smoking_date = Val(teNotesSmokingLast.text)
    DACC!smoking_date_due = Val(teNotesSmokingDue.text)
-   DACC!smoking_details = c.text
+   DACC!smoking_details = teNotesSmokingStatus.text
    DACC!medication_review_date = Val(teNotesMedicationLast.text)
    DACC!medication_review_date_due = Val(teNotesMedicationDue.text)
    DACC!medication_review_details = teNotesMedication.Text
-   sProgressNotes_Components = Progress_note_create_HTML(DACC).GetData()
    DACC!latex = DACC_LaTex_Construct(DACC).GetData()
-   DACC!fk_progressnote_components = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNotes_Components, const.cSection_GeneralNotes, fk_progressnote_components, "diabetes", 0, True) 'true=parse the html see the routine
-   modDACCDBI.Save_DACC(DACCS, pk_view, DACC, fk_progressnote_comments)
+   DACC!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, Progress_note_create_HTML(DACC).GetData(), const.cSection_GeneralNotes, fk_progressnote, "Diabetes")
+   DACC.Save("chronic_disease_management.diabetes_annual_cycle_of_care", "fk_diabetes_annual_cycle_of_care")
    Recall_Log()
    modDBConnect.CommitTrans()
-   ' lblLastClaimed.text = Format(Now, "dd/mm/yyyy") 'really sloppy quick for for top lines of code in DACC_PRINT   'fixme.
    lblLastClaimed.text = Format(currentconsult.GetConsultDate(), "dd/mm/yyyy") 
-   DACC_Print(DACC)
- '  FClinical.Refresh_AllPreviousNotes()
-   
+   DACC_Print(DACC!latex)
    Reload()
    
 End
@@ -577,9 +534,6 @@ Public Sub Last_RenalFunction()
       If R!abnormal = "*" Then
          sDecisionSupportComments &= "<P><B>Renal Function</B> is impaired</P><BR>"
       End If
-      ' If DateDiff(Now, DateAdd(R!observation_date, gb.Month, 12), gb.day) <= 0 Then
-      Print currentconsult.GetConsultDate()
-      Print R!observation_date
       If DateDiff(currentconsult.GetConsultDate(), DateAdd(R!observation_date, gb.Month, 12), gb.day) <= 0 Then
          teNotesRenalFunctionDue.text = "OVERDUE"
       Else
@@ -723,7 +677,7 @@ Public Sub Lipid_Get_Component(R As Result) As String
    
 End
 
-Public Function Progress_note_create_HTML(DACC As Collection) As CTemplate
+Public Function Progress_note_create_HTML(DACC As CRow) As CTemplate
    '----------------------------------------------------------------
    'Creates a table akin to what is seen on the screen, as a summary
    'for the progress notes
@@ -988,20 +942,29 @@ Public Sub print_content()
    'if there is a completed DACC showing, i.e the last one done then re-print it
    '----------------------------------------------------------------------------
    
-   If Not IsNull(DACC) Then DACC_Print(DACC)
+   If Not IsNull(DACC) Then DACC_Print(DACC!latex)
    
 End
 
 Public Sub New_Entry()
-   '--------------------------------------------------------------------------------------------------------
-   'New Dacc this routine is  so-named in all edit area forms as called from toolbutton in FClinical toolbar
-   '--------------------------------------------------------------------------------------------------------
-   
+   '---------------------------------------------------------------------
+   'Called from FClinicalToolbar, called this because can't use New() and
+   'all across easyp this is the wording I've chosen
+   'see FClinicalToolbar.MainToolbar_Click for details
+   '----------------------------------------------------------------------   
+
+   If InStr(lblLastClaimed.text, Format(Now(), "dd/mm/yyy")) Then
+      Message.Info("This DACC was created today, please edit this "
+      "by clicking 'Edit' on the main toolbar.")
+      Return
+   Endif
    DACC_New()
    
 End
 
 Public Sub DACC_New()
+   
+   'First check no DACC has been created today
    
    If IsNull(modUtil.Find_File("templates/diabetes_cycle_care.tex")) Then   
       DACC_Template_Missing
@@ -1027,7 +990,7 @@ Public Sub Edit()
    '--------------------------------------
    
    If Not IsNull(DACC) Then
-     If Format(DACC!date_completed, "dd/mm/yyyy") = Format(currentconsult.GetConsultDate(), "dd/mm/yyyy") Then
+      If Format(DACC!date_completed, "dd/mm/yyyy") = Format(currentconsult.GetConsultDate(), "dd/mm/yyyy") Then
          DACC_Edit()
       Endif
    End If
@@ -1040,16 +1003,16 @@ Public Sub DACC_Edit()
    '----------------------------------------------------------------------
    
    Vbox_EditArea_Inner.Enabled = True
+   Print fk_progressnote
    
 End
 
 Public Sub Reset_Keys()
    
-   fk_progressnote_comments = -1  'for historical (no real reason) i chose -1 = no notes, most flags now 0 but never changed this as is across many modules
-   fk_progressnote_components = -1
-   fk_diabetes_annual_cycle_of_care = 0
-   pk_view = ""
-   fk_consult = 0
+   fk_progressnote = Null
+   fk_diabetes_annual_cycle_of_care = Null
+   pk_view = Null
+   fk_consult = Null
    date_completed = Null
    date_saved = Null
    sDecisionSupportComments = ""
@@ -1141,7 +1104,7 @@ Public Sub teNotesDACC_gotFocus()
          NextTextboxDue = teNotesDietDue
          
       Case "activity"
-         NextTextBoxDetails = c
+         NextTextBoxDetails = teNotesSmokingStatus
          NextTextBoxLast = teNotesActivityLast
          NextTextboxDue = teNotesActivityDue
          
@@ -1234,13 +1197,8 @@ Public Sub Reload()
             Else
                lblLastClaimed.text = "Unfinished: " & Format(DACC!consult_date, "dd/mm/yyyy") 'should have only ever happended in my database
             End If
-            ' If Format(DACC!date_completed, "dd/mm/yyyy") = Format(Now, "dd/mm/yyyy") Then
-            ' tbEdit.Visible = True
             FClinical.Enable_Edit_Button(True)
-            '   Else
             FClinical.Enable_Edit_Button(False)
-            'tbEdit.Visible = False
-            ' Endif
             DACC_Display(DACC)
             Break
          End If
@@ -1266,8 +1224,7 @@ Public Sub DACC_Display(DACC As Collection)
    pk_view = DACC!pk_view
    date_completed = DACC!date_completed                     'can be null if an interim unclaimed DACC
    date_saved = DACC!consult_date                           'will never be null
-   fk_progressnote_components = DACC!fk_progressnote_components    'never null, but may not be the table of DACC but comment partially completed
-   Try fk_progressnote_comments = DACC!fk_progressnote_comments  'may be null if no associated progress notes for the DACC added.
+   fk_progressnote = DACC!fk_progressnote    'never null, but may not be the table of DACC but comment partially completed
    teNotesHBA1C.text = DACC!hba1c_details
    Try teNotesHBA1CLast.text = Format(DACC!hba1c_date, "dd/mm/yyyy")
    Try teNotesHBA1CDue.text = Format(DACC!hba1c_date_due, "dd/mm/yyyy")
@@ -1315,8 +1272,8 @@ Public Sub DACC_Display(DACC As Collection)
    teNotesActivity.pos = 0
    Try teNotesActivityLast.text = Format(DACC!exercise_date, "dd/mm/yyyy")
    Try teNotesActivityDue.text = Format(DACC!exercise_date_due, "dd/mm/yyyy")
-   c.text = DACC!smoking_details
-   c.pos = 0
+   teNotesSmokingStatus.text = DACC!smoking_details
+   teNotesSmokingStatus.pos = 0
    Try teNotesSmokingLast.text = Format(DACC!smoking_date, "dd/mm/yyyy")
    Try teNotesSmokingDue.text = Format(DACC!smoking_date_due, "dd/mm/yyyy")
    teNotesMedication.text = DACC!medication_review_details
@@ -1325,6 +1282,7 @@ Public Sub DACC_Display(DACC As Collection)
    Try teNotesMedicationDue.text = Format(DACC!medication_review_date_due, "dd/mm/yyyy")
    bExit = False
    Vbox_EditArea_Inner.Enabled = False
+   Print fk_progressnote
    
 End
 
@@ -1361,7 +1319,7 @@ Public Sub Dacc_Preview()
    
 End
 
-Public Sub DACC_Print(DACC As Collection)
+Public Sub DACC_Print(Latex As String)
    '----------------------------------------------------------------------------
    'Prints out the DACC using LaTex, cTemplate = Null pre latex template days
    'This should only ever happen to me
@@ -1373,13 +1331,7 @@ Public Sub DACC_Print(DACC As Collection)
       Return                                        'don't print if in process of doing a new one.
    End If
    Inc Application.Busy
-   If Not IsNull(DACC!latex) Then                   'should never be null, expect for my system when I didn't save latex
-      modPrinting.Print_latex(DACC!latex, const.Paper_Plain, 1)
-   Else
-      If Valid_Data() Then
-         modPrinting.Print_latex(DACC_LaTex_Construct(DACC).GetData(), const.Paper_Plain, 1)
-      End If
-   End If
+   modPrinting.Print_latex(DACC!latex, const.Paper_Plain, 1)
    Dec Application.Busy
    VBox99.SetFocus 'otherwise if nothing has focus can end up with txtSearch in Fclinical being the next in line > removes the patient.
 Catch
@@ -1392,7 +1344,7 @@ Catch
    
 End
 
-Public Sub DACC_LaTex_Construct(DACC As Collection) As CTemplate
+Public Sub DACC_LaTex_Construct(DACC As CRow) As CTemplate
    '---------------------------------------------------------
    'Makes appropriate substitutions in the LaTex template
    'returns null if an error occurs

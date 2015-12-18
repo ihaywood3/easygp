@@ -1,6 +1,6 @@
 ' Gambas class file
 
-' Copyright (C)2008-2015 Dr. Richard Terry
+' Copyright (C)2008-2016 Dr. Richard Terry
 
 ' This program is free software: you can redistribute it and/or modify
 ' it under the terms of the GNU General Public License as published by
@@ -45,38 +45,40 @@
 '        if do a delete or deleteall then the drug_delete dosn't work
 '        Spell checking on txtInstruction does not work.
 '--------------------------------------------------------------------
+Private currentconsult As CConsult
+Private SpellChecker As ClskSpell
+Private embedded_in_form As String  
 Private temp_drugs As Collection
 Public bUserWantsSpellCheck As Boolean
 Private unique_drugs As Collection
 Private pic_saved As Picture = Picture["icons/12/green_dot.png"]
 Private pic_not_saved As Picture = Picture["icons/12/red_dot.png"]
 Private generic_brands_split_layout As String[]
-Public bExit As Boolean 'accessed from Fclinical Editor_SetPage
-Private bAuthority As Boolean       'If True the script item needs an authority.
+Public bExit As Boolean                   'accessed from Fclinical Editor_SetPage must be public
+Private bAuthority As Boolean             'If True the script item needs an authority.
 Private bKeyValid As Boolean
-Private bInteractionsExist As Boolean 'if True interactions exist for current drug being prescribed.
+Private bInteractionsExist As Boolean      'if True interactions exist for current drug being prescribed.
 Private bGenericSearch As Boolean
-Private fk_pasthistory As Variant
 Private fk_item_prescribed As Variant
-Private pk_view As String
-Private script_types As Collection
-Private fk_company As String
-Private fk_generic_product As String
+Private pk_view As Variant
+Private fk_company As Variant
+Private fk_instruction As Variant
+Private iCurrentScriptKey As Variant
+Private fk_generic_product As Variant
 Private fk_prescribed_for As Variant
+Private fk_brand As Variant
+Private fk_medication As Variant
 Private fk_increased_quantity_authority_reason As Variant      'if not 0 then key to clin_prescribing.increased_quantity_authority_reasons
 Private pbscode As String
+Private script_types As Collection
 Private Drug_Interactions_For_Drug_Prescribed As Collection
 Private Drug_Interactions_For_Drugs_Prescribed As Collection
 Private Food_Interactions_For_Drug_Prescribed As Collection
 Private Food_Interactions As Collection
-Private iPBS_Script_Type As Integer              'e.g print as PBS, rpbs, PBS AUTHORITY etc, see Const
-Private restriction_code As String   ' pbs restriction.code  eg for authorities
-Private restriction As String
-Private fk_instruction As Variant = 0
-Private iCurrentScriptKey As Integer
 Private cProgressNote_Section As Integer
-Private currentconsult As CConsult
-Private embedded_in_form As String          'the form this form is embedded in
+Private iPBS_Script_Type As Integer                            'e.g print as PBS, rpbs, PBS AUTHORITY etc, see Const
+Private restriction_code As String                             ' pbs restriction.code  eg for authorities
+Private restriction As String
 Private drugs As Collection
 Private drug As Collection
 Private timer_count As Integer
@@ -86,8 +88,7 @@ Private Print_Status As String
 Private brands As Collection
 Private brand As Collection
 Private gridrow As Integer 'current row the grid is on
-Private fk_brand As String
-Private fk_medication As Variant
+
 Public script_items As Collection
 Private script_item As Collection
 Public Drug_Search_Scope As String[]   'must be public
@@ -95,12 +96,13 @@ Private Instruction_Habits As Collection
 Private Prescribed_For_Habits As Collection
 Private habit As Collection
 Private Authority_Increased_Quantity_Reasons As Collection
-Private SpellChecker As ClskSpell
+
 Public sDefault_Prescribing_Mode As String   'accessed from FStaffPreferencesPrescribing via static form
 Private sPBS_RPBS As String
 Private iAuthority_Type As Integer
 Private iIncreased_quantity_type As Integer
 Private ReferenceHboxForTopColumnview As HBox               'Allows us to move the grids/columnview up as the form or split resizes
+
 Static Public form_prescriptions As FPrescriptions
 
 Public Sub _new()
@@ -154,7 +156,6 @@ Public Sub _new()
    End With
    script_items = New Collection 'all those prescribed this consultation
    Try Settings_Load()
-   MenuButton1.menu = "mnuHealthIssues"  'historical not currently used - is there if I expose and user wants to link a script to a health issue
    lblPBSRelease.text = "PBS drug data for " & modPrescribingDBI.PBSRelease()
    
 End
@@ -186,11 +187,18 @@ Static Public Sub Prescribing_Mode_Set(s As String)
    
 End
 
-Static Public Sub Allergies_Refresh()
+Static Public Sub Allergies_For_Inbox_Refresh()
+   'Called from Inbox, the same patient has been in FClinical
+   'so update allergies in this instance of the prescription writer
+   'the class codes were updated in currentconsult from the inbox
    
-   Message.Info("FPrescriptions.Allergies_Refresh")
-   'form_prescriptions.allergy_class_codes_reload
-   Print
+   form_prescriptions.Inbox_Allergy_Display_Refresh
+
+End
+
+Public Sub Inbox_Allergy_Display_Refresh()
+   
+   modAllergyDBI.Allergies_Sensitivities_Refresh(currentconsult, gvAllergies)
    
 End
 
@@ -217,77 +225,187 @@ Public Sub Init(cons As CConsult)
    Endif
    currentconsult.Refresh("Allergies")
    If embedded_in_form = "FInbox" Then 
-      Allergies_Show               'show allergies 
+      modAllergyDBI.Allergies_Sensitivities_Refresh(currentconsult, gvAllergies)
+      gvAllergies.Visible = True 
       HBox_Print.Visible = True    'exposes the Print button
    End If   
-   
    Reload()
    
 End
 
-Public Sub Allergies_Show()
-   '----------------------------------------------------------------------------------------
-   'if the prescription writer is embedded in the inbox - show the allergies above edit area
-   'Construct a table of known allergies, possibilities are
-   'Unknown
-   'Nil allergies or sensitivities
-   'A heading of the table (class etc) + row(s) of allergy/sensitivity data
-   'fixme this code is duplicated modprogressnotes.Health_Summary_Construct_Latex (merge this)
-   '----------------------------------------------------------------------------------------  
+Public Sub Allergies_Sensitivities_Refresh()
+   '---------------------------------------------------------------
+   'Fetch the patients allergies and sensitivities from the backend
+   'If the allergy is non-drug show the allergen
+   'If the allergy is generic specific show the generic
+   'If no allergy and no 'no allergies known'
+   'then prompt user with prominant comment 'PATIENT NOT ASKED'
+   'If any sensitivites exist then by definition the module has been
+   'accessed and allergies will have been queried, user will be
+   'informed sensitivities exist they will not be listed.
+   '---------------------------------------------------------------
    
-   Dim templ As CTemplate
-   Dim sstring As String
-   Dim item As Collection
-   Dim x As Integer
-   Dim tempstring As String = Replace(Space$(40), " ", "z")  'fixme remove once Ian fixes cTemplate
+   Dim allergy As Collection
+   Dim allergies As Collection
+   Dim med As Collection
+   Dim allergy_class_code As Collection 
+   Dim sMsg As String
    
-   tlAllergies.Visible = True  
-   Separator3.Visible = True  
-   sString = "<P><B>Allergies</B></P>" & tempstring & "%allergies"
-   templ = New CTemplate(sstring)
-   If Not currentconsult!allergies.count Then  
-      templ.Row("Unknown", "", "", "")
-   End If   
-   x = 0  'counter
-   For Each Item In currentconsult!allergies
-      If IsNull(item!nil_allergies_sensitivities) And x = 0 Then
-         If IsNull(item!allergen) Then  
-            templ.Row("Class", "Generic", "Reaction Type", "Details")
-            Inc x
-         End If 
-      Endif
-      ' class_name, generic, details, reaction_type
-      If item!nil_allergies_sensitivities = True Then
-         templ.Row("No known allergies or sensitivites")
-      Else
-         If Not IsNull(Item!allergen) Then 'non drug allergy
-            templ.Row("Non Drug Allergy:", item!allergen, "", "")
+   With gvAllergies
+      .Clear()
+      .Rows.count = 0
+      .Rows.Height = -1
+      .Columns.count = 2
+      .columns[0].width = 20
+   End With
+   currentconsult.Refresh("allergies")
+   allergies = Modutil.Copy_Collection_Keyed_Sequentially(currentconsult!allergies)
+   If allergies.count Then                              'have either allergies or sensitivities
+      For Each allergy In currentconsult!allergies    
+         If allergy!nil_allergies_sensitivities Then           'First acertain if has ever been asked 
+            Inc gvAllergies.Rows.Count
+            With gvAllergies[gvAllergies.Rows.Count - 1, 1]
+               .Text = "Asked - No Known Allergies"
+               .Foreground = Color.Red
+               .Alignment = Align.Center
+            End With
+            Return 
+         Endif
+         Inc gvAllergies.Rows.Count 
+         If allergy!fk_lu_reaction_type = const.ReactionType_Allergy Then  'exists ?is an allergy
+            With gvAllergies[gvAllergies.Rows.Count - 1, 0]
+               .text = "A"
+               .Foreground = Color.red
+               .Alignment = Align.TopLeft
+            End With 
          Else
-            templ.Row(Item!class_name, item!generic, item!reaction_type, item!details)
+            With gvAllergies[gvAllergies.Rows.Count - 1, 0]
+               .text = "S"
+               .Foreground = Color.Black
+               .Alignment = Align.TopLeft
+            End With 
          End If   
-      End If   
+         With gvAllergies[gvAllergies.Rows.Count - 1, 1]
+            If allergy!specificity = "g" Then
+               .text = allergy!generic
+            Else If allergy!specificity = "b" Then 
+               .text = allergy!brand
+            Else
+               .Text = Trim(allergy!class_name & " " & allergy!allergen) 'only one will appear
+            End If   
+            .Alignment = Align.TopLeft
+            If allergy!fk_lu_reaction_type = const.ReactionType_Allergy Then
+               .Foreground = Color.Red
+            Else
+               .Foreground = Color.Black
+            End If 
+            .WordWrap = True
+         End With
+         gvAllergies.Rows[gvAllergies.Rows.Count - 1].height = -1
+      Next
+   End If  
+   If gvAllergies.Rows.count = 0 Then   
+      Inc gvAllergies.Rows.Count
+      With gvAllergies[gvAllergies.Rows.Count - 1, 1]
+         .WordWrap = True
+         .RICHText = "No record of patient being asked about allergies"
+         .Foreground = Color.Red
+         .Alignment = Align.Center
+      End With
+      gvAllergies.rows[0].Height = -1
+   End If
+   
+   '------------------------------------------------------------------------------------------------------------------
+   'Check that nothing has been prescribed today (and saved) to which we are allergic, warn user, lay down audit trail
+   '------------------------------------------------------------------------------------------------------------------
+   For Each med In currentconsult!prescriptions_written  '= prescriptions written today
+      For Each allergy_class_code In currentconsult!allergy_class_codes
+         If allergy_class_code!class_code = Left(med!atccode, Len(allergy_class_code!class_code)) Then
+            sMsg = modAllergyDBI.Allergy_Warning(currentconsult, med, allergy_class_code!class_code)
+            sMsg &= "\n\nIt seems this drug has already been prescribed today.\n\nYou should check the prescription is not a mistake."
+            Message.Warning(sMsg, "Ok")
+            sMsg = "The user was presented with a warning message about danger with a currently prescribed medication and viewed and clicked OK in the popup dialog box.<BR><BR>" & sMsg 
+            If modAudit.MakeAudit(currentconsult, "warning to user", "clin_prescribing.prescribed", med!prescribed!pk, const.cSection_Prescriptions, sMsg) Then
+               modDBConnect.CommitTrans()
+            Endif
+            Break
+         End If  
+      Next
    Next
-   templ.Table("allergies") 
-   sstring = "<table>" & templ.GetData() & "</table>"
-   sstring = Replace(sstring, tempstring, "")
-   tlAllergies.text = sstring
+   '-------------------------------------------------------------------
+   'Now check that nothing has been prescribed but not printed or saved
+   '-------------------------------------------------------------------
+   ' If Not IsNull(PrescriptionPage) Then  'fixme invalid object
+   '    If Not IsNull(PrescriptionPage.script_items) Then  
+   '       For Each med In PrescriptionPage.script_items
+   '          If med!prescribed.Exist("pk") = False Then   'on list but not yet saved or printed
+   '             For Each allergy_class_code In currentconsult!allergy_class_codes
+   '                If allergy_class_code!class_code = Left(med!atccode, Len(allergy_class_code!class_code)) Then
+   '                   sMsg = modAllergyDBI.Allergy_Warning(currentconsult, med, allergy_class_code!class_code)
+   '                   sMsg &= "\n\nIt seems this drug has already been prescribed today but not printed.\n\nYou should check the prescription is not a mistake."
+   '                   Message.Warning(sMsg, "Ok")
+   '                   sMsg = "The user was presented with a warning message about danger with a currently prescribed medication which has not yet been printed, and viewed and clicked OK in the popup dialog box.<BR><BR>" & sMsg 
+   '                   If modAudit.MakeAudit(currentconsult, "warning to user", Null, 0, const.cSection_Prescriptions, sMsg) Then
+   '                      modDBConnect.CommitTrans()
+   '                   Endif
+   '                   Break
+   '                End If  
+   '             Next
+   '          End If  
+   '       Next
+   '    End If   
+   ' End If   
+   
+   ' Catch 
+   '   Return
    
 End
-
-' Public Sub allergy_class_codes_reload()
-'    'do not make me private
-'    'as an allergy can be 'no known allergies' then class_code can be null
+' Public Sub Allergies_Show()
+'    '----------------------------------------------------------------------------------------
+'    'if the prescription writer is embedded in the inbox - show the allergies above edit area
+'    'Construct a table of known allergies, possibilities are
+'    'Unknown
+'    'Nil allergies or sensitivities
+'    'A heading of the table (class etc) + row(s) of allergy/sensitivity data
+'    'fixme this code is duplicated modprogressnotes.Health_Summary_Construct_Latex (merge this)
+'    '----------------------------------------------------------------------------------------  
 '    
-'    Dim A As Collection
+'    Dim templ As CTemplate
+'    Dim sstring As String
+'    Dim item As Collection
+'    Dim x As Integer
+'    Dim tempstring As String = Replace(Space$(40), " ", "z")  'fixme remove once Ian fixes cTemplate
 '    
-'    Print embedded_in_form
-'    currentconsult.Refresh("allergies")
-'    allergy_class_codes = New Collection
-'    For Each A In currentconsult!allergies
-'       If Not IsNull(A!class_code) Then    
-'          allergy_class_codes.Add(A, A!class_code)
+'    tlAllergies.Visible = True  
+'    Separator3.Visible = True  
+'    sString = "<P><B>Allergies</B></P>" & tempstring & "%allergies"
+'    templ = New CTemplate(sstring)
+'    If Not currentconsult!allergies.count Then  
+'       templ.Row("Unknown", "", "", "")
+'    End If   
+'    x = 0  'counter
+'    For Each Item In currentconsult!allergies
+'       If IsNull(item!nil_allergies_sensitivities) And x = 0 Then
+'          If IsNull(item!allergen) Then  
+'             templ.Row("Class", "Generic", "Reaction Type", "Details")
+'             Inc x
+'          End If 
+'       Endif
+'       ' class_name, generic, details, reaction_type
+'       If item!nil_allergies_sensitivities = True Then
+'          templ.Row("No known allergies or sensitivites")
+'       Else
+'          If Not IsNull(Item!allergen) Then 'non drug allergy
+'             templ.Row("Non Drug Allergy:", item!allergen, "", "")
+'          Else
+'             templ.Row(Item!class_name, item!generic, item!reaction_type, item!details)
+'          End If   
 '       End If   
 '    Next
+'    templ.Table("allergies") 
+'    sstring = "<table>" & templ.GetData() & "</table>"
+'    sstring = Replace(sstring, tempstring, "")
+'    tlAllergies.text = sstring
 '    
 ' End
 
@@ -321,9 +439,6 @@ Public Function Search_Scope_Set()
    ' "SY";"Section 100 (Special Authority Item  Chapters = modPrescribingDBI.Chapters_Get()s) - Private Hospitals"
    ' "SZ";"Section 100 (Special Authority Items) - Public Hospitals"
    ' --------------------------------------------------------------------------------------------------------------
-   
-   Dim chapters As Collection
-   Dim chapter As Collection
    
    drug_search_scope = New String[]
    drug_search_scope.add("GE")           'allow general  was 3,4,5
@@ -408,29 +523,6 @@ Public Sub Settings_Load()
    
 End
 
-Public Sub mnuHealthIssues_Click()
-   '---------------------------------------------------
-   'User wants to link a request form to a health issue
-   'The menu tag = the pk_pasthistory
-   'currrently this is not used FIXME decide if should
-   '---------------------------------------------------
-   
-   Select Case Last.tag
-      Case "general notes", "remove link"
-         txtHealthIssue.text = "General Notes"
-         cProgressNote_Section = const.cSection_GeneralNotes
-         fk_pasthistory = 0
-      Case Else
-         txtHealthIssue.text = currentconsult!past_history[Last.tag]!description
-         fk_pasthistory = Last.tag
-         cProgressNote_Section = const.cSection_Referrals
-   End Select
-   EditArea_Notify_Data_Change(True)
-Catch
-   Return 
-   
-End
-
 Public Sub Drug_Delete()
    '----------------------------------------------------------------------------------------------------------------
    'User has decided to delete something they have prescribed during the current consultation
@@ -444,7 +536,7 @@ Public Sub Drug_Delete()
    Dim x As Integer
    Dim penultimate_date As Date
    Dim fk_prescribed As Variant
-   Dim fk_medication As String
+   Dim fk_medication As Variant
    
    cvwPrescriptions.MoveFirst
    For x = 1 To cvwPrescriptions.Count
@@ -560,15 +652,15 @@ End
 
 Public Sub Reset_Flags()
    
-   fk_item_prescribed = 0
-   pk_view = 0
-   fk_company = ""          'fk_company + fk_generic_product is really equivalent to the non existant fk_brand
-   fk_generic_product = 0
+   fk_item_prescribed = Null
+   pk_view = Null
+   fk_company = Null          'fk_company + fk_generic_product is really equivalent to the non existant fk_brand
+   fk_generic_product = Null
    pbscode = ""
-   fk_prescribed_for = 0
-   fk_instruction = 0
-   fk_medication = 0
-   fk_increased_quantity_authority_reason = 0
+   fk_prescribed_for = Null
+   fk_instruction = Null
+   fk_medication = Null
+   fk_increased_quantity_authority_reason = Null
    print_status = ""
    restriction_code = ""
    restriction = ""
@@ -580,9 +672,7 @@ Public Sub EditArea_Clear()
    
    bExit = True
    modEditAreaHelpers.EditArea_Clear(Vbox_EditArea_Inner)
-   fk_pasthistory = 0
    cProgressNote_Section = const.cSection_GeneralNotes
-   txtHealthIssue.text = "general notes"
    cmbScriptTypes_Load
    With tlBrandsLike
       .text = ""
@@ -1015,33 +1105,7 @@ Public Sub EditArea_TxtBox_GotFocus()
             .Visible = False
             .Raise
          End With
-         ' If Trim(txtInstructions.text) = "" Then
-         '    Try Instruction_Habits_Get() 'bombs if drug null
-         '    If Error Then txtInstructions.SetFocus()
-         ' Else
-         ' If Instruction_Habits.count Then
-         '    With columnview1
-         '       .clear
-         '       .Columns.count = 1
-         '       .tag = txtInstructions
-         '    End With
-         '    '-----------------------------------------------------------------------------
-         '    'load the columnview with existing instructions for this drug
-         '    'but only pop it up if what is in the txtInstruction dosn't match one of these
-         '    '-----------------------------------------------------------------------------
-         '    For Each habit In Instruction_Habits
-         '       columnview1.Add(habit!pk_instruction_habit, 0)
-         '       columnview1[habit!pk_instruction_habit][0] = habit!instruction
-         '       If Lower(Trim(txtInstructions.text)) = Lower(habit!instruction) Then
-         '          bexists = True
-         '       Endif
-         '    Next
-         '    If Not bExists Then
-         '       pnlcolumnview.Visible = True
-         '       columnview1.Visible = True
-         '    End If
-         ' Endif
-         '  End If
+         
       Case "reason"
          HSplit_DrugDisplay.Visible = False
          With pnlcolumnview
@@ -1960,36 +2024,70 @@ Public Sub Drug_Save_No_Print()
 End
 
 Public Sub Drug_Add(Optional bSaveItemNoPrint As Boolean = False) As Boolean
-   '----------------------------------------------------------------------------------------
+   '---------------------------------------------------------------------------------------------------------
    'Script items are added to the list under the editing area, and printed en-mass whenever
-   'the user elects to do this - 3 items on a script for 'like' items
-   'e.g if all pbs, all private
+   'the user elects to do this - 3 items on a script for 'like' items e.g if all pbs, all private
    'Returns true flag if sucessfully added to the list
+   '---------------------------------------------------------------------------------------------------------
    ' CREATE TABLE clin_prescribing.prescribed
    ' (
    '   pk serial NOT NULL,
-   ' x  fk_consult integer NOT NULL,
+   '   fk_consult integer NOT NULL, -- foreign key to clin_consult.consult table
    '   fk_medication integer NOT NULL,
-   ' x  fk_brand uuid,
-   ' x  date_on_script date NOT NULL, -- The actual date on the script may not be the consulation date, can be back/forwarded dated,...
-   ' x  repeats integer NOT NULL DEFAULT 0, -- The actual number of repeats...
-   ' x  quantity integer NOT NULL, -- The quantity on the script...
-   ' x  fk_instruction integer NOT NULL,
-   ' x  fk_prescribed_for integer,
-   '  not yet implemented  pbscode text,
-   ' x  restriction_code text,
-   ' x  reg24 boolean DEFAULT false, -- If true reg24 allows us to tell the...
-   ' x  authority_script_number integer, -- the pbs requires a unique script number for an authority item, pretty stupid, but a number that...
-   ' x  authority_approval_number text, -- either the steamlined authority number or the phone approval number obtained from a pbs operator
-   ' x  authority_post_to_patient boolean DEFAULT false,
-   ' x  script_number integer,
-   ' not yet implemented  fk_code text, -- foreign key to references coding.generic_terms, if not null then the reason for using script...
-   ' not yet implemented  concession_details text,
-   ' not yet implemented  brand_substitution boolean DEFAULT true,
-   ' not yet implemented  fk_increased_quantity_authority_reason integer,
-   ' x  fk_lu_pbs_script_type integer,
-   ' not yet implemented  fk_progress_note integer,
-   ' x  deleted boolean DEFAULT false, 'the default
+   '   fk_brand uuid,
+   '   date_on_script date NOT NULL, -- The actual date on the script may not be the consulation date, can be back/forwarded dated,...
+   '   repeats integer NOT NULL DEFAULT 0, -- The actual number of repeats...
+   '   quantity integer NOT NULL, -- The quantity on the script...
+   '   fk_instruction integer NOT NULL,
+   '   fk_prescribed_for integer,
+   '   pbscode text,
+   '   restriction_code text,
+   '   reg24 boolean DEFAULT false, -- If true reg24 allows us to tell the...
+   '   authority_script_number integer, -- the pbs requires a unique script number for an authority item, pretty stupid, but a number that...
+   '   authority_approval_number text, -- either the steamlined authority number or the phone approval number obtained from a pbs operator
+   '   authority_post_to_patient boolean DEFAULT false,
+   '   script_number integer,
+   '   concession_details text,
+   '   brand_substitution boolean DEFAULT true,
+   '   fk_lu_pbs_script_type integer,
+   '   fk_progress_note integer,
+   '   deleted boolean DEFAULT false,
+   '   printed boolean DEFAULT true, -- if the script was actually printed then printed is true, i.e when the menu option saved no print is used field is false
+   '   authority_reason text, -- the text of the authority wording
+   '   print_reason boolean DEFAULT true, -- if True then the reason the drug was prescribed will be printed on the script
+   '   latex text DEFAULT (NOT NULL::boolean),
+   '   medisecure_uuid uuid DEFAULT uuid_generate_v4(), -- UUID for each script, for MediSecure's XML
+   '   medisecure_barcode character(16), -- the barcode printed on the script
+   '   escript_uploaded boolean, -- false=not uploaded yet, true=uploaded, NULL=not an e-script
+   '   ctg character(3), -- Closing the Gap...
+   '   CONSTRAINT prescribed_pkey PRIMARY KEY (pk),
+   '   CONSTRAINT prescribed_fk_brand_fkey FOREIGN KEY (fk_brand)
+   '       REFERENCES drugs.brand (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT prescribed_fk_consult_fkey FOREIGN KEY (fk_consult)
+   '       REFERENCES clin_consult.consult (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT prescribed_fk_instruction_fkey FOREIGN KEY (fk_instruction)
+   '       REFERENCES clin_prescribing.instructions (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT prescribed_fk_lu_pbs_script_type_fkey FOREIGN KEY (fk_lu_pbs_script_type)
+   '       REFERENCES clin_prescribing.lu_pbs_script_type (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT prescribed_fk_medication_fkey FOREIGN KEY (fk_medication)
+   '       REFERENCES clin_prescribing.medications (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT prescribed_fk_prescribed_for_fkey FOREIGN KEY (fk_prescribed_for)
+   '       REFERENCES clin_prescribing.prescribed_for (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT prescribed_fk_progress_note_fkey FOREIGN KEY (fk_progress_note)
+   '       REFERENCES clin_consult.progressnotes (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT prescribed_medisecure_barcode_check CHECK (medisecure_barcode ~ '[A-Z]{3}[0-9]{13}'::text)
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   '----------------------------------------------------------------------------------------------------------
    '
    ' If interactions exist for the drug, add them to the list under the editing area
    ' bInteractionsExist was set in Interactions_Drug_Display
@@ -2000,17 +2098,9 @@ Public Sub Drug_Add(Optional bSaveItemNoPrint As Boolean = False) As Boolean
    
    If Not Drug_Valid() Then Return
    If Drug_Duplicated() Then Return
-   ' If currentconsult!allergy_class_codes.Exist(drug!class_code) Then 'the user has already been warned about this and clicked ok
-   '    sMsg = "The user was presented with dialog box warning about the danger of prescribing "
-   '    sMsg &= drug!generic & " because of an existing allergy/sensitivity<BR><BR>Details of this reaction were displayed "
-   '    sMsg &= "and the user  viewed the messsage and clicked OK. They also then have added this medication to the list to be printed, ignoring the warning.<BR><BR>"
-   '    If modAudit.MakeAudit(currentconsult, "warning to user", Null, 0, const.cSection_Prescriptions, sMsg) Then
-   '       modDBConnect.CommitTrans()
-   '    Endif
-   ' End If   
    script_item = New Collection
-   If fk_item_prescribed Then Script_item!fk_item_prescribed = fk_item_prescribed
-   If fk_medication Then script_item!fk_medication = fk_medication
+   If Not IsNull(fk_item_prescribed) Then Script_item!fk_item_prescribed = fk_item_prescribed
+   If Not IsNull(fk_medication) Then script_item!fk_medication = fk_medication
    script_item!med = drug!medication
    script_item!med!last_date = currentconsult.GetConsultDate()
    script_item!med!start_date = currentconsult.GetConsultDate() 'won't always be true unless this is a new medication
@@ -2035,11 +2125,8 @@ Public Sub Drug_Add(Optional bSaveItemNoPrint As Boolean = False) As Boolean
    script_item!instruction = modUtil.StripExtraBlanks(Trim(txtInstructions.text))
    script_item!prescribed_for = modUtil.StripExtraBlanks(Trim(txtReason.text))
    script_item!prescribed!print_reason = CBool(chkPrintReason.value)
-   ' If chkActive.Value = chkActive.True Then
-   '    script_item!prescribed!ctg = modPrescribingDBI.Get_CTG_Code(Val(txtDate.Text))
-   ' Endif
    script_item!prescribed!fk_instruction = modPrescribingDBI.Instruction_Get_PK(script_item!instruction)
-   modPrescribingDBI.Instructions_Save_Habit(script_item) 'save instruction habit and pull back the key
+   modPrescribingDBI.Instructions_Save_Habit(script_item) 'save instruction habit and pull back the key fixme this used to pull back 1 if unscessful now null
    modDBConnect.CommitTrans()
    script_item!prescribed!fk_prescribed_for = modPrescribingDBI.PrescribedFor_Get_Pk(script_item!prescribed_for)
    modPrescribingDBI.Prescribed_For_Save_Habit(script_item) ' save the prescribed for habit and pull back the key
@@ -2072,7 +2159,7 @@ Public Sub Drug_Add(Optional bSaveItemNoPrint As Boolean = False) As Boolean
       Drug_Interactions_For_Drugs_Prescribed.add(Drug_Interactions_For_Drug_Prescribed, Drug_Interactions_For_Drugs_Prescribed.count)
       lvwDrugsWithInteractions_ReLoad()
    Endif
-   tbOk.Enabled = True   '??fixme whats this ?legac y
+   tbOk.Enabled = True  '??whats this
    Return True
    
 End
@@ -2109,7 +2196,7 @@ Public Sub FClinical_Refresh()
    End If   
    If Embedded_In_Form = "FClinical" Then                                   'if writing script in clinical
       If FInbox.Is_Same_Patient(currentconsult!patient!fk_patient) Then     'and same patient in the inbox
-         Try FInbox.Medications_Refresh                                         'try and update the meds list in the inbox
+         Try FInbox.Medications_Refresh                                     'try and update the meds list in the inbox
       Endif
    End If   
    
@@ -2164,8 +2251,6 @@ Public Sub columnview1_DblClick()
    
    columnview1.MoveCurrent
    Select Case columnview1.tag.tag 'don't make me 'last'
-         ' Case "authority wording"
-         '    Authority_Increased_Quantity_Reasons_Select()
       Case "reason"
          Prescribed_For_Habits_Select()
       Case "instructions"
@@ -2230,41 +2315,6 @@ Public Function cvwPrescriptions_Refresh(Script_Items_Written As Collection)
    
 End
 
-' Public Function Medication_update_Progress_notes()
-'    '---------------------------------------------------------------------------------------
-'    'whenever medications are added or deleted 'today' update progress notes to reflect this
-'    '--------------------------------------------------------------------------------------- 
-'    
-'    Dim ProgressNote As CRow
-'    
-'    fk_medications_progressnote = modPrescribingDBI.ProgressNote_Written_Today_Get_Pk(currentconsult)
-'    If cvwPrescriptions.count = 0 Then             'nothing on the script pad
-'       If fk_medications_progressnote Then         'but have a progress note key, must have deleted the last one
-'          If modPrescribingDBI.Medication_Progressnote_Delete(fk_medications_progressnote) Then
-'             modDBConnect.CommitTrans
-'          Else
-'             modDBConnect.RollBack                                       
-'          Endif
-'       End If   
-'    Else
-'       ProgressNote = New CRow
-'       If fk_medications_progressnote Then
-'          ProgressNote.put_unchanged(fk_medications_progressnote, "fk_medications_progressnote")
-'          ProgressNote!fk_audit_action = const.cAuditAction_Edit
-'       Else     
-'          ProgressNote!fk_audit_action = const.cAuditAction_Insert                  'is an insert     
-'       End If   
-'       ProgressNote!fk_consult = currentconsult.GetPK()
-'       ProgressNote!notes = modPrescribingDBI.Medications_Prepare_List(currentconsult, "tinsert medication list today's medications with heading")
-'       ProgressNote!fk_section = const.cSection_Prescriptions
-'       ProgressNote!problem = "Prescription"
-'       ProgressNote.Save("clin_consult.progressnotes", "fk_medications_progressnote")
-'       modProgressNotesDBI.ProgressNote_Code(ProgressNote!fk_medications_progressnote, "prescription written")
-'       modDBConnect.CommitTrans()
-'    End If   
-'    
-' End
-
 Public Function Drug_Duplicated() As Boolean
    '--------------------------------------------------------------------------
    'Checks the edit area item against the scripts prescribed this consulation
@@ -2309,7 +2359,7 @@ Public Function Drug_Valid() As Boolean
       txtdate.SetFocus()
       Return
    Endif
-   If drug!medication!fk_generic_product = 0 Then
+   If IsNull(drug!medication!fk_generic_product) Then
       txtGeneric.SetFocus()
       Return
    Endif
@@ -2565,8 +2615,6 @@ Public Sub Script_Construct_Authority_LaTeX(auth_items As Collection) As CTempla
    '----------------------------------------------
    
    Dim templ As CTemplate
-   Dim Drug As String
-   Dim drugs As String
    Dim auth_item As Collection = auth_items[0]
    Dim heading As String
    Dim script_number As Integer
@@ -2640,9 +2688,11 @@ Public Sub Script_Construct_Authority_LaTeX(auth_items As Collection) As CTempla
 End
 
 Public Sub New_Entry()
-   '------------------------------------------------------------------------------------------------------
-   'This is called from the main toolbar in FClinical and here for consistant nomenclature between modules
-   '------------------------------------------------------------------------------------------------------
+   '---------------------------------------------------------------
+   'Called from FClinical, called this because can't use New() and
+   'all across easyp this is the wording I've chosen
+   'see FClinicalToolbar.MainToolbar_Click for details
+   '---------------------------------------------------------------   
    
    Drug_New()
    
@@ -3055,7 +3105,7 @@ Public Sub Interactions_Drug_Display(DR As Collection, bSelectingDrug As Boolean
    
    Dim med As Collection
    Dim item_prescribed_today As Collection
-   Dim fk_generic_product_keys As New String[]
+   Dim fk_generic_product_keys As New Variant[]
    Dim sAllInterationsForDrug As String
    Dim sInteractionText As String
    Dim Drug_With_Interaction As Collection
@@ -3199,4 +3249,3 @@ Public Sub lvwDrugsWithInteractions_Select()
    Next
    
 End
-

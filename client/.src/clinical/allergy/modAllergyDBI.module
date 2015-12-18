@@ -1,6 +1,6 @@
 ' Gambas module file
 
-' Copyright (C) 2008-2015 Dr. Richard Terry Dr. Ian Haywood
+' Copyright (C) 2008-2016 Dr. Richard Terry Dr. Ian Haywood
 
 ' This program is free software: you can redistribute it and/or modify
 ' it under the terms of the GNU General Public License as published by
@@ -16,7 +16,141 @@
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '----------------------------------------------------------------------
 
-Public Function Allergies_Get_bad(fk_patient As Integer) As Collection
+Public Sub Allergies_Sensitivities_Refresh(currentconsult As CConsult, gvAllergies As Gridview)
+   '---------------------------------------------------------------
+   'Fetch the patients allergies and sensitivities from the backend
+   'If the allergy is non-drug show the allergen
+   'If the allergy is generic specific show the generic
+   'If no allergy and no 'no allergies known'
+   'then prompt user with prominant comment 'PATIENT NOT ASKED'
+   'If any sensitivites exist then by definition the module has been
+   'accessed and allergies will have been queried, user will be
+   'informed sensitivities exist they will not be listed.
+   '---------------------------------------------------------------
+   
+   Dim allergy As Collection
+   Dim allergies As Collection
+   Dim meds_prescribed_today As Collection 
+   Dim med As Collection
+   Dim allergy_class_code As Collection 
+   Dim sMsg As String
+   Dim stotalHeight As Integer
+
+   With gvAllergies
+      .Clear()
+      .Rows.count = 0
+   '   Rows.Height = -1
+      .Columns.count = 2
+      .columns[0].width = 20
+   End With
+   currentconsult.Refresh("allergies")
+   allergies = Modutil.Copy_Collection_Keyed_Sequentially(currentconsult!allergies)
+   If allergies.count Then                              'have either allergies or sensitivities
+      For Each allergy In currentconsult!allergies    
+         If allergy!nil_allergies_sensitivities Then           'First acertain if has ever been asked 
+            Inc gvAllergies.Rows.Count
+            With gvAllergies[gvAllergies.Rows.Count - 1, 1]
+               .Text = "Asked - No Known Allergies"
+               .Foreground = Color.Red
+               .Alignment = Align.Center
+            End With
+            gvAllergies.Height = gvAllergies.Rows[gvAllergies.row].Height * 2
+            Return 
+         Endif
+         Inc gvAllergies.Rows.Count 
+         If allergy!fk_lu_reaction_type = const.ReactionType_Allergy Then  'exists ?is an allergy
+            With gvAllergies[gvAllergies.Rows.Count - 1, 0]
+               .text = "A"
+               .Foreground = Color.red
+               .Alignment = Align.TopLeft
+            End With 
+         Else
+            With gvAllergies[gvAllergies.Rows.Count - 1, 0]
+               .text = "S"
+               .Foreground = Color.Black
+               .Alignment = Align.TopLeft
+            End With 
+         End If   
+         With gvAllergies[gvAllergies.Rows.Count - 1, 1]
+            If allergy!specificity = "g" Then
+               .text = allergy!generic
+            Else If allergy!specificity = "b" Then 
+               .text = allergy!brand
+            Else
+               .Text = Trim(allergy!class_name & " " & allergy!allergen) 'only one will appear
+            End If   
+            .Alignment = Align.TopLeft
+            If allergy!fk_lu_reaction_type = const.ReactionType_Allergy Then
+               .Foreground = Color.Red
+            Else
+               .Foreground = Color.Black
+            End If 
+            .WordWrap = True
+         End With
+       '  gvAllergies.Rows[gvAllergies.Rows.Count - 1].height = -1
+         stotalHeight += gvAllergies.Rows[gvAllergies.row].Height
+         
+      Next
+    gvAllergies.height = stotalHeight   
+   End If  
+   If gvAllergies.Rows.count = 0 Then   
+      Inc gvAllergies.Rows.Count
+      With gvAllergies[gvAllergies.Rows.Count - 1, 1]
+         .WordWrap = True
+         .RICHText = "No record of patient being asked about allergies"
+         .Foreground = Color.Red
+         .Alignment = Align.Center
+      End With
+    '  gvAllergies.rows[0].Height = -1
+   End If
+ 
+   '------------------------------------------------------------------------------------------------------------------
+   'Check that nothing has been prescribed today (and saved) to which we are allergic, warn user, lay down audit trail
+   '------------------------------------------------------------------------------------------------------------------
+   For Each med In currentconsult!prescriptions_written  '= prescriptions written today
+      For Each allergy_class_code In currentconsult!allergy_class_codes
+         If allergy_class_code!class_code = Left(med!atccode, Len(allergy_class_code!class_code)) Then
+            sMsg = modAllergyDBI.Allergy_Warning(currentconsult, med, allergy_class_code!class_code)
+            sMsg &= "\n\nIt seems this drug has already been prescribed today.\n\nYou should check the prescription is not a mistake."
+            Message.Warning(sMsg, "Ok")
+            sMsg = "The user was presented with a warning message about danger with a currently prescribed medication and viewed and clicked OK in the popup dialog box.<BR><BR>" & sMsg 
+            If modAudit.MakeAudit(currentconsult, "warning to user", "clin_prescribing.prescribed", med!prescribed!pk, const.cSection_Prescriptions, sMsg) Then
+               modDBConnect.CommitTrans()
+            Endif
+            Break
+         End If  
+      Next
+   Next
+   '-------------------------------------------------------------------
+   'Now check that nothing has been prescribed but not printed or saved
+   '-------------------------------------------------------------------
+   ' If Not IsNull(PrescriptionPage) Then  'fixme invalid object
+   '    If Not IsNull(PrescriptionPage.script_items) Then  
+   '       For Each med In PrescriptionPage.script_items
+   '          If med!prescribed.Exist("pk") = False Then   'on list but not yet saved or printed
+   '             For Each allergy_class_code In currentconsult!allergy_class_codes
+   '                If allergy_class_code!class_code = Left(med!atccode, Len(allergy_class_code!class_code)) Then
+   '                   sMsg = modAllergyDBI.Allergy_Warning(currentconsult, med, allergy_class_code!class_code)
+   '                   sMsg &= "\n\nIt seems this drug has already been prescribed today but not printed.\n\nYou should check the prescription is not a mistake."
+   '                   Message.Warning(sMsg, "Ok")
+   '                   sMsg = "The user was presented with a warning message about danger with a currently prescribed medication which has not yet been printed, and viewed and clicked OK in the popup dialog box.<BR><BR>" & sMsg 
+   '                   If modAudit.MakeAudit(currentconsult, "warning to user", Null, 0, const.cSection_Prescriptions, sMsg) Then
+   '                      modDBConnect.CommitTrans()
+   '                   Endif
+   '                   Break
+   '                End If  
+   '             Next
+   '          End If  
+   '       Next
+   '    End If   
+   ' End If   
+   
+   ' Catch 
+   '   Return
+   
+End
+
+Public Function Allergies_Get_bad(fk_patient As Variant) As Collection
    '-------------------------------------------------------------------------------
    'Gets the patients allergies and sensitivites with allergies listed first
    'includes collection member 'class codes' as a collection of allergy class codes
@@ -40,7 +174,7 @@ Public Function Allergies_Get_bad(fk_patient As Integer) As Collection
    
 End
 
-Public Function Allergies_Get_Class_Codes(fk_patient As Integer) As Collection 
+Public Function Allergies_Get_Class_Codes(fk_patient As Variant) As Collection 
    
    Dim sql As String
    
@@ -52,7 +186,7 @@ Public Function Allergies_Get_Class_Codes(fk_patient As Integer) As Collection
    
 End
 
-Public Function Allergies_Get(fk_patient As Integer) As Collection
+Public Function Allergies_Get(fk_patient As Variant) As Collection
    '------------------------------------------------------------------------
    'Gets the patients allergies and sensitivites with allergies listed first
    '------------------------------------------------------------------------
@@ -77,7 +211,7 @@ Public Function ATC_Code_Get_Class(code As String) As Result
    
 End
 
-Public Function Reaction_save(the_reaction As String) As Integer
+Public Function Reaction_save(the_reaction As String) As Variant
    '-----------------------------------------------------------
    'Saves the free text of a reaction if does not already exist
    '-----------------------------------------------------------
@@ -92,7 +226,6 @@ Public Function Reaction_save(the_reaction As String) As Integer
    Return reaction!pk
    
 End
-
 
 Public Sub Allergy_Warning(currentconsult As Cconsult, drug As Collection, Optional class_code As String) As String
    '---------------------------------------------------------------------------------------------------------------------------------

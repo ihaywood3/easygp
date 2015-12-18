@@ -1,6 +1,6 @@
 ' Gambas class file
 
-' Copyright (C) 2008-2015 Dr. Richard Terry
+' Copyright (C) 2008-2016 Dr. Richard Terry
 
 ' This program is free software: you can redistribute it and/or modify
 ' it under the terms of the GNU General Public License as published by
@@ -41,7 +41,7 @@ Private fk_default_branch As Variant
 Private fk_lu_request_type As Variant 
 Private fk_request_provider As Variant
 Private fk_user_provider_default As Variant
-Private fk_person As Variant = 0
+Private fk_person As Variant
 Private RequestDefaultProviders As Collection 
 Private RequestDefaultProvider As Collection 
 Private fk_staff As Variant  
@@ -90,7 +90,6 @@ Public Sub Save()
    ' (
    '   pk serial NOT NULL,
    ' x  fk_staff integer NOT NULL, -- key to admin.staff table ie describes the user
-   ' x  fk_default_branch integer NOT NULL, -- key to contacts.branches table...
    ' x  fk_request_provider integer,
    ' x  send_electronically boolean DEFAULT false,
    '  x print_paper boolean DEFAULT true,
@@ -112,12 +111,11 @@ Public Sub Save()
    End If
    RequestDefaultProvider = New CRow
    
-   If fk_user_provider_default Then 
+   If Not IsNull(fk_user_provider_default) Then 
       RequestDefaultProvider.Put_Unchanged(fk_user_provider_default, "fk_user_provider_default")
    End If
    RequestDefaultProvider!fk_request_provider = fk_request_provider
    RequestDefaultProvider!fk_staff = fk_staff               
-   RequestDefaultProvider!fk_default_branch = fk_default_branch
    RequestDefaultProvider!fk_lu_request_type = request_types[cmbRequestTypes.index]!pk
    If chkElectronic.Value Then
       RequestDefaultProvider!send_electronically = True
@@ -152,7 +150,6 @@ Public Sub EditAreaTextBox_GotFocus()
    Select Case Last.tag
       Case "provider"
          With Columnview1
-            ' .top = Hbox_Branch.top + Hbox_Branch.Height '+ Vbox1.Padding
             .top = Last.Parent.Parent.Top + Last.Parent.Height
             .width = Last.Width
             .left = Last.Parent.left + VBox_EditArea.padding + Vbox_EditArea_Inner.Padding
@@ -162,6 +159,11 @@ Public Sub EditAreaTextBox_GotFocus()
                User_RequestDefault_New()
                Return
             End If
+            
+         Else
+            If Not IsNull(fk_user_provider_default) Then
+               Providers_Get
+            Endif
          End If
    End Select
    
@@ -186,18 +188,17 @@ Public Function Valid_Request_Provider_Default() As Boolean
    'do some minimal validation
    '---------------------------
    
-   If fk_lu_request_type = 0 Then 
+   If IsNull(fk_lu_request_type) Then 
       cmbRequestTypes.SetFocus()
       Return False
    End If
-   If fk_default_branch = 0 Then 
-      cmbBranches.SetFocus()
-      Return False
-   End If
-   If fk_organisation = 0 Then 
-      txtProvider.SetFocus()
-      Return False
-   End If
+   If IsNull(fk_request_provider) Then Return 
+   If Not IsNull(fk_organisation) Then
+      If IsNull(fk_default_branch) Then 
+         cmbBranches.SetFocus()
+         Return False
+      End If
+   End If   
    Return True
    
 End
@@ -210,7 +211,7 @@ Public Sub User_RequestDefault_New()
    
    Dim sMsg As String
    
-   If Not modRequestsDefaultsDBI.RequestProviders_Exist() Then
+   If Not modRequestsDBI.RequestProviders_Exist() Then
       Message.title = "Setting up default providers"
       sMsg = "<P>No request providers have been setup by your Admin.</P>"
       Message.info(sMsg & Mini_Help())
@@ -234,11 +235,11 @@ End
 
 Public Function Mini_Help() As String
    
-   Return "<P>please read the help files on this topic carefully</P>"
+   Return "<P>Please read the help files on this topic carefully</P>"
    "<UL>"
-   "<LI>In Contacts the Admin user must enter the names of the companies you will be sending requests to e.g Pathology"
-   "<LI>In Admin.Setup Ordering.Setup Entities To Receive Requests the Admin user must tell EasyGP that a company will recieve particuliar types of requests."
-   "At this stage all users will be allocated Admin's choice of preferred provider."
+   "<LI>In Contacts the Admin user must enter the names of the companies you will be sending requests to e.g Pathology<BR>"
+   "<LI>In Admin.Setup Ordering.Setup Entities To Receive Requests the Admin user must tell EasyGP that a company will receive particuliar types of requests. "
+   "At this stage all users will be allocated Admin's choice of preferred provider if no previous providers have been allocated.<BR>"
    "<LI>You may as a user then tell EasyGP you want a particuliar company to be your default in this section."
    "</UL>"
    
@@ -263,10 +264,24 @@ Public Sub cmbRequestTypes_Click()
    'which companies or individuals we can order or request things from
    'eg Pathology companies, radiology etc
    '-----------------------------------------------------
+
+   Dim smsg As String
    
    If bExit Then Return
    If cmbRequestTypes.index = -1 Then Return 
+   For Each RequestDefaultProvider In RequestDefaultProviders  'first check that we don't already have a default of this type
+      If RequestDefaultProvider!fk_lu_request_type = Request_Types[cmbRequestTypes.index]!pk Then
+         smsg = "There is already a request default for the type:\n\n" & cmbRequestTypes.Text & "\n\n"
+         sMsg &= "If you wish to change the default provider for this type, please select the provider "
+         "from the list below, and using the right mouse click menu, select 'Edit' and make  your changes."
+         Message.Warning(smsg, "Ok")
+         Editarea_Clear()
+         VBox_EditArea.Enabled = False   
+         Return
+      Endif
+   Next
    fk_lu_request_type = Request_Types[cmbRequestTypes.index]!pk   'set request type key eg 1=pathology
+   
    With Columnview1
       .top = Hbox_Provider.top + HBox_Provider.Height
       .width = txtProvider.Width
@@ -312,7 +327,7 @@ Public Sub Providers_Get()
    If providers.count Then 
       For Each provider In providers
          columnview1.Add(provider!pk_request_provider, 0)
-         If provider!fk_person <> 0 Then
+         If Not IsNull(provider!fk_person) Then 'was if provider!fk_person<> 0
             columnview1[provider!pk_request_provider][0] = provider!wholename
          Else
             columnview1[provider!pk_request_provider][0] = provider!organisation
@@ -399,11 +414,11 @@ Public Sub Editarea_Clear()
       .Foreground = Color.Red
       .Text = ""
    End With
-   fk_request_provider = 0
-   fk_user_provider_default = 0
-   fk_default_branch = 0
-   fk_lu_request_type = 0
-   fk_organisation = 0
+   fk_request_provider = Null
+   fk_user_provider_default = Null
+   fk_default_branch = Null
+   fk_lu_request_type = Null
+   fk_organisation = Null
    VBox_EditArea.Enabled = False 
    
 End
@@ -416,10 +431,12 @@ Public Sub User_RequestDefault_Display()
    
    bexit = True
    cvwUserDefaults.MoveCurrent
-   RequestDefaultProvider = New Collection
+   '  RequestDefaultProvider = New Collection
    txtProvider.text = RequestDefaultProviders[cvwUserDefaults.Item.key]!organisation
    fk_organisation = RequestDefaultProviders[cvwUserDefaults.Item.key]!fk_organisation
-   branches = modUtilGUI.LoadCombo(cmbBranches, modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.Branches_Get_For_Organisation(fk_organisation)), "branch")
+   If Not IsNull(fk_organisation) Then   
+      branches = modUtilGUI.LoadCombo(cmbBranches, modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.Branches_Get_For_Organisation(fk_organisation)), "branch")
+   End If  
    cmbBranches.index = cmbBranches.Find(RequestDefaultProviders[cvwUserDefaults.Item.key]!default_branch)
    txtStreet1.text = RequestDefaultProviders[cvwUserDefaults.Item.key]!default_branch_street1
    txtStreet2.text = RequestDefaultProviders[cvwUserDefaults.Item.key]!default_branch_street2
@@ -430,14 +447,14 @@ Public Sub User_RequestDefault_Display()
    fk_default_branch = RequestDefaultProviders[cvwUserDefaults.Item.key]!fk_default_branch
    fk_lu_request_type = RequestDefaultProviders[cvwUserDefaults.Item.key]!fk_lu_request_type
    fk_user_provider_default = cvwUserDefaults.Item.key ' = pk_default
-   fk_request_provider = RequestDefaultProviders[cvwUserDefaults.Item.key]!fk_request_provider 'key to  clin_requests.user_provider_defaults
-   RequestDefaultProvider!pk_default = RequestDefaultProviders[cvwUserDefaults.Item.key]!pk_default
-   RequestDefaultProvider!fk_staff = RequestDefaultProviders[cvwUserDefaults.Item.key]!fk_staff
-   RequestDefaultProvider!fk_default_branch = RequestDefaultProviders[cvwUserDefaults.Item.key]!fk_default_branch 
-   RequestDefaultProvider!fk_head_office_branch = RequestDefaultProviders[cvwUserDefaults.Item.key]!fk_head_office_branch 
-   RequestDefaultProvider!send_electronically = RequestDefaultProviders[cvwUserDefaults.Item.key]!send_electronically
-   RequestDefaultProvider!print_paper = RequestDefaultProviders[cvwUserDefaults.Item.key]!print_paper
-   RequestDefaultProvider!deleted = False
+   ' fk_request_provider = RequestDefaultProviders[cvwUserDefaults.Item.key]!fk_request_provider 'key to  clin_requests.user_provider_defaults
+   ' RequestDefaultProvider!pk_default = RequestDefaultProviders[cvwUserDefaults.Item.key]!pk_default
+   ' RequestDefaultProvider!fk_staff = RequestDefaultProviders[cvwUserDefaults.Item.key]!fk_staff
+   ' RequestDefaultProvider!fk_default_branch = RequestDefaultProviders[cvwUserDefaults.Item.key]!fk_default_branch 
+   ' RequestDefaultProvider!fk_head_office_branch = RequestDefaultProviders[cvwUserDefaults.Item.key]!fk_head_office_branch 
+   ' RequestDefaultProvider!send_electronically = RequestDefaultProviders[cvwUserDefaults.Item.key]!send_electronically
+   ' RequestDefaultProvider!print_paper = RequestDefaultProviders[cvwUserDefaults.Item.key]!print_paper
+   ' RequestDefaultProvider!deleted = False
    bExit = False
    
 End
@@ -462,10 +479,12 @@ Public Sub Provider_Select(provider As Collection)
    '----------------------------------------------------------------------------
    bExit = True
    fk_request_provider = provider!pk_request_provider
-   If provider!fk_person <> 0 Then
+   If Not IsNull(provider!fk_person) Then
       txtProvider.text = provider!wholename
       txtProvider.pos = 0
       fk_person = provider!fk_person
+      fk_organisation = Null
+      fk_default_branch = Null
       txtStreet1.text = provider!headoffice_street1
       txtStreet1.pos = 0
       txtStreet2.text = provider!headoffice_street2
@@ -476,8 +495,10 @@ Public Sub Provider_Select(provider As Collection)
       txtProvider.text = provider!organisation
       txtProvider.pos = 0
       fk_organisation = provider!fk_organisation
+      fk_person = Null
       Branches_Get(provider)
    End If   
+   EditArea_Notify_Change(True)
    bExit = False   
    
 End
@@ -499,8 +520,10 @@ Public Sub Branches_Get(provider As Collection)
          Return   
       End If   
    Next
-   cmbBranches.index = 0 
-   cmbBranches_Click()
+   If branches.count Then
+      cmbBranches.index = 0 
+      cmbBranches_Click()
+   End If   
    
 End
 
@@ -543,6 +566,7 @@ Public Sub Reload()
    
    Dim col_widths As New Integer[3]
    
+   Editarea_Clear
    lblMeasure.font.Name = cvwUserDefaults.font.Name
    lblMeasure.Font.Size = cvwUserDefaults.Font.Size
    VBox_EditArea.Enabled = False   
@@ -556,7 +580,6 @@ Public Sub Reload()
       cvwUserDefaults[RequestDefaultProvider!pk_default][1] = RequestDefaultProvider!organisation
       lblmeasure.text = RequestDefaultProvider!organisation
       col_widths[1] = Max(lblmeasure.Width, col_widths[1])
-      ' cvwUserDefaults[RequestDefaultProvider!pk_default][2] = "HEAD OFFICE:" & Trim(RequestDefaultProvider!headoffice_street1 & " " & RequestDefaultProvider!headoffice_street1) & " " & RequestDefaultProvider!headoffice_town
       cvwUserDefaults[RequestDefaultProvider!pk_default][2] = Trim(RequestDefaultProvider!default_branch_street1 & " " & RequestDefaultProvider!default_branch_street2) & " " & RequestDefaultProvider!default_branch_town
    Next
    cvwUserDefaults.Columns[0].width = col_widths[0]
@@ -600,22 +623,22 @@ Public Sub mnuProviderDefaults_Click()
    End Select
 Catch
    Return 
-
+   
 End
 
 Public Sub User_RequestDefault_Edit()
    '--------------------------------------------------------------
    'Allow user to edit current default to change eg default branch
    '--------------------------------------------------------------
-   ' Editarea_Clear()  
    
    With lblEditArea_Heading
       .Foreground = Color.Red
       .Text = "Edit Existing User Request Default"
       .Visible = True
    End With
-   ' User_RequestDefault_Display()
+   
    VBox_EditArea.Enabled = True
+   txtProvider.SetFocus
    
 End
 

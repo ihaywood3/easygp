@@ -1,6 +1,6 @@
 ' Gambas class file
 
-' Copyright (C) 2008-2015 Dr. Richard Terry
+' Copyright (C) 2008-2016 Dr. Richard Terry
 
 ' This program is free software: you can redistribute it and/or modify
 ' it under the terms of the GNU General Public License as published by
@@ -14,10 +14,11 @@
 
 ' You should have received a copy of the GNU General Public License
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'------------------------------------------------------------------------
 Private $iZoom As Integer
 Private $iHidden As Integer
 Public $currenthview As WebView
-Public bTravelmed As Boolean
+Public bTravelmed As Boolean = True
 Public bEmbeddedHelp As Boolean
 Public sTravelMedDestination As String
 Private bExit As Boolean
@@ -31,6 +32,7 @@ Private sClinical_Module_Name As String
 Private bFolderAlwaysvisible As Boolean
 Private x As WebSettings
 Private Count As Integer
+Private $sLastLink As String
 
 'Private mnuFolders As Menu
 Public Sub Section_Set(sString As String)
@@ -52,26 +54,27 @@ End
 Public Sub Form_Open()
    
    WebSettings.IconDatabase.Path = File.Dir(File.Dir(Temp$()))
-   '  WebSettings.Font[WebSettings.FixedFont] = "Inconsolata"
+   WebSettings.Fonts.FixedFont = "Monospace"
    WebSettings[WebSettings.PluginsEnabled] = False
    WebSettings[WebSettings.JavascriptEnabled] = True
    WebSettings[WebSettings.JavaEnabled] = True
    WebSettings[WebSettings.JavascriptCanOpenWindows] = True
    WebSettings[WebSettings.JavascriptCanAccessClipboard] = True
-   WebSettings[WebSettings.DeveloperExtrasEnabled] = True
+   ' WebSettings[WebSettings.DeveloperExtrasEnabled] = True
+   WebSettings.Fonts.DefaultFontSize = 12
+   WebSettings.Fonts.DefaultFixedFontSize = 12
    ' WebSettings.Cache.path = File.Dir(File.Dir(Temp$()))
    ' WebSettings[WebSettings.cache] = "1"
    
    CreateView()
    btnZoomNormal_Click
-   ' txtURL.SetFocus
-   ' tabBrowser_Click()
-   If bTravelmed = False Then
-      'txtURL.Text = "http://www.ciap.health.nsw.gov.au/" 
-      '  txtURL.Text = "http://www.gpaccess.com.au" 
-      '  Print txturl
-      '   txtURL_Activate
-   End If
+   txtURL.SetFocus
+   If bTravelmed = False Then 
+      txtURL.Text = "http://www.google.com"
+      txtURL_Activate
+   Else
+      txtURL.text = "** type country of destination here **"
+   End If   
    Try Settings_Load()
    
 End
@@ -79,6 +82,8 @@ End
 Private Sub GetView() As WebView
    
    Return tabBrowser[tabBrowser.Index].Children[0]
+Catch
+   Return
    
 End
 
@@ -93,6 +98,7 @@ End
 Public Sub WebView_Link(Url As String)
    
    If Not IsLastCurrentView() Then Return
+   $sLastLink = Url
    lblStatus.Text = Url
    
 End
@@ -117,7 +123,14 @@ End
 
 Public Sub WebView_Error()
    
-   GetView().Status = "Unable to load page"
+   Dim hView As WebView = GetView()
+   Dim sUrl As String
+   
+   sUrl = $sLastLink
+   If Not sUrl Then sUrl = txtURL.Text
+   
+   hView.Status = "Unable to load: " & sUrl
+   hView.HTML = "<h3>Unable to find the following URL:</h3>" & sUrl
    If Not IsLastCurrentView() Then Return
    
    lblStatus.Text = GetView().Status
@@ -127,12 +140,20 @@ End
 
 Public Sub WebView_Load()
    
-   GetView().Status = ""
+   Dim hView As WebView = GetView()
+   Dim hIcon As Picture
+   
+   hView.Status = ""
+   hIcon = hView.Icon 'WebSettings.IconDatabase[hView.Url]
+   tabBrowser[hView.Tag].Picture = hIcon
+   
    If Not IsLastCurrentView() Then Return
    
    lblStatus.Text = ""
-   txtURL.Text = GetView().Url
+   txtURL.Text = hView.Url
    pgbLoad.Hide
+   
+   UpdateIcon
    
 End
 
@@ -146,15 +167,22 @@ Public Sub btnGo_Click()
    
    Dim sText As String = txtURL.Text
    
+   'If bTravelmed = False And InStr(sText, "://") = 0 Then sText = "http://" & sText
+   ' If bTravelmed = False And InStr(sText, "://") = 0 Then sText = "http://" & sText
+   ' bTravelmed = False  
+   ' $sLastLink = sText
+   ' GetView().Url = sText
+   
    If BExit Then Return 
+   Print sText
    If Not (sText Like "http://*") And bTravelmed = False Then sText = "http://" & sText
-   If bTravelmed = True And InStr(txtURL.Text, "http://") = False Then
+   If bTravelmed = True And InStr(txtURL.Text, "https://") = False Then
       bexit = True   
       Inc Application.Busy
       sTravelMedDestination = "http://wwwnc.cdc.gov/travel/destinations/clinician/none/**"
       sTravelMedDestination = Replace(sTravelMedDestination, "**", Replace(Trim(sText), " ", "-")) 'e.g united arab emirates = united-arab-emirates
       txtURL.Text = sTravelMedDestination
-      $currenthview.url = sTravelMedDestination
+      GetView().Url = sTravelMedDestination
       Wait 
       Dec Application.Busy
       bExit = False  
@@ -162,6 +190,12 @@ Public Sub btnGo_Click()
    Else
       GetView().Url = sText
    End If   
+   
+End
+
+Public Sub txtURL_GotFocus()
+   
+   txtURL.text = ""
    
 End
 
@@ -192,9 +226,23 @@ End
 
 Public Sub btnReload_Click()
    
-   GetView().Reload
+   Dim hView As WebView = GetView()
+   
+   hView.Reload
    
 End
+
+' Public Sub zoom_out()
+'    
+'    GetView().Zoom = Round(GetView().Zoom * 1.25, -2)
+'    
+' End
+' 
+' Public Sub zoom_in()
+'    
+'    GetView().Zoom = Round(GetView().Zoom / 1.25, -2)
+'    
+' End
 
 Public Sub btnZoomIn_Click()
    
@@ -229,8 +277,7 @@ Public Sub WebView_Icon()
    Dim hView As WebView = Last
    
    tabBrowser[hView.Tag].Picture = hView.Icon
-   If Not IsLastCurrentView() Then Return
-   Me.Icon = hView.Icon
+   UpdateIcon
    
 End
 
@@ -264,18 +311,33 @@ Public Sub CreateView(Optional tabtext As String)
    
    Dim iLast As Integer = tabBrowser.Count - 1
    Dim hView As WebView
+   Dim vb As VBox
    
    Object.Lock(tabBrowser)
    Inc tabBrowser.Count
+   Object.Lock(tabBrowser)
    tabBrowser[iLast + 1].Picture = tabBrowser[iLast].Picture
    tabBrowser[iLast + 1].Text = tabBrowser[iLast].Text
    tabBrowser[iLast].Text = ""
    tabBrowser[iLast].Picture = Null
+   tabBrowser[iLast].Closable = True
+   Object.Lock(tabBrowser)
    tabBrowser.Index = iLast
+   ' With vb = New VBox(tabBrowser[iLast])
+   '    .Expand = True 
+   ' End With
    hView = New WebView(tabBrowser) As "WebView"
+   '  hView = New WebView(vb) As "WebView"
    hView.Tag = tabBrowser.Index
+   hView.Editable = btnEdit.Value
+   hView.Resize(1, 1)
+   'hView.Show
+   'Print WebSettings.Fonts.FixedFont
+   Object.Unlock(tabBrowser)
+   Object.Unlock(tabBrowser)
    Object.Unlock(tabBrowser)
    tabBrowser_Click
+   txtURL.SetFocus
    
 End
 
@@ -288,15 +350,14 @@ Public Sub tabBrowser_Click()
       CreateView()
    Else
       hView = GetView()
-      $currenthview = hview
       If hView.Title Then
          Me.Title = hView.Title & " - Gambas WebKit"
       Else
          Me.Title = "Gambas WebKit"
       Endif
-      If hView.title <> "" Then 
-         tabBrowser.Text = hView.Title
-      End If
+      tabBrowser.Text = hView.Title
+      UpdateIcon
+      tabBrowser.Picture = hView.Icon
       txtURL.Text = hView.Url
       lblStatus.Text = hView.Status
       pgbLoad.Value = hView.Progress
@@ -309,35 +370,9 @@ Public Sub tabBrowser_Click()
    
 End
 
-Public Sub btnClose_Click()
+Public Sub btnDownloadList_Click()
    
-   Dim F As Form
-   
-   GetView().Delete
-   
-   Object.Lock(tabBrowser)
-   Try tabBrowser[tabBrowser.Index].Delete()
-   If Error Then
-      If tabBrowser[tabBrowser.Index].Children[0] Is Form Then
-         F = tabBrowser[tabBrowser.Index].Children[0]
-         F.Close()
-         Message.info("is a form")
-         Try tabBrowser[tabBrowser.Index].Delete()
-      End If
-   End If
-   Object.UnLock(tabBrowser)
-   If tabBrowser.Index = (tabBrowser.Count - 1) And If tabBrowser.Index > 0 Then
-      tabBrowser.Index = tabBrowser.Index - 1
-   Else
-      tabBrowser_Click
-   Endif
-   ' Shell "rm -rf " & Shell$(WebSettings.Cache.Path) &/ "*" Wait
-   
-   ' If (tabBrowser.Count - $iHidden) = 1 Then
-   '   tabBrowser.Count = 1
-   '   $iHidden = 0
-   '   tabBrowser_Click
-   ' Endif
+   ' FDownloadList.Show
    
 End
 
@@ -345,18 +380,296 @@ Public Sub WebView_Auth()
    
    Dim hView As WebView = Last
    
-   Inc count
-   If count = 3 Then 
-      count = 0
-      Return
-   Endif
-   If count = 2 Then Return
    If Not FAuth.Run(hView.Auth.Url, hView.Auth.Realm) Then
+      
       hView.Auth.User = FAuth.User
       hView.Auth.Password = FAuth.Password
+      'Debug hView.Auth.Url;; hView.Auth.User;; hView.Auth.Password
+      
    Endif 
    
 End
+
+Public Sub WebView_Click(Frame As WebFrame)
+   
+   Dim sName As String = Frame.Name
+   
+   If sName Then sName &= ": "
+   Debug sName; Frame.Url
+   
+End
+
+Public Sub WebView_NewFrame(Frame As WebFrame)
+   
+   Debug Frame.Name
+   
+End
+
+Public Sub WebView_Download(Download As WebDownload)
+   
+   Dialog.Path = System.User.Home &/ File.Name(Download.Url)
+   If Not Dialog.SaveFile() Then 
+      Download.Path = Dialog.Path
+      ' FDownloadList.AddDownload(Download)
+      ' FDownloadList.Show
+   Endif
+   
+End
+
+Public Sub WebView_MouseDown()
+   
+   Dim hView As WebView = Last
+   Dim hTest As WebHitTest = hView.HitTest(Mouse.X, Mouse.Y)
+   Dim sMsg As String
+   
+   If hTest.Document Then sMsg &= "DOCUMENT "
+   If hTest.Link Then sMsg &= "LINK "
+   If hTest.Image Then sMsg &= "IMAGE "
+   If hTest.Selected Then sMsg &= "SELECTED "
+   If hTest.Editable Then sMsg &= "EDITABLE "
+   Debug sMsg; hTest.Url
+   
+End
+
+Public Sub tabBrowser_Close(Index As Integer)
+   
+   Dim hView As WebView
+   
+   Try hView = tabBrowser[Index].Children[0]
+   If Not hView Then Return
+   
+   hView.Delete
+   
+   Object.Lock(tabBrowser)
+   tabBrowser[Index].Delete
+   Object.UnLock(tabBrowser)
+   If Index = tabBrowser.Index Then
+      If tabBrowser.Index = (tabBrowser.Count - 1) And If tabBrowser.Index > 0 Then
+         tabBrowser.Index = tabBrowser.Index - 1
+      Else
+         tabBrowser_Click
+      Endif
+   Endif  
+   
+End
+
+Public Sub btnFind_Click()
+   
+   Dim hView As WebView = GetView()
+   
+   panFind.Visible = btnFind.Value
+   If btnFind.Value Then 
+      DoFind
+      txtFind.SetFocus
+   Else
+      hView.FindText("")
+   Endif
+   
+End
+
+Private Sub DoFind(Optional bBackward As Boolean)
+   
+   Dim hView As WebView = GetView()
+   Dim sText As String
+   
+   sText = Trim(txtFind.Text)
+   
+   If sText And If hView.FindText(sText, bBackward, chkCaseSensitive.Value, True) Then ', chkHighlight.Value) Then
+      panFind.Background = &HFFDFDF
+   Else
+      panFind.Background = Color.Default
+      If Not sText Then hView.FindText("")
+   Endif
+   
+End
+
+Public Sub txtFind_Change()
+   
+   DoFind
+   
+End
+
+Public Sub Form_KeyPress()
+   
+   If Key.Control And If Key.Code = Key["F"] Then 
+      btnFind.Value = True
+   Else If Key.Code = Key.Escape Then
+      btnFind.Value = False
+   Else If Key.Code = Key.F3 Then
+      DoFind(Key.Shift)
+   Endif
+   
+End
+
+Public Sub chkCaseSensitive_Click()
+   
+   DoFind
+   
+End
+
+Public Sub chkHighlight_Click()
+   
+   Dim hView As WebView 
+   
+   If Not chkHighlight.Value Then 
+      hView = GetView()
+      hView.FindText("",,,, True)
+   Else
+      DoFind
+   Endif
+   
+End
+
+Public Sub btnNext_Click()
+   
+   DoFind
+   
+End
+
+Public Sub btnPrevious_Click()
+   
+   DoFind(True)
+   
+End
+
+Public Sub btnClearFind_Click()
+   
+   txtFind.Text = ""
+   
+End
+
+Public Sub txtFind_Activate()
+   
+   DoFind
+   
+End
+
+Private Sub UpdateIcon()
+   
+   Dim hView As WebView = GetView()
+   Dim hIcon As Picture
+   
+   hIcon = hView.Icon 'WebSettings.IconDatabase[hView.Url]
+   
+   If hIcon Then
+      Me.Icon = hIcon
+   Else
+      Me.Icon = Picture["icon:/16/internet"]
+   Endif
+   
+End
+
+Public Sub btnConfig_Click()
+   
+   ' With WebSettings.Proxy
+   '   
+   '   FOption.Type = .Type
+   '   FOption.Host = .Host
+   '   FOption.Port = .Port
+   '   FOption.User = .User
+   '   FOption.Password = .Password
+   '   
+   '   If FOption.Run() Then Return
+   '   
+   '   .Type = FOption.Type
+   '   .Host = FOption.Host
+   '   .Port = FOption.Port
+   '   .User = FOption.User
+   '   .Password = FOption.Password 
+   '   
+   ' End With
+   
+End
+
+Public Sub btnEdit_Click()
+   
+   Dim hWebView As WebView
+   
+   For Each hWebView In tabBrowser.Children
+      hWebView.Editable = btnEdit.Value
+   Next
+   
+   WebSettings[WebSettings.JavascriptCanAccessClipboard] = btnEdit.Value
+   panEdit.Visible = btnEdit.Value
+   
+End
+
+Public Sub btnAction_Click()
+   
+   Dim hWebView As WebView = GetView()
+   
+   Debug "Action " & Last.Tag & ": "; hWebView.Eval(Subst("document.execCommand('&1', false, false)", Last.Tag))
+   
+End
+
+Public Sub btnColor_Click()
+   
+   Dim hWebView As WebView = GetView()
+   
+   If Dialog.SelectColor() Then Return
+   hWebView.Eval(Subst("document.execCommand('forecolor', false, '&1')", "#" & Hex$(Dialog.Color, 6)))
+   
+End
+
+Public Sub mnuFont_Show()
+   
+   Dim sFont As String
+   Dim hMenu As Menu
+   
+   If mnuFont.Children.Count > 1 Then Return
+   
+   mnuFont.Children.Clear
+   
+   For Each sFont In Fonts
+      
+      hMenu = New Menu(mnuFont) As "mnuSelectFont"
+      hMenu.Text = sFont
+      
+   Next
+   
+End
+
+Public Sub mnuSelectFont_Click()
+   
+   Dim hWebView As WebView = GetView()
+   Dim sFont As String = Last.Text
+   
+   hWebView.Eval(Subst("document.execCommand('fontname', false, '&1')", sFont))
+   
+End
+
+Public Sub btnBackground_Click()
+   
+   Dim hWebView As WebView = GetView()
+   
+   Dialog.Title = "Select a color"
+   If Dialog.SelectColor() Then Return
+   hWebView.Eval(Subst("document.execCommand('backcolor', false, '&1')", "#" & Hex$(Dialog.Color, 6)))
+   
+End
+
+Public Sub mnuSelectSize_Click()
+   
+   Dim hWebView As WebView = GetView()
+   Dim sSize As String = Last.Text
+   
+   hWebView.Eval(Subst("document.execCommand('fontsize', false, '&1')", sSize))
+   
+End
+
+Public Sub btnInsertImage_Click()
+   
+   Dim hWebView As WebView = GetView()
+   
+   Dialog.Title = "Select an image"
+   Dialog.Filter = ["*.jpg;*.jpeg;*.png;*.gif;*.xpm;*.bmp", "Image files"]
+   If Dialog.OpenFile() Then Return
+   
+   Print Dialog.Path
+   hWebView.Eval(Subst("document.execCommand('insertImage', false, '&1')", "file://" & Replace(Dialog.Path, "'", "\\'")))
+   
+End
+
 
 Public Sub txtGoogle_Activate()
    
@@ -427,19 +740,19 @@ End
 
 Public Sub Separator_New()
    
-   Dim sep As Separator
-   
-   Return 
-   sep = New Separator(Hbox_BookMarkFolders)
-   With sep
-      .height = Hbox_BookMarkFolders.height * 0.8
-   End With
-   
+   ' Dim sep As Separator
+   ' 
+   ' Return 
+   ' sep = New Separator(Hbox_BookMarkFolders)
+   ' With sep
+   '    .height = Hbox_BookMarkFolders.height * 0.8
+   ' End With
+   ' 
 End 
 
 Public Sub Folder_Cut()
    
-   SelectedFolder.Delete()
+   '  SelectedFolder.Delete()
    
 End
 
@@ -452,20 +765,20 @@ Public Function Folder_Create(Optional folder_name As String = "New Folder") As 
    'the menu which 'drops down' to show the URL's
    '------------------------------------------------------------
    
-   Dim folder As MenuButton
-   ' Dim mnu As Menu
-   folder = New MenuButton(Hbox_BookMarkFolders) As "bookmarkfolders"
-   ' mnu = New Menu(Me, True)a s 
-   lblmeasure.text = folder_name
-   With folder
-      .text = folder_name
-      .picture = Picture["icon:/small/directory"]
-      .width = lblmeasure.width + 50
-      .drop = True
-      .menu = folder_name
-   End With
-   
-   Return folder 
+   ' Dim folder As MenuButton
+   ' ' Dim mnu As Menu
+   ' folder = New MenuButton(Hbox_BookMarkFolders) As "bookmarkfolders"
+   ' ' mnu = New Menu(Me, True)a s 
+   ' lblmeasure.text = folder_name
+   ' With folder
+   '    .text = folder_name
+   '    .picture = Picture["icon:/small/directory"]
+   '    .width = lblmeasure.width + 50
+   '    .drop = True
+   '    .menu = folder_name
+   ' End With
+   ' 
+   ' Return folder 
    
 End
 
@@ -476,10 +789,10 @@ Public Sub Folder_New()
    'this folder now = the selectedfolder
    '--------------------------------------------------------------------
    
-   txtFolderName.text = "New Folder"
-   SelectedFolder = Folder_Create()
-   obs = New Observer(SelectedFolder) As "SelectedFolder"
-   Folder_Edit_Properties()  
+   ' txtFolderName.text = "New Folder"
+   ' SelectedFolder = Folder_Create()
+   ' obs = New Observer(SelectedFolder) As "SelectedFolder"
+   ' Folder_Edit_Properties()  
    
 End
 
@@ -489,7 +802,7 @@ Public Sub mnufolders_Click()
    txtURL_Activate()
 Catch
    Return 
-
+   
 End
 
 Public Sub Folder_Edit_Properties()
@@ -497,17 +810,17 @@ Public Sub Folder_Edit_Properties()
    'Change the name of the folder
    '-----------------------------
    
-   With txtFolderName
-      .pos = 0
-      .top = SelectedFolder.top
-      .left = SelectedFolder.Left
-      .width = SelectedFolder.width
-      .height = SelectedFolder.height
-      .Visible = True
-      .Raise
-      .SetFocus()
-   End With
-   
+   ' With txtFolderName
+   '    .pos = 0
+   '    .top = SelectedFolder.top
+   '    .left = SelectedFolder.Left
+   '    .width = SelectedFolder.width
+   '    .height = SelectedFolder.height
+   '    .Visible = True
+   '    .Raise
+   '    .SetFocus()
+   ' End With
+   ' 
 End
 
 Public Sub txtFolderName_Activate()
@@ -530,25 +843,25 @@ Public Function Folders_Save() As Collection
    'the tag of each menubutton = its menu items as a collection
    '-----------------------------------------------------------
    
-   Dim MB As MenuButton
-   Dim hCtrl As Control
-   Dim folder As Collection 
-   
-   folders = New Collection
-   folder = New Collection 
-   
-   For Each hctrl In Hbox_BookMarkFolders.Children
-      If hctrl Is MenuButton Then
-         MB = hctrl
-         folder = New Collection 
-         folder!name = MB.Text
-         folder!menu_items = MB.tag
-         folder!clinical_module = sClinical_Module_Name
-         folder!always_visible = bFolderAlwaysvisible
-         folders.Add(folder, folders.count)
-      End If   
-   Next  
-   Return folders
+   ' Dim MB As MenuButton
+   ' Dim hCtrl As Control
+   ' Dim folder As Collection 
+   ' 
+   ' folders = New Collection
+   ' folder = New Collection 
+   ' 
+   ' For Each hctrl In Hbox_BookMarkFolders.Children
+   '    If hctrl Is MenuButton Then
+   '       MB = hctrl
+   '       folder = New Collection 
+   '       folder!name = MB.Text
+   '       folder!menu_items = MB.tag
+   '       folder!clinical_module = sClinical_Module_Name
+   '       folder!always_visible = bFolderAlwaysvisible
+   '       folders.Add(folder, folders.count)
+   '    End If   
+   ' Next  
+   ' Return folders
    ' Select Case sClinical_Module_Name
    '   Case "Mental Health"
    '   Case "Travel"
@@ -650,7 +963,7 @@ Public Sub BookmarkFolders_Menu()
             Select Case mnuItem.Text
                Case "Properties", "Cut"
                   mnuitem.Enabled = True  
-                  txtFolderName.text = Last.text
+                  '  txtFolderName.text = Last.text
                Case Else
                   mnuitem.Enabled = False
                   mnuitem.checked = False
@@ -669,7 +982,7 @@ Public Sub PictureBox1_Drag()
    'User is dragging the icon next to the URL
    '-----------------------------------------
    
-   txtFolderName.text = txtURL.Text
+   ' txtFolderName.text = txtURL.Text
    
 End
 
@@ -764,5 +1077,16 @@ End
 Public Sub btnPrint_Click()
    
    modPrinting.PrintHtml($currenthview.html, const.Paper_Plain)
+   
+End
+
+Public Sub txtURL_KeyPress()
+   
+   Dim CtrlDown As Boolean
+
+   Try CtrlDown = Key.Control
+   If CtrlDown Then
+      Stop Event
+   End If
    
 End

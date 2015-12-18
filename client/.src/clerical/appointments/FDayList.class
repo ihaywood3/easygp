@@ -1,6 +1,6 @@
 ' Gambas class file
 
-' Copyright (C) 2008-2015 Dr. Richard Terry
+' Copyright (C) 2008-2016 Dr. Richard Terry
 
 ' This program is free software: you can redistribute it and/or modify
 ' it under the terms of the GNU General Public License as published by
@@ -67,7 +67,6 @@ Public form_select As FPatientsSelect
 Private bKeyValid As Boolean                       'if true the keypress is valid
 Private bMoveToNextAvailableAppointment As Boolean 'if true after a save the next vacant appt slot is found
 Private WeeksAppointments As Collection
-'Private watcher As DatabaseWatcher
 
 Public Sub WeeksAppointments_Set(wa As Collection)
    
@@ -75,7 +74,7 @@ Public Sub WeeksAppointments_Set(wa As Collection)
    
 End
 
-Public Sub Init(sm As Collection, app_date As Date, clinic_key As Integer, icons As Collection, wa As Collection, Optional nh As Boolean = False)
+Public Sub Init(sm As Collection, app_date As Date, clinic_key As Variant, icons As Collection, wa As Collection, Optional nh As Boolean = False)
    '------------------------------------------------------------------
    'initialise the appointment module from  FMakeAppointments
    'sm= the staff member
@@ -111,7 +110,7 @@ Public Sub Init(sm As Collection, app_date As Date, clinic_key As Integer, icons
 End
 
 Private Sub Reload_Data()
-
+   
    patient = Null                                                       'this must always be null, only not null when new patient loaded into the grid when searching
    fk_lu_appointment_status = 1                                         'default to normal appointment length
    fk_lu_appointment_icon = 0
@@ -197,9 +196,6 @@ Public Sub Form_KeyPress()
       ' Stop Event
    Endif
    If CtrlDown Then
-      
-      Print "onrow", onrow
-      Print gridrows
       bExit = True
       '-------------------------------------------------------------
       'change grid foreground colours according to control key codes
@@ -345,7 +341,6 @@ Private Sub GridRows_Process_Data()
                'this appointment is for 10 minutes only
                '----------------------------------------------------------------
                For i = 0 To GridRows.Count - 1
-                  
                   If Not IsNull(gridrows[i]) Then    'may have been merged so i is missing
                      If gridrows[i]!time = stime Then
                         If Not IsNull(appointment!fk_patient) Then
@@ -385,6 +380,7 @@ Private Sub GridRows_Process_Data()
                         gridrows[i]!fk_lu_appointment_icon = appointment!fk_lu_appointment_icon
                         gridrows[i]!fk_lu_appointment_status = appointment!fk_lu_appointment_status
                         Try gridrows[i]!picture = Picture.Load(appointment_icons[appointment!fk_lu_appointment_icon]!icon_path) 'most often there is no icon
+                        Wait
                         '---------------------------------------------------------------------------------------------
                         'Now the 'virgin' grid has time slots all the same - each 10 minutes
                         'now, we have 'consumed' extra slots, so remove the gridrow corresponding to those extra slots
@@ -410,7 +406,6 @@ Private Sub GridRows_Process_Data()
    '-------------------
    For Each appointment In appointments
       If Format(appointment!begin, "dd/mm/yyyy") = Format(appointment_date, "dd/mm/yyyy") Then
-         
          sTime = Format(appointment!begin, "hh:nn:AM/PM")                       ' e.g 11:00:AM
          duration = Val(Split(appointment!duration, ":")[1])             ' e.g 10, 20, 30
          If duration = 1 Then                                            ' e,g 11:01
@@ -540,7 +535,7 @@ Public Sub mnuAppointments_Click()
    'User has clicked on one of the apointment menu options
    'Default to checking the apppointment slot is not used
    '------------------------------------------------------
-
+   
    Dim form_recurring As FRecurringAppointment
    Dim bCheckSlotTaken As Boolean = True
    Dim c As Collection
@@ -770,7 +765,6 @@ Public Sub Gridview1_Select()
    onrow = gridview1.row
    Try fk_lu_appointment_status = gridrows[onrow]!fk_lu_appointment_status
    Print "onrow is ", onrow
-  
    
 End
 
@@ -780,10 +774,7 @@ Public Sub Gridview1_Menu()
    '-------------------------------------------------------------------
    
    If Gridview1.Row = -1 Then Return
-   fk_lu_appointment_icon = 0
-   If Gridview1[Gridview1.Row, 1].text = "" Then
-      'fix me disable stuff
-   End If
+   fk_lu_appointment_icon = 0 'was 0
    onrow = gridview1.row
    iFirstRow = onrow
    If Not IsNull(gridrows[Gridview1.Row]!fk_patient) Then
@@ -838,19 +829,54 @@ End
 
 Public Sub Save(Optional bCheckSlotTaken As Boolean = True)
    
-   '--------------------------------------------------------------
+   '-----------------------------------------------------------------------------------------------
    ' Saves an appointment slot
-   ' if bCheckSlotTaken is True the the the save will check
-   ' the appt slot is not already taken.d
-   ' pk bigserial NOT NULL,
-   ' fk_patient integer but can be null if a comment
-   ' fk_staff integer NOT NULL,
-   ' "begin" timestamp without time zone,
-   ' duration interval,
-   ' notes text,
-   ' fk_staff_booked integer NOT NULL,
-   ' fk_clinic timestamp without time zone NOT NULL DEFAULT now()
-   '-------------------------------------------------------------
+   '     if bCheckSlotTaken is True the the the save will check the appt slot is not already taken
+   '-----------------------------------------------------------------------------------------------
+   ' CREATE TABLE clerical.bookings
+   ' (
+   '   pk bigserial NOT NULL,
+   '   fk_patient integer,
+   '   fk_staff integer NOT NULL,
+   '   begin timestamp without time zone,
+   '   duration interval,
+   '   notes text,
+   '   fk_staff_booked integer NOT NULL,
+   '   booked_at timestamp without time zone NOT NULL DEFAULT now(),
+   '   fk_clinic integer NOT NULL,
+   '   deleted boolean DEFAULT false,
+   '   fk_lu_appointment_icon integer,
+   '   fk_lu_appointment_status integer DEFAULT 1,
+   '   invoiced boolean DEFAULT false, -- if true then the consultation has been invoiced (paid or account raised)
+   '   did_not_attend boolean DEFAULT false, -- if true then the the patient did not attend the appointment
+   '   fk_lu_reason_not_billed integer, -- key to billing.lu_reasons_not_billed e.g 'aftercare'
+   '   CONSTRAINT bookings_pkey PRIMARY KEY (pk),
+   '   CONSTRAINT bookings_booked_by_fkey FOREIGN KEY (fk_staff_booked)
+   '       REFERENCES admin.staff (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT bookings_fk_clinic_fkey FOREIGN KEY (fk_clinic)
+   '       REFERENCES admin.clinics (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT bookings_fk_lu_appointment_icon_fkey FOREIGN KEY (fk_lu_appointment_icon)
+   '       REFERENCES clerical.lu_appointment_icons (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT bookings_fk_lu_appointment_status_fkey FOREIGN KEY (fk_lu_appointment_status)
+   '       REFERENCES clerical.lu_appointment_status (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT bookings_fk_lu_reason_not_billed_fkey FOREIGN KEY (fk_lu_reason_not_billed)
+   '       REFERENCES billing.lu_reasons_not_billed (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT bookings_fk_patient_fkey FOREIGN KEY (fk_patient)
+   '       REFERENCES clerical.data_patients (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT bookings_fk_staff_fkey FOREIGN KEY (fk_staff)
+   '       REFERENCES admin.staff (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   '-----------------------------------------------------------------------------------------------------
    
    Dim appointment As New CRow
    
@@ -864,7 +890,7 @@ Public Sub Save(Optional bCheckSlotTaken As Boolean = True)
       appointment!fk_patient = gridrows[onrow]!fk_patient
    Endif
    appointment!fk_staff = staff_member!fk_staff
-   If fk_lu_appointment_status = 0 Then fk_lu_appointment_status = 1
+   If IsNull(fk_lu_appointment_status) Then fk_lu_appointment_status = 1
    If Not IsNull(gridrows[onrow]!fk_lu_appointment_status) Then
       appointment!fk_lu_appointment_status = gridrows[onrow]!fk_lu_appointment_status
    Else
@@ -878,7 +904,6 @@ Public Sub Save(Optional bCheckSlotTaken As Boolean = True)
    Endif
    appointment!duration = Str(appointment_interval) & " minutes"
    modAppointmentsDBI.Appointment_Process_Time(appointment, appointment_date, gridrows[onrow]!time)
-   
    If Not IsNull(gridrows[onrow]!pk_appointment) Then
       appointment!pk = gridrows[onrow]!pk_appointment
    Endif
@@ -1024,12 +1049,12 @@ Public Sub Move_EditingTextBox()
    If IsNull($hEditor) Or gridview1.Row = -1 Then Return 'FIXME BAD BAD BUGFIX ?WHY GOING -1
    lblheader.text = gridview1.rows[onrow].text
    If iSlotCount = 1 Then
-      iheight = Gridview1.Rows[onrow].height + 5
+      iheight = Gridview1.Rows[onrow].height + 2
    Else
-      iheight = ((iLastRow - iFirstRow) + 1) * irowheight + 5
+      iheight = ((iLastRow - iFirstRow) + 1) * irowheight + 2
    Endif
    With gridview1[gridview1.Row, 1]
-      txtAppointment.Move(gridview1.X + (gridview1.width - gridview1.Columns[0].width - gridview1.Columns[1].width - 3) - gridview1.ScrollX, gridview1.Y + itop - gridview1.ScrollY, .Width + 5, iheight)
+      txtAppointment.Move(gridview1.X + (gridview1.width - gridview1.Columns[0].width - gridview1.Columns[1].width + 5) - gridview1.ScrollX, gridview1.Y + itop - gridview1.ScrollY, .Width + 4, iheight)
    End With
    
 End
@@ -1069,4 +1094,3 @@ Public Sub ToolButton1_Click()
    Me.Reparent(Null)
    
 End
-

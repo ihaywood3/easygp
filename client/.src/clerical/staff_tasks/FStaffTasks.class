@@ -1,6 +1,6 @@
 ' Gambas class file
 
-' Copyright (C) 2008-2015 Dr. Richard Terry
+' Copyright (C) 2008-2016 Dr. Richard Terry
 
 ' This program is free software: you can redistribute it and/or modify
 ' it under the terms of the GNU General Public License as published by
@@ -56,7 +56,9 @@
 '     in this case the Task name is automated (see above)
 '     In this incarnation most of the gui and the functionality of this form is hidden
 '
-'  2) Embedded in the main Staff Tasks form currently this is badly named as FDaybook
+'  2) Embedded on 'Manage Tasks' tab in FInbox to allow a clinical user to manage their tasks
+'
+'  3) Embedded in the main Staff Tasks form currently this is badly named as FDaybook
 '     - This in case all the funtionality is exposed. The user may review past tasks
 '       allocated to them as well as who else is involved in the task (i.e a task can
 '       have one or more components.
@@ -64,7 +66,10 @@
 '       only one left with a  clerical.task_components.date_completed being null
 '       In this case the main clerical.tasks table is updated - and the key of the
 '       staff finalising the task as well as a completion date is finalised.
-'  3) Embedded in FClerical via FClericalReadOnlyClinical the mini 'clinical section for staff use'
+
+'  4) Embedded in FClerical via FClericalReadOnlyClinical the mini 'clinical section for staff use'
+'
+'  5) Embedded in FClinical to allow clinical user to add tasks for staff not related to a document
 '  
 '   Where the behaviour of the form is necessarily different, case statements where the
 '   name of the parent form (i.e the form which embedded this form) are used
@@ -106,69 +111,66 @@
 '                     the last one completing the last task component, but it seemed more efficient
 '                     to duplicate the key.
 '
-'  NOT YET IMPLEMENTED
-'  ===================
-'  None of the embedded forms like scripts/recalls, ie forms to allow you to do things
-'  when you complete the task, rather than opening up the patients notes.
-'  Internal staff tasks
-'  The reivew of completed staff tasks
-'  Any of the embedded form tasks eg recalls, letter etc
-'------------------------------------------------------Trim(txtFilter.text))-----------------------------------
-Private ReferenceHboxForTopColumnview As Hbox               'used if split moves to reposition columnview
-Private pic_not_urgent As Picture = Picture["icons/12/green_dot.png"]
+'-------------------------------------------------------------------------------------
+Private ReferenceHboxForTopColumnview As Hbox                         'used if split moves to reposition columnview
+Private pic_not_urgent As Picture = Picture["icons/12/green_dot.png"] 'traffic light indictors for urgency
 Private pic_mod_urgent As Picture = Picture["icons/12/amber_dot.png"]
 Private pic_urgent As Picture = Picture["icons/12/red_dot.png"]
-Public CurrentUser As String
-Public bEmbedded As Boolean
-Private AllPatients As Collection
-Private fk_staff As Variant
-Private fk_staff_filed_task As Variant
-Private fk_staff_filed_component As Variant
+'Collections
+Private fk_tasks_Components_keys_deleted As Collection                 'component keys of last deleted task.
+Private Notes As Collection
+Private patient As New Collection
+Private comms As Collection
+Private comm As Collection
+Private RolesCanAction As Collection                                   'eg secretary, doctor can action the component
+Private RolesCanFinalise As Collection                                 'only this role can finalise the task. Subcomponents can be actionied by  RolesCanAction or designated staff member
+Private Document As Collection 
 Private TasksComponents As Collection
-Private fk_component As Variant
+Private AllPatients As Collection
 Private CurrentTaskComponent As Collection
-Private bComponent_not_Completed As Boolean = False 'for code readability
-Private iCurrentTaskComponent As Integer
-Private bPatientTask As Boolean
-Public bExit As Boolean  'called from parent do not change
-Private CurrentConsult As CConsult
-Public Parent_Form As String
 Private staffTasks As Collection
 Private AllStaffInvolved As Collection
-Private fk_patient As Variant
-Public fk_task As Variant   'needs to be set back to 0 when a new document loaded for a patient in inbox.
 Private Task_Keys As Collection
 Private staff As Collection
 Private Staff_Member_Allocated_Task As Collection
 Private Staff_Member_Must_Finalise_Task As Collection
+'Database keys
+Private fk_staff As Variant
+Private fk_staff_filed_task As Variant
+Private fk_staff_filed_component As Variant
+Private fk_component As Variant
+Private fk_patient As Variant
+Public fk_task As Variant   
 Private pk_view_staff_task As Variant
 Private fk_staff_allocated As Variant
 Private fk_urgency As Variant
 Private fk_document As Variant
-Private Notes As Collection
-Private bNewNote As Boolean
-Private bFinalised As Boolean
-Private iTaskRestriction As Integer          'const.cTaskRestriction_User, .._role .._none
+Private fk_table_row As Variant        
 Private fk_note As Variant
-Private patient As New Collection
-Private fk_table_row As Variant        'fixme fim my name = e.g fk_document
-Private table As String 'fixme check if this is being used - noted set from Finbox tasks
-Private comms As Collection
-Private comm As Collection
-Private Form_PreviousNotes As FProgressNotesViewer
-Private Form_PDF As FPdf
-Private Form_html_viewer As FHtmlViewer
-Private Form_Entire_Audit_Trail_Viewer As FHtmlViewer
-Private RolesCanAction As Collection         'eg secretary, doctor can action the component
-Private RolesCanFinalise As Collection       'only this role can finalise the task. Subcomponents can be actionied by  RolesCanAction or designated staff member
-Private RoleCanAction As String
 Private fk_role_can_finalise As Variant      'if non zero this role can finalise a task
 Private fk_staff_must_finalise As Variant    'if non zero then this staff member only may finalise a task
 Private fk_role_can_action As Variant
 Private fk_task_deleted As Variant           'the last deleted task
-Private fk_tasks_Components_keys_deleted As Collection 'component keys of last deleted task.
-Private Document As Collection 
+Private vCurrentTaskComponent As Variant
+'Boolean Flags
+Private bComponent_not_Completed As Boolean = False 'for code readability
+Private bPatientTask As Boolean
+Public bExit As Boolean  'called from parent do not make this private
+Private bFinalised As Boolean
+Public bEmbedded As Boolean
 Private bQuickEntry As Boolean    'see Init()  'used in FClinical for users wanting a 'one line' quick entry defaulting responsibilities to them as user
+
+Private CurrentConsult As CConsult
+Public Parent_Form As String
+Public CurrentUser As String
+Private RoleCanAction As String
+'Private table As String 'fixme check if this is being used - noted set from Finbox tasks
+Private iTaskRestriction As Integer          'const.cTaskRestriction_User, .._role .._none
+'Forms embedded in this form
+Private Form_PreviousNotes As FProgressNotesViewer
+Private Form_PDF As FPdf
+Private Form_html_viewer As FHtmlViewer
+Private Form_Entire_Audit_Trail_Viewer As FHtmlViewer
 
 Public Sub Set_Audit_Schema_Table_SourceRowKey(k As Integer, t As String)
    '----------------------------------------------
@@ -176,8 +178,11 @@ Public Sub Set_Audit_Schema_Table_SourceRowKey(k As Integer, t As String)
    'table = qualified with schema ie schema.table
    '---------------------------------------------
    
+   If k = 0 Then
+      Message.Info("Richard, check this FStaffTasks.Set_Audit_Schema_Table_sourceRowKey")
+   Endif
    fk_table_row = k
-   table = t  'FIXME - I don't think this is ever used - old code - check calling forms.
+   ' table = t  'FIXME - I don't think this is ever used - old code - check calling forms.
    
 End
 
@@ -384,9 +389,8 @@ Public Function Save() As Boolean
    
    Note_Save()
    Task_Save()
-   If FClinical.IsSamePatient(currentconsult!patient!fk_patient) Then
-      '  FClinical.Refresh_AllPreviousNotes(True) 'True = only refresh progress notes if in display audit mode
-      FClinical.Notifications_Refresh_External()   
+   If FClinicalToolbar.IsSamePatient(currentconsult!patient!fk_patient) Then
+      FClinicalToolbar.Notifications_Refresh_External()
    Endif
    
 End
@@ -403,31 +407,47 @@ Public Sub Task_Save()
    Dim sTaskComponentSummary As String
    Dim sTaskDetails As String
    
-   If VBox_EditArea_Outer.Padding = 0 And bFinalised = False Then Return 'no outline = no data
-   If Not Valid_task() Then Return                                        'validate contents
-   '------------------------------------------
+   If VBox_EditArea_Outer.Padding = 0 And bFinalised = False Then Return  'no red outline = no data
+   If Not Task_Vaid() Then Return                                        'validate contents
+   '----------------------------------------------------------------------------------------
    ' CREATE TABLE clerical.tasks
    ' (
    '   pk serial NOT NULL,
-   '   related_to text NOT NULL,
-   '   fk_staff_filed_task integer NOT NULL,
+   '   related_to text NOT NULL, -- What the task is related to:...
+   '   fk_staff_filed_task integer,
    '   fk_staff_finalised_task integer,
-   '   fk_row integer,
+   '   fk_row integer, -- if not null then this is foreign key to documents.pk
    '   date_finalised date,
    '   deleted boolean DEFAULT false,
-   '   fk_staff_must_finalise integer,
-   '   fk_role_can_finalise integer,
-   '   CONSTRAINT tasks_pkey PRIMARY KEY (pk )
+   '   fk_staff_must_finalise integer, -- if not null, then this staff member has ultimate responsbility to finalise the task
+   '   fk_role_can_finalise integer, -- if not null, then a staff member of this role can finalise the task
+   '   CONSTRAINT tasks_pkey PRIMARY KEY (pk),
+   '   CONSTRAINT tasks_fk_role_can_finalise_fkey FOREIGN KEY (fk_role_can_finalise)
+   '       REFERENCES admin.lu_staff_roles (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT tasks_fk_row_fkey FOREIGN KEY (fk_row)
+   '       REFERENCES documents.documents (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT tasks_fk_staff_filed_task_fkey FOREIGN KEY (fk_staff_filed_task)
+   '       REFERENCES admin.staff (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT tasks_fk_staff_finalised_task_fkey FOREIGN KEY (fk_staff_finalised_task)
+   '       REFERENCES admin.staff (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT tasks_fk_staff_must_finalise_fkey FOREIGN KEY (fk_staff_must_finalise)
+   '       REFERENCES admin.staff (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION
    ' )
    ' WITH (
    '   OIDS=FALSE
    ' );
+   '-----------------------------------------------------------------------------------------
    ' if bQuickEntry then Ian only wants to type eg 'send to psychologist
    ' and make this both the 'what to do' and the txtRelated To
-   ' and have himself as fk_stff and fk_staff_must_finalised
+   ' and have himself as fk_staff and fk_staff_must_finalised
    ' these were set in the task_new sub
    '-------------------------------------------
-   If fk_task <> 0 Then                                              'old task, keep the task key
+   If Not IsNull(fk_task) Then                                              'old task, keep the task key
       stafftask.put_unchanged(fk_task, "fk_task")
       staffTask!fk_staff_filed_task = fk_staff_filed_task
    Else                                                              'new task create new task key
@@ -437,7 +457,7 @@ Public Sub Task_Save()
          staffTask!related_to = Trim(txtRelatedTo.text)
       End If   
       staffTask!fk_staff_filed_task = fk_staff
-      If fk_patient <> 0 Then                                                              'start an audit row in progress notes
+      If Not IsNull(fk_patient) Then                                                              'start an audit row in progress notes
          Consult_Check_Created(const.ConsultType_AuditNote, "Staff task allocated")        'create the consult
          If Not IsNull(Document) Then                                                      'if about a document describe which one
             sTaskDetails = modArchiveDocumentsDBI.Audit_Trail_Make_Progress_notes("staff task allocated", Document) & "<BR>"
@@ -449,54 +469,77 @@ Public Sub Task_Save()
          sTaskDetails &= " and the staff member allocated to finalise this was " & txtStaffToFinalise.Text
       End If   
    End If
-   If fk_staff_must_finalise <> 0 Then
+   If Not IsNull(fk_staff_must_finalise) Then
       staffTask!fk_staff_must_finalise = fk_staff_must_finalise
    Endif
-   If fk_role_can_finalise <> 0 Then
+   If Not IsNull(fk_role_can_finalise) Then
       staffTask!fk_role_can_finalise = fk_role_can_finalise
    Endif
-   '----------------------------------------------------
+   '------------------------------------------------------------------------------------------------------------
    ' CREATE TABLE clerical.task_components
    ' (
    '   pk serial NOT NULL,
    '   fk_task integer NOT NULL,
-   '   fk_consult integer,
-   '   date_logged date,
-   '   fk_staff_allocated integer ,
-   '   fk_staff_completed integer,
-   '   allocated_staff text,
-   '   fk_urgency integer DEFAULT 1,
+   '   fk_consult integer, -- key to clin_consult.consult ie gives patient and...
+   '   date_logged date, -- Null where the task was logged for a patient, as it has fk_consult,...
+   '   fk_staff_allocated integer, -- foreign key to clerical.staff table, ie points to the staff member...
+   '   fk_staff_completed integer, -- foreign key to clerical.staff table, points to who...
+   '   allocated_staff text, -- usually null unless the staff is generic...
+   '   fk_urgency integer DEFAULT 1, -- key to common.lu_urgency 1:routine 2:moderate 3:urgent
    '   details text,
-   '   date_completed date,
+   '   date_completed date, -- The date the component was finalised...
    '   deleted boolean DEFAULT false,
    '   fk_staff_filed integer,
-   '   fk_role integer,
-   '   CONSTRAINT task_components_pkey PRIMARY KEY (pk )
+   '   fk_role integer, -- foreign key to admin.lu_staff_roles ...
+   '   must_verify_completed boolean DEFAULT false, -- If True then the task absolutely must not be 'forgotten'...
+   '   CONSTRAINT task_components_pkey PRIMARY KEY (pk),
+   '   CONSTRAINT task_components_fk_consult_fkey FOREIGN KEY (fk_consult)
+   '       REFERENCES clin_consult.consult (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT task_components_fk_role_fkey FOREIGN KEY (fk_role)
+   '       REFERENCES admin.lu_staff_roles (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT task_components_fk_staff_allocated_fkey FOREIGN KEY (fk_staff_allocated)
+   '       REFERENCES admin.staff (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT task_components_fk_staff_completed_fkey FOREIGN KEY (fk_staff_completed)
+   '       REFERENCES admin.staff (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT task_components_fk_staff_filed_fkey FOREIGN KEY (fk_staff_filed)
+   '       REFERENCES admin.staff (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT task_components_fk_task_fkey FOREIGN KEY (fk_task)
+   '       REFERENCES clerical.tasks (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT task_components_fk_urgency_fkey FOREIGN KEY (fk_urgency)
+   '       REFERENCES common.lu_urgency (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION
    ' )
    ' WITH (
    '   OIDS=FALSE
    ' );
-   '-----------------------------------------------------
-   If fk_component <> 0 Then                                                 'if edited component
+   '---------------------------------------------------------------------------------------------------------------
+   If Not IsNull(fk_component) Then                                                 'if edited component
       TaskComponent.put_unchanged(fk_component, "fk_component")              'set the primary key
    Endif
-   If fk_role_can_action <> 0 Then
+   If Not IsNull(fk_role_can_action) Then
       TaskComponent!fk_role = fk_role_can_action
    Else
       TaskComponent!fk_role = Null
    Endif
    TaskComponent!fk_staff_filed = fk_staff_filed_component
    TaskComponent!details = Trim(txtTaskDetails.text)
-   If fk_staff_allocated Then    
+   If Not IsNull(fk_staff_allocated) Then    
       TaskComponent!fk_staff_allocated = fk_staff_allocated
    Else
       TaskComponent!fk_staff_allocated = Null 
    End If   
    TaskComponent!fk_urgency = fk_urgency
    TaskComponent!must_verify_completed = CBool(chkVerifyCompleted.value)
+  ' Message.info("Richard check this FStaffTasks line 497")
    If TaskComponent!fk_staff_allocated = fk_staff Then
       If Staff_Member_Allocated_Task!fk_sex = const.cSexMale Then
-         sTaskComponentSummary = " to himself - " 'FIXME check sex of staff member
+         sTaskComponentSummary = " to himself - " 
       Else
          sTaskComponentSummary = " to herself - "
       End If
@@ -507,14 +550,13 @@ Public Sub Task_Save()
    '------------------------------------------------------------------------------------
    'Check if a consult has been created for the patient, if there is a patient of course
    '------------------------------------------------------------------------------------
-   If fk_patient <> 0 And bFinalised = False Then
+   If Not IsNull(fk_patient) And bFinalised = False Then
       Consult_Check_Created(const.ConsultType_AuditNote, "Staff task allocated")
       TaskComponent!fk_consult = currentconsult.GetPK()
-      
    Else
       TaskComponent!date_logged = Now()
    End If
-   If fk_document Then stafftask!fk_row = fk_document
+   If Not IsNull(fk_document) Then stafftask!fk_row = fk_document
    '-------------------------------------------------------------------------------------------
    'Each task gets a 'master entry' in clerical.tasks table, then components linked to the task
    '-------------------------------------------------------------------------------------------
@@ -527,8 +569,7 @@ Public Sub Task_Save()
       Reload()
    Else
       FPatientTasks.Hide_Form()
-      ' FClinical.Refresh_AllPreviousNotes(True)
-      FClinical.Notifications_Refresh_External()
+      FClinicalToolbar.Notifications_Refresh_External()
    End If
    
 End
@@ -557,9 +598,7 @@ Public Function Finalise() As Boolean
    Dim sProgressNotes As String
    Dim document As Collection
    
-   Print fk_component
-   
-   If Not fk_component Then Return
+   If IsNull(fk_component) Then Return
    
    Message.Title = "Task Finalisation"
    If Bfinalised = False And Trim(txtNotes.text) = "" Then
@@ -576,33 +615,30 @@ Public Function Finalise() As Boolean
          Return
       Endif
    End If
-   
-   If fk_table_row Then                                                          'the task is attatched to a document
+   If Not IsNull(fk_table_row) Then                                                          'the task is attatched to a document
       document = modArchiveDocumentsDBI.Document_Get_By_pk(fk_document)           'fixme shouldn't have to do this
-      If fk_patient <> 0 Then
+      If Not IsNull(fk_patient) Then
          If IsNull(currentconsult) Then
             CurrentConsult = New CConsult(patient)
          Else
             currentconsult.Set(const.ConsultType_AuditNote, "Finalising staff task")
          End If
-         
          sProgressNotes = modArchiveDocumentsDBI.Audit_Trail_Make_Progress_notes("task component finalised", Document) & "<BR>"
          sProgressNotes = "The task component (related to " & "'" & txtRelatedTo.Text & "') which was "
          sProgressNotes &= "'" & txtTaskDetails.text & "' has been marked as finalised"
-         
-         '  modAudit.MakeAudit(currentconsult, "task component finalised", "documents.documents", fk_document, const.cSection_StaffTasks, " by " & modDBConnect.currentUser_FullName())
          modAudit.MakeAudit(currentconsult, "task component finalised", "clerical.task_components", fk_component, const.cSection_StaffTasks, sProgressNotes)
       End If
    End If
-   '-----------------------------
+   '--------------------------------------------------------------------------------------------------------
    'First, finalise the component
+   '-------------------------------------------------------------------------------------------------------
    ' CREATE TABLE clerical.task_components
    ' (
    '   pk serial NOT NULL,
    '   fk_task integer NOT NULL,
    '   fk_consult integer, -- key to clin_consult.consult ie gives patient and...
    '   date_logged date, -- Null where the task was logged for a patient, as it has fk_consult,...
-   '   fk_staff_allocated integer NOT NULL, -- foreign key to clerical.staff table, ie points to the staff member...
+   '   fk_staff_allocated integer, -- foreign key to clerical.staff table, ie points to the staff member...
    '   fk_staff_completed integer, -- foreign key to clerical.staff table, points to who...
    '   allocated_staff text, -- usually null unless the staff is generic...
    '   fk_urgency integer DEFAULT 1, -- key to common.lu_urgency 1:routine 2:moderate 3:urgent
@@ -611,10 +647,33 @@ Public Function Finalise() As Boolean
    '   deleted boolean DEFAULT false,
    '   fk_staff_filed integer,
    '   fk_role integer, -- foreign key to admin.lu_staff_roles ...
-   '   CONSTRAINT task_components_pkey PRIMARY KEY (pk )
+   '   must_verify_completed boolean DEFAULT false, -- If True then the task absolutely must not be 'forgotten'...
+   '   CONSTRAINT task_components_pkey PRIMARY KEY (pk),
+   '   CONSTRAINT task_components_fk_consult_fkey FOREIGN KEY (fk_consult)
+   '       REFERENCES clin_consult.consult (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT task_components_fk_role_fkey FOREIGN KEY (fk_role)
+   '       REFERENCES admin.lu_staff_roles (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT task_components_fk_staff_allocated_fkey FOREIGN KEY (fk_staff_allocated)
+   '       REFERENCES admin.staff (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT task_components_fk_staff_completed_fkey FOREIGN KEY (fk_staff_completed)
+   '       REFERENCES admin.staff (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT task_components_fk_staff_filed_fkey FOREIGN KEY (fk_staff_filed)
+   '       REFERENCES admin.staff (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT task_components_fk_task_fkey FOREIGN KEY (fk_task)
+   '       REFERENCES clerical.tasks (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT task_components_fk_urgency_fkey FOREIGN KEY (fk_urgency)
+   '       REFERENCES common.lu_urgency (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION
    ' )
-   '-----------------------------
-   
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
    '----------------------------------------------------------------------------------------------
    'Is this the last component for the task? - Yes, then finalise the task in clerical.tasks table
    '----------------------------------------------------------------------------------------------
@@ -637,7 +696,7 @@ Public Function Finalise() As Boolean
       ' )
       '------------------------------------------------------------------------
       If CurrentTaskComponent!fk_staff_must_finalise = modDBConnect.currentUser!fk_staff
-         If fk_task Then
+         If Not IsNull(fk_task) Then
             stafftask.put_unchanged(fk_task, "fk_task")
          Endif
          StaffTask!fk_staff_finalised_task = modDBConnect.currentUser!fk_staff
@@ -651,14 +710,13 @@ Public Function Finalise() As Boolean
    '------------------------------------------
    'Mark the component finalised (last or not)
    '------------------------------------------
-   If fk_component Then
+   If Not IsNull(fk_component) Then
       TaskComponent.put_unchanged(fk_component, "fk_component")
    Endif
    TaskComponent!fk_staff_completed = modDBConnect.currentUser!fk_staff
    TaskComponent!date_completed = Now()
    TaskComponent.Save("clerical.task_components", "fk_component")
    Return True
-   ' modDBConnect.CommitTrans()
    
 End
 
@@ -694,7 +752,7 @@ Public Sub Note_New()
    txtStaffMakingNotes.text = CurrentUser
    txtNotes.Clear()
    txtNotes.SetFocus()
-   fk_note = 0
+   fk_note = Null
    
 End
 
@@ -707,17 +765,17 @@ Public Function Note_Save() As Boolean
    Dim note As CRow
    Dim sProgressNotes As String                                                 'for audit insertion into the progress notes
    
-   If Trim(txtNotes.text) = "" Then Return                                    'no note, don't save
-   If fk_component = 0 Then
+   If Trim(txtNotes.text) = "" Then Return                                       'no note, don't save
+   If IsNull(fk_component) Then
       Message.info("Please select the task before attempting to add notes")
       Return
    Endif
    note = New CRow
-   If fk_note Then
+   If Not IsNull(fk_note) Then
       note.put_unchanged(fk_note, "fk_note")
    Endif
    note!fk_task_component = fk_component
-   If fk_patient <> 0 Then             '?why did I put this in here?
+   If Not IsNull(fk_patient) Then             '?why did I put this in here?
       Consult_Check_Created(const.ConsultType_AuditNote, "Staff task note")
    Endif
    note!note = Trim(txtNotes.text)
@@ -810,7 +868,7 @@ Public Sub Reload()
    'iTaskRestriction
    'fixme what was fk_table_row for?
    'Function Staff_Tasks_Get parameters
-   '(fk_staff_allocated_task As Integer, fk_staff_filed_task As Integer, bfk_staff_only As Boolean, Optional fk_row As Integer = 0, Optional completed As Integer = const.cTaskCompletionNo, Optional iTaskRestriction As Variant = const.cTaskRestriction_User, Optional sort_order As String = "ASC", Optional filter_patient_name As String = "") As Collection
+   '(fk_staff_allocated_task As Variant,  fk_staff_filed_task As Variant, bfk_staff_only As Boolean, Optional fk_row As Variant = null, Optional completed As Integer = const.cTaskCompletionNo, Optional iTaskRestriction As Variant = const.cTaskRestriction_User, Optional sort_order As String = "ASC", Optional filter_patient_name As String = "") As Collection
    '----------------------------
    
    EditArea_Clear()
@@ -824,7 +882,7 @@ Public Sub Reload()
          lblTaskHeading.text = "My Tasks"
          'Parameters passed to modDayBookDBI.Staff_Tasks_Get are:
          'fk_staff  = fk_staff_allocated_task ie who it was allocated to, here the logged on user
-         '0 = fk_staff_filed_task .ie when viewing your own tasks, doesn't matter who allocated them
+         'null = fk_staff_filed_task .ie when viewing your own tasks, doesn't matter who allocated them
          'bfk_staff_only F#!@K I forget its so long ago FIXME
          'fk_table row > fk_row = key to documents.documents fixme
          ' const.cTaskCompletionNo =  Optional completed
@@ -852,15 +910,6 @@ End
 Public Sub cvwTasks_Reload()
    '-----------------------------------------------------
    'Loads all tasks currently allocated for this document
-   '   pk serial NOT NULL,
-   '   task text NOT NULL,
-   '   fk_staff_filed_task integer NOT NULL,
-   '   fk_staff_finalised_task integer,
-   '   fk_schema integer,
-   '   fk_table integer,
-   '   fk_row integer,
-   '   date_finalised date,
-   '   deleted boolean DEFAULT false,
    '-----------------------------------------------------
    
    cvwStaffTasks.Clear()
@@ -931,7 +980,7 @@ Public Sub cvwTasks_Refresh()
    ' staff members involved
    ' Interpreting these parameters of modDayBookDBI.Staff_Tasks_Get(...):
    '     fk_staff = key of current user
-   '     0 = fk_staff_filed_task, though in DB this field is null, here 0=anyone
+   '     null = fk_staff_filed_task, though in DB this field is null, here null=anyone
    '     keys
    '     True flag - ignore for the present
    '     completion status here is Not completed (const.cTaskCompletionNo)
@@ -943,7 +992,7 @@ Public Sub cvwTasks_Refresh()
    Dim x As Integer
    
    Task_Keys = New Collection
-   fk_table_row = 0
+   fk_table_row = Null
    cvwStaffTasks.Clear()
    cvwStaffTasks.Visible = False
    cvwStaffTasks.Visible = True
@@ -974,7 +1023,7 @@ Public Sub cvwTasks_Refresh()
          cvwStaffTasks[x][3] = " " & task_component!related_to & "   "
          cvwStaffTasks[x][4] = task_component!details
          Inc x
-        Next
+      Next
       If Parent_Form = "Inbox" Then
          fk_task = task_component!fk_task
          fk_staff_filed_task = task_component!fk_staff_filed_task
@@ -1008,11 +1057,11 @@ Public Sub EditArea_Clear()
    rbUrgencyRoutine.value = True
    txtDateLogged.text = Format(Now, "dd/mm/yyyy")
    txtLoggedBy.text = CurrentUser
-   fk_component = 0
-   fk_staff_allocated = 0
-   fk_staff_must_finalise = 0
+   fk_component = Null
+   fk_staff_allocated = Null
+   fk_staff_must_finalise = Null
    fk_urgency = 1
-   fk_role_can_action = 0
+   fk_role_can_action = Null
    cmbRolesCanAction.index = -1
    cmbRolesCanFinalise.index = -1
    fk_staff_filed_component = modDBConnect.currentUser!fk_staff
@@ -1037,10 +1086,10 @@ Public Sub EditArea_Clear()
          txtStreet.text = Trim(CurrentConsult!patient!street1 & " " & CurrentConsult!patient!street2)
          txtSuburb.text = CurrentConsult!patient!town & " " & CurrentConsult!patient!postcode
          txtRelatedTo.text = sTask
-         fk_task = 0
+         fk_task = Null
       Case "FDayBook", "FClericalReadOnlyClinical"       'FIXME this is a misnomer
-         fk_task = 0
-         fk_document = 0
+         fk_task = Null
+         fk_document = Null
          Form_PDF.visible = False
          Form_html_viewer.Visible = False
          Form_html_viewer.WebView1.HTML = "<HTML> <BODY></BODY></HTML>"
@@ -1063,7 +1112,6 @@ Public Sub Staff_Find(txtbox As Textbox)
    'e.g FPsychoSocialHistory
    '----------------------------------------------------------------
    
-   Dim iLastStaff_Member_pk As Variant
    Dim x As Integer
    
    With columnview1
@@ -1073,7 +1121,6 @@ Public Sub Staff_Find(txtbox As Textbox)
    End With
    If Trim(txtbox.text) = "" Then Return
    staff = modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.Staff_Get(Trim(txtbox.text)))
-   iLastStaff_Member_pk = -1
    For Each Staff_Member_Allocated_Task In staff
       columnview1.Add(x, 0)
       columnview1[x][0] = Staff_Member_Allocated_Task!title & " " & Staff_Member_Allocated_Task!wholename
@@ -1103,7 +1150,7 @@ Public Sub Staff_To_Action_Select(sm As Collection)
    fk_role_can_action = Staff_Member_Allocated_Task!fk_role
    cmbRolesCanAction.index = -1
    If bPatientTask = True Then
-      If fk_patient = 0 Then
+      If IsNull(fk_patient) Then
          txtPatient.SetFocus()
          Return
       End If
@@ -1122,7 +1169,7 @@ Public Sub Staff_To_Finalise_Select(sm As Collection)
    fk_staff_must_finalise = sm!fk_staff
    columnview1.Visible = False
    If bPatientTask = True Then
-      If fk_patient = 0 Then
+      If IsNull(fk_patient) Then
          txtPatient.SetFocus()
       Else
          tbSave.SetFocus()
@@ -1266,11 +1313,11 @@ Public Sub EditArea_Change()
          
       Case "staff allocated"
          If Trim(Last.text) = "" Then
-            fk_staff_allocated = 0
+            fk_staff_allocated = Null
          Endif
       Case "staff to finalise"
          If Trim(Last.text) = "" Then
-            fk_staff_must_finalise = 0
+            fk_staff_must_finalise = Null
          Endif
       Case "details"
          If bQuickEntry Then
@@ -1382,7 +1429,7 @@ Public Sub Task_New()
    
 End
 
-Public Sub Valid_Task() As Boolean
+Public Sub Task_Vaid() As Boolean
    '------------------------------------------------------------
    'Validates data for the task before saving, return true if ok
    '------------------------------------------------------------
@@ -1405,8 +1452,7 @@ Public Sub Valid_Task() As Boolean
    Else
       If bQuickEntry Then Return True 'only want a single text box of what to do
    Endif
-   
-   If fk_staff_allocated = 0 Then                                                         'no specific task member is allocated
+   If IsNull(fk_staff_allocated) Then                                                         'no specific task member is allocated
       If Trim(txtStaffAllocated.text) <> "" Then
          sMsg &= "Allocate to any Secretarial staff?"
          If Message.Question(sMsg, "Yes", "No") = 2 Then
@@ -1415,22 +1461,21 @@ Public Sub Valid_Task() As Boolean
          End If
       Endif
    Endif
-   If fk_staff_allocated = 0 And cmbRolesCanAction.index = -1 Then
+   If IsNull(fk_staff_allocated) And cmbRolesCanAction.index = -1 Then
       sMsg &= "Please select either a specific staff member, or a generic 'role' from the roles combo box"
       Message.info(sMsg)
       txtStaffAllocated.SetFocus
       Return
    End If
-   If fk_staff_must_finalise = 0 Then
-      If fk_role_can_finalise = 0 Then
+   If IsNull(fk_staff_must_finalise) Then
+      If IsNull(fk_role_can_finalise) Then
          Message.Info("Please allocate the staff member who must finalise this task.")
          txtStaffToFinalise.SetFocus()
          Return
       End If
    Endif
-   
    Return True
-   
+
 End
 
 Public Sub rbDegreeUrgency_Click()
@@ -1497,14 +1542,14 @@ End
 Public Sub cvwStaffTasks_Menu()
    
    If Last.count = 0 Then Return
-   If iCurrentTaskComponent = 0 Then Return
+   If IsNull(vCurrentTaskComponent) Then Return
    mnuTasks.Popup()
    
 End
 
 Public Sub mnuTasks_Click()
    
-   If iCurrentTaskComponent = 0 Then Return
+   If IsNull(vCurrentTaskComponent) Then Return
    Select Case Last.tag
       Case "edit"
          Task_Edit()
@@ -1533,10 +1578,10 @@ Public Sub task_Edit()
    If CurrentConsult.GetPK() <> CurrentTaskComponent!fk_consult Then
       If modDBConnect.currentUser!fk_staff <> CurrentTaskComponent!fk_staff_filed_task Then
          sSTring = CurrentTaskComponent!title_staff_filed_task & " " & modUtil.Ucase_Word_First_Letter(CurrentTaskComponent!staff_filed_task_title & " " & CurrentTaskComponent!staff_filed_task_wholename)
-         If Message.Warning("This task was created by:" & sString & "\n\nContinue - you will be audited.", "Yes", "No") = 2 Then Return
+         Message.Title = "Edit Existing Task"
+         If Message.Warning("This task was created by:" & sString & "\n\nDo you want to continue - your actions will be audited.", "Yes", "No") = 2 Then Return
       End If
    End If
-   '   Display(SelectedTask)
    
 End
 
@@ -1560,7 +1605,6 @@ Public Sub Task_Display(CurrentTaskComponent As Collection)
    End If
    fk_task = CurrentTaskComponent!fk_task
    pk_view_staff_task = CurrentTaskComponent!pk_view
-   
    Try fk_staff_allocated = CurrentTaskComponent!fk_staff_allocated  'could be null - allocated to anyone
    Try fk_table_row = CurrentTaskComponent!fk_row
    Try fk_document = CurrentTaskComponent!fk_row
@@ -1623,7 +1667,7 @@ Public Sub Task_Delete()
    Dim iComponentCount As Integer
    Dim sString As String
    
-   If Not fk_component Then Return         'fixme all this misnomer stuff
+   If IsNull(fk_component) Then Return         'fixme all this misnomer stuff
    
    Message.Title = "Delete a Task or Component"
    If CurrentTaskComponent!fk_patient Then
@@ -1634,19 +1678,15 @@ Public Sub Task_Delete()
    sSTring &= "\n\nRelated to  : " & CurrentTaskComponent!related_to
    sString &= "\nComponent: " & CurrentTaskComponent!details
    sString &= "\n\nAre you sure you wish to delete this component?"
-   
    If Message.Question(sString, "Yes", "No") = 2 Then
       Return
    End If
-   modDBConnect.BeginTrans()
-   
    If CurrentTaskComponent!fk_patient Then
       If IsNull(currentconsult) Then
          CurrentConsult = New CConsult(patient)
       End If
       modAudit.MakeAudit(currentconsult, "mark deleted", "clerical.tasks", fk_task, const.cSection_StaffTasks, " by " & modDBConnect.currentUser_FullName())
    End If
-   
    modDBConnect.update("clerical.tasks", Null, ["pk": fk_task, "deleted": True])
    modDBConnect.update("clerical.task_components", Null, ["pk": fk_component, "deleted": True])
    fk_task_deleted = fk_task
@@ -1654,11 +1694,7 @@ Public Sub Task_Delete()
    fk_tasks_Components_keys_deleted.Add(fk_component, iComponentCount)
    modDBConnect.CommitTrans()
    Reload()
-   ' Else
-   '    Message.Info("Deletion of the task was cancelled by the user")
-   '    modDBConnect.RollBack()
-   ' End If
-   
+     
 End
 
 Public Sub cvwStaffTasks_Select()
@@ -1678,7 +1714,7 @@ Public Sub cvwStaffTasks_Select()
          VBox_EditArea_Outer.Enabled = False
          cvwStaffTasks.movecurrent()                                                          'sets the key to taskscomponents
          CurrentTaskComponent = TasksComponents[cvwStaffTasks.item.key]                       'for ease of typing
-         iCurrentTaskComponent = TasksComponents[cvwStaffTasks.item.key]!fk_component
+         vCurrentTaskComponent = TasksComponents[cvwStaffTasks.item.key]!fk_component
          Task_Display(CurrentTaskComponent)                                                   'fill edit area with data
          If Not IsNull(CurrentTaskComponent!fk_row) Then                                       'fk_row = documents.fk_document
             Show_Document(CurrentTaskComponent!fk_row)                                        'Show document if available
@@ -1693,7 +1729,7 @@ Public Sub cvwStaffTasks_Select()
             End With
             
          Endif
-         If CurrentTaskComponent!fk_patient Then                                                 'not all tasks are for a patient, could be staff<>staff
+         If Not IsNull(CurrentTaskComponent!fk_patient) Then                                    'not all tasks are for a patient, could be staff<>staff
             If Parent_Form = "FDayBook" Then    
                patient = modContactsDBI.Patient_Get_Using_PK(CurrentTaskComponent!fk_patient)    'get patient collection to create a cConsult
                fk_patient = CurrentTaskComponent!fk_patient                                      'set fk_patient
@@ -1716,7 +1752,7 @@ Public Sub cvwStaffTasks_Select()
             Endif
             Form_PreviousNotes.Init(currentconsult, modProgressNotes.AllProgressNotes_Construct_Html(currentconsult)) 'show progress notes for patient
          Else
-            fk_patient = 0
+            fk_patient = Null
          End If
          VBox_EditArea_Outer.Enabled = True                                         'fixme decide if default to Vbox_EditArea_Inner.Enabled (ie allow edit)
          VBox_EditArea_Inner.Enabled = True
@@ -1733,7 +1769,7 @@ Public Sub cvwAllTasks_Refresh()
    Dim x As Integer
    
    cvwAllTasks.Clear()
-   If fk_table_row = 0 Then Return
+   If IsNull(fk_table_row) Then Return
    Inc Application.Busy
    AllStaffInvolved = modDayBookDBI.Staff_Tasks_Get_Associated(fk_task, fk_staff)
    If AllStaffInvolved.count = 0 Then
@@ -1801,7 +1837,6 @@ Public Sub Patient_Find()
    '       : if > one address put on next row, without name,surname,sex,dob
    '-------------------------------------------------------------------------
    
-   Dim iaddress As Collection
    Dim iLastPatient_pk As Variant
    Dim iAddressCount As Integer
    Dim x As Integer
@@ -1915,17 +1950,10 @@ Public Sub rbAllocateToMe_Click()
    '    fk_staff_allocated = fk_staff
    ' Else
    '    txtStaffAllocated.text = ""
-   '    fk_staff_allocated = 0
+   '    fk_staff_allocated = null
    ' End If
    
 End
-
-' Public Sub cmbTaskType_Click()
-'    If txtTask.text = "" Then
-'       txtTask.text = cmbTaskType.text
-'    Endif
-'
-' End
 
 Public Sub rbWhoFor_Click()
    '-----------------------------------------
@@ -1946,7 +1974,7 @@ Public Sub rbWhoFor_Click()
          txtPatient.ReadOnly = True
          bPatientTask = False
          currentconsult = Null
-         fk_patient = 0
+         fk_patient = Null
          txtRelatedTo.Background = Color.rgb(95, 255, 175)
          txtRelatedTo.SetFocus()
    End Select
@@ -1973,14 +2001,14 @@ End
 
 Public Sub cmbRolesCanFinalise_Click()
    
-   txtStaffToFinalise.text = ""  'sets fk_staff_allocated to 0
+   txtStaffToFinalise.text = ""  'sets fk_staff_allocated to null
    fk_role_can_finalise = RolesCanAction[Last.index]!pk_role
    
 End
 
 Public Sub cmbRolesCanAction_Click()
    
-   txtStaffAllocated.text = ""  'sets fk_staff_allocated to 0
+   txtStaffAllocated.text = ""  'sets fk_staff_allocated to null
    fk_role_can_action = RolesCanAction[Last.index]!pk_role
    
 End
@@ -2010,14 +2038,7 @@ Public Sub Show_Document(fk_document As Variant)
          VBox_Images.Visible = True
          Print modFiles.Get("document_archiving_directory", document!source_file)
          pbImage.picture = Picture.Load(modFiles.Get("document_archiving_directory", document!source_file))
-         ' Case Else   '10june14_old_document_schema 'REMOVE THIS SUB WHEN READY
-         '    Form_PDF.Visible = False
-         '    VBox_Images.Visible = False
-         '    With Form_html_viewer
-         '       .WebView1.HTML = document!html
-         '       .Visible = True
-         '    End With
-      Case Else       'may be a filename, may not (e.g office generated documents in LaTex)
+       Case Else       'may be a filename, may not (e.g office generated documents in LaTex)
          Select Case document!fk_lu_data_content_type
             Case const.cData_Type_HTML
                Form_PDF.Visible = False
@@ -2047,7 +2068,6 @@ Public Sub cvwTaskNotes_Menu()
    
    If cvwTaskNotes.count Then
       cvwTaskNotes.MoveCurrent
-      Print Notes[cvwTaskNotes.Item.key]
       If Notes[cvwTaskNotes.Item.key]!fk_staff_made_note <> fk_staff Then
          mnuTasksNotes_Edit.Enabled = False
          mnuTasksNotes_Delete.enabled = False
@@ -2103,12 +2123,6 @@ Public Sub Form_Resize()
    
    HSplit_Main_Resize()
    VSplit_Left_Resize()
-   
-End
-
-Public Sub Button1_Click()
-   
-   Print chkVerifyCompleted.Value, " is the value of chkVerifyCompleted"
    
 End
 

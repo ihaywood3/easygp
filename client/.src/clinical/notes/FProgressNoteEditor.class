@@ -20,12 +20,11 @@ Private fk_todo As Variant          'if not zero then the key to clin_consult.ne
 Private bEditLastConsult As Boolean
 Private bAllowTransactionCompletion As Boolean = True
 Private pk_progressnote As Variant
-'Private CommonCodedTerms As Collection
-Private lvwFavourites_Key As Integer
+Private lvwFavourites_Key As Variant
 Private Favourite_Codes As Collection      'of the clinician's favourite codes e.g could hard to rememember ones or common ones
 Private Templates As Collection            'the collection of user definated templates eg 'annual checkup
 Private template As Collection             'any currently selected template
-Private pk_template As Variant       'if non zero is key to clin_consult.lu_progressnote_templates
+Private pk_template As Variant             'if not null is key to clin_consult.lu_progressnote_templates
 Public bBold As Boolean
 Public cp1 As Integer
 Public cp2 As Integer
@@ -55,15 +54,14 @@ Private copy_of_Editor_text As String
 Private data_changed As Boolean 'if true the content of the notes has changed.
 Private currentconsult As CConsult
 Private ParentPage As FProgressNoteEditor 'currently not used
-Private shortcuts As Collection
+Private shortcuts As Collection 
 Private SpellChecker As ClskSpell
 Private bFontBold As Boolean
 Private FTermSelector As FCodedTermSelector
 Private obs As Observer
-'Private ParentForm As FProgressNoteEditor  ' With MiniBMICalc = New FBMICalc(HBox_BMICalc)
 Private Last_Key_Numeric As Boolean
 Private ProgressNotesCodes As Collection
-Private cvwReasonForEncounter_Key As Integer
+Private cvwReasonForEncounter_Key As Variant
 Private Form_Save_Template As FSaveNotesTemplate
 Private fk_section As Variant 'current default 0 = general notes
 Private cMedications_remove_from_html As Integer = 1
@@ -85,6 +83,12 @@ Public Function Progress_Notes_Codes_Get() As Collection
    Return ProgressNotesCodes
    
 End 
+
+Static Public Sub Shortcuts_Reload()
+   
+   Try form_progress_note_editor.Shortcuts_Init  'this form may not be loaded for this - called from user preferences
+  
+End
 
 Static Public Sub cvwMedicationsToday_Update()
    '--------------------------------------------------------------------------
@@ -120,7 +124,6 @@ Public Sub Init(cons As CConsult, Optional bEditLastNotes As Boolean = False)
    '-----------------------------------------------------------------------
    
    Dim R As Result
-   Dim pn As Collection
    
    form_progress_note_editor = Me
    currentconsult = cons
@@ -129,20 +132,20 @@ Public Sub Init(cons As CConsult, Optional bEditLastNotes As Boolean = False)
    bEditLastConsult = bEditLastNotes
    Last_Key_Numeric = False
    copy_of_Editor_text = ""
-   tenotes.text = ""                'clear edit set update flags to false
+   tenotes.text = ""                            'clear edit set update flags to false
    txtToDoNextVisit.text = ""
    If Embedded_Form = "FInbox" Then
       Hbox_Save.Visible = True   
    Endif
-   pk_progressnote = -1                                                                 '-1 = no progress notes yet, the default
-   If currentconsult.IsCreated() Then ' And bEditLastConsult = False Then                                                   'consult already created today
-      R = modConsultDBI.ProgressNotes_GetFor_fk_Consult_new(currentconsult.GetPK())     'are there notes for today
+   pk_progressnote = Null                                                                 '-1 = no progress notes yet, the default
+   If currentconsult.IsCreated() Then                                                     'consult already created today
+      R = modConsultDBI.ProgressNotes_GetFor_fk_Consult(currentconsult.GetPK())     'are there notes for today
       If r.count Then                                                                   'yes?
          tenotes.RichText = Replace(modConsultDBI.Images_Get(R!notes), "file://", "")   'add back in the images and display notes to user
          pk_progressnote = R!pk_progressnote
       Endif
    End If 
-   Shortcuts_Init                                                                 'add shortcuts e.g .dx will expand to Diagnosis
+   Shortcuts_Init                                                                'add shortcuts e.g .dx will expand to Diagnosis
    ProgressNotes_Codes_Reload                                                          'Reloads any existing codes for this currentconsult
    lvwFavourites_Refresh                                                               'load the users favourite codes to make consult coding easier
    With FTermSelector = New FCodedTermSelector(HBox_Coding)                            'pre-load the popup terms selector
@@ -200,7 +203,7 @@ Public Sub Todos_Save()
    
    If last_todos = Trim(txtToDoNextVisit.text) Then Return 
    todo = New CRow
-   If fk_todo Then
+   If Not IsNull(fk_todo) Then
       todo.put_unchanged(fk_todo, "fk_todo")
    Endif
    todo!fk_consult = currentconsult.GetPK()
@@ -261,11 +264,10 @@ Public Sub ProgressNotes_Today() As String
 End
 
 Public Sub Save()
-   '----------------------------------------------------------
-   ' Saves the contents of the editor page if data has changed
-   ' in the text editor. If this is the first time this consult
-   ' then the clin_consult.pk is returned as pk_progress note
-   ' to allow appropriate editing. Rediplay the changed notes
+   '------------------------------------------------------------------------------------------------
+   ' Saves the contents of the editor page if data has changed in the text editor. 
+   ' If this is the first time this consult then the clin_consult.pk is returned as pk_progress note
+   ' to allow appropriate editing and redisplay the changed notes.
    ' If nothing to save, or no change, or bCancelSave then exit
    ' Special note on bCancelSave:
    ' Imagine this scenario:
@@ -278,26 +280,23 @@ Public Sub Save()
    '     does not exist, so just cancel the save
    '     
    ' Saves the codes for these progress notes
-   '-----------------------------------------------------------
+   '-----------------------------------------------------------------------------------------------
    
    Dim progress_note_code As CRow   
    Dim PNC As Collection 
    
    If bCancelSave Then Return
-   
    '-----------------------------------------------------------------------------------------
    'Have to handle these sorts of scenarios - user adds some notes during consult, but then
    'totally deletes the notes. As these notes have been previously saved, need to resave the
    'editor even when it is empty but only if th copy of what was in there is not "" ie don't
    'save just an empty editor. At moment I  just re-save but save an empty string
    '-----------------------------------------------------------------------------------------
-   '  If Trim(tenotes.text) <> "" Then
-   Todos_Save    'must be done separately as if user just put in todo, no notes, don't want empty progress notes
-   ' Endif
+   Todos_Save                                'must be done separately as if user just put in todo, no notes, don't want empty progress notes
    If (Trim(teNotes.text) = "" And copy_of_Editor_text = "") Or Not data_changed Then
       Return
    End If
-   pk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, teNotes.RichText, fk_section, pk_progressnote, "New General Notes", pk_pasthistory)
+   pk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, teNotes.RichText, const.cSection_GeneralNotes, pk_progressnote, "New General Notes")
    '---------------------------------------------------------------------------------------
    ' CREATE TABLE clin_consult.progressnotes_codes
    ' (
@@ -340,7 +339,6 @@ Public Sub Save()
       copy_of_Editor_text = teNotes.text                                  'save copy of what is in the editor for later comparison.
       DataChange_Update_Indicators(False)                                 'remove the red border which indicates data change
       If FClinical.IsSamePatient(currentconsult!patient!fk_patient) Then  'Is the same patient in FClinical - editor used all over the place
-         '   FClinical.Refresh_AllPreviousNotes()                             'refresh the html of previous  notes
          FClinical.Refresh_Section(const.cSection_HealthSummary)          'refresh the health summary if showing
          FClinical.Update_graphs()                                        'update any graphs
       End If
@@ -352,9 +350,9 @@ Public Sub Save()
    
 End
 
-Private Sub Add_Shortcut(text As String, abbrev As String, bold As Boolean, uline As Boolean, section As Boolean)
-   
-   shortcuts.Add(["text": text, "abbrev": abbrev, "bold": bold, "uline": uline, "section": section], abbrev)
+Public Sub Add_Shortcut(text As String, abbrev As String, bold As Boolean, uline As Boolean, section As Boolean)
+  
+    shortcuts.Add(["text": text, "abbrev": abbrev, "bold": bold, "uline": uline, "section": section], abbrev)
    
 End
 
@@ -919,7 +917,7 @@ Public Sub mnuNotes_Click()
       Case "delete template"   
          Template_Delete(pk_template)
       Case "save new template"
-         pk_template = 0
+         pk_template = Null
          template = New Collection  
          Template_Save(modStrings.Capitalise_Words_In_String(Last.tag))
       Case "save existing template"
@@ -1002,7 +1000,7 @@ Public Sub Template_Save(sTitle As String)
       .Init(teNotes.RichText, template)
       If .ShowModal() Then
          Templates_ReLoad()
-         If old_pk_template <> 0 Then  
+         If Not IsNull(old_pk_template) Then  
             template = template_Reload(old_pk_template)
             pk_template = template!pk
          Endif
@@ -1129,7 +1127,7 @@ Public Sub Problem_list_Insert()
                sLaterality = "Left"
             Case const.LateralityRight
                sLaterality = "Right"
-            Case const.LateralityNone
+            Case Null ' const.LateralityNone
                sLaterality = ""
          End Select
          sstring &= "<LI><P><B>" & modUtil.Ucase_Word_First_Letter(LCase(PH!description))
@@ -1146,7 +1144,7 @@ Public Sub Problem_list_Insert()
                sLaterality = "Left"
             Case const.LateralityRight
                sLaterality = "Right"
-            Case const.LateralityNone
+            Case Null ' const.LateralityNone
                sLaterality = ""
          End Select
          sstring &= "<LI><P><B>" & modUtil.Ucase_Word_First_Letter(LCase(PH!description))
@@ -1163,7 +1161,7 @@ Public Sub Problem_list_Insert()
                sLaterality = "Left"
             Case const.LateralityRight
                sLaterality = "Right"
-            Case const.LateralityNone
+            Case Null ' const.LateralityNone
                sLaterality = ""
          End Select
          sstring &= "<LI><P><B>" & modUtil.Ucase_Word_First_Letter(LCase(PH!description))
@@ -1204,7 +1202,7 @@ End
 
 Public Sub Templates_ReLoad()
    
-   pk_template = 0
+   pk_template = Null
    template = New Collection
    templates = modUtilGUI.LoadCombo(cmbTemplates, modUtil.Copy_Collection_Keyed_Sequentially(modProgressNotes.Templates_Get()), "name")
    cmbTemplates.index = -1
@@ -1282,9 +1280,12 @@ Public Sub Editor_Clear()
          bFontBold = False
          cmbTemplates.index = -1
          BMI_Clear
-         pk_template = 0
+         pk_template = Null
          cmbTemplates.index = -1
          template = New Collection 
+         modConsultDBI.ProgressNote_Delete_Truly(pk_progressnote)
+         pk_progressnote = Null
+         currentconsult.Refresh("progress_notes")               'refresh the progress notes collection
    End Select
 Catch
    Return
@@ -1569,8 +1570,9 @@ Public Sub ProgressNotes_Codes_Reload()
    '--------------------------------------------------------
    'Reloads any existing codes for this progress note editor
    '--------------------------------------------------------
-   
-   ProgressNotesCodes = modUtil.Copy_Collection_Keyed_Sequentially(modProgressNotes.ProgressNotes_Codes_Get(pk_progressNote))
+   If Not IsNull(pk_progressnote) Then 
+      ProgressNotesCodes = modUtil.Copy_Collection_Keyed_Sequentially(modProgressNotes.ProgressNotes_Codes_Get(pk_progressNote))
+   End If   
    cvwReasonForEncounter_ReLoad()
    
 End
@@ -1898,6 +1900,7 @@ Public Sub Shortcuts_Init()
    'get user and system shortcuts for use in editor
    'these are triggered by a '.' character eg .dx expands to Diagnosis
    'these can be created by user - see FStsaffPreferencesShortcuts
+   'which also will call this routine to re-load if new ones added
    '------------------------------------------------------------------
    
    Dim shortcut As New Collection

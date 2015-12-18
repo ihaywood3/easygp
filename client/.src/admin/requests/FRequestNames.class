@@ -1,6 +1,6 @@
 ' Gambas class file
 
-' Copyright (C) 2008-2015 Dr. Richard Terry
+' Copyright (C) 2008-2016 Dr. Richard Terry
 
 ' This program is free software: you can redistribute it and/or modify
 ' it under the terms of the GNU General Public License as published by
@@ -31,13 +31,18 @@
 Private RequestTypes As Collection
 Private RequestType As Collection 
 Private REquests As Collection
-Private CurrentRequest As Collection
 Private FHelp As FHtmlViewer
-Private pk_view As Variant
 Private fk_request As Variant
 Private fk_lu_request_type As Variant
 Private bExit As Boolean
 Private Member As Collection 
+Private Parent_Form As String                    'Name of whatever parent form this is embedded in
+
+Public Sub Parent_Form_Set_Name(fn As String)
+   
+   Parent_Form = fn    
+   
+End
 
 Public Sub Init()
    '------------------------------------------------------------------------------
@@ -71,27 +76,26 @@ Public Sub Init()
    End With
    lblMeasure.text = "  Share with EasyGP Central  "
    modEditAreaHelpers.Resize_labels(Vbox_EditArea_Inner, lblMeasure)
-   modEditAreaHelpers.Resize_label(lblButtons, lblMeasure)
    EditArea_Clear()
    
 End
 
 Private Sub Settings_Load()
    
-   HSplit_Main.layout = Settings["FRequestNames/HSplit_Main.layout", modUtilGUI.HSplit([793, 910])]
-   VSplit_Main.layout = Settings["FRequestNames/VSplit_Main.layout", modUtilGUI.VSplit([173, 755])]
-   HSplit_Request_Defaults.layout = Settings["FRequestNames/HSplit_Request_Defaults.layout", modUtilGUI.HSplit([184, 608])]
-   cvwRequestNames.font = Font[Settings["FRequestNames/cvwRequestNames.font", "DejaVu Sans,9"]]
+   HSplit_Main.layout = Settings["FRequestNames_" & Parent_Form & "/HSplit_Main.layout", modUtilGUI.HSplit([793, 910])]
+   VSplit_Main.layout = Settings["FRequestNames_" & Parent_Form & "/VSplit_Main.layout", modUtilGUI.VSplit([173, 755])]
+   HSplit_Request_Defaults.layout = Settings["FRequestNames_" & Parent_Form & "/HSplit_Request_Defaults.layout", modUtilGUI.HSplit([184, 608])]
+   cvwRequestNames.font = Font[Settings["FRequestNames_" & Parent_Form & "/cvwRequestNames.font", "DejaVu Sans,9"]]
    lvRequestTypes.font = cvwRequestNames.Font
    
 End
 
 Public Sub Settings_Save()
+   'Parent_Form as either FAdminRequests or FClinical
    
-   Settings["FRequestNames/HSplit_Request_Defaults.layout"] = HSplit_Request_Defaults.layout
-   Settings["FRequestNames/VSplit_Main.layout"] = VSplit_Main.layout
-   Settings["FRequestNames/HSplit_Main.layout"] = HSplit_Main.layout
-   HSplit_Request_Defaults.layout = [184, 608]
+   Settings["FRequestNames_" & Parent_Form & "/HSplit_Request_Defaults.layout"] = HSplit_Request_Defaults.layout
+   Settings["FRequestNames_" & Parent_Form & "/VSplit_Main.layout"] = VSplit_Main.layout
+   Settings["FRequestNames_" & Parent_Form & "/HSplit_Main.layout"] = HSplit_Main.layout
    
 End
 
@@ -102,13 +106,10 @@ Public Sub EditArea_Clear()
    
    bExit = True
    modEditAreaHelpers.EditArea_Clear(Vbox_EditArea_Inner)
-   pk_view = 0
-   fk_request = 0
-   fk_lu_request_type = 0
+   fk_request = Null
+   fk_lu_request_type = Null
    bExit = False
    EditArea_Notify_DataChange(False)
-   lblEditAreaHeading.Foreground = Color.Black
-   lblEditAreaHeading.text = "Request Name"
    cmbRequesttypes.index = -1
    Vbox_EditArea_Inner.Enabled = False 
    chkShareRequestswithEasyGPCentral.value = modAdminDBI.Config_Get("share_new_requests", False, Null, modDBConnect.currentUser!fk_clinic)
@@ -196,7 +197,7 @@ Public Sub mnuRequests_Click()
       Case "help"
          Request_Help()
       Case "font'"
-         modUtilGUI.Columnview_SetFont(cvwRequestNames, "FRequestNames")
+         modUtilGUI.Columnview_SetFont(cvwRequestNames, "FRequestNames_" & Parent_Form)
    End Select
 Catch
    Return 
@@ -204,55 +205,54 @@ Catch
 End
 
 Public Sub Request_Save()
-   '-----------------------------------------------------------------------
+   '-------------------------------------------------------------------------------------------------
    'Saves a new or  modified request
-   'Decision support and instructions to accompany request not implemented
-   '----------------------------------------------------------------------
+   '-------------------------------------------------------------------------------------------------
+   ' CREATE TABLE clin_requests.lu_requests
+   ' (
    '   pk serial NOT NULL,
-   '   fk_type integer NOT NULL, -- foreign key to clin_requests.lu_Request_type table
+   '   fk_lu_request_type integer NOT NULL, -- foreign key to clin_requests.lu_request_type table
    '   item text NOT NULL, -- the actual request eg Xray of wrist
    '   fk_laterality integer DEFAULT 0, -- foreign key to common.lu_laterality, ie left/right/both
-   '   fk_decision_support integer DEFAULT 0, -- foreign key to decision_support.decision_support table neither of which exist yet
-   '   fk_instruction integer DEFAULT 0, -- foreign key to lu_instructions ie patient instructions for a particular test
-   '-----------------------------------------
+   '   deleted boolean DEFAULT false,
+   '   CONSTRAINT lu_requests_pkey PRIMARY KEY (pk),
+   '   CONSTRAINT lu_requests_fk_laterality_fkey FOREIGN KEY (fk_laterality)
+   '       REFERENCES common.lu_laterality (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT lu_requests_fk_lu_request_type_fkey FOREIGN KEY (fk_lu_request_type)
+   '       REFERENCES clin_requests.lu_request_type (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   '-------------------------------------------------------------------------------------------------
    
    Dim sMsg As String
+   Dim RequestName As CRow  
    
    If Vbox_EditArea_Outer.Padding = 0 Then Return
    If Not Request_IsValid() Then Return
-   CurrentRequest = New Collection
-   If pk_view Then CurrentRequest!pk = pk_view
-   CurrentRequest!item = Trim(txtRequestName.text)
-   CurrentRequest!fk_lu_request_type = RequestTypes[lvRequestTypes.Item.Key]!pk
-   If rbLateralityBoth.value = True Then CurrentRequest!fk_laterality = const.LateralityBoth
-   If rbLateralityNone.value = True Then CurrentRequest!fk_laterality = const.LateralityNone
-   '-----------------------------------
-   'First check this is not a duplicate
-   '-----------------------------------
-   If pk_view = 0 Then 
-      Inc Application.Busy
-      If modRequestsDBI.Request_Item_?exists(CurrentRequest!item, CurrentRequest!fk_lu_request_type) Then 
-         Dec Application.Busy
-         Message.info("The request you wish to save:\n\n" & CurrentRequest!item & " - " & cmbRequesttypes.Text & "\n\nalready exists In the Database.")
-         Return
-      End If   
+   
+   RequestName = New CRow   
+   If Not IsNull(fk_request) Then
+      RequestName.put_unchanged(fk_request, "fk_request")
    Endif
-   '------------------------------------------------------------------------------------------
-   'send the contribution to easyGP central
-   'e.g INSERT INTO clin_requests.lu_requests (item, fk_lu_request_type,fk_laterality) VALUES 
-   '(E'serum anything',1,3) RETURNING pk"
-   '------------------------------------------------------------------------------------------
-   If pk_view = 0 Then
+   RequestName!item = Trim(txtRequestName.text)
+   RequestName!fk_lu_request_type = RequestTypes[lvRequestTypes.Item.Key]!pk
+   If rbLateralityBoth.value = True Then RequestName!fk_laterality = const.LateralityBoth
+   If rbLateralityNone.value = True Then RequestName!fk_laterality = Null
+   If IsNull(fk_request) Then                                                        'if desired send to EasyGP Central
       If chkShareRequestswithEasyGPCentral.value = True Then  
          sMsg = "INSERT INTO clin_requests.lu_requests (item, fk_lu_request_type,fk_laterality) VALUES ("
-         sMsg &= Subst$("'&1',", CurrentRequest!item)
-         sMsg &= Subst$("&1,", CurrentRequest!fk_lu_request_type)
-         sMsg &= Subst$("&1", CurrentRequest!fk_laterality)
+         sMsg &= Subst$("'&1',", RequestName!item)
+         sMsg &= Subst$("&1,", RequestName!fk_lu_request_type)
+         sMsg &= Subst$("&1", RequestName!fk_laterality)
          sMsg &= ");"
          modUtil.SendMailToDeveloper("requests contribution", sMsg)
       End If   
    End If   
-   modRequestsDBI.Request_Save(Requests, pk_view, CurrentRequest)                                                    
+   RequestName.Save("clin_requests.lu_requests", "fk_request")                                                    
    modDBConnect.CommitTrans()
    Reload()
    Dec Application.Busy
@@ -260,13 +260,27 @@ Public Sub Request_Save()
 End
 
 Public Function Request_IsValid() As Boolean
-   '-------------------------------------
-   'At mimumum a request must have a name
-   '-------------------------------------   
+   '-----------------------------------------------
+   'At mimumum a request must have a name and type
+   'returns true if valid
+   '-----------------------------------------------   
    
    If Trim(txtRequestName.text) = "" Then
+      Message.Info("Please enter a name for the new request")
       txtRequestName.SetFocus()
-      Return False
+      Return
+   Endif
+   If IsNull(fk_lu_request_type) Then
+      Message.Info("Please select a request type from the combo box")
+      Return
+   Endif
+   If IsNull(fk_request) Then  
+      Inc Application.Busy
+      If modRequestsDBI.Request_Item_?exists(Trim(txtRequestName.text), fk_lu_request_type) Then 
+         Dec Application.Busy
+         Message.info("The request you wish to save:\n\n" & Trim(txtRequestName.text) & " - " & cmbRequesttypes.Text & "\n\nalready exists in the database.")
+         Return
+      End If   
    Endif
    Return True
    
@@ -277,8 +291,8 @@ Public Sub Request_Edit()
    'Allow editing of the currently selected request name
    '----------------------------------------------------   
    
-   lblEditAreaHeading.text = "Edit Existing Request Name"
-   lblEditAreaHeading.Foreground = Color.Red
+   ' lblEditAreaHeading.text = "Edit Existing Request Name"
+   ' lblEditAreaHeading.Foreground = Color.Red
    Vbox_EditArea_Inner.Enabled = True  
    tbSave.Enabled = True   
    
@@ -293,15 +307,13 @@ Public Sub Request_Display()
    tbSave.Enabled = False  
    cvwRequestNames.MoveCurrent
    fk_request = Requests[cvwRequestNames.Item.key]!pk '?not used
-   pk_view = Requests[cvwRequestNames.Item.key]!pk
    bExit = True
-   
    cmbRequesttypes.index = cmbRequesttypes.Find(lvRequestTypes.Item.Text)
    txtRequestName.text = Requests[cvwRequestNames.Item.key]!item
    Select Case Requests[cvwRequestNames.Item.key]!fk_laterality
       Case const.LateralityBoth
          rbLateralityBoth.value = True
-      Case const.LateralityNone
+      Case Null ' const.LateralityNone
          rbLateralityNone.Value = True
    End Select
    bExit = False  
@@ -316,6 +328,11 @@ Public Sub Request_Delete()
    Dim sMsg As String
    
    cvwRequestNames.MoveCurrent
+   'check if this has been used in an order
+   If modRequestsDBI.Request_Has_Been_Ordered(Requests[cvwRequestNames.Item.key]!pk) Then
+      Message.Info("You cannot delete this request as it has been used in ordering")
+      Return
+   Endif
    sMsg = "Request:" & cvwRequestNames.Item.text & "\n\n"  
    sMsg &= "Are you sure you wish to delete this request"
    If Message.Warning(sMsg, "Yes", "No") = 2 Then Return
@@ -345,11 +362,8 @@ Public Sub Request_New()
    
    EditArea_Clear()
    tbSave.Enabled = True
-   lblEditAreaHeading.text = "Add new request name"
-   lblEditAreaHeading.Foreground = Color.Red
    Vbox_EditArea_Inner.Enabled = True
    rbLateralityNone.value = True 'default to no laterality
-   ' cmbRequesttypes.index = cmbRequesttypes.Find(RequestTypes[lvRequestTypes.Item.key]!type)
    
 End
 
@@ -416,28 +430,26 @@ Public Sub cmbRequestTypes_Click()
    'Make sure the listview of request types is set to the correct row
    '--------------------------------------------------------------------
    
-   Dim x As Integer
-   Dim old_index As Integer = cmbRequesttypes.Index  'keep current index of type of request showing
-   
    If Bexit Then Return 
-   If pk_view <> 0 Then EditArea_Clear()
-   cmbRequesttypes.index = old_index                 'switch combo back to one user selected
-   bExit = True
-   lvRequestTypes.UnSelectAll()
-   lvRequestTypes.MoveFirst()
-   For x = 0 To lvRequestTypes.count - 1
-      If RequestTypes[lvRequestTypes.Item.key]!pk = RequestTypes[cmbRequesttypes.index]!pk Then
-         lvRequestTypes.Item.Selected = True
-         lvRequestTypes.SetFocus()
-         Break
-      Else
-         lvRequestTypes.Movenext()
-      End If 
-   Next
-   lblEditAreaHeading.Foreground = Color.Red
-   lblEditAreaHeading.text = "Add new request name"
-   bExit = False   
-   Requests_Refresh
+   If Not IsNull(fk_request) Then EditArea_Clear()
+   fk_lu_request_type = RequestTypes[lvRequestTypes.Item.Key]!pk
+   ' cmbRequesttypes.index = old_index                 'switch combo back to one user selected
+   ' bExit = True
+   ' lvRequestTypes.UnSelectAll()
+   ' lvRequestTypes.MoveFirst()
+   ' For x = 0 To lvRequestTypes.count - 1
+   '    If RequestTypes[lvRequestTypes.Item.key]!pk = RequestTypes[cmbRequesttypes.index]!pk Then
+   '       lvRequestTypes.Item.Selected = True
+   '       lvRequestTypes.SetFocus()
+   '       Break
+   '    Else
+   '       lvRequestTypes.Movenext()
+   '    End If 
+   ' Next
+   ' ' lblEditAreaHeading.Foreground = Color.Red
+   ' ' lblEditAreaHeading.text = "Add new request name"
+   ' bExit = False   
+   ' Requests_Refresh
    txtRequestName.SetFocus()
    
 End
@@ -461,7 +473,7 @@ Public Sub rblaterality_Click()
 End
 
 Public Sub chkShareRequestswithEasyGPCentral_Click()
-
-      lblShare.Visible = Last.value  'the message
-  
+   
+   lblShare.Visible = Last.value  'the message
+   
 End

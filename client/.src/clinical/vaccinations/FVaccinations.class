@@ -1,6 +1,6 @@
 ' Gambas class file
 
-' Copyright (C) 2008-2015 Dr. Richard Terry
+' Copyright (C) 2008-2016 Dr. Richard Terry
 
 ' This program is free software: you can redistribute it and/or modify
 ' it under the terms of the GNU General Public License as published by
@@ -18,31 +18,30 @@
 ' HOW THIS WORKS
 ' TODO             editing + with serial numbers, always update to latest date
 '                  the particular serial number is used.
-' BUGS             Sadly .... there are a few please report in real-time-use
+' BUGS             report to rterry@internode.on.net
 '----------------------------------------------------------------------
+Private currentconsult As CConsult
 Private ReferenceHboxForTopOfListView As Hbox               'used if split moves to reposition columnview
+Private hObs As Observer
 Public bEmbedded As Boolean
 Private bKeyValid As Boolean
 Private bEditing As Boolean
 Private bExit As Boolean
-Private currentconsult As CConsult
 Private iEditArea As Integer              'the key of current edit area 0,1...n
-Private hObs As Observer
-Public EditAreas As Object[]
-Private EditArea As FVaccineEditArea
-Private fk_schedule As Variant
 Private schedules As Collection
 Private schedule As Collection
 Private vaccines As Collection
 Private vaccine As Collection
-Private fk_progressnote As Variant
-Private fk_consult_progress_note As Variant
+Private fk_schedule As Variant
+Private fk_progressnote As Variant           ' progress note for today
+Private fk_consult_progress_note As Variant  ' fk_consult for the consult where vaccine recorded
 Private Vaccinations As Collection
 Private Vaccination As Collection
-Private Episode As Collection
 Private CurrentVaccination As Collection
 Private Serial_Number As Collection
 Private sites As Collection
+Public EditAreas As Object[]
+Private EditArea As FVaccineEditArea
 
 Public Sub Form_Close()
    
@@ -63,7 +62,6 @@ Public Sub Init(cons As CConsult)
    editAreas = New Object[]                                 'can be 0 to n vaccines per episode, so 0-n editing areas
    iEditArea = 0                                            'default to a single vaccine display/edit area
    EditAreas_Vaccines_Create(0)                             'create this as the default single vaccine entry area
-   '   HBox_Schedule.height = EditAreas[0].HBox_Vaccine.heigFClinicht
    lblmeasure.text = " Authority Approval No.  "            'Used to set width of all labels facing edit area, presriptions are the widest, keep consistant across forms.
    modEditAreaHelpers.Resize_label(lblSchedule, lblMeasure) 'This is a ;composite' edit area, labels + edit area (0-n)
    VBox_Labels.width = lblmeasure.width                     'will auto-stretch the internal labels facing editarea(s)
@@ -72,7 +70,8 @@ Public Sub Init(cons As CConsult)
    cvwVaccines.Columns.count = 2                            'date/vaccine/description
    Reload()                                                 'load existing vaccines.
    lblButtons.text = currentconsult!patient!wholename
-   
+   tlImmunity.text = modLoincDBI.Hepatitis_A_Immunity(currentconsult!patient!fk_patient) & "<BR>"
+   tlImmunity.text &= modLoincDBI.Hepatitis_B_Immunity(currentconsult!patient!fk_patient)
 End
 
 Public Sub Print_Content()
@@ -175,11 +174,10 @@ Public Sub EditArea_TextBox_GotFocus()
          '----------------------------------------------
          'If have a schedule then select the vaccine (s)
          '----------------------------------------------
-         If Last.tag = "vaccine" And fk_schedule <> 0 And Trim(Last.text) = "" Then
+         If Last.tag = "vaccine" And Not IsNull(fk_schedule) And Trim(Last.text) = "" Then
             If Not bEditing Then Vaccines_get(Last)
             Return
          Endif
-         
       Case "serial number"
          
          With listview1
@@ -242,7 +240,7 @@ Public Sub Editarea_Textbox_Change()
          Endif
          Return
       Case "vaccine"
-         If Last.tag = "vaccine" And fk_schedule <> 0 And Trim(Last.text) = "" Then
+         If Last.tag = "vaccine" And Not IsNull(fk_schedule) And Trim(Last.text) = "" Then
             If Not bEditing Then Vaccines_get(Last)
             Return
          Endif
@@ -329,7 +327,6 @@ Public Sub Vaccination_Delete()
    fk_progressnote = CurrentVaccination!fk_progressnote
    fk_vaccination = CurrentVaccination!fk_vaccination
    Hbox_EditArea.Padding = 1
-   ' If Format(CurrentVaccination!consult_date, "dd/mm/yyyy") <> Format(Now(), "dd/mm/yyyy") Then
    If Format(CurrentVaccination!consult_date, "dd/mm/yyyy") <> Format(currentconsult.GetConsultDate(), "dd/mm/yyyy") Then
       '-------------------------------------------------------------------
       'This vaccination was recorded before today, so need an audit trail
@@ -341,7 +338,6 @@ Public Sub Vaccination_Delete()
             bLegacyVaccineEntry = False
             audit_notes = pn!notes
             pn!notes = "<strike>" & pn!notes & "</strike><BR>"
-            ' pn!notes &= "<small><B><I>Audit note:</B> this vaccination was deleted by " & modDBConnect.currentUser!wholename & " on " & Format(Now, "dd/mm/yyyy") & ". Check the audit trail on that date for details.</I></small>"
             pn!notes &= "<small><B><I>Audit note:</B> this vaccination was deleted by " & modDBConnect.currentUser!wholename & " on " & Format(currentconsult.GetConsultDate(), "dd/mm/yyyy") & ". Check the audit trail on that date for details.</I></small>"
             modDBConnect.update("clin_consult.progressnotes", Null, ["pk": fk_progressnote, "notes": pn!notes])
             Break
@@ -377,8 +373,81 @@ Public Sub Vaccination_Delete()
    '-----------------------------------------------
    modDBConnect.update("clin_vaccination.vaccinations", Null, ["pk": fk_vaccination, "deleted": True])
    modDBConnect.CommitTrans()
-  ' FClinical.Refresh_AllPreviousNotes()
    Try FClinical.Refresh_Section(const.cSection_HealthSummary) 'also update the health summary
+   Try FClinicalToolbar.Toolbar_Vaccination_Refresh
+   Try FGPMPTCA.GPMP_Update
+   Reload()
+   
+End
+
+Public Sub Vaccination_Delete_orig()
+   '-----------------------------------------------------------------------------
+   'Deletes a vaccination with Audit Trail if not a reversal on the same day
+   'The vaccine in the progress notes is struck through with the audit note added
+   'As in my case some 15 years of vaccinations were imported the assumption is
+   'the vaccine is legacy, this won't affect anyone!
+   '-----------------------------------------------------------------------------
+   
+   Dim fk_progressnote As Variant
+   Dim fk_vaccination As Variant
+   Dim pn As Collection
+   Dim fk_reason As Variant
+   Dim reason As String
+   Dim EA As FVaccineEditArea
+   Dim audit_notes As String
+   Dim bLegacyVaccineEntry As Boolean = True   'assume we have imported vaccines, needed for audit trail
+   
+   fk_progressnote = CurrentVaccination!fk_progressnote
+   fk_vaccination = CurrentVaccination!fk_vaccination
+   Hbox_EditArea.Padding = 1
+   If Format(CurrentVaccination!consult_date, "dd/mm/yyyy") <> Format(currentconsult.GetConsultDate(), "dd/mm/yyyy") Then
+      '-------------------------------------------------------------------
+      'This vaccination was recorded before today, so need an audit trail
+      '-------------------------------------------------------------------
+      Message.title = "Delete Vaccine"
+      If Message.Question("Are you sure you want to delete the vaccine:\n\n" & CurrentVaccination!brand, "Yes", "No") = 2 Then Return
+      For Each PN In currentconsult!progress_notes
+         If PN!pk_progressnote = fk_progressnote Then            'found a progress note, must have been put in via EasyGP
+            bLegacyVaccineEntry = False
+            audit_notes = pn!notes
+            pn!notes = "<strike>" & pn!notes & "</strike><BR>"
+            pn!notes &= "<small><B><I>Audit note:</B> this vaccination was deleted by " & modDBConnect.currentUser!wholename & " on " & Format(currentconsult.GetConsultDate(), "dd/mm/yyyy") & ". Check the audit trail on that date for details.</I></small>"
+            modDBConnect.update("clin_consult.progressnotes", Null, ["pk": fk_progressnote, "notes": pn!notes])
+            Break
+         Endif
+      Next
+      If bLegacyVaccineEntry Then        
+         audit_notes = "A previously imported vaccine " & CurrentVaccination!brand & " (" & CurrentVaccination!schedule & ") given on "
+         audit_notes &= CurrentVaccination!date_given & " which has no progress notes in EasyGP was deleted." 'this date field is text (could have e.g 2008)
+      Endif
+      If Not modAudit.MakeAudit(currentconsult, "mark deleted", "clin_vaccination.vaccinations", fk_vaccination, const.cSection_Vaccination, audit_notes) Then
+         modDBConnect.RollBack
+         Return 
+      Endif
+   Else
+      '---------------------------------------------------------------------------------------
+      'This vaccination was entered as given today, so just reverse it and audit as a reversal
+      'and mark this progress note as deleted
+      'Ah.. more complex than I thought
+      'Lets see, there could be say three vaccinations in this one schedule, we only want to
+      'delete one
+      '---------------------------------------------------------------------------------------
+      For Each EA In EditAreas
+         If EA.fk_vaccination = fk_vaccination Then
+            EA.marked_deleted = True
+            Break
+         End If
+      Next
+      Save() 'save the deleted vaccine which also will delete it from the progress notes entry
+      Return
+   End If
+   '-----------------------------------------------
+   'Either way, now mark the vaccination as deleted
+   '-----------------------------------------------
+   modDBConnect.update("clin_vaccination.vaccinations", Null, ["pk": fk_vaccination, "deleted": True])
+   modDBConnect.CommitTrans()
+   Try FClinical.Refresh_Section(const.cSection_HealthSummary) 'also update the health summary
+   Try FClinicalToolbar.Toolbar_Vaccination_Refresh
    Try FGPMPTCA.GPMP_Update
    Reload()
    
@@ -410,7 +479,7 @@ Public Sub Vaccination_Display(EA As FVaccineEditArea, vaccination As Collection
    Try EA.cmbSiteAdministration.Index = EA.cmbSiteAdministration.find(vaccination!site) 'may be null if a vaccine in a schedule was not given
    If Error Then
       EA.cmbSiteAdministration.index = -1
-      EA.fk_site = 0
+      EA.fk_site = Null
    Else
       EA.fk_site = vaccination!fk_site
    End If
@@ -431,13 +500,16 @@ Public Sub Vaccination_Display(EA As FVaccineEditArea, vaccination As Collection
          EA.fk_laterality = const.LateralityRight
       Case Else
          EA.RbLateralityNone.value = True
-         EA.fk_laterality = const.LateralityNone
+         EA.fk_laterality = Null
    End Select
    EA.txtSerialNumber.text = vaccination!serial_no
    EA.fk_vaccination = vaccination!fk_vaccination
    EA.fk_vaccine = vaccination!fk_vaccine
    EA.fk_schedule = vaccination!fk_schedule
-   fk_progressnote = vaccination!fk_progressnote
+   fk_progressnote = Null
+   If modUtil.IsSameDay(vaccination!consult_date, currentconsult.GetConsultDate()) Then
+      fk_progressnote = vaccination!fk_progressnote
+   End If   
    EA.txtNotes.text = vaccination!notes
    bExit = False
    
@@ -503,7 +575,7 @@ Public Sub EditAreas_Vaccines_Create(x As Integer)
    HObs = New Observer(EditAreas[x].RbLateralityLeft) As "rbLaterality"
    HObs = New Observer(EditAreas[x].RbLateralityRight) As "rbLaterality"
    HObs = New Observer(EditAreas[x].cmbSiteAdministration) As "cmbSiteAdministration"
-
+   
 End
 
 Public Sub RbLaterality_Keypress()
@@ -638,7 +710,7 @@ Public Sub SerialNumbers_Get()
       .Clear()                                     'remove any existing serial numbers for whatever fk_vaccine
       .Visible = False
    End With
-   If EditAreas[ieditarea].fk_vaccine = 0 Then Return
+   If IsNull(EditAreas[ieditarea].fk_vaccine) Then Return
    EditAreas[ieditarea].Serial_Numbers = modVaccinationDBI.Vaccines_Serial_Numbers_Get(EditAreas[ieditarea].fk_vaccine)
    If EditAreas[ieditarea].Serial_Numbers.count Then
       With listview1
@@ -659,11 +731,11 @@ Public Sub SerialNumbers_Get()
 End
 
 Public Sub New_Entry()
-   '----------------------------------------------------------------------
-   'Called from FClinical where the button tag is a generic 'New Entry'
-   'I've left the orginal nomenclature here for easier reading of the code
-   'Prepare the gui for user to add a new vaccination
-   '----------------------------------------------------------------------
+   '---------------------------------------------------------------
+   'Called from FClinical, called this because can't use New() and
+   'all across easyp this is the wording I've chosen
+   'see FClinicalToolbar.MainToolbar_Click for details
+   '---------------------------------------------------------------   
    
    Vaccination_New()
    
@@ -686,27 +758,58 @@ Public Sub Save()
    '   Save the current vaccination episode from 1 or more editing areas
    '   I've called this an 'episode' because with one vaccination session the
    '   vaccine schedule may contain 1 or more vaccines e.g with childhoo
-   '   pk integer NOT NULL DEFAULT nextval('clin_vaccination.data_pk_seq'::regclass),
-   '   fk_progressnote As Variant
+   '-----------------------------------------------------------------------------------
+   ' CREATE TABLE clin_vaccination.vaccinations
+   ' (
+   '   pk serial NOT NULL,
    '   fk_vaccine integer,
    '   fk_schedule integer,
-   '   fk_site integer NOT NULL DEFAULT 1,
-   '   fk_laterality integer,
+   '   fk_laterality integer, -- if not null is the key to common.lu_laterality, there may be many null's e.g with imported vaccination data
    '   date_given character varying(10), -- not a date field because sometimes may need to record just say 01/2002 or 1998
-   '   serial_no text NOT NULL DEFAULT
-   '   deleted boolean default false,
-   '   fk_progressnote integer not null
+   '   serial_no text NOT NULL DEFAULT 'not recorded'::text,
+   '   fk_progressnote integer,
+   '   notes text, -- notes about the vaccine e.g this vaccine not given because child was ...
+   '   not_given boolean DEFAULT false, -- if true then this vaccine was not given.  Recorded because a schedule...
+   '   deleted boolean DEFAULT false,
+   '   fk_consult integer NOT NULL,
+   '   fk_site integer, -- foreign key for common.lu_site_administrations....
+   '   CONSTRAINT vaccinations_pkey PRIMARY KEY (pk),
+   '   CONSTRAINT vaccinations_fk_consult FOREIGN KEY (fk_consult)
+   '       REFERENCES clin_consult.consult (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT vaccinations_fk_laterality_fkey FOREIGN KEY (fk_laterality)
+   '       REFERENCES common.lu_laterality (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT vaccinations_fk_progressnote_fkey FOREIGN KEY (fk_progressnote)
+   '       REFERENCES clin_consult.progressnotes (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT vaccinations_fk_schedule FOREIGN KEY (fk_schedule)
+   '       REFERENCES clin_vaccination.lu_schedules (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT vaccinations_fk_site_fkey FOREIGN KEY (fk_site)
+   '       REFERENCES common.lu_site_administration (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT vaccinations_fk_vaccine FOREIGN KEY (fk_vaccine)
+   '       REFERENCES clin_vaccination.lu_vaccines (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
    '-----------------------------------------------------------------------------------
-   
+
    Dim EA As FVaccineEditArea
    Dim sProgressNotes As String
    Dim progress_note_code As CRow
    Dim R As Result
+   Dim vaccine_in_episode As CRow   
+   Dim vaccination_Episode As Collection 
    
    If Hbox_EditArea.Padding = 0 Then Return
    If Not Vaccination_Valid() Then Return
+   
    Hbox_EditArea.Enabled = False
-   episode = New Collection
+   vaccination_Episode = New Collection
    '-------------------------------------------------------------------------------
    'If a progress note key exists, then this record is being edited
    '1-n vaccines fk_progressnote always the same as part of an episode
@@ -715,32 +818,32 @@ Public Sub Save()
    'fk_consult
    'fk_consult_progress_note = the fk_consult for the consult where vaccine recorded
    '--------------------------------------------------------------------------------
-   If currentconsult.GetPK() = fk_consult_progress_note Or fk_consult_progress_note = 0 Then    'if editing on same day, or creating new vaccination episode
+   If currentconsult.GetPK() = fk_consult_progress_note Or IsNull(fk_consult_progress_note) Then    'if editing on same day, or creating new vaccination episode
       sProgressNotes = "<B>New Vaccination - " & txtSchedule.text & "</B><BR>"     'allow replacing of existing text
    Else
       sProgressNotes = "<B>Vaccination Edited - " & txtSchedule.text & "</B><BR>"  'otherwise, annotate editing
    End If
    
    For Each EA In EditAreas
-      vaccination = New Collection
-      If EA.fk_vaccination <> 0 Then                           'previously saved vaccination
-         vaccination!fk_vaccination = EA.fk_vaccination
+      vaccine_in_episode = New CRow 
+      If Not IsNull(EA.fk_vaccination) Then                           'previously saved vaccination
+         vaccine_in_episode.put_unchanged(EA.fk_vaccination, "fk_vaccination")
       Endif
-      vaccination!fk_vaccine = EA.fk_vaccine
-      vaccination!fk_schedule = EA.fk_schedule
-      vaccination!fk_site = EA.fk_site                         'can be 0 (zero) if vaccine not given if part of a schedule
-      vaccination!fk_laterality = EA.fk_laterality             'can be 0 (zero) if vaccine not given if part of a schedule
-      Vaccination!date_given = EA.txtDate.text                 'because may be entering vaccine retrospectively
+      vaccine_in_episode!fk_vaccine = EA.fk_vaccine
+      vaccine_in_episode!fk_schedule = EA.fk_schedule
+      vaccine_in_episode!fk_site = EA.fk_site                       'can be null if vaccine not given if part of a schedule
+      vaccine_in_episode!fk_laterality = EA.fk_laterality           'can be 0 (zero) if vaccine not given if part of a schedule
+      vaccine_in_episode!date_given = EA.txtDate.text                 'because may be entering vaccine retrospectively
       If EA.txtSerialNumber.text <> "" Then
-         Vaccination!serial_no = EA.txtSerialNumber.text
+         vaccine_in_episode!serial_no = EA.txtSerialNumber.text
       Else
-         Vaccination!serial_no = "not recorded"
+         vaccine_in_episode!serial_no = "not recorded"
       End If
-      Vaccination!notes = Trim(EA.txtNotes.Text)
+      vaccine_in_episode!notes = Trim(EA.txtNotes.Text)
       If EA.ChkNotGiven.value = True Then
-         Vaccination!not_given = True
+         vaccine_in_episode!not_given = True
       Else
-         Vaccination!not_given = False
+         vaccine_in_episode!not_given = False
       Endif
       If EA.marked_deleted = False Then         'if true Save() is being called by delete(), otherwise add progress note
          If EA.ChkNotGiven.value = False Then
@@ -754,17 +857,17 @@ Public Sub Save()
             End Select
             sProgressNotes &= "<BR>"
          Else
-            'The vaccEA.ine is part of a schedule and is being recorded as not given
+            'The vaccine is part of a schedule and is being recorded as not given
             sProgressNotes &= " - " & EA.txtVaccine.text & " was not given."
             If Trim(EA.txtNotes.text) <> "" Then sProgressNotes &= Trim(EA.txtNotes.text) & "<BR>"
          End If
       Else
-         vaccination!deleted = True
+         vaccine_in_episode!deleted = True
       End If
-      Episode.Add(vaccination, Episode.count)
+      vaccination_Episode.Add(vaccine_in_episode, vaccination_Episode.count)
    Next
-   modDBConnect.BeginTrans()
-   fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNotes, const.cSection_GeneralNotes, fk_progressnote, "Vaccinations", 0, False)
+   fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNotes, const.cSection_GeneralNotes, fk_progressnote, "Vaccinations", False)
+   Print fk_progressnote
    If const.coding_system_in_use = const.coding_icpcPlus Then
       'Is There coding For this progress note
       R = modDBConnect.exec_query("Select * from clin_consult.progressnotes_codes where fk_progressnote = " & fk_progressnote)
@@ -776,15 +879,16 @@ Public Sub Save()
       progress_note_code!fk_code = const.icpc2_immunization_code
       progress_note_code.Save("clin_consult.progressnotes_codes", "pk")
    End If   
-   For Each vaccination In Episode
-      vaccination!fk_progressnote = fk_progressnote
-      vaccination!fk_consult = currentconsult.GetPK()
+   For Each vaccine_in_episode In vaccination_Episode
+      vaccine_in_episode!fk_progressnote = fk_progressnote
+      vaccine_in_episode!fk_consult = currentconsult.GetPK()
+      vaccine_in_episode.Save("clin_vaccination.vaccinations", "fk_vaccination")
    Next
-   modVaccinationDBI.Vaccination_Episode_Save(currentconsult!vaccinations_given, Episode)
+   
    modDBConnect.CommitTrans()
-  ' FClinical.Refresh_AllPreviousNotes()
    Try FClinical.Refresh_Section(const.cSection_HealthSummary) 
    Try FGPMPTCA.GPMP_Update
+   Try FClinicalToolbar.Toolbar_Vaccination_Refresh
    Reload()
    
 End
@@ -861,19 +965,19 @@ Public Function Vaccination_Valid() As Boolean
    
    Message.Title = "Vaccine Data Incomplete"
    
-   If fk_schedule = 0 Then
+   If IsNull(fk_schedule) Then
       txtSchedule.SetFocus()
       Return
    Endif
    
    For Each EA In EditAreas
-      If EA.fk_vaccine = 0 Then
+      If IsNull(EA.fk_vaccine) Then
          EA.txtVaccine.SetFocus()
          Return
       Endif
       Select Case EA.ChkNotGiven.Value
          Case False
-            If EA.fk_site = 0 Then  'only time can't have site is if vaccine wasn't given
+            If IsNull(EA.fk_site) Then  'only time can't have site is if vaccine wasn't given
                EA.cmbSiteAdministration.SetFocus()
                Return
             Endif
@@ -913,7 +1017,7 @@ Public Sub Vaccines_get(tb As Textbox)
       .clear()
       .Visible = False
    End With
-   If fk_schedule = 0 Then Return
+   If IsNull(fk_schedule) Then Return
    vaccines = modVaccinationDBI.Vaccines_In_Schedules_Get(fk_schedule)
    iEditArea = 0
    If vaccines.count = 0 Then Return                         'no vaccines, get outa here
@@ -992,7 +1096,6 @@ Public Sub Vaccines_get(tb As Textbox)
    bExit = False
    EditArea_notifyData_Changed(True)
    iEditArea = 0
-   ' serial_Numbers = New Collection
    EditAreas[0].cmbSiteAdministration.SetFocus()
    
 End
@@ -1074,9 +1177,9 @@ Public Sub EditArea_Clear()
    bExit = True
    txtSchedule.text = ""
    bExit = False
-   fk_progressnote = -1
-   fk_consult_progress_note = 0
-   fk_schedule = 0
+   fk_progressnote = Null            'the progress note inserted for this vaccination
+   fk_consult_progress_note = Null   'the fk_consult for this vaccination episode
+   fk_schedule = Null                'the schedule primary key
    EditAreas_Vaccines_Clear()
    
 End

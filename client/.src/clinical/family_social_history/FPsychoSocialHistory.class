@@ -1,6 +1,6 @@
 ' Gambas class file
 
-' Copyright (C) 2008-2015 Dr. Richard Terry
+' Copyright (C) 2008-2016 Dr. Richard Terry
 ' This program is free software: you can redistribute it and/or modify
 ' it under the terms of the GNU General Public License as published by
 ' the Free Software Foundation, either version 3 of the License, or
@@ -13,8 +13,7 @@
 ' You should have received a copy of the GNU General Public License
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ' ---------------------------------------------------------------------------
-' PURPOSE     - A pretty rudimentry module to allow entering social history
-'             - As per the name it needs the 'psycho' part done
+' PURPOSE     - To allow entering social history and responsible persons
 ' NOTES       - As we often won't know exactly where a relative lives
 '               the backend allows free text for the suburb so oversea;s
 '               addresses can be kept
@@ -25,36 +24,40 @@
 ' BUGS        - probably - just mail me rterry@internode.on.net
 ' --------------------------------------------------------------------------
 Private currentConsult As CConsult
-Public bExit As Boolean  'do not make private used in FPatientBillingCards when clearing this forms edit area
+Public bExit As Boolean  'Parent_EditArea_Vboxdo not make private used in FPatientBillingCards when clearing this forms edit area
+Private bEditing As Boolean                'true if todays date <> date the original fk_consult generated
 Private pk_socialhistory As Variant
-Private responsible_persons As Collection
-Private responsible_person As Collection
-Public fk_responsible_person As Variant 'do not make this private
-Private pk_view_responsible_persons As String '(pk_person-pk_adress)-
+Private fk_progressnote As Variant
+Private fk_consult As Variant
+Private fk_town As Variant
+Private fk_progressnote_confidential As Variant
+Private pk_view_responsible_persons As Variant '(pk_person-pk_adress)
+Private fk_staff_may_view_confidential As Variant  'the only staff member who can view the social history-
 Private Towns As Collection
 Private Countries As Collection
 Private town As Collection
-Private fk_town As Variant
+Private responsible_persons As Collection
+Private responsible_person As Collection
 Private restrict_view_to_roles As Collection 
-Private timer_count As Integer
-Private country_code As String
-Private fk_progressnote As Variant
-Private fk_consult As Variant
 Private roles As Collection 
 Private Staff As Collection
-Private fk_staff_may_view_confidential As Variant  'the only staff member who can view the social history
-Private bEditing As Boolean                'true if todays date <> date the original fk_consult generated
-Private fk_progressnote_confidential As Variant
+Private country_code As String
 Private existing_confidential_notes As String
+Private Parent_Form_Name As String
 Private teHistoryConfidential_font_size As Integer
-Private Parent_Form As String
-Private ParentForm_Vbox_EditArea As VBox
+Private timer_count As Integer
+Private Parent_Form_Vbox_EditArea As VBox
+Public form_responsible_person As FFindPerson  'accessed from FBillingPatients
+Public form_carer As FFindPerson               'accessed from FBillingPatients
+Private Const cCarer As Integer = 0
+Private Const cResponsiblePerson As Integer = 1
+
 
 Static Private Form_Psychosocial As FPsychoSocialHistory
 
 Public Sub Set_Parent_Form(inForm As String)
    
-   Parent_Form = inForm   
+   Parent_Form_Name = inForm   
    
 End
 
@@ -76,10 +79,20 @@ End
 
 Public Sub _new()
    
+   With form_responsible_person = New FFindPerson(Vbox_Responsible_Person)
+      .lblHeading.text = "Next of Kin or Responsible person"
+      .Set_Search_Type(cResponsiblePerson)
+      .Set_Parent_Form(Parent_Form_Name, Vbox_EditArea)
+   End With
+   With form_carer = New FFindPerson(Vbox_Carer)
+      .lblHeading.text = "Carer (If not the same as responsible person)"
+      .Set_Search_Type(cCarer)
+      .Set_Parent_Form(Parent_Form_Name, Vbox_EditArea)
+   End With
    teHistoryConfidential_font_size = teConfidentialHistory.Font.Size
    lblMeasure.text = "   Do Not Print Confidential History   "
    modEditAreaHelpers.Resize_labels(Vbox_EditArea_Inner, lblMeasure)
-   modEditAreaHelpers.Resize_labels(Vbox_ResponsiblePerson, lblMeasure)
+   modEditAreaHelpers.Resize_labels(VBox100, lblMeasure)
    roles = modUtilGUI.LoadCombo(cmbRoles, modUtil.Copy_Collection_Keyed_Sequentially(modAdminDBI.Roles_Get()), "role")
    lblYourRole.text = "Your Role = " & modDBConnect.currentUser!role
    
@@ -87,16 +100,20 @@ End
 
 Public Sub Set_Parent_From_VBox_EditArea(vb As Vbox)
    
-   ParentForm_Vbox_EditArea = vb
+   Parent_Form_Vbox_EditArea = vb
    
 End
 
 Public Sub Init(cons As CConsult)
    
    Form_Psychosocial = Me
+   If Parent_Form_Name = "FPatientBillingCards" Then
+      form_carer.Set_FPatients_VBox_EditArea(Parent_Form_Vbox_EditArea)
+      form_responsible_person.Set_FPatients_VBox_EditArea(Parent_Form_Vbox_EditArea)
+   Endif
+   
    currentConsult = cons
-   timer1.Enabled = True
-   timer1.stop
+   
    Reload()
    
 End
@@ -109,9 +126,11 @@ Static Public Sub NextOfKin_Reload(fk_person As Variant)
    'comms are kept in conacts keyed to the patient's fk_person
    '-------------------------------------------------------------------------------------
    
-   If Form_Psychosocial.fk_responsible_person = fk_person Then
+   If Form_Psychosocial.form_responsible_person.Get_fk_responsible_person() = fk_person Then
       Form_Psychosocial.Reload()
    Endif
+Catch
+   Return 
    
 End
 
@@ -123,15 +142,15 @@ Public Sub EditArea_Notify_Data_Change(flag As Boolean)
    If bexit Then Return 
    If flag Then
       Vbox_EditArea.Padding = 1
-      If Parent_Form = "FPatientBillingCards" Then
-         ParentForm_Vbox_EditArea.padding = 1
+      If Parent_Form_Name = "FPatientBillingCards" Then
+         Parent_Form_Vbox_EditArea.padding = 1
          FRecordVisit.Enable_BOKBIllingSaveButton(True)
          Vbox_EditArea.background = Color.Background
       Endif
    Else
       Vbox_EditArea.Padding = 0
-      If Parent_Form = "FPatientBillingCards" Then
-         ParentForm_Vbox_EditArea.padding = 0
+      If Parent_Form_Name = "FPatientBillingCards" Then
+         Parent_Form_Vbox_EditArea.padding = 0
          FRecordVisit.Enable_BOKBIllingSaveButton(False)
          Vbox_EditArea.background = Color.Background
       Endif
@@ -139,6 +158,14 @@ Public Sub EditArea_Notify_Data_Change(flag As Boolean)
    
 End
 
+Public Sub Edit()
+   
+   form_responsible_person.VBox_EditArea.Enabled = True 
+   Print form_responsible_person.VBox_EditArea.Enabled
+   form_carer.VBox_EditArea.Enabled = True
+   VBox100.Enabled = True   
+   
+End
 
 Public Sub Save()
    '-----------------------------------------------------------------------
@@ -188,10 +215,10 @@ Public Sub Save()
    If Not Valid_SocialHistory() Then Return
    
    socialhistory = New CRow
-   If pk_socialhistory <> 0 Then         'if is =-1 then is a new record
+   If Not IsNull(pk_socialhistory) Then          
       socialhistory.put_unchanged(pk_socialhistory, "pk_socialhistory")
    End If
-   If fk_consult = 0 Then
+   If IsNull(fk_consult) Then
       socialhistory!fk_consult = currentconsult.GetPK()
    Else
       socialhistory!fk_consult = fk_consult
@@ -200,7 +227,7 @@ Public Sub Save()
    'Save the progress note
    ' '--------------------
    ProgressNote = New CRow
-   If fk_progressnote Then
+   If Not IsNull(fk_progressnote) Then
       ProgressNote.put_unchanged(fk_progressnote, "fk_progressnote")
    Endif
    ProgressNote!fk_consult = currentConsult.GetPK()
@@ -212,7 +239,7 @@ Public Sub Save()
       ProgressNote_Confidential = New CRow
       ProgressNote_Confidential!fk_consult = currentConsult.GetPK()
       If existing_confidential_notes <> "" Then                                            'had some note before
-         If fk_progressnote_confidential <> 0 Then                                         'if done at today's consult
+         If Not IsNull(fk_progressnote_confidential) Then                                         'if done at today's consult
             ProgressNote_Confidential.put_unchanged(fk_progressnote_confidential, "fk_progressnote_confidential")
          Endif
       End If   
@@ -226,40 +253,67 @@ Public Sub Save()
    socialhistory!history = Trim(teSocialHistory.text)
    socialhistory!history_confidential = Trim(teConfidentialHistory.text)
    socialhistory!do_not_print_confidential_notes = CBool(chkDoNotPrintConfidential.value)
-   If fk_staff_may_view_confidential Then 
+   If Not IsNull(fk_staff_may_view_confidential) Then 
       socialhistory!fk_staff_may_view_confidential = fk_staff_may_view_confidential
    Else
       socialhistory!fk_staff_may_view_confidential = Null
    End If   
-   If lvwAllowedRoles.count And fk_staff_may_view_confidential = 0 Then
+   If lvwAllowedRoles.count And IsNull(fk_staff_may_view_confidential) Then
       socialhistory!restrict_view_to_roles = "{"
       For Each role In restrict_view_to_roles
          socialhistory!restrict_view_to_roles &= role!pk_role & ","
       Next
       socialhistory!restrict_view_to_roles = Left(socialhistory!restrict_view_to_roles, Len(socialhistory!restrict_view_to_roles) - 1) & "}"
    Endif
-   If fk_responsible_person Then                                   'if non zero, have retreived from the backend
-      socialhistory!fk_responsible_person = fk_responsible_person
-      socialhistory!responsible_person = ""
+   If Not IsNull(form_responsible_person.Get_fk_person()) Then                              
+      socialhistory!fk_responsible_person = form_responsible_person.Get_fk_person()
+      socialhistory!responsible_person_wholename = Null
+      socialhistory!responsible_person_street1 = Null
+      socialhistory!responsible_person_street2 = Null
+      socialhistory!responsible_person_town = Null
+      socialhistory!responsible_person_state = Null
+      socialhistory!responsible_person_postcode = Null
+      socialhistory!country_code_responsible_person = Null
    Else
       socialhistory!fk_responsible_person = Null                     'may have been removed
-      socialhistory!responsible_person = Trim(txtResponsiblePerson.Text)
-      socialhistory!responsible_person_street1 = Trim(txtStreet1.text)
-      socialhistory!responsible_person_street2 = Trim(txtStreet2.text)
-      socialhistory!responsible_person_town = Trim(txtTown.text)
-      socialhistory!responsible_person_state = Trim(txtState.text)
-      socialhistory!responsible_person_postcode = Trim(txtPostcode.text)
-      socialhistory!country_code = country_code                    'defaults to 'AU' in backend
+      socialhistory!responsible_person_wholename = form_responsible_person.Get_Person()
+      socialhistory!responsible_person_street1 = form_responsible_person.Get_Street1()
+      socialhistory!responsible_person_street2 = form_responsible_person.Get_Street2()
+      socialhistory!responsible_person_town = form_responsible_person.Get_Town()
+      socialhistory!responsible_person_state = form_responsible_person.Get_State()
+      socialhistory!responsible_person_postcode = form_responsible_person.Get_Postcode()
+      socialhistory!country_code_responsible_person = form_responsible_person.Get_country_code()                    'defaults to 'AU' in backend fixme
    Endif
-   socialhistory!responsible_person_notes = Trim(teResponsiblePersonNotes.text)
-   socialhistory!responsible_person_contacts = Trim(txtContactNumber.text)
+   socialhistory!responsible_person_notes = form_responsible_person.Get_Notes()
+   socialhistory!responsible_person_contacts = form_responsible_person.Get_Contacts()
+   If Not IsNull(Form_Carer.Get_fk_person()) Then                                  
+      socialhistory!fk_carer = Form_Carer.Get_fk_person()
+      socialhistory!responsible_person_wholename = Null
+      socialhistory!responsible_person_street1 = Null
+      socialhistory!responsible_person_street2 = Null
+      socialhistory!responsible_person_town = Null
+      socialhistory!responsible_person_state = Null
+      socialhistory!responsible_person_postcode = Null
+      socialhistory!country_code_carer = Null
+   Else
+      socialhistory!fk_carer = Null                     'may have been removed
+      socialhistory!responsible_person_wholename = Form_Carer.Get_Person()
+      socialhistory!responsible_person_street1 = Form_Carer.Get_Street1()
+      socialhistory!responsible_person_street2 = Form_Carer.Get_Street2()
+      socialhistory!responsible_person_town = Form_Carer.Get_Town()
+      socialhistory!responsible_person_state = Form_Carer.Get_State()
+      socialhistory!responsible_person_postcode = Form_Carer.Get_Postcode()
+      socialhistory!country_code_carer = Form_Carer.Get_country_code()                    'defaults to 'AU' in backend fixme
+   Endif 
+   socialhistory!carer_notes = form_carer.Get_Notes()
+   socialhistory!carer_contacts = form_carer.Get_Contacts()
    socialhistory.Save("clin_history.social_history", "pk_socialhistory")
    modDBConnect.CommitTrans()
    If FClinical.IsSamePatient(currentConsult!patient!fk_patient) Then
       FClinical.Refresh_Section(const.cSection_HealthSummary)                'check if health summary showing, if so update it
-     ' FClinical.Refresh_AllPreviousNotes()
       Try FGPMPTCA.GPMP_Update()
    End If   
+   EditArea_Notify_Data_Change(False)
    Reload()
    
 End
@@ -292,7 +346,7 @@ Public Function Valid_SocialHistory() As Boolean
    Dim bHaveConfidentialHistory As Boolean
    
    If Trim(teConfidentialHistory.text) <> "" Then             'if have confidential text, make sure have set confidentiality
-      If fk_staff_may_view_confidential = 0 Then 
+      If IsNull(fk_staff_may_view_confidential) Then 
          If IsNull(restrict_view_to_roles) Then
             Goto ExplainConfidentiality
          Else
@@ -303,10 +357,12 @@ Public Function Valid_SocialHistory() As Boolean
       Endif
       bHaveConfidentialHistory = True  
    Endif
-   If fk_responsible_person Or If Trim(txtResponsiblePerson.Text) Then  'can save record if have at least a responsible person
-      Return True
-   Endif
-   If pk_socialhistory = 0 Then                      'no social history ever and no confidential history and no next of kin, don't save
+   ' If Not IsNull(fk_responsible_person) Or If Trim(txtResponsiblePerson.Text) Then  'can save record if have at least a responsible person
+   '    Return True
+   ' Endif
+   If Not form_responsible_person.Person_Valid() Then Return
+   If Not form_carer.Person_Valid() Then Return
+   If IsNull(pk_socialhistory) Then                      'no social history ever and no confidential history and no next of kin, don't save
       If Trim(teSocialHistory.text) = "" And bHaveConfidentialHistory = False And bHaveNoNextOfKin Then      'none to save
          Return False
       Endif
@@ -338,13 +394,14 @@ Public Sub Reload()
    Dim SH As Collection
    Dim role As Collection
    Dim x As Integer
-   Dim role_keys As Integer[]
+   Dim role_keys As Variant[]
    Dim bUserCanView As Boolean
    Dim sMsg As String
    Dim sUsersCanView As String
    
    EditArea_Clear()
-   
+   form_responsible_person.EditArea_Clear
+   form_carer.EditArea_Clear
    currentconsult.Refresh("social_history")
    If Not currentconsult!social_history.count Then
       chkDoNotPrintConfidential.value = True
@@ -353,12 +410,11 @@ Public Sub Reload()
    bExit = True
    For Each SH In currentconsult!social_history             'there is only one
       pk_socialhistory = SH!pk_socialhistory
-      Try fk_responsible_person = SH!fk_responsible_person
       Try fk_staff_may_view_confidential = SH!fk_staff_may_view_confidential
       If SH!fk_consult <> currentConsult.GetPK() Then
-         fk_consult = 0
-         fk_progressnote = 0
-         fk_progressnote_confidential = 0
+         fk_consult = Null
+         fk_progressnote = Null
+         fk_progressnote_confidential = Null
          bEditing = True 
       Else
          fk_consult = SH!fk_consult
@@ -368,64 +424,8 @@ Public Sub Reload()
          End If   
          bEditing = False   
       Endif
-      If fk_responsible_person <> 0 Then
-         txtResponsiblePerson.text = SH!person_responsible_title & " " & SH!person_responsible_firstname & " " & SH!person_responsible_surname
-         With txtStreet1
-            .text = SH!person_responsible_street1
-            .Enabled = False  
-         End With
-         With txtStreet2
-            .text = SH!person_responsible_street2
-            .Enabled = False  
-         End With
-         With txtTown
-            .text = SH!person_responsible_town
-            .Enabled = False  
-         End With
-         With txtState
-            .text = SH!person_responsible_state
-            .Enabled = False  
-         End With
-         With txtPostcode
-            .text = SH!person_responsible_postcode
-            .Enabled = False  
-         End With
-         With txtContactNumber
-            .text = Responsible_person_Get_Comms(fk_responsible_person) 'get comms for this fk_person from contacts
-            .Enabled = False  
-         End With
-      Else
-         txtResponsiblePerson.text = SH!responsible_person
-         country_code = SH!country_code
-         With txtResponsiblePerson
-            .text = SH!responsible_person
-            .Enabled = True   
-         End With
-         With txtStreet1
-            .text = SH!responsible_person_street1
-            .Enabled = True   
-         End With
-         With txtStreet2
-            .text = SH!responsible_person_street2
-            .Enabled = True   
-         End With
-         With txtTown
-            .text = SH!responsible_person_town
-            .Enabled = True   
-         End With
-         With txtState
-            .text = SH!responsible_person_state
-            .Enabled = True   
-         End With
-         With txtPostcode
-            .text = SH!responsible_person_postcode
-            .Enabled = True   
-         End With
-         With txtContactNumber
-            .text = SH!responsible_person_contacts
-         End With
-      End If
-      teResponsiblePersonNotes.text = SH!responsible_person_notes
+      form_responsible_person.Person_Display(SH)
+      form_carer.Person_Display(SH)
       teSocialHistory.text = SH!history
       If Not IsNull(SH!history_confidential)                 'if there is confidential history
          existing_confidential_notes = SH!history_confidential
@@ -447,7 +447,6 @@ Public Sub Reload()
                      Endif
                      Break
                   Endif
-                  
                Next
             Next
          Endif
@@ -468,7 +467,6 @@ Public Sub Reload()
             With teConfidentialHistory
                .Font.Size = 12
                .RichText = "<BR><P><B>SENSITIVE/RESTRICTED INFORMATION</b></P>This can only be viewed by users of the role '" & sUsersCanView & "'"
-               
             End With
          End If  
       Else  'we have no confidential history , user can be allowed to enter some
@@ -480,119 +478,8 @@ Public Sub Reload()
          tbAddrole.Enabled = True
       End If   
       chkDoNotPrintConfidential.value = SH!do_not_print_confidential_notes
-      
    Next
    bExit = False
-   
-End
-
-Public Function Responsible_person_Get_Comms(fk_person As Variant) As String
-   '------------------------------------------------------------- 
-   'if the responsible person is in our database, get their comms
-   '------------------------------------------------------------ 
-   
-   Dim comm As Collection
-   Dim sComms As String
-   
-   For Each comm In modContactsDBI.person_comms_get(fk_person)
-      If comm!fk_type = const.CommModalityMobile Then
-         scomms &= " Mobile:" & comm!value
-      End If
-      If comm!fk_type = const.CommModalityHome Then
-         scomms &= " Phone:" & comm!value
-      Endif
-      If comm!fk_type = const.CommModalityPhone Then
-         scomms &= " Phone:" & comm!value
-      Endif
-   Next 
-   Return Trim(sComms)
-   
-End
-
-Public Sub responsible_person_Find()
-   '-----------------------------------------------------------------------
-   'Search for (amongst the patients) a person who will be the next of kin
-   'aka, now-a-days as the 'responsible person
-   '----------------------------------------------------------------------
-   
-   Dim x As Integer
-   
-   With columnview1
-      .Visible = False
-      .clear()
-      .Columns.count = 3
-   End With
-   If Trim(txtSearch.text) = "" Then Return
-   timer1.Stop()  'fixme or at least checkme out
-   Inc Application.Busy
-   Responsible_Persons = modContactsDBI.Person_Get(Trim(txtSearch.text), const.contacttype_PersonsAndPatients)
-   Responsible_Persons.Remove("sql_in_english")
-   Responsible_Persons = modUtil.Copy_Collection_Keyed_Sequentially(Responsible_Persons)
-   If responsible_persons.count Then
-      For Each responsible_person In Responsible_Persons
-         columnview1.Add(x, 0)
-         columnview1[x][0] = responsible_person!surname & ", " & responsible_person!firstname
-         columnview1[x][1] = Trim(responsible_person!street1 & " " & responsible_person!street2)
-         columnview1[x][2] = responsible_person!town
-         Inc x
-      Next
-      If responsible_person.count = 1 Then
-         Responsible_Person_Select()
-      Else
-         lblmeasure.font = columnview1.Font
-         modUtilGUI.Columnview_Columns_Set_Size(columnview1, lblmeasure)
-         With columnview1
-            .Visible = True
-            .Raise
-         End With
-      End If
-   Endif
-   Dec Application.Busy
-   
-End
-
-Public Sub Responsible_Person_Select()
-   '-----------------------------------------------------------------------------
-   'User has clicked on a name in the list, accept this as the responsible person
-   '-----------------------------------------------------------------------------
-   
-   timer1.stop
-   pk_view_responsible_persons = columnview1.Item.key
-   bexit = True
-   txtSearch.text = ""
-   txtResponsiblePerson.text = responsible_persons[pk_view_responsible_persons]!wholename
-   With txtStreet1
-      .text = responsible_persons[pk_view_responsible_persons]!street1
-      .Enabled = False
-   End With
-   With txtStreet2
-      .text = responsible_persons[pk_view_responsible_persons]!street2
-      .Enabled = False
-   End With
-   With txtTown
-      .text = responsible_persons[pk_view_responsible_persons]!town
-      .Enabled = False
-   End With
-   With txtState
-      .text = responsible_persons[pk_view_responsible_persons]!state
-      .Enabled = False
-   End With
-   With txtPostcode
-      .text = responsible_persons[pk_view_responsible_persons]!postcode
-      .Enabled = False
-   End With
-   fk_responsible_person = responsible_persons[pk_view_responsible_persons]!fk_person
-   With txtContactNumber
-      .text = Responsible_person_Get_Comms(fk_responsible_person) 'get the latest comms
-      .Enabled = False
-   End With
-   
-   '   If Len(txtContactNumber.text) Then
-   teResponsiblePersonNotes.SetFocus
-   '   Else
-   '      txtContactNumber.SetFocus
-   '   End If   
-   bexit = False
    
 End
 
@@ -613,9 +500,7 @@ Public Sub Columnview1_DblClick()
    
    columnview1.MoveCurrent
    Select Case Last.tag.tag
-      Case "search"
-         responsible_person = responsible_persons[columnview1.Item.key]
-         Responsible_Person_Select()
+         
       Case "staff can view"
          Staff_May_View_Select(staff[columnview1.Item.key])
    End Select
@@ -625,54 +510,19 @@ Catch
    
 End
 
-Public Sub ListView1_KeyPress()
-   '------------------------------------------------------------------
-   'User has scrolled onto the popup list and his a key, allow <enter>
-   'to accept the line contents to the edit area
-   '------------------------------------------------------------------
-   
-   If Key.code = Key.Return Then
-      listview1_DblClick
-   End If
-   
-End
-
-Public Sub listview1_DblClick()
-   
-   listview1.MoveCurrent()
-   Select Case Last.tag.tag
-      Case "search"
-         Responsible_Person_Select
-         txtContactNumber.SetFocus
-      Case "suburb"
-         town = Towns[listview1.Item.key]
-         Suburb_Select
-         txtContactNumber.SetFocus
-      Case "country"
-         Country_Select
-         txtContactNumber.SetFocus
-   End Select
-   listview1.Visible = False
-Catch
-   Return
-   
-End
-
 Public Sub EditArea_Clear()
    
    bExit = True
    modEditAreaHelpers.EditArea_Clear(Vbox_EditArea_inner)
-   modEditAreaHelpers.EditArea_Clear(Vbox_ResponsiblePerson)
+   modEditAreaHelpers.EditArea_Clear(VBox100)
    Try teConfidentialHistory.Font.size = teHistoryConfidential_font_size  'could be zero
-   teResponsiblePersonNotes.text = ""
    lvwAllowedRoles.Clear
-   fk_staff_may_view_confidential = 0
-   fk_responsible_person = 0  'defaults
-   pk_socialhistory = 0
-   fk_consult = 0
-   fk_progressnote = 0
+   fk_staff_may_view_confidential = Null
+   pk_socialhistory = Null
+   fk_consult = Null
+   fk_progressnote = Null
    existing_confidential_notes = ""
-   fk_progressnote_confidential = 0
+   fk_progressnote_confidential = Null
    country_code = "AU"         'the default
    bExit = False
    cmbRoles.index = -1
@@ -692,26 +542,9 @@ End
 Public Sub EditArea_TextBox_KeyRelease()
    
    Select Case Last.tag
-      Case "search"
-         timer_count = 0
-         timer1.Start()
       Case "staff can view"
          Staff_Find(Last)
-      Case "suburb"
-         Suburb_get()
-      Case "country"
-         Country_Find()
    End Select
-   
-End
-
-Public Sub Timer1_Timer()
-   
-   Inc timer_count          'constantly being zero'd by editarea_keypress until user pauses typign
-   If timer_count > 2 Then  'arbitary should be user configured depending on typing speed FIXME
-      timer1.Stop
-      responsible_person_Find()
-   End If
    
 End
 
@@ -732,234 +565,17 @@ Public Sub EditArea_TextBox_KeyPress()
       Case key.return, key.Tab
          Select Case Last.tag
             Case "social history"
-               txtSearch.SetFocus()
-            Case "search"
-               txtResponsiblePerson.SetFocus()
-            Case "name"
-               If txtStreet1.text = "" Then
-                  txtStreet1.SetFocus
-               End If
-            Case "street1"
-               txtTown.SetFocus() 'skip street2, usually don't have one.
-            Case "street2"
-            Case "suburb"
-               txtContactNumber.SetFocus
-            Case "contact number"
-               teResponsiblePersonNotes.SetFocus()
-            Case "responsible person notes"
-               '   tbSave.SetFocus()
+               form_responsible_person.txtSearch.SetFocus
          End Select
    End Select
    
 End
 
-Public Sub Responsible_Person_Remove()
-   
-   fk_responsible_person = 0
-   bExit = True
-   modEditAreaHelpers.EditArea_Clear(VBox_ResponsiblePerson)
-   chkDoNotPrintConfidential.value = True
-   txtStreet1.Enabled = True  
-   txtStreet2.Enabled = True
-   txtTown.Enabled = True  
-   txtContactNumber.Enabled = True
-   txtCountry.Enabled = True
-   txtPostcode.Enabled = True 
-   txtState.Enabled = True 
-   bExit = False
-   If Parent_Form = "FPatientBillingCards" Or Parent_Form = "FRecordVisit" Then
-      EditArea_Notify_Data_Change(False)
-   Endif
-   listview1.Visible = False
-   
-End
-
-Public Sub EditArea_TextBox_Change()
-   
-   If Bexit Then Return
-   EditArea_Notify_Data_Change(True)
-   Select Case Last.tag
-      Case "name"                                           'no name = no keys or data
-         If Trim(Last.text) = "" Then
-            Responsible_Person_Remove()
-            listview1.Visible = False
-         Else
-            fk_responsible_person = 0
-         End If
-      Case "staff can view"
-         If Trim(Last.text) = "" Then
-            fk_staff_may_view_confidential = 0
-         Endif
-      Case "search"
-         If Trim(Last.text) = "" Then
-            Responsible_Person_Remove()
-            
-         Else
-            If fk_responsible_person Then
-               If Message.Question("Do you want to remove the current responsible person?", "Yes", "No") = 2 Then
-                  txtResponsiblePerson.SetFocus
-                  Return   
-               End If   
-               modEditAreaHelpers.EditArea_Clear(VBox_ResponsiblePerson)
-               If Parent_Form = "FPatientBillingCards" Then
-                  EditArea_Notify_Data_Change(False)
-               Endif
-               fk_responsible_person = 0  'defaults
-            Endif
-         End If
-         timer_count = 0 'once count = 3 then timer1_timer fires , ie user stopped typing
-   End Select
-   
-End
-
-Public Sub EditArea_TextBox_Lostfocus()
-   
-   Last.BackGround = Color.white
-   timer1.Stop()
-   
-End
-
-Public Sub EditArea_TextBox_GotFocus()
-   
-   Last.BackGround = Color.rgb(95, 255, 175)
-   listview1.Visible = False
-   columnview1.Visible = False
-   Select Case Last.tag
-      Case "search", "country", "suburb", "staff can view"
-         With ListView1
-            .top = Last.Parent.Parent.top + Last.Parent.height
-            .left = Last.Parent.Left
-            .width = txtTown.Width
-            .Raise
-            .tag = Last
-         End With
-         With columnview1
-            .top = Last.Parent.Parent.top + Last.Parent.height
-            .left = Last.Parent.Left
-            .width = Last.width
-            .Raise
-            .tag = Last
-         End With
-         If Last.tag = "search" Then
-            If fk_responsible_person Then
-               If Message.Question("Do you want to remove the current responsible person?", "Yes", "No") = 2 Then
-                  txtResponsiblePerson.SetFocus
-                  Return 
-               End If      
-            Endif
-            Responsible_Person_Remove
-         Endif
-         
-   End Select
-   
-End
-
-Public Sub Suburb_Select()
-   '-------------------------------------------------------------------
-   'Select the suburb. The Town collection is set in listview1_dblclick
-   '-------------------------------------------------------------------
-   
-   bExit = True
-   txtTown.text = Town!town
-   txtState.text = Town!state
-   txtPostcode.text = Town!postcode
-   fk_town = Town!pk
-   bExit = False
-   
-End
-
-Public Sub Suburb_get()
-   '-------------------------------------------------
-   'Get the suburb where the responsible person lives
-   '-------------------------------------------------
-   
-   With listview1
-      .Clear
-      .Visible = False
-   End With
-   If Trim$(txtTown.text) = "" Then Return
-   Inc Application.Busy
-   Towns = modContactsDBI.Get_Town(Lower(Trim$(txtTown.text)))
-   If Towns.count Then
-      For Each town In Towns
-         listview1.Add(town!pk, town!town & " " & town!state & " " & town!postcode)
-      Next
-      If Towns.count = 1 Then
-         Suburb_Select()
-         txtContactNumber.SetFocus
-      Else
-         With listview1
-            .Visible = True
-            .Raise
-            .tag = txtTown
-         End With
-      End If
-   End If
-   Dec Application.Busy
-   
-End
-
-Public Sub Country_Find()
-   '----------------------------------------------------------
-   'Allocate country if the default Australia is not acceptable
-   '-----------------------------------------------------------
-   
-   Dim country As Collection
-   
-   With listview1
-      .Visible = False
-      .Clear
-   End With
-   If Trim$(txtCountry.text) = "" Then Return
-   countries = modContactsDBI.country_get(Lower(Trim$(txtCountry.text)))
-   If countries.count Then
-      For Each country In countries
-         listview1.Add(country!pk, country!country)
-      Next
-      If countries.count = 1 Then
-         Country_Select
-      Else
-         listview1.Visible = True
-         listview1.Raise
-         listview1.tag = txtCountry
-      End If
-   Else
-      listview1.Visible = False
-   End If
-   
-End
-
-Public Sub Country_Select()
-   '--------------------------------------------
-   'User selecting a country from the popup list
-   '--------------------------------------------
-   
-   bExit = True
-   Listview1.MoveCurrent()
-   txtCountry.text = Countries[Listview1.Item.key]!country
-   country_code = Countries[Listview1.Item.key]!country_code
-   Listview1.Visible = False
-   bExit = False
-Catch
-   bexit = False
-   Return
-   
-End
-
-Public Sub Form_Leave()
-   
-   timer1.Enabled = False
-   
-End
-
 Public Sub Form_Resize()
    
-   If listview1.Visible Then
-      listview1.width = txtTown.Width
-   Endif
-   If columnview1.Visible Then
-      columnview1.width = txtTown.Width 'fixme.
-   Endif
+   '  If columnview1.Visible Then
+   '    columnview1.width = txtTown.Width 'fixme.
+   ' Endif
    
 End
 
@@ -972,7 +588,6 @@ Public Sub Staff_Find(txtbox As Textbox)
    'e.g FPsychoSocialHistory
    '----------------------------------------------------------------
    
-   Dim iLastStaff_Member_pk As Variant
    Dim x As Integer
    Dim staff_member As Collection
    
@@ -983,7 +598,6 @@ Public Sub Staff_Find(txtbox As Textbox)
    End With
    If Trim(txtbox.text) = "" Then Return
    staff = modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.Staff_Get(Trim(txtbox.text)))
-   iLastStaff_Member_pk = -1
    For Each staff_member In staff
       columnview1.Add(x, 0)
       columnview1[x][0] = staff_member!title & " " & staff_member!wholename
@@ -1023,7 +637,6 @@ Public Sub tbAddrole_Click()
    '-----------------------------------------------------------------------
    
    txtStaffMayView.text = "" ' trigges EditArea_TextBox_Change and remove key 
-   
    If Not restrict_view_to_roles.Exist(roles[cmbRoles.index]!pk_role) Then
       lvwAllowedRoles.Add(lvwAllowedRoles.count, cmbRoles.text)
       restrict_view_to_roles.Add(["pk_role": roles[cmbRoles.index]!pk_role], restrict_view_to_roles.count)
@@ -1041,8 +654,7 @@ Public Function ProgressNotes_Create_Normal() As String
    Dim pn As String
    Dim sHeading As String = "Social History"
    
-   If Parent_Form = "FPatientBillingCards" Then sHeading = "Next of Kin Details"
-   
+   If Parent_Form_Name = "FPatientBillingCards" Then sHeading = "Next of Kin Details"
    pn = "<B>" & sHeading   
    If bEditing Then
       pn &= " (changed)"
@@ -1050,18 +662,18 @@ Public Function ProgressNotes_Create_Normal() As String
       pn &= " taken"
    Endif
    pn &= "</B><BR>"
-   If Parent_Form <> "FPatientBillingCards"  'secretarial staff cannot access the social history text, only responsible person
+   If Parent_Form_Name <> "FPatientBillingCards"  'secretarial staff cannot access the social history text, only responsible person
       pn &= Trim(teSocialHistory.text)
       If Trim(teConfidentialHistory.text) <> "" Then
          pn &= "Some confidential psycho-social history was added but viewing this is restricted to any authorised users and only in the psycho-social history of the program.<BR>"
       Endif
       pn &= "<BR>"
    End If   
-   If Trim(txtResponsiblePerson.text) <> "" Then
-      pn &= "The next of kin/responsible person is noted to be " & Trim(txtResponsiblePerson.text) & "."
+   If Trim(form_responsible_person.txtWholename.text) <> "" Then
+      pn &= "The next of kin/responsible person is noted to be " & Trim(form_responsible_person.txtWholename.text) & "."
    Endif
-   If Trim(teResponsiblePersonNotes.text) <> "" Then
-      pn &= " Notes: " & Trim(teResponsiblePersonNotes.text)
+   If Trim(form_responsible_person.teNotes.text) <> "" Then
+      pn &= " Notes: " & Trim(form_responsible_person.teNotes.text)
    Endif
    Return pn   
    
@@ -1087,24 +699,9 @@ Public Function ProgressNotes_Confidential_Create() As String
       Else                                                                             ' no previous existing psycho-social notes
          pn &= " (New)</B>"
       Endif
-      pn &= "<BR>"
+      pn &= "<BR></B>" '</B> may not be needed but wgas
       pn &= Trim(teConfidentialHistory.text)
    End If 
-   
    Return pn
-   
-End
-
-Public Sub tbRemoveResponsiblePerson_Click()
-   
-   If Message.Question("Do you want to remove the current responsible person?", "Yes", "No") = 2 Then
-      txtResponsiblePerson.SetFocus
-      Return 
-   End If      
-   Responsible_Person_Remove
-   
-End
-
-Public Sub EditArea_Buttons_Click()
    
 End

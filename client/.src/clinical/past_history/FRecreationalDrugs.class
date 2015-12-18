@@ -1,6 +1,6 @@
 ' Gambas class file
 
-' Copyright (C) 2008-2015 Dr. Richard Terry
+' Copyright (C) 2008-2016 Dr. Richard Terry
 ' This program is free software: you can redistribute it and/or modify
 ' it under the terms of the GNU General Public License as published by
 ' the Free Software Foundation, either version 3 of the License, or
@@ -14,24 +14,22 @@
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ' ---------------------------------------------------------------------------------------------------
 ' PURPOSE     - A module to allow entry of persons recreational drug use
-' FIXME:      -
-' NOTES       -
-'             -
-' BUGS        -
 '----------------------------------------------------------------------------------------------------
 
 Private currentconsult As CConsult
-Private substances As Collection
-Private substance As Collection
-Private common_lu_route_administration_keys As String[] 'only use a few match these to the cmbRouteTaken
-Private fk_recreationaldrug As Variant
-Private RecreationalDrugs As Collection
 Private bExit As Boolean
 Private bIniting As Boolean
-Private fk_progressnote As Variant
 Private bEditing As Boolean
+Private substance As Collection
+Private substances As Collection
+Private RecreationalDrugs As Collection
+Private fk_progressnote As Variant
+Private fk_recreationaldrug As Variant
+Private cvwRecreationalDrugs_key As Integer 'this one is an interger is keyed sequentially 0>n
+Private common_lu_route_administration_keys As Variant[] 'only use a few match these to the cmbRouteTaken
 
-'Public Sub Init(cons As CConsult, ac As CConsult)
+
+
 Public Sub Init(cons As CConsult)   
    
    currentconsult = cons
@@ -45,7 +43,7 @@ Public Sub Init(cons As CConsult)
    cmbRouteTaken.Add("oral", 4)
    cmbRouteTaken.Add("subcutaneous", 5)
    cmbRouteTaken.Add("topical", 6)
-   common_lu_route_administration_keys = New String[7]
+   common_lu_route_administration_keys = New Variant[7]
    common_lu_route_administration_keys[0] = const.route_administration_inhaled
    common_lu_route_administration_keys[1] = const.route_administration_intramuscular
    common_lu_route_administration_keys[2] = const.route_administration_intranasal
@@ -103,7 +101,6 @@ Public Sub Save()
    '-----------------------------------------------------------------------------------------------------------------------
    
    Dim recreationalDrug As CRow
-   Dim ProgressNote As CRow
    Dim NotificationFlag As Integer = const.cSmokerUnknown
    Dim NotificationMessage As String 'summary to be passed to the FClinical Toolbar eg EX-SMOKER ceased 42yrs age
    
@@ -112,7 +109,7 @@ Public Sub Save()
    HBox_EditArea.Enabled = False
    
    recreationalDrug = New CRow
-   If fk_recreationaldrug <> 0 Then
+   If Not IsNull(fk_recreationaldrug) Then
       recreationalDrug.put_unchanged(fk_recreationaldrug, "fk_recreationaldrug")
    Endif
    recreationalDrug!fk_consult = currentconsult.GetPK()
@@ -139,21 +136,7 @@ Public Sub Save()
    If rbConfidentialYes.Value = True Then
       recreationalDrug!confidential = True   
    Endif
-   ProgressNote = New CRow
-   ProgressNote!notes = ProgressNotes_Create()
-   If fk_progressnote Then
-      ProgressNote.put_unchanged(fk_progressnote, "fk_progressnote")            'am editing todays progress note
-   End If
-   If fk_recreationaldrug <> 0 Then
-      ProgressNote!fk_audit_action = const.cAuditAction_Edit
-   Else
-      ProgressNote!fk_audit_action = const.cAuditAction_Insert                  'is an insert
-   Endif
-   ProgressNote!fk_consult = recreationalDrug!fk_consult
-   ProgressNote!fk_section = const.cSection_RecreationalDrugs
-   ProgressNote!problem = "Recreational Drugs"
-   ProgressNote.Save("clin_consult.progressnotes", "fk_progressnote")
-   recreationalDrug!fk_progressnote = progressnote!fk_progressnote
+   recreationalDrug!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, ProgressNotes_Create(), const.cSection_RecreationalDrugs, fk_progressnote, "Recreational Drugs")
    recreationalDrug.Save("clin_history.recreational_drugs", "fk_recreationaldrug")
    modDBConnect.CommitTrans()
    EditArea_Notify_DataChange(False)
@@ -173,9 +156,8 @@ Public Sub Save()
          NotificationMessage &= " " & Str(recreationalDrug!cumulative_amount) & " PY"
       End If  
    End If   
-  ' FClinical.Refresh_AllPreviousNotes()                                        'refresh the progress notes
    FClinical.Refresh_Section(const.cSection_HealthSummary)
-   FClinical.Smoking_Nofication_Update(NotificationFlag, NotificationMessage)
+   FClinicalToolbar.Smoking_Nofication_Update(NotificationFlag, NotificationMessage)
    Try FGPMPTCA.GPMP_update
    Reload()
    
@@ -191,7 +173,7 @@ Public Sub ProgressNotes_Create() As String
    Dim sPN As String
    
    sPN = "<B> " & cmbSubstances.text
-   If fk_recreationaldrug Then
+   If Not IsNull(fk_recreationaldrug) Then
       sPN &= " details updated:</B> "
    Else
       sPN &= " details added:</B> "
@@ -337,12 +319,15 @@ Public Sub mnuRecreationalDrugs_Click()
       Case "help"
          modUtilGUI.NotImplemented("Help")
    End Select
-   Catch
-      Return 
+Catch
+   Return 
+   
 End
 
 Public Sub cvwRecreationalDrugs_Select()
    
+   cvwRecreationalDrugs.MoveCurrent
+   cvwRecreationalDrugs_key = cvwRecreationalDrugs.Item.Key
    RecreationalDrug_Display
    
 End
@@ -356,16 +341,26 @@ Public Sub cvwRecreationalDrugs_Menu()
 End
 
 Public Sub New_Entry()
+   '---------------------------------------------------------------
+   'Called from FClinical, called this because can't use New() and
+   'all across easyp this is the wording I've chosen
+   'see FClinicalToolbar.MainToolbar_Click for details
+   '---------------------------------------------------------------
    
    RecreationalDrug_New()
    
 End
 
 Public Sub RecreationalDrug_Edit()
+   'Edit the drug if on different date to when last edited, null the fk_progressnote
    
-   HBox_EditArea.Enabled = True
-   bEditing = True
-   
+   Hbox_EditArea.Enabled = True
+   If Not modUtil.IsSameDay(currentconsult.GetConsultDate(), RecreationalDrugs[cvwRecreationalDrugs_Key]!consult_date) Then 
+      fk_progressnote = Null  
+   Endif
+   bEditing = True   
+   Print fk_progressnote
+
 End
 
 Public Sub RecreationalDrug_New()
@@ -382,7 +377,7 @@ End
 Public Sub RecreationalDrug_Delete()
    '----------------------------------------------------------------
    'Delete the reacreational drug laying down the audit trail  
-   'if the fk_progressnote for that drug is 0 then drug was imported
+   'if the fk_progressnote for that drug is null then drug was imported
    'i.e the field progressnotes = null
    '-----------------------------------------------------------------
    
@@ -391,7 +386,7 @@ Public Sub RecreationalDrug_Delete()
    Dim RD As Collection 
    
    cvwRecreationalDrugs.MoveCurrent
-   RD = RecreationalDrugs[cvwRecreationalDrugs.Item.key]
+   RD = RecreationalDrugs[cvwRecreationalDrugs_key]
    SMsg = "Are you sure you want to delete this drug?\n\n"
    sMsg = RD!drug
    If Message.Question(sMsg, "Yes - Delete Drug", "No") = 2 Then Return
@@ -419,22 +414,23 @@ Public Sub RecreationalDrug_Delete()
    End If   
    
 Refresh:
-  ' FClinical.Refresh_AllPreviousNotes()
+   ' FClinical.Refresh_AllPreviousNotes()
    Try FClinical.Refresh_Section(const.cSection_HealthSummary) 
    Reload()
    
 End
 
 Public Sub RecreationalDrug_Display()
-   '---------------------------------------------------------
+   '-------------------------------------------------------------------
    'Display the recreational drug details in the editing area
-   '---------------------------------------------------------
+   'this remains uneditable until Edit selected form tool bar or menu
+   '-------------------------------------------------------------------
    
    Dim RecreationalDrug As Collection
    
    EditArea_Clear()
    cvwRecreationalDrugs.MoveCurrent()
-   RecreationalDrug = RecreationalDrugs[cvwRecreationalDrugs.Item.key]
+   RecreationalDrug = RecreationalDrugs[cvwRecreationalDrugs_Key]
    bIniting = True
    cmbSubstances.index = cmbSubstances.Find(RecreationalDrug!drug)
    bIniting = False
@@ -530,14 +526,16 @@ Public Sub EditArea_Clear()
    
    bExit = True
    modEditAreaHelpers.EditArea_Clear(Vbox_EditArea)
-   fk_recreationaldrug = 0
-   fk_progressnote = 0
+   fk_recreationaldrug = Null
+   fk_progressnote = Null
    rbReset.value = True 'unsets the day/month/week radiobuttons
    bexit = False
    bEditing = False
    cmbSubstances.index = -1
    cmbRouteTaken.index = -1
    rbReset.value = True 
+   Hbox_EditArea.Enabled = False 
+   bEditing = False  
    EditArea_Notify_DataChange(False)
    
 End
@@ -704,8 +702,8 @@ Public Sub cmbRouteTaken_KeyPress()
    
    If bexit Then Return
    txtNotes.SetFocus()
+   
 End  
-
 
 Public Sub chkNeverUsedDrug_Click()
    

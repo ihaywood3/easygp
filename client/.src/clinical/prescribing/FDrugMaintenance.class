@@ -1,6 +1,6 @@
 ' Gambas class file
 
-' Copyright (C) 2008-2015 Dr. Richard Terry, Dr. Ian Haywood
+' Copyright (C) 2008-2016 Dr. Richard Terry, Dr. Ian Haywood
 
 ' This program is free software: you can redistribute it and/or modify
 ' it under the terms of the GNU General Public License as published by
@@ -76,8 +76,8 @@ Private form_help As FHtmlViewer
 Private Default_Zoom_Help As Integer
 Private Default_Zoom_PI As Integer
 Private Help_Dir As String
-Private fk_brand As String
-Private fk_product As String
+Private fk_brand As Variant
+Private fk_product As Variant
 Private fk_company As Variant
 Private fk_form As Variant
 Private fk_schedule As Variant
@@ -200,9 +200,7 @@ Public Sub Init()
    modUtilGUI.LoadCombo(cmbSchedules, Schedules, "schedule")
    lblMeasure.text = "Prescription Only Medicine OR Prescription Animal Remedy (S4)   "
    cmbSchedules.width = lblMeasure.Width
-   '   If Not modDBConnect.IsAdmin Then
    Product_Information_Dir = modAdminDBI.Config_Get("product_information_directory", "", Null, modDBConnect.currentUser!fk_clinic)
-   '  Endif
    txtEditGrid.Height = txtBrand.Height
    bExit = True
    Try Settings_Load() 'prevent the Hsplit1_resize event
@@ -257,7 +255,6 @@ Public Sub Reload()
       drugs = modPrescribingDBI.Brands_Get(Trim(modUtil.StripExtraBlanks(txtSearch.text)), Null, 100) 'FIXME RENAME
       If VBox_UnallocatedPDFs.Visible Then
          If drugs.count = 0 Then
-            '    txtSearch.text = Left(cvwUnallocatedPDFs.Item.text, 3)
             drugs = modPrescribingDBI.Brands_Get(Trim(modUtil.StripExtraBlanks(Left(cvwUnallocatedPDFs.Item.text, 3))), Null, 100)
          Endif
       Endif
@@ -626,7 +623,6 @@ End
 
 Public Sub Drugs_Fill_List(drugs As Collection)
    
-   Dim x As Integer
    Dim brand As Collection
    Dim iDrugcount As Integer
    
@@ -682,7 +678,6 @@ End
 
 Public Sub Drug_Show()
    
-   Dim unit As Integer
    Dim drug As Collection
    Dim sProductInformationFilename As String
    
@@ -747,7 +742,7 @@ Public Sub Drug_Show()
    Endif
    If Not IsNull(drug!fk_schedule) Then
       cmbSchedules.Index = cmbSchedules.Find(drug!schedule)
-       fk_schedule = drug!fk_schedule
+      fk_schedule = drug!fk_schedule
    Else
       cmbSchedules.Index = -1
    End If
@@ -836,8 +831,8 @@ Public Sub Drug_New()
       fk_brand = Null
       atccode = Null
       fk_product = Null
-      fk_form = 0                                             'an integer can't be null
-      fk_schedule = 0
+      fk_form = Null                                          
+      fk_schedule = Null
       With gvwGenerics                                        'init grid to empty
          .Rows.count = 0
          .Columns.count = 2
@@ -881,7 +876,7 @@ Public Sub Drug_Edit()
    VBox_EditArea_Inner.Enabled = True
    EditArea_TextBoxes_SetReadOnly_Status(False)
    HBox_AddGeneric.Visible = True
- ' gvwGenerics.Mode = Select.Single
+   ' gvwGenerics.Mode = Select.Single
    gvwGenerics.Enabled = True  
    Hbox12.Enabled = True   
    cmbSchedules.Enabled = True
@@ -913,7 +908,7 @@ Public Sub Drug_Forms_Get()
       .Clear()
       .Visible = False
    End With
-   fk_form = 0
+   fk_form = Null
    drug_forms = modPrescribingDBI.Formulations_Get(Trim(txtForm.text))
    For Each drug_form In drug_forms
       listview2.Add(drug_form!pk, drug_form!form)
@@ -930,10 +925,11 @@ End
 Public Sub Save()
    '-----------------------------
    'Save a new user defined drug
+   '-----------------------------
    ' CREATE TABLE drugs.brand
    ' (
    '   fk_product uuid NOT NULL,
-   '   fk_company character varying(3) NOT NULL,
+   '   fk_company character varying(3) DEFAULT NULL::character varying, -- may be null as we can put in our own drug preparations, creams etc
    '   brand character varying(100) NOT NULL,
    '   price money, -- dispensed price for PBS drugs.
    '   from_pbs boolean NOT NULL DEFAULT false, -- true if the brand comes from the PBS database, allows the list to be easily reloaded...
@@ -941,13 +937,23 @@ Public Sub Save()
    '   original_tga_code character varying(12), -- drugs imported from TGA database, their TGA code
    '   pk uuid NOT NULL DEFAULT uuid_generate_v4(),
    '   product_information_filename text,
-   '   CONSTRAINT brand_pkey PRIMARY KEY (pk ),
-   '  'brand!product_information_filename =    CONSTRAINT brand_fk_company_fkey FOREIGN KEY (fk_company)
+   '   product_information_filename_user text, -- If the user downloads a product information file for their own use it then the filename ...
+   '   sct text,
+   '   current boolean NOT NULL DEFAULT true,
+   '   CONSTRAINT brand_pkey PRIMARY KEY (pk),
+   '   CONSTRAINT brand_fk_company_fkey FOREIGN KEY (fk_company)
    '       REFERENCES drugs.company (code) MATCH SIMPLE
    '       ON UPDATE NO ACTION ON DELETE NO ACTION,
    '   CONSTRAINT brand_fk_product_fkey FOREIGN KEY (fk_product)
-   '       REFERENCES drugs.product(pk)MATCH SIMPLE
-   '       pdf-4pdf-4
+   '       REFERENCES drugs.product (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT sct_is_numeric CHECK (sct ~ '^[0-9]+$'::text)
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   
+   ' --------------------------------------------------------------------------------------------
    ' CREATE TABLE drugs.pack
    ' (
    '   fk_product uuid,pk_viewpk_view
@@ -961,36 +967,52 @@ Public Sub Save()
    ' WITH (
    '   OIDS=FALSE
    ' );
-   'pk_viewpk_view
-   '    Create TABLE drugs.productadmin
+   '--------------------------------------------------------------------------------------------
+   ' CREATE TABLE drugs.product
    ' (
-   '   pk uuid Not Null Default uuid_generate_v4(),
-   '   atccode character varying(8) Not Null,
-   '   generic text Not Null, - - full generic name In Lower - case.For compounds names separated by ";"
-   '   salt text, - - If Not normally part Of generic name, the adjuvant salt
-   '   fk_form integer Not Null, - - the form Of the drug
-   '   strength text, - - the strength As A number followed by a unit.For compounds...
-   '   salt_strength text, - - where a weight Of the full salt Is Listed(being heavier than the weight...
-   '   original_pbs_name text, - - For a drug imported From the PBS Yellow Book database, the original...
-   '   original_pbs_fs text, - - For a drug imported From the PBS Yellow Book database, the original...
-   '   free_comment text, - - a FreIf Not Drug_Valid() Then Return  e - text comment on properties Of the product.For example For complex packages...
-   '   updated_at timestamp without Time zone Default Now(),
-   '   fk_schedule integer,pk_view
-   '   shared boolean Default True, - - If True Then the user / surgery wants To share this drug With easygp - central
-   '   poison smallint Default 4,
-   '
+   '   pk uuid NOT NULL DEFAULT uuid_generate_v4(),
+   '   atccode character varying(8) NOT NULL,
+   '   generic text NOT NULL, -- full generic name in lower-case. For compounds names separated by ";"
+   '   salt text, -- if not normally part of generic name, the adjuvant salt
+   '   fk_form integer NOT NULL, -- the form of the drug
+   '   strength text, -- the strength as a number followed by a unit. For compounds...
+   '   salt_strength text, -- where a weight of the full salt is listed (being heavier than the weight ...
+   '   original_pbs_name text, -- for a drug imported from the PBS Yellow Book database, the original ...
+   '   original_pbs_fs text, -- for a drug imported from the PBS Yellow Book database, the original ...
+   '   free_comment text, -- a free-text comment on properties of the product. For example for complex packages...
+   '   updated_at timestamp without time zone DEFAULT now(),
+   '   fk_schedule integer,
+   '   shared boolean DEFAULT true, -- if true then the user/surgery wants to share this drug with easygp-central
+   '   pack_size integer DEFAULT 1,
+   '   amount double precision,
+   '   amount_unit integer,
+   '   units_per_pack integer DEFAULT 1,
+   '   old_original_pbs_name text,
+   '   sct text,
+   '   extempore boolean NOT NULL DEFAULT false,
+   '   CONSTRAINT product_pkey PRIMARY KEY (pk),
+   '   CONSTRAINT product_fk_form_fkey FOREIGN KEY (fk_form)
+   '       REFERENCES drugs.form (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT product_fk_schedule_fkey FOREIGN KEY (fk_schedule)
+   '       REFERENCES drugs.schedules (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT sct_is_numeric CHECK (sct ~ '^[0-9]+$'::text)
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
    '----------------------------
    
    Dim sMsg As String
    Dim generics_list As String
    Dim strengths_list As String
-   Dim fk_existing_product_key As String
-   Dim fk_existing_brand_key As String
+   Dim fk_existing_product_key As Variant
+   Dim fk_existing_brand_key As Variant
    Dim product As CRow
    Dim brand As CRow
    Dim brandname As String
-   Dim pack As Collection
-   Dim bUserPIFile As Boolean                         'if true the product information file is not ours (not from the guild)
+    Dim bUserPIFile As Boolean                         'if true the product information file is not ours (not from the guild)
    '--------------------------------------------------------------------------------------------------
    'First save the product to product table
    'Saving a new drug has multiple nuances around the generic composition
@@ -1001,41 +1023,7 @@ Public Sub Save()
    '--------------------------------------------------------------------------------------------------
    If Vbox_EditArea_Outer.Padding = 0 Then Return
    Gridview_Unload(ByRef generics_list, ByRef strengths_list)
-   If Trim(txtBrand.Text) = "" Then
-      txtBrand.SetFocus()
-      Return
-   End If
-   
-   If atccode = "" Then
-      txtACTName.SetFocus()
-      Return
-   End If
-   If Replace(generics_list, ";", "") = "" Then
-      txtFindGenericComponent.SetFocus
-      Return
-   End If
-   If fk_form = 0 Then
-      txtForm.SetFocus()
-      Return
-   End If
-   If Trim(txtNoOfPacks.text) = "" Then
-      txtNoOfPacks.SetFocus()
-      Return
-   Endif
-   If Trim(txtUnits_per_pack.text) = "" Then
-      txtUnits_per_pack.SetFocus()
-      Return
-   Endif
-   If cmbSchedules.index = -1 Then
-      Message.Warning("Please select a schedule for this drug", "Ok")
-      Return
-   Endif
-   If fk_company = "" Then     'some of our own 'recipies', won't have a company
-      If Message.Question("Continue to save without allocating a company for this drug?", "Yes", "No") = 2 Then
-         txtCompany.SetFocus()
-         Return
-      Endif
-   End If
+   If Not Drug_Valid(generics_list) Then Return
    EditArea_TextBoxes_SetReadOnly_Status(False)
    EditArea_Notify_Data_Change(False)
    Wait           'update the gui
@@ -1093,7 +1081,7 @@ Public Sub Save()
       brand.put_unchanged(fk_existing_brand_key, "fk_brand")
       brand!fk_product = fk_existing_product_key
    Endif
-   If fk_company <> "" Then brand!fk_company = fk_company                           'may not have a company                                               'must always have a brand or 'our brand'
+   If Not IsNull(fk_company) Then brand!fk_company = fk_company                           'may not have a company                                               'must always have a brand or 'our brand'"
    If Trim(txtPIFile.text) <> "" Then                                               'we have a pi-filename
       If PI_Filenames.Exist(Trim(txtPIFile.text)) Then                              'does it come from the guild?
          brand!product_information_filename = Trim(txtPIFile.text)                  'yes, its is one of ours
@@ -1271,9 +1259,46 @@ Public Sub Brands_With_Filenames_Refresh()
    
 End
 
-Public Function Drug_Valid() As Boolean
+Public Function Drug_Valid(generics_list As String) As Boolean
    '------------------------------------------
    'Returns true if adequate drug information
+   '------------------------------------------
+   
+   If Trim(txtBrand.Text) = "" Then
+      txtBrand.SetFocus()
+      Return
+   End If
+   If atccode = "" Then
+      txtACTName.SetFocus()
+      Return
+   End If
+   If Replace(generics_list, ";", "") = "" Then
+      txtFindGenericComponent.SetFocus
+      Return
+   End If
+   If IsNull(fk_form) Then
+      txtForm.SetFocus()
+      Return
+   End If
+   If Trim(txtNoOfPacks.text) = "" Then
+      txtNoOfPacks.SetFocus()
+      Return
+   Endif
+   If Trim(txtUnits_per_pack.text) = "" Then
+      txtUnits_per_pack.SetFocus()
+      Return
+   Endif
+   If cmbSchedules.index = -1 Then
+      Message.Warning("Please select a schedule for this drug", "Ok")
+      Return
+   Endif
+   If IsNull(fk_company) Then     'some of our own 'recipies', won't have a company
+      If Message.Question("Continue to save without allocating a company for this drug?", "Yes", "No") = 2 Then
+         txtCompany.SetFocus()
+         Return
+      Endif
+   End If
+   Return True
    
 End
 
@@ -1325,7 +1350,7 @@ Public Sub EditArea_TextBox_Change()
             listview2.Visible = False
          End If
       Case "form"
-         If Trim(txtForm.text) = "" Then fk_form = 0
+         If Trim(txtForm.text) = "" Then fk_form = Null
       Case "edit grid"
          gvwGenerics[gvwGenerics.row, gvwGenerics.Column].text = txtEditGrid.Text
          lblMeasure.text = Last.text & "  "
@@ -1699,6 +1724,7 @@ Catch
 End
 
 Public Sub gvwGenerics_Select()
+   
    txtEditGrid.Visible = False   
    onrow = gvwGenerics.row
    
@@ -1746,18 +1772,6 @@ Public Sub timer1_Timer()
             Reload
       End Select   
    End If
-   
-End
-
-Public Sub timer1_Timer_old()
-   '------------------------------------------------------------------------------
-   'If the timer is running, user is typing in either the brand or generic textbox
-   '------------------------------------------------------------------------------
-   
-   Inc timer_count
-   If timer_count > 3 Then
-      Reload()
-   Endif
    
 End
 
@@ -1872,7 +1886,7 @@ Public Sub HBox_GenericsGrid_Leave()
 End
 
 Public Sub gvwGenerics_Click()
-
+   
    Print "clicked on row "; gvwGenerics.Row
-
+   
 End

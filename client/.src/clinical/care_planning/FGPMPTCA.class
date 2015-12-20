@@ -785,10 +785,7 @@ Public Function TCA_Create_LaTex(provider As Collection) As String
    Dim sProviderRole As String
    Dim sRelevantHistory As String
    Dim sHealthIssues As String  
-   Dim sLaterality As String
    Dim reordered_family_history As Collection 
-   Dim provider_comms As Collection
-   Dim comm As Collection
    
    Inc Application.Busy
    '-------------------------------------------------------------------
@@ -1673,22 +1670,17 @@ Public Sub TCA_Save()
    ' );
    ' -------------------------------------------------------------------------------
    
-   Dim TCA_Save As CRow  
+   Dim TCA_To_Save As CRow  
    Dim sMsg As String
    Dim Document_TCA As CRow  
    Dim Document_Allied_Health As CRow
-   Dim Documents_Allied_Health_Latex As Collection  '* 2 the overGPMPpic latex and the pdf filename
    Dim Team_care_member As CRow
    Dim TM As Collection 
    Dim PH As Collection
    Dim FH As Collection    
    Dim keys As String
    Dim bClaimed As Boolean 
-   Dim progressnote As CRow
    Dim smsg1 As String
-   Dim md5Output As String
-   Dim filename As String
-   Dim filenames As New Collection      'collect filenamese of documents copied to file system for killing in an error occurs
    Dim LaTexes_to_print As Collection   'of latex - if save successful we will print these
    Dim latex_to_print As String
    Dim item_number As Integer = 723     'default to new TCA
@@ -1766,55 +1758,71 @@ Public Sub TCA_Save()
       If Not TCA_Valid_Data() Then Return  
       bClaimed = True  
    End If   
-   '--------------------------------------------------------------------------------------------
-   'First the progress note, must be saved before the TCA as needs its  pk for the TCA collection
-   '--------------------------------------------------------------------------------------------
-   ProgressNote = New CRow
-   If Not IsNull(fk_tca_progressnote) Then
-      ProgressNote.put_unchanged(fk_tca_progressnote, "fk_progressnote")
-   Endif
-   ProgressNote!fk_consult = currentConsult.GetPK()
-   ProgressNote!notes = TCA_ProgressNotes_Create(bClaimed)
-   ProgressNote!fk_section = const.cSection_CarePlan
-   ProgressNote!problem = "Team Care Arrangements"
-   ProgressNote!fk_audit_action = const.cAuditAction_Insert
-   ProgressNote.Save("clin_consult.progressnotes", "fk_progressnote")
    '---------------------------------------------------------
-   'next save the actual team care arrangement with its Latex
+   'next save the actual team care arrangement
    '---------------------------------------------------------
-   TCA_Save = New CRow   
+   ' CREATE TABLE clin_history.team_care_arrangements
+   ' (
+   '   pk serial NOT NULL,
+   '   fk_consult integer NOT NULL,
+   '   date_claimed timestamp without time zone, -- if is null, then the team care arrangment is prepared but not claimed.
+   '   explained_steps_involved boolean DEFAULT false,
+   '   discussed_providers boolean DEFAULT false, -- If True then the GP discussed with the patient who the providers on the team are and their responsibilities
+   '   patient_agrees boolean DEFAULT false, -- If True the the patient agree's to their team care arrangements
+   '   patient_has_carer boolean DEFAULT false,
+   '   copy_offered_to_patient boolean DEFAULT false,
+   '   patient_permits_carer_to_have_copy boolean DEFAULT false,
+   '   copy_offered_to_carer boolean DEFAULT false,
+   '   copy_sent_to_providers boolean DEFAULT false,
+   '   review_date date,
+   '   fk_progressnote integer NOT NULL,
+   '   item_number integer NOT NULL, -- if not null is the item number claimed either 723 (new) or 732(review)
+   '   CONSTRAINT team_care_arrangements_pkey PRIMARY KEY (pk),
+   '   CONSTRAINT team_care_arrangements_fk_consult_fkey FOREIGN KEY (fk_consult)
+   '       REFERENCES clin_consult.consult (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT team_care_arrangements_fk_progressnote_fkey FOREIGN KEY (fk_progressnote)
+   '       REFERENCES clin_consult.progressnotes (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   
+   '---------------------------------------------------------
+   TCA_To_Save = New CRow   
    If Not IsNull(fk_team_care_arrangement) Then
-      TCA_Save.Put_unchanged(fk_team_care_arrangement, "fk_team_care_arrangement")
+      TCA_To_Save.Put_unchanged(fk_team_care_arrangement, "fk_team_care_arrangement")
    End If   
-   TCA_Save!fk_consult = currentConsult.GetPK()
+   TCA_To_Save!fk_consult = currentConsult.GetPK()
    If bClaimed Then
-      TCA_Save!date_claimed = currentconsult.GetConsultDate()                                              'claim today only
+      TCA_To_Save!date_claimed = currentconsult.GetConsultDate()                                              'claim today only
    Else
-      TCA_Save!date_claimed = Null
+      TCA_To_Save!date_claimed = Null
    End If 
-   If rbTCA.value = True Then TCA_Save!item_number = 723
-   If rbTCAReview.value = True Then TCA_Save!item_number = 732
-   TCA_Save!explained_steps_involved = True                                   'by defination as otherwise can't get to here
-   TCA_Save!discussed_providers = True
-   TCA_Save!patient_agrees = True                           'by defination as otherwise can't get to here
-   TCA_Save!copy_offered_to_patient = True                                    'by defination as otherwise can't get to here
+   If rbTCA.value = True Then TCA_To_Save!item_number = 723
+   If rbTCAReview.value = True Then TCA_To_Save!item_number = 732
+   TCA_To_Save!explained_steps_involved = True                                   'by defination as otherwise can't get to here
+   TCA_To_Save!discussed_providers = True
+   TCA_To_Save!patient_agrees = True                           'by defination as otherwise can't get to here
+   TCA_To_Save!copy_offered_to_patient = True                                    'by defination as otherwise can't get to here
    If rbTCAPatientHasCarerYes.value = True Then                              'if patient has a carer:  
-      TCA_Save!patient_has_carer = True                                      'then they have a carer!
-      TCA_Save!patient_permits_carer_to_have_copy = CBool(chkTCAPatientAllowsCarerCopy.value)  'may/maynot have let carer have a copy
+      TCA_To_Save!patient_has_carer = True                                      'then they have a carer!
+      TCA_To_Save!patient_permits_carer_to_have_copy = CBool(chkTCAPatientAllowsCarerCopy.value)  'may/maynot have let carer have a copy
       If chkTCACopyToCarer.value = True Then                            'if they did offer copy to carer
-         TCA_Save!copy_offered_to_carer = True
+         TCA_To_Save!copy_offered_to_carer = True
       Else
-         TCA_Save!copy_offered_to_carer = False 
+         TCA_To_Save!copy_offered_to_carer = False 
       Endif
    Else
-      TCA_Save!patient_has_carer = False
-      TCA_Save!patient_permits_carer_to_have_copy = False   
-      TCA_Save!copy_offered_to_carer = False 
+      TCA_To_Save!patient_has_carer = False
+      TCA_To_Save!patient_permits_carer_to_have_copy = False   
+      TCA_To_Save!copy_offered_to_carer = False 
    End If   
-   TCA_Save!copy_sent_to_providers = CBool(chkTCACopyToProviders.value)
-   TCA_Save!review_date = Val(txtTCAReviewDate.text)
-   TCA_Save!fk_progressnote = ProgressNote!fk_progressnote
-   TCA_Save.Save("clin_history.team_care_arrangements", "fk_team_care_arrangement")
+   TCA_To_Save!copy_sent_to_providers = CBool(chkTCACopyToProviders.value)
+   TCA_To_Save!review_date = Val(txtTCAReviewDate.text)
+   TCA_To_Save!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, TCA_ProgressNotes_Create(bClaimed), const.cSection_CarePlan, fk_tca_progressnote, "Team Care Arrangements")
+   TCA_To_Save.Save("clin_history.team_care_arrangements", "fk_team_care_arrangement")
    '-------------------------------------------------------------------------------------
    'For each team care member
    ' if bClaimed flag is true:
@@ -1901,17 +1909,11 @@ Public Sub TCA_Save()
          '-----------------------------------------------------------------------
          'If the team care member has been allocated sessions (up to 5):
          'now the EPC allied health form with the referral for number of sessions
-         'With this one we will 'pre-get' the pk of document.documents
-         'as need to use this in the construction of the filename for the 
-         'over-pic pdf we will keep in the filesystem
          '-----------------------------------------------------------------------
          If Not IsNull(TM!num_epc_sessions) Then
             Document_Allied_Health = New CRow  
             If TM!fk_document_allied_health_form Then
                Document_Allied_Health.put_unchanged(TM!fk_document_allied_health_form, "fk_document")
-               Try Kill modAdminDBI.Config_Get("document_archiving_directory", "", Null, modDBConnect.currentUser!fk_clinic) &/ TM!filename
-            Else
-               Document_Allied_Health!pk = modArchiveDocumentsDBI.Document_New_Pk()  'gets key, only used if committed
             Endif
             Document_Allied_Health!fk_sending_entity = modInboxDBI.SendingEntity_GetPK(const.Document_Display_As_Letter, "", modDBConnect.currentUser!fk_branch)
             Document_Allied_Health!fk_patient = currentconsult!patient!fk_patient 
@@ -1932,42 +1934,13 @@ Public Sub TCA_Save()
             Document_Allied_Health!fk_lu_display_as = const.Document_Display_As_Team_Care_Arrangement
             Document_Allied_Health!fk_lu_request_type = Null
             Document_Allied_Health!incoming_referral = False
-            '-----------------------------------------------------------------------------------------------------------------------------------
-            ' this returns a collection
-            ' Documents_Allied_Health_Latex[0] = the Latex data with a relative pathway not printable by itself without translation - a 'backup'
-            ' Documents_Allied_Health_Latex[1]  = latex where overpic is included
-            'fixme cannot figure this out. modPrinting.Print_latex  prints blank sheet if use epc-referral.pdf but not epc-referral.ps
-            'however to generate the pdf to save to the filesystem, need to use the epc-referral.pdf in the latex
-            'fixme - below this is the same code, don't need the if-then-else was historyical when passing a key
-            ' ----------------------------------------------------------------------------------------------------------------------------------
-            If TM!fk_document_allied_health_form Then 
-               Documents_Allied_Health_Latex = Allied_Health_Referral_Make_Latex(TM) ' Document_Allied_Health!fk_document)
-            Else
-               Documents_Allied_Health_Latex = Allied_Health_Referral_Make_Latex(TM) ', Document_Allied_Health!pk)  
-            Endif
-            '  modPrinting.Print_latex(Replace(Documents_Allied_Health_Latex!latex, "epc-referral.pdf", "epc-referral.ps"))     'print the latex of the pdf generated
-            LaTexes_to_print.Add(Documents_Allied_Health_Latex!latex, LaTexes_to_print.Count)
-            filename = modPrinting.Latex_To_PDF(Documents_Allied_Health_Latex!latex)        'get the temporary filename this one contains epc-referral.pdf
-            Exec ["/usr/bin/md5sum", filename] To md5Output                                 'and calculate the md5sum
-            Document_Allied_Health!md5sum = Left(md5Output, InStr(md5Output, " ") - 1)
-            If TM!fk_document_allied_health_form Then
-               Document_Allied_Health!source_file = Team_Care_Member_Allied_Health_PDF_Make_Filename(TM, Document_Allied_Health!fk_document) 
-            Else
-               Document_Allied_Health!source_file = Team_Care_Member_Allied_Health_PDF_Make_Filename(TM, Document_Allied_Health!pk)
-            End If   
-            Try Copy filename To modAdminDBI.Config_Get("document_archiving_directory", "", Null, modDBConnect.currentUser!fk_clinic) &/ Document_Allied_Health!source_file
-            If Not Error Then
-               filenames.Add(Document_Allied_Health!source_file, filenames.count)
-               Kill filename
-            Else
-               Goto doc_error
-            Endif
-            Document_Allied_Health!fk_lu_data_content_type = Null
+            Document_Allied_Health!fk_lu_data_content_type = const.cData_Type_Latex
+            Document_Allied_Health!data = Allied_Health_Referral_Make_Latex(TM)
+            LaTexes_to_print.Add(Document_Allied_Health!data, LaTexes_to_print.Count)
             Document_Allied_Health!protected = True                                         'as an audit document, users cannot remove this, needed for medicare
             Document_Allied_Health.Save("documents.documents", "fk_document")
          End If 
          If bPrintAcceptanceForm And bClaimed Then LaTexes_to_print.Add(Team_Care_Consent_LaTex(TM), LaTexes_to_print.count)
-         
       End If      
       '-------------------------------------------------------
       'Now save the team care members and link to the document
@@ -2008,7 +1981,7 @@ Public Sub TCA_Save()
       If TM!fk_team_care_member Then
          Team_care_member.Put_unchanged(TM!fk_team_care_member, "fk_team_care_member")
       Endif
-      Team_care_member!fk_team_care_arrangement = TCA_Save!fk_team_care_arrangement
+      Team_care_member!fk_team_care_arrangement = TCA_To_Save!fk_team_care_arrangement
       Team_care_member!fk_branch = TM!fk_branch
       Team_care_member!fk_employee = TM!fk_employee
       Team_care_member!fk_person = TM!fk_person
@@ -2037,7 +2010,7 @@ Public Sub TCA_Save()
          '-------------------------------------------------------------------------  
          If TM!num_epc_sessions Then 
             Team_care_member!fk_document_allied_health_form = Document_Allied_Health!fk_document 'the document with is pdf or the over-pic form
-            Team_care_member!latex_allied_health_form = Documents_Allied_Health_Latex!over_pic '
+            Team_care_member!latex_allied_health_form = Document_Allied_Health!data
          Else
             team_care_member!fk_document_allied_health_form = Null
             Team_care_member!latex_allied_health_form = Null
@@ -2098,7 +2071,7 @@ Public Sub TCA_Save()
       If Not InStr(latex_to_print, "overpic") Then
          modPrinting.Print_latex(latex_to_print)
       Else
-         modPrinting.Print_latex(Replace(latex_to_print, "epc-referral.pdf", "epc-referral.ps"))     'print the latex of the pdf generated
+         modPrinting.Print_latex_PDF(Document_Allied_Health!data)      'uses overpic
       Endif
    Next
    EditArea_Notify_DataChange(False)
@@ -2111,9 +2084,6 @@ Public Sub TCA_Save()
    
 doc_error:
    Message.Info("An error occurred trying to save the Team Care Arrangements")
-   For Each filename In filenames
-      Try Kill modAdminDBI.Config_Get("document_archiving_directory", "", Null, modDBConnect.currentUser!fk_clinic) &/ filename
-   Next
    Return
 Catch
    modDBConnect.RollBack()
@@ -2121,28 +2091,21 @@ Catch
    
 End
 
-Public Function Allied_Health_Referral_Make_Latex(TCM As Collection) As Collection ', document_pk As Variant) As Collection
+Public Function Allied_Health_Referral_Make_Latex(TCM As Collection) As String
    '---------------------------------------------------------------------------------
-   'returns two latex definations, the overpic one, and one which will build the pdf
-   'for reasons of unreliability of pdflatex building the pdf using overpic
-   'I've kept a copy of the pdf in the filesystem + back up in the team-care-members
-   'table
+   'returns the latex tof the allied health form
    '--------------------------------------------------------------------------------
    
    Dim templ As New CTemplate("epc-form", "tex")
    Dim x As Integer
-   Dim pdf_path As String = modUtil.Find_File("templates" &/ "epc-referral.pdf")
-   Dim latex_path_modified As String
-   Dim latex_col As New Collection
    
+   Print modUtil.Find_File("templates" &/ "epc-referral.pdf")
    templ.subst_common(currentconsult)
    templ.Subst("postcode", "\\relax")
    templ.Subst("patient-has-gpmp-and-tca", "X")
    templ.Subst("residential-facility-plan", "\\relax")
-   '-----------------------------------
-   ' the provider number for the doctor
-   ' ----------------------------------
-   For x = 1 To 22
+   templ.Subst("pdf-path", modUtil.Find_File("templates" &/ "epc-referral.pdf"))
+   For x = 1 To 22                                  ' the provider number for the doctor
       If x < 10 Then
          templ.Subst("provider-number0" & Str(x), Mid$(modDBConnect.currentUser!provider_number, x, 1))
       Else
@@ -2156,10 +2119,7 @@ Public Function Allied_Health_Referral_Make_Latex(TCM As Collection) As Collecti
          templ.Subst("provider-number" & Str(x), "")
       End If
    Next
-   '-----------------------
-   'patient medicare number
-   '-----------------------
-   templ.Subst("MA1", Mid$(currentconsult!patient!medicare_number, 1, 1))
+   templ.Subst("MA1", Mid$(currentconsult!patient!medicare_number, 1, 1))  'patient medicare number
    templ.Subst("MA2", Mid$(currentconsult!patient!medicare_number, 2, 1))
    templ.Subst("MA3", Mid$(currentconsult!patient!medicare_number, 3, 1))
    templ.Subst("MA4", Mid$(currentconsult!patient!medicare_number, 4, 1))
@@ -2182,34 +2142,11 @@ Public Function Allied_Health_Referral_Make_Latex(TCM As Collection) As Collecti
       If x > 9 Then templ.Subst("b" & Str(x), "\\relax")
    Next
    templ.Subst("date-claimed", Format(currentconsult.GetConsultDate(), "dd/mm/yyyy"))
-   latex_path_modified = Replace(templ.GetData(), "pdf-path", "pdf-path:epc-referral.pdf") 'mmmm, yes modprinting seems to only function with the ps file here, yet in FClniical with the pdf
-   latex_col!over_pic = latex_path_modified
-   templ.Subst("pdf-path", pdf_path)
-   '--------------------------------------------------------------------------------------------------------
-   'Print the form, then fix up the path. As in my case or maybe anyones there is no guarrentee of where the
-   'templates directory is, so if being re-printed in other parts of the program will need to check
-   'for occurrence of the !pdf-path fix it up relative to that machine
-   '--------------------------------------------------------------------------------------------------------
-   latex_col!latex = templ.GetData()
-   Return latex_col   
+   Print templ.GetData()
+   Return templ.GetData()
    
 End
 
-Public Sub Team_Care_Member_Allied_Health_PDF_Make_Filename(TCM As Collection, pk_document As Variant) As String
-   '------------------------------------------------------------------------------------------------------
-   'create a filename that looks like this to save the allied health referral to the filesystem
-   'patient_peter.birthdate.pk_patient.whitebridge_medical_centre.head_office.epc_referral.pk_document.pdf  
-   'FIXME AT THE TCM 
-   '------------------------------------------------------------------------------------------------------
-   
-   Dim newfilename As String
-   
-   newfilename = modutil.Filename_Protect(Trim(currentConsult!patient!wholename)) & "." & modutil.DateString_Encode(currentConsult!patient!birthdate) & "." & Str(currentConsult!patient!fk_patient) & "."
-   newfilename &= modutil.Filename_Protect(modDBConnect.currentUser!organisation) & "." & modutil.Filename_Protect(modDBConnect.currentUser!branch) & "." & Str$(pk_document) 
-   newfilename &= ".tca.pdf"
-   Return newfilename
-   
-End
 
 Public Sub GPMP_New()
    '---------------------------------------
@@ -2290,7 +2227,7 @@ Public Sub GPMP_Save()
    ' );
    '-------------------------------------------------------
    
-   Dim GPMP_Save As CRow  
+   Dim GPMP_To_Save As CRow  
    Dim sMsg As String
    Dim Document As CRow 
    Dim progressnote As CRow
@@ -2372,7 +2309,7 @@ Public Sub GPMP_Save()
       bClaimed = True   
    End If 
    '----------------------------------------------------------------------------------------------------
-   'First the progress note, must be saved before the GPMP as needs its  pk for the GPMP_Save collection
+   'First the progress note, must be saved before the GPMP as needs its  pk for the GPMP_To_Save collection
    '----------------------------------------------------------------------------------------------------
    ProgressNote = New CRow
    If Not IsNull(fk_gpmp_progressnote) Then
@@ -2387,37 +2324,37 @@ Public Sub GPMP_Save()
    '----------------------------------------------------------------------
    'Now the GP Management Plan but can't save this till after the document
    '----------------------------------------------------------------------
-   GPMP_Save = New CRow   
+   GPMP_To_Save = New CRow   
    If Not IsNull(fk_gp_management_plan) Then
-      GPMP_Save.Put_unchanged(fk_gp_management_plan, "fk_gp_management_plan")
+      GPMP_To_Save.Put_unchanged(fk_gp_management_plan, "fk_gp_management_plan")
    End If   
-   GPMP_Save!fk_consult = currentConsult.GetPK()
-   GPMP_Save!date_claimed = currentconsult.GetConsultDate()                                              'claim today only
-   GPMP_Save!explained_steps_involved = True                                   'by defination as otherwise can't get to here
-   GPMP_Save!patient_agrees_to_plan_and_goals = True                           'by defination as otherwise can't get to here
-   GPMP_Save!copy_offered_to_patient = True                                    'by defination as otherwise can't get to here
+   GPMP_To_Save!fk_consult = currentConsult.GetPK()
+   GPMP_To_Save!date_claimed = currentconsult.GetConsultDate()                                              'claim today only
+   GPMP_To_Save!explained_steps_involved = True                                   'by defination as otherwise can't get to here
+   GPMP_To_Save!patient_agrees_to_plan_and_goals = True                           'by defination as otherwise can't get to here
+   GPMP_To_Save!copy_offered_to_patient = True                                    'by defination as otherwise can't get to here
    If rbPatientHasCarerYes.value = True Then                                   
-      GPMP_Save!patient_has_carer = True                                      
-      GPMP_Save!patient_permits_carer_to_have_copy = CBool(chkGPMPPatientAllowsCarerCopy.value)  'may/maynot have let carer have a copy
+      GPMP_To_Save!patient_has_carer = True                                      
+      GPMP_To_Save!patient_permits_carer_to_have_copy = CBool(chkGPMPPatientAllowsCarerCopy.value)  'may/maynot have let carer have a copy
       If chkGPMPCopyToCarer.value = True Then                         
-         GPMP_Save!copy_offered_to_carer = True
+         GPMP_To_Save!copy_offered_to_carer = True
       Else
-         GPMP_Save!copy_offered_to_carer = False 
+         GPMP_To_Save!copy_offered_to_carer = False 
       Endif
    Else
-      GPMP_Save!patient_has_carer = False
-      GPMP_Save!patient_permits_carer_to_have_copy = False   
-      GPMP_Save!copy_offered_to_carer = False 
+      GPMP_To_Save!patient_has_carer = False
+      GPMP_To_Save!patient_permits_carer_to_have_copy = False   
+      GPMP_To_Save!copy_offered_to_carer = False 
    End If   
-   If rbGPMP.value = True Then GPMP_Save!item_number = 721
-   If rbGPMPReview.value = True Then GPMP_Save!item_number = 732
-   GPMP_Save!review_date = Val(txtGPMPReviewDate.text)
-   GPMP_Save!fk_progressnote = ProgressNote!fk_progressnote
-   GPMP_Save!latex = modProgressNotes.Health_Summary_Construct_LaTex(currentconsult, GPMP_Save, Providers_Selected_For_TCA).GetData() 'true = bGPMP in that routine now true
+   If rbGPMP.value = True Then GPMP_To_Save!item_number = 721
+   If rbGPMPReview.value = True Then GPMP_To_Save!item_number = 732
+   GPMP_To_Save!review_date = Val(txtGPMPReviewDate.text)
+   GPMP_To_Save!fk_progressnote = ProgressNote!fk_progressnote
+   GPMP_To_Save!latex = modProgressNotes.Health_Summary_Construct_LaTex(currentconsult, GPMP_To_Save, Providers_Selected_For_TCA).GetData() 'true = bGPMP in that routine now true
    If Trim(txtGPMPExceptionalCircumstances.text) <> "" Then 
-      GPMP_Save!exceptional_circumstances_reason = Trim(txtGPMPExceptionalCircumstances.text)
+      GPMP_To_Save!exceptional_circumstances_reason = Trim(txtGPMPExceptionalCircumstances.text)
    Else
-      GPMP_Save!exceptional_circumstances_reason = Null
+      GPMP_To_Save!exceptional_circumstances_reason = Null
    End If   
    '-------------------------------------------------------------------------------
    ' Create an entry in document.documents table (don't need all fields shown here)
@@ -2477,7 +2414,7 @@ Public Sub GPMP_Save()
    Document!concluded = True 
    Document!deleted = False
    Document!fk_lu_urgency = const.UrgencyLevelRoutine
-   If GPMP_Save!item_number = 721 Then
+   If GPMP_To_Save!item_number = 721 Then
       Document!tag = "Audit Use Only - GP Management Plan"
       Document!tag_user = "Audit Use Only - GP Management Plan"
    Else
@@ -2488,16 +2425,16 @@ Public Sub GPMP_Save()
    Document!fk_lu_display_as = const.Document_Display_As_GP_Management_Plan
    Document!fk_lu_request_type = Null
    Document!incoming_referral = False
-   Document!data = GPMP_Save!latex       'fix this ?add Latex field to documents
+   Document!data = GPMP_To_Save!latex       'fix this ?add Latex field to documents
    Document!fk_lu_data_content_type = const.cData_Type_Latex
    Document!protected = True                                         'as an audit document, users cannot remove this, needed for medicare
    Document.Save("documents.documents", "fk_document")
-   GPMP_Save!fk_document = Document!fk_document
+   GPMP_To_Save!fk_document = Document!fk_document
    '----------------------------------------------------------------------
    'Finally save the GPMP and if succeed in the transaction print the plan
    '----------------------------------------------------------------------
-   GPMP_Save.Save("clin_history.gp_management_plans", "fk_gp_management_plan")
-   modPrinting.Print_latex(GPMP_Save!latex)
+   GPMP_To_Save.Save("clin_history.gp_management_plans", "fk_gp_management_plan")
+   modPrinting.Print_latex(GPMP_To_Save!latex)
    modDBConnect.CommitTrans()
    Hbox_GPMP_Text.Visible = False 'remove the strongly worded text of GPMP has changed
    EditArea_Notify_DataChange(False)
@@ -2637,7 +2574,7 @@ Public Sub GPMP_Display()
    'Otherwise, allow editing and build the latest latex
    '--------------------------------------------------------------------------------   
    
-   Dim team_care_members As New Collection
+   Dim existing_team_care_members As New Collection
    
    GPMP = modPastHistoryDBI.GP_Management_Plans_Get(currentconsult!patient!fk_patient, True)    'true = latest one
    If IsNull(GPMP) Then 
@@ -2647,9 +2584,9 @@ Public Sub GPMP_Display()
    End If   
    If IsNull(TCA) Then TCA = modPastHistoryDBI.TCA_Get(currentconsult!patient!fk_patient)     'need TCA if exists to get any team care members    
    If IsNull(TCA) Then    
-      team_care_members = Null
+      existing_team_care_members = Null
    Else
-      team_care_members = TCA!team_care_members
+      existing_team_care_members = TCA!team_care_members
    End If   
    bExit = True 
    bEditing = False    
@@ -2665,7 +2602,7 @@ Public Sub GPMP_Display()
    lblClaimDetails.text = "Existing GPMP - Claimed on " & txtGPMPDateClaimed.Text
    If Not IsNull(GPMP!date_claimed) Then  
       If Not modUtil.IsSameDay(GPMP!date_claimed, currentconsult.GetConsultDate()) Then  
-         If GPMP!latex <> modProgressNotes.Health_Summary_Construct_LaTex(currentconsult, GPMP, team_care_members).GetData() Then
+         If GPMP!latex <> modProgressNotes.Health_Summary_Construct_LaTex(currentconsult, GPMP, existing_team_care_members).GetData() Then
             TLEXISTINGGPMPWARNING.TEXT = "<P ALIGN=CENTER><FONT COLOR='#FF0000'><B>NOTE: THIS GPMP  IS NOW OUT OF DATE - CLAIMED ON " & Format(GPMP!date_claimed, "dd/mm/yyyy") & "</P></P>"
             tlExistingGPMPWarning.text &= "<P><FONT COLOR= #000000'>Any summary of a patient's medical record should be regarded as a 'snapshot in time'.</P>"
             tlExistingGPMPWarning.text &= "<P><FONT COLOR='#000000'>EasyGP has detected that since the preparation of this GPMP some details contained in the document have changed.</P>" 
@@ -3025,25 +2962,12 @@ Public Function TCA_Needs_Goals_Who_Does_What(providers_problems As Collection) 
       Endif
       If x = 0 Then sGPRole &= "The gp will "
       sGPRole &= PH!plan_contribution_gp & ". "
-      ' If x = 0 Then
-      '    If Not IsNull(PH!contribution_to_plan) Then
-      '       sProviderRole &= provider!wholename & " will "
-      '       sProviderRole &= modUtilGui.lcase_Word_First_Letter(PH!contribution_to_plan)
-      '       If Right(PH!contribution_to_plan) <> "." Then sProviderRole &= ". "
-      '    End If 
-      ' Else
-      '    If Not IsNull(PH!contribution_to_plan) Then
-      '       sProviderRole &= output_strings.Add(modUtil.Ucase_Word_First_Letter(PH!contribution_to_plan) & ". "
-      '    End If 
-      ' End If   
-      ' Inc x
    Next
    NGWDW.Add(sNeeds, "needs")
    NGWDW.Add(sGoals, "goals")
    NGWDW.Add(sProviderRole, "provider role")
    NGWDW.Add(sGPRole, "gp role")
    NGWDW.Add(sPatientRole, "patient role")
-   
    Return NGWDW
    
 End
@@ -3246,7 +3170,7 @@ Public Sub rbEditArea_Click()
    
    Select Case Last.tag
       Case "tca item 723"
-       lblTeamCareMembersAndArrangements.text = "Team Care Arrangements & Members (NEW)"
+         lblTeamCareMembersAndArrangements.text = "Team Care Arrangements & Members (NEW)"
          Try TCA_Setup_For_Review(False) 'try because selected provider may be null
       Case "tca review item 732"
          Try TCA_Setup_For_Review(True)
@@ -3563,28 +3487,28 @@ End
 
 Public Sub tlNewPlan_Create_Text()
    
-  tlNewPlan.text = ""
-  "<P><B>Creating a new GP Management Plan</B></P>"
-     "<P> If you are happy the entire medical record is up to date, click on the 'New' Button on the main toolbar "
-     " and the plan will be automatically generated. Aside from verifying the details of the claim, there is no data entry " 
-     "for the plan done here.</P><P>To be a compliant plan, the patient must have at least one medical condition that "
-     "has been (or is likely to be) present for at least six months or is terminal. </P>"
-     "<P>The plan details should contain a summary of the history of the condition, the goals or aims of the plan, "
-     "together with the actions and responsibilities of the plan members - the GP, the patient, and, if applicable, "
-     "other health providers with whom the patient will access additional advice and services needed for their care.<P>"
-     "<P>If you need to update any aspect of the plan now, you must do so in the appropriate sections of EasyGP "
-     "and save your changes. These modifications will automatically appear in the pdf displayed here.</P>"
-     "<P>Once you save this plan - <B><I><U>you can modify this copy any time on the same date as you have claimed Item 721.</U></I></B> " 
-     "After that time, you may view this copy of the plan for medicare audit purposes via the tab labelled 'Plans' which is located "
-     "on the upper right side of the main clinical screen on the multi-tabbed control. <B><I>The copy is not intended for distribution "
-     "at a future date - it is only a 'snapshot' in time and will quickly be out of date.</P>"
-     "<P>Fortunately, EasyGP will automatically create an up-to-date GPMP every time  change any apsect of the medical record. "
-     "To print out or distribute an up-to-date copy of the GPMP  click on the 'View GPMP' button on the toolbar and then the 'Print' button</P> "
-     "<HR>"
-     "<P><B>BEFORE SAVING THE PLAN PLEASE READ IT CAREFULLY AND ENSURE THE SENTENCES MAKE SENSE WHEN READ - IF NOT GO BACK TO THE "
-      "MEDICAL RECORD AND MAKE ANY NECESSARY CORRECTIONS. IF YOU FIND IT A BIT HARD TO READ ON THIS SCREEN, CLICK ON THE "
-      "'Open in External Viewer' BUTTON LOCATED ABOVE THE PDF OF THE PLAN AND READ YOUR PLAN OUTSIDE OF EASYGP OR PRINT IT OUT.</B></P> "
-     " <P><B><U>Remember that many other health providers will see your plan, and the opinions your colleagues have of you "
-     "and your practice will be a reflection of its quality and accuracy!!!!<U></B></P><HR>" 
+   tlNewPlan.text = ""
+   "<P><B>Creating a new GP Management Plan</B></P>"
+   "<P> If you are happy the entire medical record is up to date, click on the 'New' Button on the main toolbar "
+   " and the plan will be automatically generated. Aside from verifying the details of the claim, there is no data entry " 
+   "for the plan done here.</P><P>To be a compliant plan, the patient must have at least one medical condition that "
+   "has been (or is likely to be) present for at least six months or is terminal. </P>"
+   "<P>The plan details should contain a summary of the history of the condition, the goals or aims of the plan, "
+   "together with the actions and responsibilities of the plan members - the GP, the patient, and, if applicable, "
+   "other health providers with whom the patient will access additional advice and services needed for their care.<P>"
+   "<P>If you need to update any aspect of the plan now, you must do so in the appropriate sections of EasyGP "
+   "and save your changes. These modifications will automatically appear in the pdf displayed here.</P>"
+   "<P>Once you save this plan - <B><I><U>you can modify this copy any time on the same date as you have claimed Item 721.</U></I></B> " 
+   "After that time, you may view this copy of the plan for medicare audit purposes via the tab labelled 'Plans' which is located "
+   "on the upper right side of the main clinical screen on the multi-tabbed control. <B><I>The copy is not intended for distribution "
+   "at a future date - it is only a 'snapshot' in time and will quickly be out of date.</P>"
+   "<P>Fortunately, EasyGP will automatically create an up-to-date GPMP every time  change any apsect of the medical record. "
+   "To print out or distribute an up-to-date copy of the GPMP  click on the 'View GPMP' button on the toolbar and then the 'Print' button</P> "
+   "<HR>"
+   "<P><B>BEFORE SAVING THE PLAN PLEASE READ IT CAREFULLY AND ENSURE THE SENTENCES MAKE SENSE WHEN READ - IF NOT GO BACK TO THE "
+   "MEDICAL RECORD AND MAKE ANY NECESSARY CORRECTIONS. IF YOU FIND IT A BIT HARD TO READ ON THIS SCREEN, CLICK ON THE "
+   "'Open in External Viewer' BUTTON LOCATED ABOVE THE PDF OF THE PLAN AND READ YOUR PLAN OUTSIDE OF EASYGP OR PRINT IT OUT.</B></P> "
+   " <P><B><U>Remember that many other health providers will see your plan, and the opinions your colleagues have of you "
+   "and your practice will be a reflection of its quality and accuracy!!!!<U></B></P><HR>" 
    
 End

@@ -61,38 +61,38 @@ Private Const admin_user_error As String = "The admin user is not allowed to acc
 " Please create an ordinary user in the Staff tab and log in as them"
 
 Public Sub Form_Open()
-   
+
    If modStartUp.Startup(Me) Then
    Else
       Me.Close(0)
    Endif
-   
+
 End
 
 Static Public Function Get_SideBar_Font() As String
-   
+
    Return form_main.sidebarfont.ToString()
-   
+
 End
 
 Static Public Sub Set_SideBar_Fonts(theFont As Font)
-   
+
    form_main.mnuSideBar_FontSet(theFont)
-   
+
 End
 
 Public Sub Set_PopUp_Help(sPath As String)
-   
+
    Try form_main.pnlPopUpHelp.WebBrowser1.path = modUtil.Find_File("help" &/ sPath)
    If Error Then
       form_main.pnlPopUpHelp = New FHtmlViewer(VBoxMain)
       form_main.pnlPopUpHelp.WebView1.Url = modUtil.Find_File("help" &/ sPath)
    End If
-   
+
 End
 
 Public Sub Show_PopUp_Help(flag As Boolean)
-   
+
    If flag Then
       Try CurrentForm.Hide()
       Try form_main.pnlPopUpHelp.Show()
@@ -104,25 +104,21 @@ Public Sub Show_PopUp_Help(flag As Boolean)
       form_main.pnlPopUpHelp.Close()
       CurrentForm.Show()
    End If
-   
+
 End
 
 Public Sub Init()
-   
+
    form_main = Me                               'Allow access from other modules.
    Settings_Load()
    Create_SideBar_Buttons()                     'create sidebar buttons
-   Expose_SideBar_Buttons()                     'according to role
    tlWARNINGTESTDB.text = Replace(tlWARNINGTESTDB.text, "DBName", modDBConnect.DbName)
    FMain.Background = VboxSideBar.Background
    const.init()                                 'init some constant string arrays, global preferences
-   If IsNull(modDBConnect.currentUser) Then
-      Me.Title = "EasyGP (on " & modDBConnect.DbHost & "/" & modDBConnect.DbName & ") "
-      btnSection_Admin_Click()
-   Else
-      const.iClinicalNotesDisplayOrder = modAdminDBI.Config_Get_Staff_Member("notes_date_display_order", 0, Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff) 'FIXME IAN PUT ME WHEREVER
-      Me.Title = UCase(modDBConnect.currentUser!title & " " & modDBConnect.currentUser!wholename) & " [" & modStrings.Capitalise_Words_In_String(modDBConnect.currentUser!role) & "] " & "  - EasyGP Version " & Application.Version & " (on " & modDBConnect.DbHost & "/" & modDBConnect.DbName & ")"
-   Endif
+   Expose_SideBar_Buttons(True)
+   ' basic title while we are still loading: user data will come later
+   Me.Title = "EasyGP Version " & Application.Version & " (on " & modDBConnect.DbHost & "/" & modDBConnect.DbName & ")"
+
    If modDBConnect.DbName <> "easygp" Then
       pnlTestDBTOp.Visible = True
    Endif
@@ -130,111 +126,127 @@ Public Sub Init()
    With form_stopwatch = New FStopWatch(Vbox_Stopwatch)
       .Background = Me.Background
    End With
-   If Not (modDBConnect.IsAdmin And IsNull(modDBConnect.currentUser)) Then 'do pathways exist to acess data?
-      modAdminDBI.Pathways_Exist_And_Writable(modDBConnect.currentUser!fk_clinic)
-   End If   
-   modDBConnect.Register_Listener("heartbeat", Me)
-   
+   If Not IsNull(modDBConnect.currentUser) Then
+      modLater.Add(Class.Load("modAdminDBI"), "Pathways_Exist_And_Writable")
+   End If
+   modLater.Add(Me, "Init_User")
+   modLater.Add(Class.Load("const"), "Check_For_ICPC2")
+   modLater.Add(Class.Load("const"), "Clinical_Toolbuttons_Refresh")
+
 End
 
 Public Sub Resize_Side_Bar()
-   
+
    With lblMeasure
       .font = btnSection_Preferences.Font
       .text = "        User Preferences        "
    End With
    HSplit_Main.Layout = [lblMeasure.width, Me.Width - lblMeasure.Width]
    VboxSideBar.width = lblMeasure.width
-   
+
+End
+
+' initialisations that require user data
+Public Sub Init_User()
+
+   const.iClinicalNotesDisplayOrder = modAdminDBI.Config_Get_Staff_Member("notes_date_display_order", 0, Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff)
+   Me.Title = UCase(modDBConnect.currentUser!title & " " & modDBConnect.currentUser!wholename) & " [" & modStrings.Capitalise_Words_In_String(modDBConnect.currentUser!role) & "] " & "  - EasyGP Version " & Application.Version & " (on " & modDBConnect.DbHost & "/" & modDBConnect.DbName & ")"
+   If Not IsNull(modDBConnect.currentUser) Then
+      Sidebarfont = Font[modAdminDBI.Config_Get_Staff_Member("user_sidebar_font", FMain.Get_Sidebar_Font(), Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff)]
+      Try Application.font = Font[modAdminDBI.Config_Get_Staff_Member("user_application_font", Application.font.ToString(), Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff)]
+      Try form_main.Adjust_Colors(modAdminDBI.Config_Get_Staff_Member("user_background_color", 5737869, Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff))
+   Endif
+   Expose_SideBar_Buttons(False)
+
 End
 
 Public Sub Create_SideBar_Buttons()
    '-------------------------------------------------------
    'Creates the buttons on the side bar, sets the fonts etc
    '-------------------------------------------------------
-   
+
    Dim sidebarfontString As String
    Dim W As Integer
-   
+
    sidebarfontString = sidebarfont.ToString()
    W = VboxSideBar.width
-   
+
    btnSection_Clinical = New CCoolButton(VBox6, 0, POS_BUTTON, W, HEIGHT_BUTTON, ("Clinical Desktop"), "", sidebarfontString) As "btnSection_Clinical"
    btnSection_Clinical.Foreground = Color.SelectedForeground
    btnSection_Clinical.Visible = False
-   
+
    btnSection_WorkCentre = New CCoolButton(VBox6, 0, POS_BUTTON + HEIGHT_BUTTON + VBox6.height, W, HEIGHT_BUTTON, ("Work Centre"), "", sidebarfontstring) As "btnSection_WorkCentre"
    btnSection_WorkCentre.Foreground = Color.SelectedForeground
    btnSection_WorkCentre.visible = False
-   
+
    btnSection_Clerical = New CCoolButton(VBox6, 0, POS_BUTTON + HEIGHT_BUTTON * 7, W, HEIGHT_BUTTON, ("Clerical"), "", sidebarfontstring) As "btnSection_Clerical"
    btnSection_Clerical.Foreground = Color.SelectedForeground
    btnSection_Clerical.Visible = False
-   
+
    btnSection_Scanning = New CCoolButton(VBox6, 0, POS_BUTTON + HEIGHT_BUTTON * 7, W, HEIGHT_BUTTON, ("Scanning"), "", sidebarfontstring) As "btnSection_Scanning"
    btnSection_Scanning.Foreground = Color.SelectedForeground
    btnSection_Scanning.Visible = False
-   
+
    btnSection_Research = New CCoolButton(Vbox6, 0, POS_BUTTON + HEIGHT_BUTTON * 3, W, HEIGHT_BUTTON, ("Research"), "icons/20/calipers2020.png", sidebarfontstring) As "btnSection_Research"
    btnSection_Research.Foreground = Color.SelectedForeground
    btnSection_Research.visible = False
-   
+
    btnSection_Admin = New CCoolButton(VBox6, 0, POS_BUTTON + HEIGHT_BUTTON * 3, W, HEIGHT_BUTTON, ("Admin"), "", sidebarfontstring) As "btnSection_Admin"
    btnSection_Admin.Foreground = Color.SelectedForeground
    btnSection_Admin.Visible = False
-   
+
    btnSection_Patients = New CCoolButton(VBox6, 0, POS_BUTTON + HEIGHT_BUTTON * 3, W, HEIGHT_BUTTON, ("Patients"), "", sidebarfontstring) As "btnSection_Patients"
    btnSection_Patients.Foreground = Color.SelectedForeground
    btnSection_Patients.Visible = False
-   
+
    btnSection_Contacts = New CCoolButton(VBox6, 0, POS_BUTTON + HEIGHT_BUTTON * 4, W, HEIGHT_BUTTON, ("Contacts"), "", sidebarfontstring) As "btnSection_Contacts"
    btnSection_Contacts.Foreground = Color.SelectedForeground
    btnSection_Contacts.Visible = False
-   
+
    Btn_Section_Tasks = New CCoolButton(VBox6, 0, POS_BUTTON, W, HEIGHT_BUTTON, ("My Tasks"), "", sidebarfontString, "") As "Btn_Section_Tasks"
    Btn_Section_Tasks.Foreground = Color.SelectedForeground
    Btn_Section_Tasks.Visible = False
-   
+
    BtnSection_RoomSetup = New CCoolButton(VBox6, 0, POS_BUTTON, W, HEIGHT_BUTTON, ("Room Setup"), "", sidebarfontString) As "btnSection_Roomsetup"
    BtnSection_RoomSetup.Foreground = Color.SelectedForeground
    BtnSection_RoomSetup.Visible = False
-   
+
    btnSection_Preferences = New CCoolButton(VBox6, 0, POS_BUTTON, W, HEIGHT_BUTTON, ("User Preferences"), "", sidebarfontString) As "btnSection_Preferences"
    btnSection_Preferences.Foreground = Color.SelectedForeground
    btnSection_Preferences.Visible = False
-   
+
    btnSection_DrugRef = New CCoolButton(VBox6, 0, POS_BUTTON + HEIGHT_BUTTON * 2, W, HEIGHT_BUTTON, ("PI"), "", sidebarfontstring) As "btnSection_DrugRef"
    btnSection_DrugRef.Foreground = Color.SelectedForeground
    btnSection_DrugRef.Visible = False
-   
+
    btnSection_Library = New CCoolButton(VBox6, 0, POS_BUTTON + HEIGHT_BUTTON * 5, W, HEIGHT_BUTTON, ("Library"), "", sidebarfontstring) As "btnSection_Library"
    btnSection_Library.Foreground = Color.SelectedForeground
    btnSection_Library.Visible = False
-   
+
    btnSection_Help = New CCoolButton(VBox6, 0, POS_BUTTON + HEIGHT_BUTTON * 7, W, HEIGHT_BUTTON, ("Help"), "", sidebarfontstring) As "btnSection_Help"
    btnSection_Help.Foreground = Color.SelectedForeground
    btnSection_Help.visible = False
-   
+
    btnSection_Shutdown = New CCoolButton(VBox6, 0, POS_BUTTON + HEIGHT_BUTTON * 7, W, HEIGHT_BUTTON, ("Shutdown"), "", sidebarfontstring) As "btnSection_Shutdown"
    btnSection_Shutdown.Foreground = Color.SelectedForeground
    btnSection_Shutdown.visible = False
-   
+
 End
 
-Public Sub Expose_SideBar_Buttons()
+Public Sub Expose_SideBar_Buttons(initial_startup As Boolean)
    '---------------------------------------------------------------------
    'Setup easyGp according to role.
    'This is just for proof of concept, now need to debate with ian/horst
    'about making roles, access permissions more sophisticated
    '--------------------------------------------------------------------
-   
+
    Dim r As String
-   Dim bDisableSections As Boolean 
-   
-   If IsNull(modDBConnect.currentUser) Then
-      r = "sysadmin"
+
+   If initial_startup Then
+      r = Settings["Cached/role/" & modDBConnect.currentUser!logon_name, "doctor"]
    Else
       r = modDBConnect.currentUser!role
+      Settings["Cached/role/" & modDBConnect.currentUser!logon_name] = r
    Endif
    Select Case r
       Case "doctor", "locum", "registered nurse", "practice principal"
@@ -248,13 +260,13 @@ Public Sub Expose_SideBar_Buttons()
          btnSection_Preferences.Visible = True
          btnSection_Research.Visible = True
          btnSection_Help.Visible = True
-         If r = "practice principal" Then    
-            btnSection_Admin.Visible = True 
+         If r = "practice principal" Then
+            btnSection_Admin.Visible = True
          Else
-            btnSection_Admin.Visible = False 
-         End If 
-         VBox_StopWatch.Visible = True 
-         btnSection_Clinical_Click()
+            btnSection_Admin.Visible = False
+         End If
+         VBox_StopWatch.Visible = True
+         If initial_startup Then btnSection_Clinical_Click()
       Case "secretary", "practice manager"
          btnSection_Library.Visible = True
          btnSection_Clerical.Visible = True
@@ -263,6 +275,7 @@ Public Sub Expose_SideBar_Buttons()
          btnSection_Preferences.Visible = True
          btnSection_RoomSetup.Visible = True
          btnSection_Admin.Visible = False
+         If initial_startup Then btnSection_Clerical_Click()
       Case "sysadmin"
          btnSection_Clinical.Visible = False
          btnSection_WorkCentre.visible = False
@@ -274,12 +287,10 @@ Public Sub Expose_SideBar_Buttons()
          btnSection_Preferences.Visible = False
          btnSection_Research.Visible = False
          btnSection_Help.Visible = True
-         btnSection_Admin.Visible = False
+         btnSection_Admin.Visible = True
+         If initial_startup Then btnSection_Admin_Click()
    End Select
-   If modDBConnect.Is_Superuser() Then
-      BtnSection_Admin.Visible = True  
-   Endif
-   
+
 End
 
 Public Sub btnSection_Clinical_click()
@@ -289,9 +300,9 @@ Public Sub btnSection_Clinical_click()
    '1) A user with valid access rights
    '2) A default coding system
    '---------------------------------------------------------------------------
-   
+
    Dim sMsg As String
-   
+
    If IsNull(modDBConnect.currentUser) Then
       Message.Error(admin_user_error)
       Return
@@ -311,7 +322,7 @@ Public Sub btnSection_Clinical_click()
       End With
    End If
    CurrentForm = pnlToolBar
-   
+
 End
 
 Public Sub Btn_Section_Tasks_Click()
@@ -320,12 +331,12 @@ Public Sub Btn_Section_Tasks_Click()
    'a document ends up here - we use this term loosely, to mean eg a scanned bit of paper,
    'an email, a patients result, a staff memo
    '----------------------------------------------------------------------------------------
-   
+
    If IsNull(modDBConnect.currentUser) Then
       Message.Error(admin_user_error)
       Return
    Endif
-   
+
    Try CurrentForm.Hide()
    Try pnlDayBook.Show()
    If Error Then
@@ -336,14 +347,14 @@ Public Sub Btn_Section_Tasks_Click()
       End With
    End If
    CurrentForm = pnlDayBook
-   
+
 End
 
 Public Sub btnSection_Preferences_Click()
    '-----------------------------------------------
    'Shown the chm style help viewer for EasyGP help
    '-----------------------------------------------
-   
+
    Try form_main.pnlStaffPreferences.Close()
    Try CurrentForm.Hide()
    Try pnlStaffPreferences.Show()
@@ -354,7 +365,7 @@ Public Sub btnSection_Preferences_Click()
       pnlStaffPreferences.Show()
    End If
    CurrentForm = pnlStaffPreferences
-   
+
 End
 
 Public Sub btnSection_WorkCentre_Click()
@@ -363,7 +374,7 @@ Public Sub btnSection_WorkCentre_Click()
    'a document ends up here - we use this term loosely, to mean eg a scanned bit of paper,
    'an email, a patients result, a staff memo
    '----------------------------------------------------------------------------------------
-   
+
    If IsNull(modDBConnect.currentUser) Then
       Message.Error(admin_user_error)
       Return
@@ -378,16 +389,16 @@ Public Sub btnSection_WorkCentre_Click()
       End With
    End If
    CurrentForm = pnlWorkCentre
-   
+
 End
 
 Public Sub BtnSection_ProductInformation()
-   
+
    '--------------------------------------------------------------------------------------
    'The 'drug bible' - currently not implemented, though I've written the code for MIMS it
    'can't be put into open source. The gui exists though
    '--------------------------------------------------------------------------------------
-   
+
    Try CurrentForm.Hide()
    Try pnlDrugReference.Show()
    If Error Then
@@ -397,7 +408,7 @@ Public Sub BtnSection_ProductInformation()
          .Show
       End With
    Endif
-   
+
 End
 
 Public Sub btnSection_DrugRef_Click()
@@ -405,7 +416,7 @@ Public Sub btnSection_DrugRef_Click()
    'The 'drug bible' - currently not implemented, though I've written the code for MIMS it
    'can't be put into open source. The gui exists though
    '--------------------------------------------------------------------------------------
-   
+
    Try CurrentForm.Hide()
    Try pnlDrugReference.Show()
    If Error Then
@@ -416,7 +427,7 @@ Public Sub btnSection_DrugRef_Click()
       End With
    End If
    CurrentForm = pnlDrugReference
-   
+
 End
 
 Public Sub btnSection_Library_Click()
@@ -425,7 +436,7 @@ Public Sub btnSection_Library_Click()
    'the libary mirrors the library tree  on the HDD as designated in preferences
    'FIXME - IMPLEMENT LIBRARY DIRECTORY IN PREFERENCES
    '----------------------------------------------------------------------------
-   
+
    Try CurrentForm.Hide()
    Try pnlLibrary.Show()
    If Error Then
@@ -436,7 +447,7 @@ Public Sub btnSection_Library_Click()
       End With
    End If
    CurrentForm = pnlLibrary
-   
+
 End
 
 Public Sub btnSection_Clerical_Click()
@@ -444,12 +455,12 @@ Public Sub btnSection_Clerical_Click()
    'Selects the clerical tasks section - e.g to manage recall, monitor staff tasks
    'allocate scanned documents
    '------------------------------------------------------------------------------
-   
+
    If IsNull(modDBConnect.currentUser) Then
       Message.Error(admin_user_error)
       Return
    Endif
-   
+
    Try CurrentForm.Hide()
    Try pnlClerical.Show()
    If Error Then
@@ -460,32 +471,32 @@ Public Sub btnSection_Clerical_Click()
       End With
    End If
    CurrentForm = pnlClerical
-   
+
 End
 
 Public Sub btnSection_Research_Click()
    '-------------------------------------
    'Do all research here when implemented
    '-------------------------------------
-   
+
    Try CurrentForm.Hide()
    Try pnlResearch.Show()
    If Error Then
       With pnlResearch = New FResearch(VBoxMain)
          .HBox_Heading.Background = VboxSideBar.Background
-         .lblSectionHeading.Background = VboxSideBar.Background 
+         .lblSectionHeading.Background = VboxSideBar.Background
          .Show()
       End With
    End If
    CurrentForm = pnlResearch
-   
+
 End
 
 Public Sub BtnSection_RoomSetup_Click()
    '-------------------------------------
    'User sets up printers etc
    '-------------------------------------
-   
+
    Try CurrentForm.Hide()
    Try pnlSetupWorkStation.Show()
    If Error Then
@@ -496,7 +507,7 @@ Public Sub BtnSection_RoomSetup_Click()
       End With
    End If
    CurrentForm = pnlSetupWorkStation
-   
+
 End
 
 Public Sub btnSection_Patients_Click()
@@ -505,7 +516,7 @@ Public Sub btnSection_Patients_Click()
    'NB: this is entirely untested, will be buggy as I don't use it as I import
    'from a legacy database, so needs debugging FIXME- DEBUG PATIENTS
    '--------------------------------------------------------------------------
-   
+
    Try CurrentForm.Hide()
    Try pnlPatients.Show()
    If Error Then
@@ -516,14 +527,14 @@ Public Sub btnSection_Patients_Click()
       End With
    End If
    CurrentForm = pnlPatients
-   
+
 End
 
 Public Sub BtnSection_Scanning_Click()
    '-------------------------------------
    'Do all research here when implemented
    '-------------------------------------
-   
+
    Try CurrentForm.Hide()
    Try pnlScanning.Show()
    If Error Then
@@ -531,7 +542,7 @@ Public Sub BtnSection_Scanning_Click()
       pnlScanning.Show()
    End If
    CurrentForm = pnlScanning
-   
+
 End
 
 Public Sub btnSection_Admin_Click()
@@ -539,7 +550,7 @@ Public Sub btnSection_Admin_Click()
    'All admin tasks here - eg setting global preferences, setting hl7 import, library directories etc
    'importing/updating postcodes, exporting or importing clinical records
    '-------------------------------------------------------------------------------------------------
-   
+
    Try CurrentForm.Hide()
    Try pnlAdmin.Show()
    If Error Then
@@ -548,11 +559,11 @@ Public Sub btnSection_Admin_Click()
          .Show()
          .lblSectionHeading.Background = VboxSideBar.Background
          .HBox_Heading.Background = VboxSideBar.Background
-         
+
       End With
    End If
    CurrentForm = pnlAdmin
-   
+
 End
 
 Public Sub btnSection_Contacts_Click()
@@ -563,7 +574,7 @@ Public Sub btnSection_Contacts_Click()
    '----------------------------------------------------------------------------
    '  Message.Info("If this message popups up Richard has forgotton to re-set the working copy of contacts to the old version.\n\nIf you know what you are doing  fix this in FMain.BtnSectionContacts")
    ' Return
-   
+
    Try form_main.pnlPopUpHelp.Close()
    Try CurrentForm.Hide()
    Try pnlContacts.Show()
@@ -575,7 +586,7 @@ Public Sub btnSection_Contacts_Click()
       End With
    End If
    CurrentForm = pnlContacts
-   
+
 End
 
 '
@@ -584,7 +595,7 @@ Public Sub btnSection_Help_Click()
    '-----------------------------------------------
    'Shown the chm style help viewer for EasyGP help
    '-----------------------------------------------
-   
+
    Try form_main.pnlPopUpHelp.Close()
    Try CurrentForm.Hide()
    Try pnlHelp.Show()
@@ -596,14 +607,14 @@ Public Sub btnSection_Help_Click()
       End With
    End If
    CurrentForm = pnlHelp
-   
+
 End
 
 Public Sub btnSection_Shutdown_Click()
-   
+
    Dim sMsg As String
    Dim bHaltMachine As Boolean
-   
+
    Message.Title = "Quit EasyGP"
    sMsg = "Selecting 'Quit' will just end this program and return you to the operating system.\n\nSelecting 'Turn off' the computer will power down your actual computer, or, if using a Virtual Machine, will close the machine and return you to the host opeating system."
    If Message.Question(sMsg, "Quit", "Turn off the computer") = 2 Then
@@ -618,7 +629,7 @@ Public Sub btnSection_Shutdown_Click()
    Else
       Quit
    End If
-   
+
 End
 
 Public Sub Settings_Save()
@@ -626,7 +637,7 @@ Public Sub Settings_Save()
    'Saves settings of the EasyGP main window, and all splits on all forms
    'Settings for FClinical are saved when the form closes.
    '---------------------------------------------------------------------
-   
+
    Settings["FMain/Top"] = Me.Top
    Settings["FMain/Left"] = Me.Left
    Settings["FMain/Height"] = Me.Height
@@ -644,7 +655,7 @@ Public Sub Settings_Save()
    Try pnlHelp.Settings_Save()
    Try pnlSetupWorkStation.Settings_Save()
    Try pnlLibrary.Settings_Save()
-   
+
 End
 
 Private Sub Settings_Load()
@@ -652,45 +663,37 @@ Private Sub Settings_Load()
    'Each user can have different application and side bar fonts and different main split
    'Try and load these, or if not use defaults
    '------------------------------------------------------------------------------------
-   
+
    Dim username As String
-   
+
    Me.Left = Settings["FMain/Left", 0]
    Me.Height = Settings["FMain/Height", Desktop.Height]
    Me.Width = Settings["FMain/Width", Desktop.Width]
+   username = "easygp"
    sidebarfont = New Font
-   If Not IsNull(modDBConnect.currentUser) Then
-      username = modDBConnect.currentUser!logon_name
-      Sidebarfont = Font[modAdminDBI.Config_Get_Staff_Member("user_sidebar_font", FMain.Get_Sidebar_Font(), Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff)]
-      Try Application.font = Font[modAdminDBI.Config_Get_Staff_Member("user_application_font", Application.font.ToString(), Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff)]
-      Try form_main.Adjust_Colors(modAdminDBI.Config_Get_Staff_Member("user_background_color", 5737869, Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff))
-   Else
-      username = "easygp"
-      sidebarfont = Font[FMain.Get_SideBar_Font()]
-   Endif
    HSplit_Main.layout = Settings["FMain/Hsplit_Main.Layout", modUtilGUI.HSplit([1, 10])]
-   
+
 End
 
 Public Sub Form_Close()
-   
+
    Settings_Save() 'save this form and all child forms settings
    modDBConnect.Close_Listener()
    modDBConnect.Shutdown()
    form_main = Null
    Settings.Save()
-   
+
 End
 
 Public Sub mnuSideBar_FontSet(theFont As Font)
    '----------------------------------------------------
    'Expects a font object, sets all buttons to that font
    '----------------------------------------------------
-   
+
    Dim hCtrl As Control
    Dim pnl As Panel
    Dim lbl As Label
-   
+
    For Each hCtrl In VBox6.children
       If hctrl Is Panel Then
          pnl = hctrl
@@ -704,15 +707,15 @@ Public Sub mnuSideBar_FontSet(theFont As Font)
       Endif
    Next
    Resize_Side_Bar
-   
+
 End
 
 Static Public Sub Adjust_Colors(bgc As Integer)
-   
+
    form_main.VboxSideBar.Background = bgc
    form_main.Vbox1.Background = bgc
    form_main.VBox3.Background = bgc
-   
+
 End
 
 Public Sub StaffTasks_For_Staff_Member_ReLoad()
@@ -721,33 +724,33 @@ Public Sub StaffTasks_For_Staff_Member_ReLoad()
    'Each task = 1 component of the overall task which could have several
    'staff members involved
    '--------------------------------------------------------------------
-   
+
    Dim TasksComponents As Collection
-   
+
    If IsNull(modDBConnect.currentUser) Then Return
    Inc Application.Busy
-   
+
    TasksComponents = modDayBookDBI.Staff_Tasks_Get(modDBConnect.currentUser!fk_staff, 0, True, 0, const.cTaskCompletionNo, const.cTaskRestriction_User, "ASC")              'get uncompleted tasks
    Dec Application.Busy
-   
+
 End
 
 Public Sub Import_Nata()
    'File must be pipe delimited with no " around name
    'original nata supplied data is kept
-   'Accreditation_No, LabName, LabName2, Address, 
+   'Accreditation_No, LabName, LabName2, Address,
    'Address2, Address3, Suburb, State, Postcode,
    ' Contact, Phone, Fax, Mobile, Email, Website,
-   '  Facility_Type, Last_Updated, 
-   
+   '  Facility_Type, Last_Updated,
+
    Dim hFile As File
    Dim sOneLine As String
    Dim labs As Collection
    Dim lab As Crow
    Dim bits As String[]
-   
+
    labs = New Collection
-   
+
    hFile = Open "/home/richard/Downloads/easygp/nata.txt" For Read
    While Not Eof(hFile)
       Line Input #hFile, sOneLine
@@ -779,7 +782,7 @@ Public Sub Import_Nata()
       lab.Save("documents.lu_nata_laboratories", "fk_lab")
       Labs.Add(lab, labs.count)
    Wend
-   Close #hFile 
+   Close #hFile
    modDBConnect.CommitTrans
    'Now construct the sending entities
    'some lab's eg healthlink have multiple labs - we will only allow a 'generic' company name and always use head office
@@ -789,36 +792,36 @@ Public Sub Import_Nata()
    '    '  R = modDBConnect.exec_query("Select distinct accreditation_no, labname from documents.nata_laboritories where labname ='" & l!labname & "'")  'are there more than 1 accreditation numbers
    '     R = modDBConnect.exec_query("Select * from documents.sending_entities where msh_sending_entity ILIKE '" & l!labname & "'")
    '    If R.count = 0 Then  'do we already have this company no?
-   '       sending_entity = New CRow 
+   '       sending_entity = New CRow
    '       sending_entity!msh_sending_entity = l!labname
    '       sending_entity!fk_lu_message_standard = const.document_message_standard_hl7
    '       sending_entity!fk_lu_message_display_style = const.Document_Display_As_Result
    '       sending_entity!fk_lu_request_type = const.Request_Type_Pathology
    '       sending_entity.Save("documents.sending_entities", "fk_sendingentity")
-   ' 
+   '
    '    Else
    '       Print R!msh_sending_entity
-   '    End If   
-   '      
+   '    End If
+   '
    ' Next
-   ' 
+   '
    ' For Each l In labs
    '    'check if this lab number is distinct
    '    sql = "Select count (pk) from documents.nata_laboritories where accreditation-no ="
    ' Next
    modDBConnect.CommitTrans
-   
+
 End
 
 Public Sub view_images()
-   
+
    'just mucking around......
-   
+
    Dim tempFile As String
    Dim tempPicture As Variant
    Dim $Result As Result
    Dim x As Integer
-   
+
    $Result = modDBConnect.exec_query("Select * from blobs.images where deleted = false")
    Print $Result.Count
    Repeat
@@ -830,11 +833,11 @@ Public Sub view_images()
       Inc x
       Print x
    Until $Result.MoveNext()
-   
+
 End
 
 Public Sub rt_fix_links_data_persons()
-   
+
    'data_persons accidentally imported with no link to an address
    'check keys are sequential
    Dim all_links As Collection
@@ -842,7 +845,7 @@ Public Sub rt_fix_links_data_persons()
    Dim icounter As Integer
    Dim x As Integer
    Dim sql As String
-   
+
    'all the links with no person in the persons table
    sql = ""
    "select links_persons_addresses.pk as  pk_link, data_persons.pk as pk_data_persons "
@@ -851,28 +854,28 @@ Public Sub rt_fix_links_data_persons()
    "where data_persons.pk is null order by links_persons_addresses.pk "
    all_links = modDBConnect.exec_query_collection(sql)
    x = 12459 'the last link to a person in the persons table where person exists
-   
-   For Each a_link In all_links 
+
+   For Each a_link In all_links
       Print a_link!pk_link, x + 1
       If a_link!pk_link <> x + 1 Then
          Print "out of order", a_link!pk_link
       Endif
       Inc x
-      ' Inc icounter   
+      ' Inc icounter
       ' If icounter = 10 Then Break
    Next
-   
+
 End
 
 Public Sub rt_check_link_persons_comms()
-   
+
    Dim LPComs As Collection
    Dim LPC As Collection
    Dim sql As String
    Dim x As Integer
-   
+
    '"links_persons_comms.pk between 22292 and 37061"
-   sql = 
+   sql =
       "select "
    "links_persons_comms.fk_person, "
    "links_persons_comms.pk as pk_links_persons_comms, "
@@ -883,7 +886,7 @@ Public Sub rt_check_link_persons_comms()
    "order by links_persons_comms.pk"
    LPComs = modDBConnect.exec_query_collection(sql)
    x = 22291 'the one before the start of the missin persons
-   
+
    For Each LPC In LPComs
       Print LPC!pk_links_persons_comms, x + 1
       If LPC!pk_links_persons_comms <> x + 1 Then
@@ -891,7 +894,7 @@ Public Sub rt_check_link_persons_comms()
       Endif
       Inc x
    Next
-   
+
 End
 
 Public Sub Button1_Click()
@@ -903,14 +906,14 @@ Public Sub Button1_Click()
    ' 1759
    ' 1795
    ' 1797
-   
+
    Dim sMsg As String
    Dim Blob_Data As Collection
    Dim tempFile As String = Temp$
    Dim tempPicture As Variant
    Dim P As Picture
    Dim all_blobs As New Collection
-   
+
    ' DO NOT NEED TO RUN rt_check_link_persons_comms
    ' DO NOT NEED TO RUN rt_fix_links_data_persons
    Return
@@ -923,10 +926,10 @@ Public Sub Button1_Click()
    rt_fix_vaccination_imports
    rt_fix_past_history_imports
    RT_Fix_imported_habits
-   
-   Return   
+
+   Return
    ' Blob_Data = modDBConnect.exec_query_first("Select * from blobs.images where fk_consult = 1797 LIMIT 1")
-   ' 
+   '
    ' File.Save(tempFile, Blob_Data!image.data)
    ' P = Picture.Load(tempfile)
    ' PictureBox2.Picture = P
@@ -936,15 +939,15 @@ Public Sub Button1_Click()
    Return
    ' Private Function Read_Page_Count() As Integer
    '
-   
+
    view_images  'rt only
    Return
    smsg = "<span style='color: red;'>&#x2B24;</span> <span style='color: green;' >&#x2B24;</span>"
-   
+
    Message.Info(sMsg)
-   
-   Return 
-   If Message.Question("Update Audit, this will take some time?", " Yes ", " No ") = 2 Then Return 
+
+   Return
+   If Message.Question("Update Audit, this will take some time?", " Yes ", " No ") = 2 Then Return
    Inc Application.Busy
    If Not Audits_Update_Document_Notes_Delete_Duplicate() Then
       Goto Roll_Back_Transaction
@@ -965,16 +968,16 @@ Public Sub Button1_Click()
       Goto Roll_Back_Transaction
    Endif
    ' Audits_Update_Tasks
-   ' Return 
+   ' Return
    modDBConnect.CommitTrans
    Message.Info("Completed the audit update - do not run this again")
    Dec Application.Busy
    Return
-   
+
 Roll_Back_Transaction:
    modDBConnect.RollBack
    Dec Application.Busy
-   
+
 End
 
 Public Function Audits_Update_Document_Notes_Import_Scanning() As Boolean
@@ -984,16 +987,16 @@ Public Function Audits_Update_Document_Notes_Import_Scanning() As Boolean
    'fk_audit_action 26 = 'scanned document imported'
    'There has been a bug at some stage
    '---------------------------------------------------------------------------
-   
+
    Dim audits As New Collection
-   Dim audit As Collection 
+   Dim audit As Collection
    Dim new_notes As String
    Dim sql As String
    Dim x As Integer
    Dim tb As TextBox
-   
+
    With tb = New TextBox(Me)
-      .Visible = False  
+      .Visible = False
    End With
    sql = ""
    "SELECT distinct"
@@ -1021,27 +1024,27 @@ Public Function Audits_Update_Document_Notes_Import_Scanning() As Boolean
    "  AND   vwdocuments.fk_patient = vwpatients.fk_patient"
    "  and linked_table='documents.documents'::regclass "
    " And fk_audit_action = 26"
-   
+
    audits = modDBConnect.exec_query_collection(sql)
    Print audits.Count
    For Each audit In audits
-      Print Str(x), "fixing scanned document import for " & audit!wholename    
+      Print Str(x), "fixing scanned document import for " & audit!wholename
       If IsNull(audit!date_created) Then           'bugfix crept in during development e.g I have 5/89,0000 records with no date created.
          tb.text = Format(audit!imported_time, "dd/mm/yyyy")
          modDBConnect.exec_query("update documents.documents set date_created = '" & Format(audit!imported_time, "dd/mm/yyyy") & "' WHERE pk = " & audit!pk_document)
          audit!date_created = Val(tb.text)
-         Print audit!date_created   
+         Print audit!date_created
       Endif
-      new_notes = "Document which was dated " & Format(audit!date_created, "dd/mm/yyyy") 
+      new_notes = "Document which was dated " & Format(audit!date_created, "dd/mm/yyyy")
       new_notes &= " and was imported on " & Format(audit!imported_time, "dd/mm/yyyy")
       new_notes &= " was scanned - the original document was sent by " & audit!originator
       modDBConnect.update("clin_consult.progressnotes", Null, ["pk": audit!pk_progressnote, "notes": new_notes])
       Inc x
    Next
    Return True
-   'Catch 
+   'Catch
    ' Return False
-   
+
 End
 
 Public Function Audits_Update_Document_Notes_Delete_Preliminary() As Boolean
@@ -1050,15 +1053,15 @@ Public Function Audits_Update_Document_Notes_Delete_Preliminary() As Boolean
    'of these documents in the audit trail so that it makes sense to the viewer
    'fk_audit_action 29= delete prelimary results
    '---------------------------------------------------------------------------
-   
+
    Dim audits As New Collection
-   Dim audit As Collection 
+   Dim audit As Collection
    Dim new_notes As String
    Dim sql As String
    Dim tb As TextBox
-   
+
    With tb = New TextBox(Me)
-      .Visible = False  
+      .Visible = False
    End With
    sql = ""
    "SELECT distinct"
@@ -1092,9 +1095,9 @@ Public Function Audits_Update_Document_Notes_Delete_Preliminary() As Boolean
          tb.text = Format(audit!imported_time, "dd/mm/yyyy")
          modDBConnect.exec_query("update documents.documents set date_created = '" & Format(audit!imported_time, "dd/mm/yyyy") & "' WHERE pk = " & audit!pk_document)
          audit!date_created = Val(tb.text)
-      End If 
+      End If
       new_notes = "Preminary result which was dated " & Format(audit!date_created, "dd/mm/yyyy")
-      Print "fixing delete prelimary for " & audit!wholename    
+      Print "fixing delete prelimary for " & audit!wholename
       new_notes &= " and was imported on " & Format(audit!imported_time, "dd/mm/yyyy") & "  was deleted - the original document was sent by " & audit!originator & " with the tag '" & audit!tag & "' "
       If Not IsNull(audit!tag_user) Then
          new_notes &= " and the user tag was '" & audit!tag_user & "'"
@@ -1102,10 +1105,10 @@ Public Function Audits_Update_Document_Notes_Delete_Preliminary() As Boolean
       modDBConnect.update("clin_consult.progressnotes", Null, ["pk": audit!pk_progressnote, "notes": new_notes])
    Next
    Return True
-   
-   'Catch 
+
+   'Catch
    ' Return False
-   
+
 End
 
 Public Function Audits_Update_Document_Notes_Viewed_And_Filed() As Boolean
@@ -1114,20 +1117,20 @@ Public Function Audits_Update_Document_Notes_Viewed_And_Filed() As Boolean
    'of these documents in the audit trail so that it makes sense to the viewer
    'fk_audit_action 21= viewed and filed the document
    '---------------------------------------------------------------------------
-   
+
    Dim audits As New Collection
-   Dim audit As Collection 
+   Dim audit As Collection
    Dim new_notes As String
    Dim sql As String
    Dim R As Result
    Dim x As Integer
    Dim tb As TextBox
    Dim sTaskAllocatedTo As String
-   
+
    With tb = New TextBox(Me)
-      .Visible = False  
+      .Visible = False
    End With
-   
+
    sql = ""
    "SELECT distinct"
    " vwDocuments.pk_document,"
@@ -1154,36 +1157,36 @@ Public Function Audits_Update_Document_Notes_Viewed_And_Filed() As Boolean
    "  AND   vwdocuments.fk_patient = vwpatients.fk_patient"
    "  and linked_table='documents.documents'::regclass "
    " And fk_audit_action = 21"
-   
+
    audits = modDBConnect.exec_query_collection(sql)
    For Each audit In audits
       If IsNull(audit!date_created) Then           'bugfix crept in during development e.g I have 5/89,0000 records with no date created.
          tb.text = Format(audit!imported_time, "dd/mm/yyyy")
          modDBConnect.exec_query("update documents.documents set date_created = '" & Format(audit!imported_time, "dd/mm/yyyy") & "' WHERE pk = " & audit!pk_document)
          audit!date_created = Val(tb.text)
-      End If 
-      Print Str(x), "fixing viewed & filed document import for " & audit!wholename 
-      new_notes = "Inbox document which was dated " & Format(audit!date_created, "dd/mm/yyyy") 
+      End If
+      Print Str(x), "fixing viewed & filed document import for " & audit!wholename
+      new_notes = "Inbox document which was dated " & Format(audit!date_created, "dd/mm/yyyy")
       new_notes &= " and was imported on " & Format(audit!imported_time, "dd/mm/yyyy")
       New_Notes &= " was viewed and filed with "
       'need to look here and see if any tasks actually were attached to this.
       sTaskAllocatedTo = ""
       R = modDBConnect.exec_query("Select * from clerical.vwtaskscomponents where fk_row =" & audit!fk_row)
       If R.count Then
-         'we have a task... 
+         'we have a task...
          Select Case R!fk_urgency
             Case const.UrgencyLevelRoutine
                If IsNull(R!fk_staff_allocated) Then
                   New_Notes &= "auto-task generated for a routine appointment"
                Else
                   sTaskAllocatedTo = ". A task has been allocated to " & modStrings.Capitalise_Words_In_String(R!staff_allocated_title & " " & R!staff_allocated_wholename)
-               End If  
+               End If
             Case const.UrgencyLevelUrgent
                If IsNull(R!fk_staff_allocated) Then
                   New_Notes &= "auto-task generated for an urgent appointment"
                Else
                   sTaskAllocatedTo = ". A task has been allocated to " & modStrings.Capitalise_Words_In_String(R!staff_allocated_title & " " & R!staff_allocated_wholename)
-               End If  
+               End If
          End Select
       Else
          New_Notes &= " no action taken"
@@ -1197,14 +1200,14 @@ Public Function Audits_Update_Document_Notes_Viewed_And_Filed() As Boolean
       Endif
       new_notes &= sTaskAllocatedTo
       modDBConnect.update("clin_consult.progressnotes", Null, ["pk": audit!pk_progressnote, "notes": new_notes])
-      
+
       Inc x
       '  If x = 2000 Then Break
    Next
    Return True
-   'Catch 
+   'Catch
    ' Return False
-   
+
 End
 
 Public Function Audits_Update_Document_Notes_Delete_Duplicate() As Boolean
@@ -1213,17 +1216,17 @@ Public Function Audits_Update_Document_Notes_Delete_Duplicate() As Boolean
    'of these documents in the audit trail so that it makes sense to the viewer
    'fk_audit_action 28= delete duplicate document
    '---------------------------------------------------------------------------
-   
+
    Dim audits As New Collection
-   Dim audit As Collection 
+   Dim audit As Collection
    Dim new_notes As String
    Dim sql As String
    Dim tb As TextBox
-   
+
    With tb = New TextBox(Me)
-      .Visible = False  
+      .Visible = False
    End With
-   
+
    sql = ""
    "SELECT distinct"
    " vwDocuments.pk_document,"
@@ -1250,15 +1253,15 @@ Public Function Audits_Update_Document_Notes_Delete_Duplicate() As Boolean
    "  AND   vwdocuments.fk_patient = vwpatients.fk_patient"
    "  and linked_table='documents.documents'::regclass "
    " And fk_audit_action = 28"
-   
+
    audits = modDBConnect.exec_query_collection(sql)
    For Each audit In audits
-      Print "fixing delete duplicate for " & audit!wholename    
+      Print "fixing delete duplicate for " & audit!wholename
       If IsNull(audit!date_created) Then           'bugfix crept in during development e.g I have 5/89,0000 records with no date created.
          tb.text = Format(audit!imported_time, "dd/mm/yyyy")
          modDBConnect.exec_query("update documents.documents set date_created = '" & Format(audit!imported_time, "dd/mm/yyyy") & "' WHERE pk = " & audit!pk_document)
          audit!date_created = Val(tb.text)
-      End If 
+      End If
       new_notes = "Duplicate document which was dated " & Format(audit!date_created, "dd/mm/yyyy")
       new_notes &= " and was imported on " & Format(audit!imported_time, "dd/mm/yyyy") & "  was deleted - the original document was sent by " & audit!originator & " with the tag '" & audit!tag & "' "
       If Not IsNull(audit!tag_user) Then
@@ -1269,7 +1272,7 @@ Public Function Audits_Update_Document_Notes_Delete_Duplicate() As Boolean
    Return True
    'Catch
    ' Return False
-   
+
 End
 
 Public Function Audits_Update_Document_Notes_Mark_Deleted() As Boolean
@@ -1278,15 +1281,15 @@ Public Function Audits_Update_Document_Notes_Mark_Deleted() As Boolean
    'of these documents in the audit trail so that it makes sense to the viewer
    'fk_audit_action 4= 'mark deleted'
    '---------------------------------------------------------------------------
-   
+
    Dim audits As New Collection
-   Dim audit As Collection 
+   Dim audit As Collection
    Dim new_notes As String
    Dim sql As String
    Dim tb As TextBox
-   
+
    With tb = New TextBox(Me)
-      .Visible = False  
+      .Visible = False
    End With
    sql = ""
    "SELECT distinct"
@@ -1316,15 +1319,15 @@ Public Function Audits_Update_Document_Notes_Mark_Deleted() As Boolean
    "  AND   vwdocuments.fk_patient = vwpatients.fk_patient"
    "  and linked_table='documents.documents'::regclass "
    " And fk_audit_action = 4"
-   
+
    audits = modDBConnect.exec_query_collection(sql)
    For Each audit In audits
-      Print "fixing mark deleted for " & audit!wholename    
+      Print "fixing mark deleted for " & audit!wholename
       If IsNull(audit!date_created) Then           'bugfix crept in during development e.g I have 5/89,0000 records with no date created.
          tb.text = Format(audit!imported_time, "dd/mm/yyyy")
          modDBConnect.exec_query("update documents.documents set date_created = '" & Format(audit!imported_time, "dd/mm/yyyy") & "' WHERE pk = " & audit!pk_document)
          audit!date_created = Val(tb.text)
-      End If 
+      End If
       Select Case audit!fk_lu_display_as
          Case 1
             new_notes = "Letter "
@@ -1346,7 +1349,7 @@ Public Function Audits_Update_Document_Notes_Mark_Deleted() As Boolean
    Return True
    'Catch
    ' Return False
-   
+
 End
 
 Public Function Task_Audit_Notes_Save(task As Collection, sTaskDetails As String, audit_action As String)
@@ -1363,11 +1366,11 @@ Public Function Task_Audit_Notes_Save(task As Collection, sTaskDetails As String
    '   CONSTRAINT consult_pkey PRIMARY KEY (pk )
    ' )
    '----------------------------------------------------------
-   
+
    Dim cons As CRow
-   Dim audit As CRow 
-   
-   cons = New CRow   
+   Dim audit As CRow
+
+   cons = New CRow
    cons!consult_date = Task!date_component_logged
    cons!fk_patient = Task!fk_patient
    cons!fk_staff = Task!fk_staff_filed_task
@@ -1392,94 +1395,94 @@ Public Function Task_Audit_Notes_Save(task As Collection, sTaskDetails As String
    '--------------------------------------------------------------------
    audit = New CRow
    audit!fk_consult = cons!fk_consult
-   audit!notes = sTaskDetails    
+   audit!notes = sTaskDetails
    audit!fk_section = const.cSection_StaffTasks
-   If audit_action = "staff task allocated" Then 
+   If audit_action = "staff task allocated" Then
       audit!fk_audit_action = 22 'staff task allocated
    End If
    If audit_action = "note on task" Then
       audit!fk_audit_action = 24
    Endif
-   ' If Not IsNull(Task!fk_row) Then    
+   ' If Not IsNull(Task!fk_row) Then
    ' audit!linked_table = "documents.documents"
    ' audit!fk_row = Task!fk_row
-   '  End If   
+   '  End If
    audit!linked_table = "clerical.tasks"
    audit!fk_row = Task!fk_task
-   audit.Save("clin_consult.progressnotes", "fk_progressnote")  
-   
+   audit.Save("clin_consult.progressnotes", "fk_progressnote")
+
 End
 
 Public Function Audits_Update_Tasks() As Boolean
    '---------------------------------------------------------------------------
    'This sub inserts into progress notes all staff tasks allocated
    '---------------------------------------------------------------------------
-   
+
    Dim audits As New Collection
    Dim new_notes As String
    Dim sql As String
    Dim tasks As Collection
-   Dim Document As Collection 
+   Dim Document As Collection
    Dim task As Collection
    Dim sTaskDetails As String
    Dim fk_last_task As Variant
-   Dim audit As CRow   
-   
+   Dim audit As CRow
+
    Tasks = modDBConnect.exec_query_collection("Select * from clerical.vwtaskscomponentsandnotes where fk_patient = 17891 order by fk_patient, fk_task, fk_component")
    Print tasks
    For Each task In tasks
-      If Not IsNull(Task!fk_patient) Then    
-         If fk_last_task <> Task!fk_task Then   
+      If Not IsNull(Task!fk_patient) Then
+         If fk_last_task <> Task!fk_task Then
             If Not IsNull(Task!fk_row) Then
                Document = modDBConnect.exec_query_first("Select * from documents.documents where pk=" & Task!fk_row)
             Endif
             sTaskDetails = modArchiveDocumentsDBI.Audit_Trail_Make_Progress_notes("staff task allocated", Document) & "<BR>"
             sTaskDetails &= "The task allocated to " & task!staff_allocated_title & " " & task!staff_allocated_wholename
             sTaskDetails &= " was:<BR>- " & task!details & "<BR>"
-            If Not IsNull(task!staff_must_finalise_task_wholename) Then 
+            If Not IsNull(task!staff_must_finalise_task_wholename) Then
                sTaskDetails &= " and the staff member allocated to finalise this was " & task!staff_must_finalise_task_title & " " & task!staff_must_finalise_task_wholename
-            End If  
+            End If
             fk_last_task = Task!fk_task
             Print "Task Key:" & Str(Task!fk_task) & " patient:" & Task!fk_patient & " " & sTaskDetails
             Task_Audit_Notes_SAve(task, sTaskDetails, "staff task allocated")
-         End If     
-         
-      End If   
+         End If
+
+      End If
       If Not IsNull(Task!fk_row) Then
          sTaskDetails = modArchiveDocumentsDBI.Audit_Trail_Make_Progress_notes("note on task", Document) & "<BR>"
-      End If   
+      End If
       If Not IsNull(Task!note) Then
          sTaskDetails &= "The notes made by " & Task!staff_made_note_title & " " & Task!staff_made_note_wholename & " were - '" & Task!note & "'."
       Endif
       Print sTaskDetails
       Task_Audit_Notes_SAve(task, sTaskDetails, "note on task") 'saves the notes components as an audit
    Next
-   
+
    modDBConnect.CommitTrans
-   Return   
+   Return
    sql = ""
    audits = modDBConnect.exec_query_collection(sql)
    For Each audit In audits
-      If audit!fk_audit_action = 28 Then  
+      If audit!fk_audit_action = 28 Then
          new_notes = "Duplicate document"
-         Print "fixing delete duplicate for " & audit!wholename    
+         Print "fixing delete duplicate for " & audit!wholename
       End If
-      If audit!fk_audit_action = 29 Then  
+      If audit!fk_audit_action = 29 Then
          new_notes = "Preminary result"
-         Print "fixing delete prelimary for " & audit!wholename    
+         Print "fixing delete prelimary for " & audit!wholename
       End If
       new_notes &= " which was imported on " & Format(audit!imported_time, "dd/mm/yyyy") & "  was deleted - the original document was sent by " & audit!originator & " with the tag '" & audit!tag & "' "
       If Not IsNull(audit!tag_user) Then
          new_notes &= " and the user tag was '" & audit!tag_user & "'"
       Endif
-      
+
       modDBConnect.update("clin_consult.progressnotes", Null, ["pk": audit!pk_progressnote, "notes": new_notes])
-      
+
    Next
    Return True
 Catch
    Return False
-   
+
 End
 
 Public Function Audit_update_recall_notes() As Boolean
@@ -1493,14 +1496,14 @@ Public Function Audit_update_recall_notes() As Boolean
    ' This includes update for recalls sent by the system (lu_audit_action=18)
    ' back porting this to an address could be inaccurate, they may have moved since.
    ' -----------------------------------------------------------------------------------------
-   
+
    Dim audits As New Collection
-   Dim audit As Collection 
+   Dim audit As Collection
    Dim icounter As Integer
    Dim sql As String
    Dim auditnotes As String
-   Dim R As Result 
-   
+   Dim R As Result
+
    sql = ""
    "SELECT "
    " vwprogressnotes.linked_table,"
@@ -1531,7 +1534,7 @@ Public Function Audit_update_recall_notes() As Boolean
    "   and linked_table = 'clin_recalls.recalls'::regclass"
    "   and( fk_audit_action <> 1 and fk_audit_action <> 2) "
    audits = modDBConnect.exec_query_collection(sql)
-   
+
    For Each audit In audits
       Print Str(icounter) & " updating notes for " & audit!wholename & " ... " & audit!reason
       If audit!fk_audit_action = 18 Then  'letters sent by clerical
@@ -1541,22 +1544,22 @@ Public Function Audit_update_recall_notes() As Boolean
          If R.count Then
             auditnotes &= "to " & Trim(R!street1 & " " & R!street2) & " " & R!town & " " & R!postcode
          Else
-            Print 
+            Print
          Endif
       Else
          auditnotes = audit!reason & " - " & audit!notes
       Endif
       modDBConnect.update("clin_consult.progressnotes", Null, ["pk": audit!pk_progressnote, "notes": auditnotes])
    Next
-   Return True 
+   Return True
    ' Return True'/ Catch
    '  Return False
-   
+
 End
 
 Public Sub Button1_Click_Clean_occupations()
    'clean up my occupations imported from pracsoft - many aAudit of Recalls - 'reminder sent'
-   
+
    Dim R As Result
    Dim sql As String
    Dim R1 As Result
@@ -1568,7 +1571,7 @@ Public Sub Button1_Click_Clean_occupations()
    Dim sMsg As String
    Dim currentconsult As CConsult
    Dim x As Integer
-   
+
    patients = modDBConnect.exec_query_collection("Select * From contacts.vwPatients where fk_occupation > 0")
    'find all the patients who have an occupation in the data_persons table
    If patients.count Then
@@ -1581,25 +1584,25 @@ Public Sub Button1_Click_Clean_occupations()
             sql = "select * from clin_history.vwOccupationalHistory where fk_patient = " & patient!fk_patient & " AND  fk_occupation =" & patient!fk_occupation
             R1 = modDBConnect.exec_query(sql)
             If R1.count = 0 Then  'not entered via easyGP
-               'fix the crap ones 
+               'fix the crap ones
                If patient!fk_occupation = 741 Or patient!fk_occupation = 119 Or patient!fk_occupation = 102 Or patient!fk_occupation = 401 Or patient!fk_occupation = 374 Or patient!fk_occupation = 124 Or patient!fk_occupation = 146 Or patient!fk_occupation = 124 Then
                   sql = "Update contacts.data_persons set fk_occupation = null where pk = " & patient!fk_person
                   modDBConnect.exec_query(sql)
                   modDBConnect.CommitTrans()
                Endif
             Endif
-         End If  
+         End If
       Next
-      'now get what is left  
+      'now get what is left
       patients = modDBConnect.exec_query_collection("Select * From contacts.vwPatients where fk_occupation > 0")
       For Each patient In patients
          '  Message.Info(patient!wholename)
-         Print patient!wholename 
+         Print patient!wholename
          'for each of these, check if it exists in the occupational history table
          sql = "select * from clin_history.vwOccupationalHistory where fk_patient = " & patient!fk_patient & " AND  fk_occupation =" & patient!fk_occupation
          R1 = modDBConnect.exec_query(sql)
          'no records, this must have been an imported occupation
-         
+
          If R1.count = 0 Then                                                   'occupation in persons table not in occupational history table
             OC = modCommonDBI.Occupation_Get(Trim(patient!occupation))         'check if occupation is in the database
             If Not IsNull(OC) Then                                             'if it is retrieive the key
@@ -1616,7 +1619,7 @@ Public Sub Button1_Click_Clean_occupations()
                Else
                   fk_occupation = modCommonDBI.Occupation_Save(Lower(Trim(patient!occuption))) 'should never happen
                End If
-            End If   
+            End If
             'Now insert into the clin_history.occupational_history table
             currentconsult = New CConsult(patient, const.ConsultType_NotesPatientNotPresent)
             modOccupationalHistoryDBI.Patient_Occupations_Mark_NotCurrentOrMain(currentconsult)
@@ -1626,11 +1629,11 @@ Public Sub Button1_Click_Clean_occupations()
             'and you can then fix the code base (historical)
             '--------------------------------------------------------------------------
             sMsg = "New occupation noted:" & modStrings.Capitalise_Words_In_String(Trim(patient!occupation))
-            occupational_history = New CRow   
+            occupational_history = New CRow
             occupational_history!fk_occupation = fk_occupation
             occupational_history!fk_consult = currentconsult.GetPK()
             occupational_history!current = True
-            occupational_history!main_occupation = True  
+            occupational_history!main_occupation = True
             occupational_history!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sMsg, const.cSection_OccupationalHistory, -1, "occupations", 0, False)
             occupational_history.Save("clin_history.occupational_history", "fk_occupational_history")
             modDBConnect.CommitTrans
@@ -1639,17 +1642,17 @@ Public Sub Button1_Click_Clean_occupations()
          Endif
       Next
    Endif
-   
+
    Message.Info("The changes were committed")
-   
+
 End
 
 Public Sub Fix_Tasks_Components()
    'put in for RT (and maybe horst) when bug in FInbox was causing a task to be generate
    'when enter key hit on txtuserObservationName
-   
+
    Dim R As Result
-   
+
    R = modDBConnect.exec_query("select * from  clerical.task_components where details = 'Make Appointment'")
    If R.count Then
       For Each R
@@ -1658,36 +1661,36 @@ Public Sub Fix_Tasks_Components()
       Next
    Endif
    modDBConnect.CommitTrans()
-   
+
 End
 
 Public Sub Form_Resize()
-   
+
    Resize_Side_Bar
-   
+
 End
 
 Public Sub Notify(its_us As Boolean, param As String)
-   
+
    Log.DataMsg("HEARTBEAT")
-   Debug Now(); " HEARTBEAT"  
-   
+   Debug Now(); " HEARTBEAT"
+
 End
 
 Public Sub rt_fix_vaccination_imports()
    'first fix the errors in the original import where the summary was somehow set to social history
    'have changed the view to include deleted past history as this needs to be done as well
-   
+
    Dim sql As String
    Dim Vaccinations As Collection
    Dim VAX As Collection
    Dim existing_pn As Collection
    Dim x As Integer
-   Dim vaccination_item As CRow 
+   Dim vaccination_item As CRow
    Dim progressnote As CRow
-   Dim last_fk_consult As Integer 
+   Dim last_fk_consult As Integer
    Dim issues As String
-   
+
    sql = ""
    "select "
    "   fk_consult,"
@@ -1726,18 +1729,18 @@ Public Sub rt_fix_vaccination_imports()
       ' Endif
    Next
    modDBConnect.CommitTrans
-   
+
 End
 
-Public Function ProgressNote_Html(FH As Collection) As CTemplate  
+Public Function ProgressNote_Html(FH As Collection) As CTemplate
    '------------------------------------------------------------
    'Generates the progress note html for the family history item
-   '------------------------------------------------------------  
-   
+   '------------------------------------------------------------
+
    Dim sString As String
-   
+
    Dim templ As CTemplate
-   
+
    templ = New CTemplate(modHTML.familyhistory_progressnotes_structured_html)
    sSTring = FH!relationship
    If Not IsNull(FH!name) Then
@@ -1777,16 +1780,16 @@ Public Function ProgressNote_Html(FH As Collection) As CTemplate
    If Not IsNull(FH!age_of_death) Then
       templ.Subst("age-death", FH!age_of_death)
    Else
-      templ.Subst("age-death", "unknown") 
+      templ.Subst("age-death", "unknown")
    Endif
-   Return templ   
-   
+   Return templ
+
 End
 
 Public Sub rt_fix_fh_conditions_have_fk_consult_no_fk_progressnote()
    'put progress note into clin_history.family_conditions where have fk_consult
    'even though may have been subsequently deleted, needed for data integrity
-   
+
    Dim sql As String
    Dim missing_keys As Collection
    Dim missing_key As Collection
@@ -1800,8 +1803,8 @@ Public Sub rt_fix_fh_conditions_have_fk_consult_no_fk_progressnote()
    Dim last_fk_patient As Variant
    Dim fk_first_consult As Integer
    Dim sProgressNote As String
-   Dim progressnote As CRow   
-   
+   Dim progressnote As CRow
+
    sql = ""
    "select  "
    "vwPatients.wholename, family_links.fk_patient,"
@@ -1815,14 +1818,14 @@ Public Sub rt_fix_fh_conditions_have_fk_consult_no_fk_progressnote()
    "   LEFT JOIN coding.generic_terms ON family_conditions.fk_code = generic_terms.code"
    "   left join contacts.vwPatients on vwPatients.fk_patient = family_links.fk_patient"
    "    where family_conditions.fk_progressnote is null and family_conditions.fk_consult is not null"
-   ""  
+   ""
    missing_keys = modDBConnect.exec_query_collection(sql)
    Print missing_keys.Count
    'all the records in clin_history.family_conditions missing a fk_consult and fk_progressnote ~223
-   For Each missing_key In missing_keys        
+   For Each missing_key In missing_keys
       sProgressNote = ProgressNote_Html(missing_key).GetData()
       progressnote = New CRow                                        'save the data
-      ProgressNote!notes = sProgressNote 
+      ProgressNote!notes = sProgressNote
       ProgressNote!fk_audit_action = const.cAuditAction_LegacyDataNotProgressNote
       ProgressNote!fk_consult = missing_key!fk_consult
       ProgressNote!fk_section = const.cSection_FamilyHistory
@@ -1830,8 +1833,8 @@ Public Sub rt_fix_fh_conditions_have_fk_consult_no_fk_progressnote()
       modDBConnect.update("clin_history.family_conditions", Null, ["pk": missing_key!pk, "fk_progressnote": ProgressNote!fk_progressnote])
       Inc x
    Next
-   modDBConnect.CommitTrans 
-   
+   modDBConnect.CommitTrans
+
 End
 
 Public Sub rt_fix_fh_conditions_no_consult_or_progressNotes()
@@ -1839,7 +1842,7 @@ Public Sub rt_fix_fh_conditions_no_consult_or_progressNotes()
    ' by looking up the first fk_consult for the patient and attributing the import to that date
    ' then making up what would have been the import progress notes
    ' in my db ~223 rocords
-   
+
    Dim sql As String
    Dim missing_keys As Collection
    Dim missing_key As Collection
@@ -1853,8 +1856,8 @@ Public Sub rt_fix_fh_conditions_no_consult_or_progressNotes()
    Dim last_fk_patient As Variant
    Dim fk_first_consult As Integer
    Dim sProgressNote As String
-   Dim progressnote As CRow   
-   
+   Dim progressnote As CRow
+
    sql = ""
    "select  "
    "vwPatients.wholename, family_links.fk_patient,"
@@ -1871,11 +1874,11 @@ Public Sub rt_fix_fh_conditions_no_consult_or_progressNotes()
    missing_keys = modDBConnect.exec_query_collection(sql)
    Print missing_keys.Count
    'all the records in clin_history.family_conditions missing a fk_consult and fk_progressnote ~223
-   For Each missing_key In missing_keys        
+   For Each missing_key In missing_keys
       sProgressNote = ProgressNote_Html(missing_key).GetData()
       fk_first_consult = get_first_fk_consult(missing_key!fk_patient)
       progressnote = New CRow                                        'save the data
-      ProgressNote!notes = sProgressNote 
+      ProgressNote!notes = sProgressNote
       ProgressNote!fk_audit_action = const.cAuditAction_LegacyDataNotProgressNote
       ProgressNote!fk_consult = fk_first_consult
       ProgressNote!fk_section = const.cSection_FamilyHistory
@@ -1883,15 +1886,15 @@ Public Sub rt_fix_fh_conditions_no_consult_or_progressNotes()
       modDBConnect.update("clin_history.family_conditions", Null, ["pk": missing_key!pk, "fk_consult": fk_first_consult, "fk_progressnote": ProgressNote!fk_progressnote])
       Inc x
    Next
-   modDBConnect.CommitTrans 
-   
+   modDBConnect.CommitTrans
+
 End
 
 Public Function get_first_fk_consult(fk_patient As Variant) As Variant
    'used this whilst fixing errors in my imported family history
-   
+
    Dim sql_first_consult_key As Variant 'first ever consult key for the patient in easygp
-   
+
    sql_first_consult_key = ""
    "select vwProgressNotes.fk_consult, vwPatients.wholename"
    " from clin_consult.vwProgressNotes "
@@ -1900,13 +1903,13 @@ Public Function get_first_fk_consult(fk_patient As Variant) As Variant
    sql_first_consult_key &= fk_patient & " order by consult_date ASC LIMIT 1"
    Print sql_first_consult_key
    Return modDBConnect.exec_query(sql_first_consult_key)!fk_consult
-   
+
 End
 
 Public Sub rt_fix_fh_no_fk_consult()
    'puts an fk_consult back into clin_history.family_members where it is null
    'probably won't use this, rely on clin_history.family_condition only
-   
+
    ' Dim sql As String
    ' Dim missing_fk_consults As Collection
    ' Dim a_consult As Collection
@@ -1917,9 +1920,9 @@ Public Sub rt_fix_fh_no_fk_consult()
    ' Dim new_fk_consult As Integer
    ' Dim x As Integer
    ' Dim last_fk_patient As Variant
-   ' 
+   '
    ' sql = ""
-   ' "select  vwPatients.wholename, "            
+   ' "select  vwPatients.wholename, "
    ' "  family_links.pk, family_links.fk_member, family_links.fk_patient, family_links.deleted,"
    ' "  family_members.name, family_members.fk_consult,family_members.deleted"
    ' " from"
@@ -1936,23 +1939,23 @@ Public Sub rt_fix_fh_no_fk_consult()
    '    Endif
    '    If IsNull(a_consult!fk_consult) Then
    '       Print a_consult!wholename
-   '       If new_fk_consult <> 0 Then    
+   '       If new_fk_consult <> 0 Then
    '          modDBConnect.update("clin_history.family_members", Null, ["pk": a_consult!fk_member, "fk_consult": new_fk_consult])
    '       Endif
    '    Else
-   '       new_fk_consult = a_consult!fk_consult           
+   '       new_fk_consult = a_consult!fk_consult
    '    Endif
    '    Inc x
    '    ' If x > 1310 Then Break
    ' Next
    ' modDBConnect.CommitTrans
-   ' 
+   '
 End
 
 Public Sub rt_fix_family_history_no_pk_progressnote()
-   'Puts in a progress note for clin_history.family_conditions 
+   'Puts in a progress note for clin_history.family_conditions
    'where it wasn't put in when imported
-   
+
    Dim sql As String
    Dim family_history As Collection
    Dim All_Histories As Collection
@@ -1960,28 +1963,28 @@ Public Sub rt_fix_family_history_no_pk_progressnote()
    Dim history As Collection
    Dim fk_last_memebr As Integer
    Dim sProgressNote As String
-   Dim progressnote As CRow 
+   Dim progressnote As CRow
    Dim x As Integer
    Dim fk_consult As Integer
    Dim pk_progressnote As Integer
-   
+
    SQL = " select  vwPatients.wholename, clin_history.vwFamilyhistory.*"
    "    from clin_history.vwFamilyHistory"
    "    join contacts.vwPatients on vwpatients.fk_patient = vwFamilyhistory.fk_patient"
    "    where vwFamilyhistory.fk_progressnote is null and vwFamilyhistory.fk_consult_condition is not null"
    "    order by vwFamilyHistory.fk_patient " ' , vwFamilyHistory.fk_member;"
    All_Histories = modDBConnect.exec_query_collection(sql)
-   
+
    For Each history In All_Histories
-      
+
       If fk_last_patient <> history!fk_patient And fk_last_patient <> 0 Then  'changing patient
          modDBConnect.update("clin_consult.progressnotes", Null, ["pk": pk_progressnote, "notes": sProgressNote])
          sProgressNote = ""
          '   If x = 13 Then Break
-      End If   
+      End If
       If Len(sProgressNote) = 0 Then
          Print "starting", x, history!wholename
-         fk_last_patient = history!fk_patient 
+         fk_last_patient = history!fk_patient
          fk_consult = history!fk_consult_condition
          progressnote = New CRow                                              'save the data
          ProgressNote!notes = "placeholder "                                  'save the note, but nothing there yet
@@ -1989,31 +1992,31 @@ Public Sub rt_fix_family_history_no_pk_progressnote()
          ProgressNote!fk_consult = fk_consult
          ProgressNote!fk_section = const.cSection_FamilyHistory
          ProgressNote.Save("clin_consult.progressnotes", "fk_progressnote")
-         Print "saved pn key was ", ProgressNote!fk_progressnote  
+         Print "saved pn key was ", ProgressNote!fk_progressnote
          pk_progressnote = ProgressNote!fk_progressnote
-      End If    
+      End If
       sProgressNote &= ProgressNote_Html(history).GetData()
       modDBConnect.update("clin_history.family_conditions", Null, ["pk": history!fk_condition, "fk_progressnote": pk_progressnote])
       Print "added history..." & Str(x), " for ", history!wholename
       Inc x
-      
+
    Next
    modDBConnect.update("clin_consult.progressnotes", Null, ["pk": pk_progressnote, "notes": sProgressNote]) 'do the last person
    modDBConnect.CommitTrans
-   
+
 End
 
 Public Sub rt_fix_social_history_no_pk_progressnote()
    'When social histories were imported, no fk_progress note created
    'when finalising constraints had to fix this
-   
+
    Dim sql As String
    Dim Social_Histories As Collection
    Dim SOCIAL_HISTORY As Collection
    Dim x As Integer
    Dim progressnote As CRow
-   Dim last_fk_consult As Integer 
-   
+   Dim last_fk_consult As Integer
+
    sql = ""
    ""
    "select social_history.history,"
@@ -2027,13 +2030,13 @@ Public Sub rt_fix_social_history_no_pk_progressnote()
    x = 1
    For Each SOCIAL_HISTORY In Social_Histories
       '  modDBConnect.update("clin_consult.consult", Null, ["pk": RECALL!fk_consult, "summary": "Recalls Imported"])
-      If last_fk_consult <> SOCIAL_HISTORY!fk_consult Then                                                
+      If last_fk_consult <> SOCIAL_HISTORY!fk_consult Then
          ProgressNote = New CRow
-         If Not IsNull(SOCIAL_HISTORY!history) Then   
+         If Not IsNull(SOCIAL_HISTORY!history) Then
             ProgressNote!notes = "<B>Social History (Imported)</B><BR>" & SOCIAL_HISTORY!history
-         Else 
+         Else
             ProgressNote!notes = "<B>Social History</B><BR>Details of responsible person were added"
-         End If  
+         End If
          Print ProgressNote!notes
          ProgressNote!fk_audit_action = const.cAuditAction_Insert
          ProgressNote!fk_consult = SOCIAL_HISTORY!fk_consult
@@ -2049,20 +2052,20 @@ Public Sub rt_fix_social_history_no_pk_progressnote()
       ' Endif
    Next
    modDBConnect.CommitTrans
-   
+
 End
 
 Public Sub rt_fix_recalls_no_pk_progressnote()
    'code bug no progress notes being inserted BY FDacc when it logged recalls fk_progressnote of 0
    'have changed the view to include deleted past history as this needs to be done as well
-   
+
    Dim sql As String
    Dim Recalls As Collection
    Dim RECALL As Collection
    Dim x As Integer
    Dim progressnote As CRow
-   Dim last_fk_consult As Integer 
-   
+   Dim last_fk_consult As Integer
+
    sql = "select "
    "     vwPatients.wholename,"
    "     vwrecalls.*"
@@ -2074,7 +2077,7 @@ Public Sub rt_fix_recalls_no_pk_progressnote()
    x = 1
    For Each RECALL In Recalls
       '  modDBConnect.update("clin_consult.consult", Null, ["pk": RECALL!fk_consult, "summary": "Recalls Imported"])
-      If last_fk_consult <> RECALL!fk_consult Then                                                
+      If last_fk_consult <> RECALL!fk_consult Then
          ProgressNote = New CRow
          ProgressNote!notes = "Recall logged for " & RECALL!reason & " on " & Format(RECALL!due, "dd/mm/yyyy")
          ProgressNote!fk_audit_action = const.cAuditAction_Edit
@@ -2092,7 +2095,7 @@ Public Sub rt_fix_recalls_no_pk_progressnote()
       ' Endif
    Next
    modDBConnect.CommitTrans
-   
+
 End
 
 Public Sub rt_fix_medical_certificates()
@@ -2101,18 +2104,18 @@ Public Sub rt_fix_medical_certificates()
    ' --Medical certificate
    ' -- - dated 25/08/2015 for sore throat [Sore throat (R21005)]
    ' -- - is unfit for work from 24/08/2015 to 24/08/2015
-   ' 
-   
+   '
+
    Dim sql As String
    Dim Medical_Certificates As Collection
    Dim CERT As Collection
    Dim existing_pn As Collection
    Dim x As Integer
    Dim progressnote As CRow
-   Dim last_fk_consult As Integer 
+   Dim last_fk_consult As Integer
    Dim issues As String
    Dim notes As String
-   
+
    sql = ""
    "select "
    "   fk_consult,"
@@ -2146,7 +2149,7 @@ Public Sub rt_fix_medical_certificates()
          notes &= " for " & CERT!reason & " [" & CERT!term & "(" & CERT!fk_code & ")]" & "<BR>"
          notes &= " - is " & CERT!fitness & " for work from " & Format(CERT!from_date, "dd/mm/yyyy")
          If Not IsNull(CERT!to_date) Then
-            Notes &= " to " & CERT!to_date  
+            Notes &= " to " & CERT!to_date
          Endif
          Print notes
          ProgressNote!notes = notes
@@ -2165,33 +2168,33 @@ Public Sub rt_fix_medical_certificates()
       ' Endif
    Next
    modDBConnect.CommitTrans
-   
+
 End
 
 Public Sub rt_fix_documents()
-   
+
    'fixes documents.documents where a fk_patient was set to 0
    Dim sql As String
    Dim documents As Collection
-   
+
    sql = "select  * from documents.documents where fk_patient = null and deleted is false"
-   
+
 End
 
 Public Sub rt_fix_past_history_imports()
    'first fix the errors in the original import where the summary was somehow set to social history
    'have changed the view to include deleted past history as this needs to be done as well
-   
+
    Dim sql As String
    Dim PastHistory As Collection
    Dim PH As Collection
    Dim existing_pn As Collection
    Dim x As Integer
-   Dim past_history_item As CRow 
+   Dim past_history_item As CRow
    Dim progressnote As CRow
-   Dim last_fk_consult As Integer 
+   Dim last_fk_consult As Integer
    Dim issues As String
-   
+
    sql = ""
    "select "
    "   fk_consult,"
@@ -2231,11 +2234,11 @@ Public Sub rt_fix_past_history_imports()
       '  Endif
    Next
    modDBConnect.CommitTrans
-   
+
 End
 
 Public Sub RT_Fix_imported_habits()
-   
+
    'adds a progress note, needed as the db evolved each habit has
    'an fk_progress note, these had none as the field didn't exist
    Dim sql As String
@@ -2243,10 +2246,10 @@ Public Sub RT_Fix_imported_habits()
    Dim Impstuff As Collection
    Dim existing_pn As Collection
    Dim x As Integer
-   Dim recreational_drug As CRow 
+   Dim recreational_drug As CRow
    Dim progressnote As CRow
-   Dim last_fk_consult As Integer 
-   
+   Dim last_fk_consult As Integer
+
    sql = ""
    "select "
    " recreational_drugs.pk as pk_recreational_drug, "
@@ -2259,7 +2262,7 @@ Public Sub RT_Fix_imported_habits()
    "from clin_history.recreational_drugs "
    "         join clin_consult.consult on consult.pk = recreational_drugs.fk_consult"
    "         join contacts.vwPatients on vwPatients.fk_patient = consult.fk_patient"
-   "         join clin_consult.lu_consult_type on lu_consult_type.pk = consult.fk_type " 
+   "         join clin_consult.lu_consult_type on lu_consult_type.pk = consult.fk_type "
    " where recreational_drugs.fk_progressnote = 0"
    imported_stuff = modDBConnect.exec_query_collection(sql)
    Print imported_stuff
@@ -2271,9 +2274,9 @@ Public Sub RT_Fix_imported_habits()
             ' sql = " Select * From clin_consult.vwProgressNotes where fk_consult = " & Impstuff!fk_consult & " LIMIT 1"
             ' existing_pn = modDBConnect.exec_query_first(sql)
             ' If Not IsNull(existing_pn) Then
-            '    If existing_pn!fk_consult <> last_fk_consult Then  
+            '    If existing_pn!fk_consult <> last_fk_consult Then
             '       Print "have an existing pn"
-            '    End If   
+            '    End If
             ' Endif
             '   Print Impstuff
             ProgressNote = New CRow
@@ -2285,17 +2288,17 @@ Public Sub RT_Fix_imported_habits()
             ProgressNote!fk_section = const.cSection_RecreationalDrugs
             ProgressNote!problem = "Recreational Drugs"
             ProgressNote.Save("clin_consult.progressnotes", "fk_progressnote")
-         End If 
+         End If
          modDBConnect.update("clin_history.recreational_drugs", Null, ["pk": Impstuff!pk_recreational_drug, "fk_progressnote": progressnote!fk_progressnote])
          last_fk_consult = Impstuff!fk_consult
          Print x
          Inc x
          '  If x = 10 Then
-         
+
          '    Break
          ' Endif
-      End If   
+      End If
    Next
    modDBConnect.CommitTrans()
-   
+
 End

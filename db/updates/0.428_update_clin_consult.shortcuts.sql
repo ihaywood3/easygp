@@ -22,19 +22,19 @@ COMMENT ON COLUMN clin_consult.shortcuts_user_temp.shortcut IS 'the shortcut tha
 COMMENT ON COLUMN clin_consult.shortcuts_user_temp.expanded IS 'the text the shortcut will get expanded to. Any htnl code is valid, including embedded images';
 
 
-insert into clin_consult.shortcuts_user_temp (fk_staff, shared, shortcut, expanded, fk_lu_shortcut_category) 
- select fk_staff, shared, shortcut, expanded, fk_lu_shortcut_category from clin_consult.lu_shortcut where fk_staff is not null;
+--insert into clin_consult.shortcuts_user_temp (fk_staff, shared, shortcut, expanded, fk_lu_shortcut_category) 
+-- select fk_staff, shared, shortcut, expanded, fk_lu_shortcut_category from clin_consult.lu_shortcut where fk_staff is not null;
 
-delete from  clin_consult.lu_shortcut where fk_staff is not null;
+--delete from  clin_consult.lu_shortcut where fk_staff is not null;
 
-alter table clin_consult.lu_shortcut drop column fk_staff cascade;
+--alter table clin_consult.lu_shortcut drop column fk_staff cascade;
 
-drop table clin_consult.shortcuts_user;
+drop table clin_consult.shortcuts_user cascade;
 
 alter table clin_consult.shortcuts_user_temp rename to   shortcuts_user;
 
 
---DROP VIEW clin_consult.vwshortcuts;
+DROP VIEW clin_consult.vwshortcuts;
 
 CREATE OR REPLACE VIEW clin_consult.vwshortcuts AS 
  SELECT 
@@ -64,4 +64,4 @@ UNION
 ALTER TABLE clin_consult.vwshortcuts   OWNER TO easygp;
 GRANT SELECT ON TABLE clin_consult.vwshortcuts TO staff;
 
-update db.lu_version set lu_minor=428;
+--update db.lu_version set lu_minor=428;

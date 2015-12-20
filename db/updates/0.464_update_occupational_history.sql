@@ -12,7 +12,7 @@ COMMENT ON COLUMN clin_history.occupations_exposures.fk_lu_units IS 'foreign key
   e.g 6 = month, 7 = year';
   
 alter table clin_history.lu_occupational_exposures drop column fk_decision_support cascade;
-
+alter table clin_history.occupational_history add column retired boolean default false not null;
 
 CREATE OR REPLACE VIEW clin_history.vwoccupationalhistory AS 
  SELECT
@@ -52,3 +52,4 @@ CREATE OR REPLACE VIEW clin_history.vwoccupationalhistory AS
 ALTER TABLE clin_history.vwoccupationalhistory   OWNER TO easygp;
 GRANT ALL ON TABLE clin_history.vwoccupationalhistory TO staff;
 
+update db.lu_version set lu_minor=464;

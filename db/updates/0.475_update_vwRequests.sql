@@ -2,7 +2,7 @@
 
 alter table clin_requests.user_provider_defaults rename column fk_default_branch to fk_default_branch_user;
 
-COMMENT ON COLUMN lin_requests.user_provider_defaults.fk_default_branch_user IS
+COMMENT ON COLUMN clin_requests.user_provider_defaults.fk_default_branch_user IS
 'If  you look at the table clin_requests.request_providers you will see there is a fk_default_branch field.
  This is set by Admin when they designate that a particular company can be used to send particular types of
  requests, and they ''guess'' the most likely branch  users will use.

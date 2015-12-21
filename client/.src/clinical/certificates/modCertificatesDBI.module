@@ -88,28 +88,49 @@ Public Function MedicalCertificates_Delete(currentconsult As CConsult, certifica
    '------------------------------------------------------ 
    
    Dim audit_notes As String
+   Dim sProgressNote As String
+   Dim ProgressNote As Collection
    
    Message.Title = "Delete Medical Certificate"
    If Message.Question("Are you sure you want to delete the medical certificate", "Yes", "No") = 2 Then Return
-   modDBConnect.update("clin_certificates.medical_certificates", Null, ["pk": certificate!pk_medicalcertificate, "deleted": True])
-   audit_notes = "The medical certificate issued by " & Trim(certificate!staff_title & " " & certificate!staff_wholename)
-   audit_notes &= " dated " & Format(certificate!certificate_date, "dd/mm/yyyy")
-   audit_notes &= " for the reason '" & certificate!reason & "' - where the patient was stated to be "
-   audit_notes &= certificate!fitness & " from " & Format(certificate!from_date, "dd/mm/yyyy") 
-   If Not IsNull(certificate!to_date) Then
-      audit_notes &= " to " & Format(certificate!to_date, "dd/mm/yyyy")
+   Print certificate
+   If modUtil.IsSameDay(certificate!consult_date, currentconsult.GetConsultDate()) Then  'deleting a certificate on same day, just delete it, no audit trail
+      modDBConnect.update("clin_certificates.medical_certificates", Null, ["pk": certificate!pk_medicalcertificate, "deleted": True])
+      modDBConnect.update("clin_consult.progressnotes", Null, ["pk": certificate!fk_progressnote, "deleted": True])
+      
+   Else                  'not written on the same day, strike through the progress notes and lay down audit trail
+      modDBConnect.update("clin_certificates.medical_certificates", Null, ["pk": certificate!pk_medicalcertificate, "deleted": True])
+      For Each progressnote In currentconsult!progress_notes
+         If progressnote!pk_progressnote = certificate!fk_progressnote Then
+            sProgressNote = "<STRIKE><P><FONT COLOR='#b3b3b3'>" & progressnote!notes & "</STRIKE></P>"
+            sProgressNote &= "<P><I>This certificate was deleted by " & modDBConnect.currentUser!wholename & " on " & Format(Now, "dd/mm/yyyy")
+            sProgressNote &= " please consult the audit trail for details</I></P>"
+            Print sProgressNote
+            currentconsult!progress_notes[progressnote!pk_progressnote] = sProgressNote
+            modDBConnect.update("clin_consult.progressnotes", Null, ["pk": certificate!fk_progressnote, "notes": sProgressNote])
+            Break
+         Endif
+      Next
+        
+      audit_notes = "The medical certificate issued by " & Trim(certificate!staff_title & " " & certificate!staff_wholename)
+      audit_notes &= " dated " & Format(certificate!certificate_date, "dd/mm/yyyy")
+      audit_notes &= " for the reason '" & certificate!reason & "' - where the patient was stated to be "
+      audit_notes &= certificate!fitness & " from " & Format(certificate!from_date, "dd/mm/yyyy") 
+      If Not IsNull(certificate!to_date) Then
+         audit_notes &= " to " & Format(certificate!to_date, "dd/mm/yyyy")
+      End If   
+      If certificate!print_notes Then
+         audit_notes &= " and which had these notes printed on it: '" & certificate!notes & "'"
+      End If
+      audit_notes &= " has been deleted."
+      
+      If Not modAudit.MakeAudit(currentconsult, "mark deleted", "clin_certificates.medical_certificates", certificate!pk_medicalcertificate, const.cSection_MedicalCertificates, audit_notes) Then
+         modDBConnect.RollBack
+      End If   
    End If   
-   If certificate!print_notes Then
-      audit_notes &= " and which had these notes printed on it: '" & certificate!notes & "'"
-   End If
-   audit_notes &= " has been deleted."
+   modDBConnect.CommitTrans
+   Return True
    
-   If Not modAudit.MakeAudit(currentconsult, "mark deleted", "clin_certificates.medical_certificates", certificate!pk_medicalcertificate, const.cSection_MedicalCertificates, audit_notes) Then
-      modDBConnect.RollBack
-   Else
-      modDBConnect.CommitTrans
-      Return True
-   Endif
 Catch
    modDBConnect.RollBack
    Return 

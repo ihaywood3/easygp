@@ -28,6 +28,7 @@ Private bCancel As Boolean                         'set by close key
 Private currentconsult As CConsult                 'passed from the notes editor
 Private fk_coding_system As Variant                'if non-zero is a valid coding system
 Private fk_code As Variant                          'if not "" then a valid code
+Private cvwCertificates_Key As Variant
 Private Const cFit As Integer = 1                  'constants to make code easier to read
 Private Const cUnFit As Integer = 2
 Private Fitness As Variant
@@ -176,7 +177,7 @@ Public Sub Coded_Terms_Get()
    
    If Trim(txtCodedTerm.text) = "" Then
       fk_code = Null
-      fk_coding_system = const.coding_none_selected
+      fk_coding_system = Null
       Form_Terms.Visible = False
       Return
    End If
@@ -336,7 +337,7 @@ Public Sub EditAreaTextBox_Change()
    Select Case Last.tag
       Case "coded term"
          If Trim(Last.text) = "" Then
-            fk_code = ""
+            fk_code = Null
             fk_coding_system = Null
             Form_Terms.Visible = False
          Endif
@@ -514,11 +515,14 @@ Public Sub Save()
    If Not IsNull(fk_certificate) Then
       certificate.put_unchanged(fk_certificate, "fk_certificate")
    End If
- '  If IsNull(fk_progressnote) Then fk_progressnote = -1               'not 0 if certificate being edited
-   
    Certificate!reason = Trim(txtReason.Text)
-   If Not IsNull(fk_coding_system) Then Certificate!fk_coding_system = fk_coding_system
-   If Not IsNull(fk_code) And IsNull(fk_coding_system) Then Certificate!fk_code = fk_code
+   If Not IsNull(fk_coding_system) Then 
+      Certificate!fk_coding_system = fk_coding_system
+      Certificate!fk_code = fk_code
+   Else
+      Certificate!fk_coding_system = Null
+      Certificate!fk_code = Null
+   End If   
    Certificate!certificate_date = Val(txtdate.text) 'the actual date we want on certificate, may not be consult.date
    Certificate!from_date = Val(txtDateFrom.text)
    Try Certificate!to_date = Val(txtDateTo.text)
@@ -529,8 +533,7 @@ Public Sub Save()
    Certificate!fk_consult = currentconsult.GetPK()
    Certificate!latex = MedicalCertificate_LaTex_Construct(Certificate).GetData()
    sProgressNotes = Progress_Note_Construct()
-   modDBConnect.BeginTrans()
-   Certificate!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNotes, const.cSection_MedicalCertificates, fk_progressnote, "Medical Certificates", 0, False)
+   Certificate!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNotes, const.cSection_MedicalCertificates, fk_progressnote, "Medical Certificates")
    Certificate.Save("clin_certificates.medical_certificates", "fk_certificate")
    modPrinting.Print_latex(Certificate!latex, const.Paper_Plain, 1)
    modDBConnect.CommitTrans()
@@ -538,7 +541,6 @@ Public Sub Save()
    Reload()
    
 End
-
 
 Public Sub Refresh_FClinical()
    '----------------------------------------------------------------------------------------
@@ -554,7 +556,7 @@ Public Sub Refresh_FClinical()
 End
 
 Public Sub Timer1_Timer()
-
+   
    Inc timer_count
    If timer_count > 1 Then  'FIXME MAKE THESE USER CONFIGURABLE PER TYPING SPEED
       timer1.stop
@@ -851,12 +853,13 @@ Public Sub Certificates_This_Consult_Show()
    currentconsult.Refresh("medical_certificates_this_consult")        'remove key = refresh
    Certificates = modUtil.Copy_Collection_Keyed_Sequentially(currentconsult!medical_certificates_this_consult)    'only get those written today
    cvwCertificates.Clear()                                            'clear the list
-   
    For Each Certificate In Certificates
       cvwCertificates.Add(x, 0)
       cvwCertificates[x][0] = Format(Certificate!certificate_date, "dd/mm/yyyy") & "  "
       cvwCertificates[x][1] = Certificate!reason & "  "     'the free text reason
-      cvwCertificates[x][2] = Certificate!term & " (" & Certificate!code & ")  "  'the coded reason
+      If Not IsNull(Certificate!code) Then  
+          cvwCertificates[x][2] = Certificate!term & " (" & Certificate!code & ")  "  'the coded reason
+      End If   
       sString = Temporality[Certificate!fk_lu_illness_temporality]
       sString &= "  " & Fitness[Certificate!fk_lu_fitness] & "  for work from  "
       cvwCertificates[x][3] = sString                 'fitness for work
@@ -865,7 +868,6 @@ Public Sub Certificates_This_Consult_Show()
       cvwCertificates[x][6] = Certificate!notes
       Inc x
    Next
-   
    modUtilGUI.Columnview_Columns_Set_Size(cvwCertificates, lblmeasure)
    EditArea_Notify_Data_Change(False)
    
@@ -895,7 +897,7 @@ Public Sub Certificate_Preview()
    
 End
 
-Public Sub Display()
+Public Sub Certificate_Display()
    '------------------------------------------------------------------
    'Displays the current certificate when user clicks on it
    'User cannot edit this unless selects from popup menu over the list
@@ -904,16 +906,16 @@ Public Sub Display()
    EditArea_Clear()                    'clear display between each row
    Vbox_EditArea_Outer.Enabled = False
    bExit = True                        'stop the EditArea_Notify_Data_Change etc
-   cvwCertificates.MoveCurrent()       'sets current key
-   fk_certificate = Certificates[cvwCertificates.Item.Key]!pk_medicalcertificate  'key to the view for use in save
-   Certificate = Certificates[cvwCertificates.Item.Key] 'current certificate ease of typing
+   fk_certificate = Certificates[cvwCertificates_Key]!pk_medicalcertificate  'key to the view for use in save
+   Certificate = Certificates[cvwCertificates_Key] 'current certificate ease of typing
    fk_progressnote = Certificate!fk_progressnote
    fk_code = Certificate!fk_code
-   Try fk_coding_system = Certificate!fk_coding_system
+   fk_coding_system = Certificate!fk_coding_system
    txtReason.text = Certificate!reason
-   txtCodedTerm.text = Certificate!term & " (" & Certificate!code & ")"  'the coded reason
+   If Not IsNull(Certificate!code) Then   
+      txtCodedTerm.text = Certificate!term & " (" & Certificate!code & ")"  'the coded reason
+   End If   
    txtnotes.text = Certificate!notes
-   
    Select Case Certificate!fk_lu_illness_temporality 'sets  iFitness_Temporality via click event
       Case cIs
          RbIs.Value = True
@@ -922,7 +924,6 @@ Public Sub Display()
       Case cWillBe
          rbWillbe.Value = True
    End Select
-   
    Select Case Certificate!fk_lu_fitness
       Case cFit
          rbfit.value = True
@@ -953,8 +954,10 @@ Public Sub cvwCertificates_Select()
    'User has clicked on a row in the certificates columnview
    'i.e those certificates generated this consultation
    '--------------------------------------------------------
-   
-   Display()
+
+   cvwCertificates.MoveCurrent()       'sets current key
+   cvwCertificates_Key = cvwCertificates.Item.Key
+   Certificate_Display()
    
 End
 
@@ -1004,20 +1007,11 @@ Public Sub Delete_Undo(Deleted_Certificate As Collection)
    
 End
 
-Public Sub cvwCertificates_Click()
-   
-   Display()
-   
-End
-
 Public Sub cvwCertificates_menu()
    
    Dim mnu As Menu
    Dim Deleted_Certificate As Collection
    
-   ' If cvwCertificates.count = 0 And Deleted_Certificates.count = 0 Then
-   '                    Return  'no certificates written or non in the deleted cache = no menu
-   ' End If
    '----------------------------------------------------------
    'ok, we have certicates, even if only deleted ones
    'enable all menu items, but only undo if something to undo
@@ -1031,7 +1025,6 @@ Public Sub cvwCertificates_menu()
       End If
    Next
    mnuMedicalCertificates_Help.Enabled = True
-   
    mnuMedicalCertificates_UndoDelete.Children.Clear               'remove all (if any) children of the menu
    If Deleted_Certificates.count <> 0 Then                             'if deleted certificates exist, enable redo
       mnuMedicalCertificates_UndoDelete.Enabled = True
@@ -1044,7 +1037,6 @@ Public Sub cvwCertificates_menu()
    Else
       mnuMedicalCertificates_UndoDelete.Enabled = False
    End If
-   
    mnuMedicalCertificates.Popup()
    
 End

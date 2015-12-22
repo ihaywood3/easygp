@@ -29,6 +29,7 @@ Private Request_Types As Collection
 Public bExit As Boolean                    'do not change to Private used to prevent data events when module referenced from other forms
 Private cvwRequests_Key As Variant
 Private Selected_keys As Variant[]          'see mnuResultsReceived_Click for use of this
+Private iRequestType As Integer
 Private form_metadata As FDocumentMetaData
 Private obs As Observer
 Private Const cTabstrip_lists_Tab_Results As Integer = 1
@@ -58,6 +59,7 @@ Public Sub _new()
    request_types.Add(Notype, "15")
    request_types = modUtilGUI.LoadCombo(cmbRequestTypes, modUtil.Copy_Collection_Keyed_Sequentially(Request_types), "type")
    Settings_Load
+   txtINRLimit.text = 1
    With Form_MetaData = New FDocumentMetaData(Vbox_Metadata)
       .Set_Embedded_Form_Name("FClinical")
       .Init("Allocated Documents")
@@ -319,8 +321,9 @@ Public Function Rebuild_HTML(D As Collection) As String
    page_tag = D!tag_user   
    modDBConnect.update("documents.documents", Null, ["pk": D!pk_document, "data": sHtml])
    modDBConnect.CommitTrans
-  ' FClinical.Editor_ShowPage_External("result", page_tag, sHtml, "html")
+   ' FClinical.Editor_ShowPage_External("result", page_tag, sHtml, "html")
    Return sHtml
+   
 End
 
 Public Sub Result_Display(Optional bNewTab As Boolean = False)
@@ -449,6 +452,8 @@ Public Sub cvwResults_Reload(Optional bRefresh As Boolean = False)
    Dim result_received As String
    Dim guessed_user_Name As Collection
    Dim bSkip As Boolean 
+   Dim bIsINR As Boolean
+   Dim inrCount As Integer
    
    If IsNull(currentconsult) Then Return
    UnFiled_Document_Metadata_Show(False) 'could be showing if an unfiled document
@@ -465,55 +470,64 @@ Public Sub cvwResults_Reload(Optional bRefresh As Boolean = False)
    If bRefresh Then Currentconsult.Refresh("results_received")
    For Each results_received In currentconsult!results_received
       result_received = ""
-      If filter = "" And exclude = "" Then
-         If IsNull(results_received!tag_user) Then                         'not user tag = document not filed
-            'attempt to guess the user tag
-            CurrentObservations = modDBConnect.exec_query_collection("Select  * from documents.observations where fk_document =" & results_received!pk_document & " ORDER BY observations.observation_date, set_id")
-            guessed_user_Name = modParseDocument.Guess_UserName(currentconsult, const.Synonyms(), results_received, CurrentObservations)
-            If Not IsNull(guessed_user_Name!name) Then
-               result_received = "** UNFILED **:" & guessed_user_Name!name
-            Else
-               result_received = "** UNFILED RESULT **:"
-            End If
-         Else
-            result_received = results_received!tag_user
-         End If
-         
+      If Lower(results_received!tag_user) = "inr;" Then
+         bIsINR = True
+         Inc inrCount
       Else
-         If exclude Then
-            'If Lower(results_received!tag_user) <> Lower(exclude) Then
-            If Not InStr(Lower(results_received!tag_user), Lower(exclude)) Then
-               result_received = results_received!tag_user
-            Endif
-         Else
-            If results_received!tag_user = "" And InStr("unfiled", Lower(filter)) Then
-               result_received = "** UNFILED **:"
+         bIsINR = False 
+      Endif
+      Print Not bIsINR Or (bIsINR And inrCount < Val(txtINRLimit.text))
+      If Not bIsINR Or (bIsINR And inrCount < Val(txtINRLimit.text) + 1) Then  
+         If filter = "" And exclude = "" Then
+            If IsNull(results_received!tag_user) Then                         'not user tag = document not filed
+               'attempt to guess the user tag
+               CurrentObservations = modDBConnect.exec_query_collection("Select  * from documents.observations where fk_document =" & results_received!pk_document & " ORDER BY observations.observation_date, set_id")
+               guessed_user_Name = modParseDocument.Guess_UserName(currentconsult, const.Synonyms(), results_received, CurrentObservations)
+               If Not IsNull(guessed_user_Name!name) Then
+                  result_received = "** UNFILED **:" & guessed_user_Name!name
+               Else
+                  result_received = "** UNFILED RESULT **:"
+               End If
             Else
-               If InStr(Lower(results_received!tag_user), filter) Then
+               result_received = results_received!tag_user
+            End If
+            
+         Else
+            If exclude Then
+               'If Lower(results_received!tag_user) <> Lower(exclude) Then
+               If Not InStr(Lower(results_received!tag_user), Lower(exclude)) Then
                   result_received = results_received!tag_user
                Endif
+            Else
+               If results_received!tag_user = "" And InStr("unfiled", Lower(filter)) Then
+                  result_received = "** UNFILED **:"
+               Else
+                  If InStr(Lower(results_received!tag_user), filter) Then
+                     result_received = results_received!tag_user
+                  Endif
+               End If
             End If
          End If
-      End If
-      If result_received <> "" Then
-         bskip = False
-         If cmbRequestTypes.text <> "" And cmbRequestTypes.text <> "No Filter" Then    'if user wants to filter on type
-            If results_received!sending_entity_request_type <> cmbRequestTypes.text Then    
-               bskip = True
-            End If  
+         If result_received <> "" Then
+            bskip = False
+            If cmbRequestTypes.text <> "" And cmbRequestTypes.text <> "No Filter" Then    'if user wants to filter on type
+               If results_received!sending_entity_request_type <> cmbRequestTypes.text Then    
+                  bskip = True
+               End If  
+            End If
+            If Not bskip Then
+               x = results_received!pk_document
+               cvwResults.Add(x, 0)
+               If Not IsNull(results_received!date_created) Then  
+                  cvwResults[x][0] = Format(results_received!date_created, "dd/mm/yyyy")
+               Else
+                  cvwResults[x][0] = "?date"   'import bug hl7 errors fixme this can be null - have put in a fix all new imports use date_ordered if date_created is null
+               End If 
+               cvwResults[x][1] = result_received 'results_received!tag_user
+               cvwResults[x][2] = results_received!originator
+            End If    
          End If
-         If Not bskip Then
-            x = results_received!pk_document
-            cvwResults.Add(x, 0)
-            If Not IsNull(results_received!date_created) Then  
-               cvwResults[x][0] = Format(results_received!date_created, "dd/mm/yyyy")
-            Else
-               cvwResults[x][0] = "?date"   'import bug hl7 errors fixme this can be null - have put in a fix all new imports use date_ordered if date_created is null
-            End If 
-            cvwResults[x][1] = result_received 'results_received!tag_user
-            cvwResults[x][2] = results_received!originator
-         End If    
-      End If
+      End If   
    Next
    
 End
@@ -664,7 +678,7 @@ Public Sub mnuResultsReceived_Click()
             Try FClinical.Refresh_Section(const.cSection_Documents)
          Endif
       Case "re-import result"
-        ' Rebuild_HTML(D)
+         ' Rebuild_HTML(D)
       Case "audit trail"
          modAudit.Document_AuditTrail_Show(cvwResultsReceived_Key)
       Case "select all"
@@ -745,12 +759,19 @@ Public Sub rbOrdered_Received_Click()
       Case "requests ordered"
          cvwResults.Visible = False
          cvwRequests.Visible = True                            'show requests order
-         If cvwRequests.count = 0 Then cvwRequests_Reload
-         ' cvwRequests_Reload
+         If cvwRequests.count = 0 Then 
+            cvwRequests_Reload(True)
+         Else  
+            cvwRequests_Reload
+         End If   
       Case "results received"
          cvwRequests.Visible = False
          cvwResults.Visible = True
-         If cvwResults.count = 0 Then cvwResults_Reload(True)
+         If cvwResults.count = 0 Then 
+            cvwResults_Reload(True)
+         Else
+            cvwResults_Reload()
+         End If   
    End Select
    
 End
@@ -771,9 +792,9 @@ Public Sub cvwRequests_Menu()
    
 End
 
-Public Sub cvwRequests_Reload()
+Public Sub cvwRequests_Reload(Optional bRefresh As Boolean = False)
    
-   modEditAreaHelpers.Patient_Requests_Show(currentconsult, cvwRequests,,, Trim(Lower(txtExcludeResult.text)), Trim(Lower(txtFilterResult.text)))
+   modEditAreaHelpers.Patient_Requests_Show(currentconsult, cvwRequests,,, Trim(Lower(txtExcludeResult.text)), Trim(Lower(txtFilterResult.text)), Request_Types[cmbRequestTypes.Index]!pk, bRefresh, Val(txtINRLimit.text))
    
 End
 
@@ -922,5 +943,27 @@ Public Sub form_metadata_tbSave_Click()
             FInbox.Reload_Inbox_External
          Endif
    End Select
+   
+End
+
+Public Function EditArea_Results_ExcludeKeys(keycode As Integer, tag As String) As Boolean
+   
+   Dim bKeyValid As Boolean
+   
+   Select Case tag
+      Case "inr limit"
+         Return modUtilGUI.AllowKeys(const.AllowKeys_NumbersOnly, keycode)
+      Case Else 
+         Return True  
+   End Select
+   
+End
+
+Public Sub EditArea_Results_KeyPress()
+   
+   If EditArea_Results_ExcludeKeys(key.code, Last.tag) = False Then
+      Stop Event
+      Return
+   End If
    
 End

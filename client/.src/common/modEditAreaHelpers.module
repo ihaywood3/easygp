@@ -171,7 +171,7 @@ End
 
 Public Function Progressnote_Annotate_As_Edited(sProgressNotes As String, edit_date As Date) As String 
    'edit date ?? fixme have left this as now for moment FProc
-
+   
    sProgressNotes &= "<FONT COLOR='#b3b3b3'> [Edited:" & Format(Now, "dd/mm/yyyy") & " "
    sProgressNotes &= modDBConnect.currentUser!title & " " & modDBConnect.currentuser()!wholename & "]</FONT></small></P>"
    Return sProgressNotes
@@ -818,19 +818,20 @@ Public Sub Calculate_Date_From_Interval(tb As Textbox, Optional from_date As Dat
    End If
 Catch
    tb.text = ""
-
+   
 End
 
-Public Sub Patient_Requests_Show(cons As Cconsult, cvw As Columnview, Optional limit As Integer = 0, Optional bShowProvider As Boolean = False, Optional exclude_request As String = "", Optional filter_request As String = "", Optional fk_lu_type_for_filtering As Integer = 0, Optional bRefresh As Boolean = True)
+Public Sub Patient_Requests_Show(cons As Cconsult, cvw As Columnview, Optional limit As Integer = 0, Optional bShowProvider As Boolean = False, Optional exclude_request As String = "", Optional filter_request As String = "", Optional ifilter_by_request_type As Integer = 199, Optional bRefresh As Boolean = True, Optional INRLimit As Integer = 1)
    '-----------------------------------------------------------------------------------------
    ' This sub is used by: FClinLists_Ordering, FClericalRequests, Finbox
-   ' Fill a column view with all the patients requests 
+   ' Fill a column view with all the patients requests optionally filtered 
    ' This loads all requests on a form onto a columnview row
    ' If limit to the display display limit number Finbox uses this variable nowhere else does
-   ' fk_lu_type_for_filtering is used to allow filtering of what has been ordered in the 
+   ' ifilter_by_request_type is used to allow filtering of what has been ordered in the 
    ' clinical request ordered list (FClinLists_Ordering)
    '-----------------------------------------------------------------------------------------
    
+   Dim bSkip As Boolean  
    Dim SingleRequest As Collection 
    Dim HasResult As Boolean
    Dim x As Integer
@@ -838,6 +839,8 @@ Public Sub Patient_Requests_Show(cons As Cconsult, cvw As Columnview, Optional l
    Dim current_form_fk As Variant
    Dim parent_key As Variant
    Dim icounter As Integer 
+   Dim inrCount As Integer
+   Dim bIsINR As Boolean
    
    If exclude_request <> "" Then exclude_request &= ";"                             'only allow exclusion of 'full' request eg INR; otherewise anything with say an 'i' in it gets excluded if user just types 'i'
    cvw.Clear()
@@ -845,21 +848,49 @@ Public Sub Patient_Requests_Show(cons As Cconsult, cvw As Columnview, Optional l
       cons.Refresh("requests_ordered")
    End If   
    For Each SingleRequest In cons!requests_ordered
-      current_form_fk = SingleRequest!fk_form
-      If SingleRequest!request_result_html <> "" Then 
-         Hasresult = True
-      Else
-         HasResult = False
-      End If
-      If last_form_fk <> current_form_fk Then
-         '-------------------
-         'Start of a new form
-         '-------------------
-         last_form_fk = SingleRequest!fk_form
-         Inc x
-         If Not InStr(Lower(singleRequest!requests_summary), exclude_request) Then                       'exclude and requests containing exclude_request text
-            If filter_request <> "" Then                                                                 'if user also wants to filter
-               If InStr(Lower(singleRequest!requests_summary), filter_request) Then    
+      bSkip = False  
+      If ifilter_by_request_type <> 199 Then                                       'if user wants to filter on type
+         If SingleRequest!fk_lu_request_type <> ifilter_by_request_type Then            'if this request is not of that type
+            bSkip = True                                                           'skip this one
+         Endif
+      Endif
+      If bskip = False Then                              'check everything, doesn't really matter if not a path request, so quick
+         If Lower(SingleRequest!item) = "inr" Then      'if an INR
+            bIsINR = True
+            Inc inrCount
+            If inrCount < INRLimit + 1 Then  
+               bskip = False
+            Else
+               bSkip = True    
+            Endif
+         End If  
+      End If   
+      If Not Bskip Then
+         current_form_fk = SingleRequest!fk_form
+         If SingleRequest!request_result_html <> "" Then 
+            Hasresult = True
+         Else
+            HasResult = False
+         End If
+         If last_form_fk <> current_form_fk Then
+            '-------------------
+            'Start of a new form
+            '-------------------
+            last_form_fk = SingleRequest!fk_form
+            Inc x
+            If Not InStr(Lower(singleRequest!requests_summary), exclude_request) Then                       'exclude and requests containing exclude_request text
+               If filter_request <> "" Then                                                                 'if user also wants to filter
+                  If InStr(Lower(singleRequest!requests_summary), filter_request) Then    
+                     Parent_Key = Str(x) & "-" & Str(SingleRequest!pk_view)
+                     cvw.add(parent_key, 0)
+                     cvw[parent_key][0] = Format(singleRequest!date, "dd/mm/yyyy") & "  " & singleRequest!requests_summary
+                     If bShowProvider Then
+                        If Not IsNull(SingleRequest!organisation) Then
+                           cvw[parent_key][1] = singleRequest!organisation
+                        Endif
+                     Endif
+                  End If   
+               Else
                   Parent_Key = Str(x) & "-" & Str(SingleRequest!pk_view)
                   cvw.add(parent_key, 0)
                   cvw[parent_key][0] = Format(singleRequest!date, "dd/mm/yyyy") & "  " & singleRequest!requests_summary
@@ -868,22 +899,13 @@ Public Sub Patient_Requests_Show(cons As Cconsult, cvw As Columnview, Optional l
                         cvw[parent_key][1] = singleRequest!organisation
                      Endif
                   Endif
-               End If   
-            Else
-               Parent_Key = Str(x) & "-" & Str(SingleRequest!pk_view)
-               cvw.add(parent_key, 0)
-               cvw[parent_key][0] = Format(singleRequest!date, "dd/mm/yyyy") & "  " & singleRequest!requests_summary
-               If bShowProvider Then
-                  If Not IsNull(SingleRequest!organisation) Then
-                     cvw[parent_key][1] = singleRequest!organisation
-                  Endif
-               Endif
-            End If  
-            
-         Endif
+               End If  
+               
+            Endif
+         End If   
+         Inc icounter   
+         If icounter = limit Then Break
       End If   
-      Inc icounter   
-      If icounter = limit Then Break
    Next
    
 End

@@ -1,5 +1,5 @@
 ﻿alter table clin_requests.lu_requests drop column fk_decision_support cascade;
-
+alter table clin_requests.lu_requests add column fk_instruction integer references clin_requests.lu_instructons (pk);
 CREATE OR REPLACE VIEW clin_requests.vwrequestnames AS 
  SELECT lu_request_items.pk || '-1'::text AS pk_view,
     lu_request_items.pk AS fk_lu_request,

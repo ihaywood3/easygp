@@ -32,6 +32,12 @@ Private bStoring As Boolean
 Private event_listeners As Collection
 Private backend_pid As Integer
 Private profile_file As File
+' list of all error messages form Postgres that signify loss of connection
+Private connection_lost_errors As String[] = [
+  "Query failed: SSL SYSCALL error: EOF detected",
+  "Out of memory",
+  "Query failed: SSL SYSCALL error: Connection timed out",
+  "Query failed: server closed the connection unexpectedly"]
 Property Read currentUser As Collection
 Property Read IsConnected As Boolean
 Property Read DbName As String
@@ -468,9 +474,11 @@ Public Function exec_query(sql As String, Optional params As Variant[]) As Resul
   Dim errtxt As String
   Dim time_diff As String
   Dim bt As String
+  Dim s As String
   Dim obj As Object
   Dim restart As Boolean
   Dim v As Variant
+  Dim conn_lost As Boolean
 
   If Not IsNull(params) Then
     sql = Me.Subst(sql, params)
@@ -494,7 +502,14 @@ do_query:
   If Error Then
     errtxt = Error.Text
     bt = Error.Where
-    If errtxt Begins "Query failed: SSL SYSCALL error: EOF detected" Or If errtxt Begins "Out of memory" Or If errtxt Begins "Query failed: SSL SYSCALL error: Connection timed out" Then
+    conn_lost = False
+    For Each s In connection_lost_errors
+      If errtxt Begins s Then
+        conn_lost = True
+        Break
+      Endif
+    Next
+    If conn_lost Then
       ' connection lost
       $hconn = Null
       Log.ErrorMsg("lost connection with \"" & errtxt & "\"")

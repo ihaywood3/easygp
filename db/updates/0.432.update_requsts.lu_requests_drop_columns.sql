@@ -72,7 +72,7 @@ GRANT ALL ON TABLE clin_requests.vwrequestnames TO staff;
 COMMENT ON VIEW clin_requests.vwrequestnames
   IS 'a view of everything which is orderable, including lateralisation eg Xray wrist (LEFT), Xray wrist (RIGHT) or Xray Wrist (BOTH)';
 
-drop view clin_requests.vwrequestsordered;
+--drop view clin_requests.vwrequestsordered;
 CREATE OR REPLACE VIEW clin_requests.vwrequestsordered AS 
  SELECT (forms.pk || '-'::text) || forms_requests.pk AS pk_view,
     forms.fk_lu_request_type,

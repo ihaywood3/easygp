@@ -446,7 +446,7 @@ UNION
   WHERE (request_providers.fk_person is not null);
   ALTER TABLE clin_requests.vwrequestproviders OWNER TO easygp;
   
-drop view contacts.vwpersonsemployeesbyoccupation;
+--drop view contacts.vwpersonsemployeesbyoccupation;
 
 CREATE OR REPLACE VIEW contacts.vwpersonsemployeesbyoccupation AS 
  SELECT DISTINCT (vwpersonsexcludingpatients.fk_person || '-'::text) || COALESCE(vwpersonsexcludingpatients.fk_address, 0)::text AS pk_view,

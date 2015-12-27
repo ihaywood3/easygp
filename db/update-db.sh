@@ -10,6 +10,6 @@ let i++
 
 while [ -e $MAJOR.$i*.sql ] ; do
    echo Running update $MAJOR.$i
-   psql -f $MAJOR.$i*.sql $DBNAME -U easygp > /dev/null
+   PGOPTIONS='--client-min-messages=warning' psql -f $MAJOR.$i*.sql $DBNAME -U easygp > /dev/null
    let i++
 done

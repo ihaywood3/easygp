@@ -93,8 +93,8 @@ create or replace view admin.vwstaffinclinics as SELECT DISTINCT ON (staff.pk, c
     data_numbers_persons.hpii,
     org_numbers.hpio,
     org_numbers.hic_location_id,
-    employee_numbers.payee_provider_number as payee_provider_number,
-    employee_numbers.australian_business_number
+    employee_numbers.australian_business_number,
+    employee_numbers.payee_provider_number as payee_provider_number
    FROM admin.staff
      JOIN admin.link_staff_clinics link_staff_clinics1 ON staff.pk = link_staff_clinics1.fk_staff
      JOIN admin.clinics ON link_staff_clinics1.fk_clinic = clinics.pk

@@ -341,7 +341,6 @@ Public Sub Ini_new()
       .btRotate.Visible = True
       .btRotate.Enabled = True
    End With
-   
    With cvwPatientsRequests
       .Columns.count = 2
       .width = 80
@@ -576,18 +575,15 @@ Public Function Synonyms_Update() As Boolean
    Dim syn As Collection
    Dim sMsg As String
    Dim bProvider_Synonym_Exists As Boolean
-   Dim new_term As Collection
+   Dim new_term As CRow
    Dim terms As String[]
    Dim term As String
-   Dim old_data As Collection           'not used but needed
-   Dim pk_view As Variant               'not used but needed
-   Dim Link_data As New Collection
+   Dim Link_data As CRow   
    Dim bSuccess As Boolean = True       'hope for the best
    
    If Right(Form_ActionDocument.FMetaData.txtUserObservationName.text) <> ";" Then
       Form_ActionDocument.FMetaData.txtUserObservationName.text &= ";"
    End If
-   
    terms = Split(Form_ActionDocument.FMetaData.txtUserObservationName.text, ";", "", True)
    For Each Term In terms
       term = Trim(term)                 'yes, shouldn't be possible but I've seen preceeding blanks.
@@ -600,10 +596,7 @@ Public Function Synonyms_Update() As Boolean
          End If
       Next
       If Not bProvider_Synonym_Exists Then
-         Link_data = New Collection
-         Try Link_data!fk_lu_request = modRequestsDBI.Request_GetPk(term)
-         If Error Then
-            new_term = New Collection
+            new_term = New CRow 
             new_term!fk_lu_request_type = Form_ActionDocument.FMetaData.Get_Request_Type_PK()
             new_term!item = term
             new_term!fk_laterality = Form_ActionDocument.FMetaData.get_laterality()
@@ -615,7 +608,6 @@ Public Function Synonyms_Update() As Boolean
             sMsg &= new_term!item & " (RIGHT)\n"
             sMsg &= new_term!item & " (BOTH)\n\n"
             sMsg &= "Add Lateralisation?\n\n"
-            
             Select Case Message.Warning(sMsg, "Yes - I want to see left/right/both ", "No - just add the term", "Cancel")
                Case 1
                   sMsg = "The term '" & new_term!item & "' will be added, and can be left/right/both sides of the body.\n\n"
@@ -627,26 +619,20 @@ Public Function Synonyms_Update() As Boolean
             If Message.Warning(sMsg & "Are you absolutely sure this is accurate?", "Yes", "No") = 2 Then
                Return False
             Else
-               Link_data!fk_lu_request = modRequestsDBI.Request_Save(old_data, pk_view, new_term)
+               new_term.Save("clin_requests.lu_requests", "fk_lu_request")    
             End If
-         End If
-         
+         Link_data = New CRow 
+         Link_data!fk_lu_request = new_term!fk_lu_request
          Link_data!provider_request_name = SelectedDocument!tag
          Link_data!lateralisation = Form_ActionDocument.FMetaData.get_laterality()
-         link_data!fk_lu_provider_user_request = modInboxDBI.Link_SendingEntity_Name_UserName(link_data)
+         Link_data.Save("clin_requests.lu_link_provider_user_requests", "fk_link_data")
          synonyms_Reload() 'should pickup if user typed same one in twice
       End If
    Next
-   
    Return bSuccess
    
 End
 
-Public Sub chkExcludeFTReport_Click()
-   
-   ' cvwInboxDocuments_Select()
-   
-End
 
 Public Sub mnuPatientsInInbox_Click()
    
@@ -865,31 +851,6 @@ Catch
    
 End
 
-Public Sub Auto_Recall()
-   '--------------------------------------------------------------
-   'Save the current edit area recall and updates the recalls list
-   'Need this amount of info to save
-   'For table clin_recalls.recalls
-   '     due date
-   '     fk_reason
-   '     fk_contact_method
-   '     fk_urgency
-   '     fk_appointment_length
-   '     fk_staff          'NB: THIS MAY NOT BE current staff member
-   '                            but current code dosn't implement this
-   '     fk_lu_audit_action
-   '     additional_text
-   '     deleted boolean,
-   '     "interval" ,
-   '   fk_interval_unit ,
-   '
-   '   for table clin_recalls.lu_recall_intervals
-   '     fk_reason
-   '     fk_default_interval
-   '     fk_default_interval_unit
-   '--------------------------------------------------------------
-   
-End
 
 Public Sub Auto_Graph(observations As Collection)
    '-----------------------------------------------------------------------
@@ -1609,7 +1570,6 @@ Public Function Fill_Inbox(Optional fk_sending_entity As Variant = 0, Optional p
    Else
       sql &= " LIMIT 2500" 
    End If   
-   Print sql
    Documents = modDBConnect.exec_query_collection(sql)   'all the documents in the inbox
    If Not Documents.count Then
       tlOutstandingAllStaff.text = Str(total_doc_count_unfiled_all_staff - Unfiled_Document_Count_For_Staff_Member) & " unread documents for other staff"
@@ -1712,7 +1672,6 @@ Public Sub HTML_Document_Show(display_style As Integer, Doc As Collection, Docum
    
    '  Document_HTML = modHL7Process.Construct_HTML(Selected_Inbox, Doc, Document_observations, Doc!exclude_pit, Doc!exclude_ft_report, display_style, fgc_errors, bgc_errors)
    Document_HTML = modHL7Process.Construct_HTML(Selected_Inbox, Doc, Document_observations, bPITYesNo, bFTReportYesNo, display_style, fgc_errors, bgc_errors)
-   Print Document_HTML
    Document_HTML = Replace(Document_HTML, "%filingas%", "")
    Form_ActionDocument.FMetaData.Document_HTML_Set(Document_HTML)
    lblFilingAs.text = "Filing as: " & Form_ActionDocument.FMetaData.txtUserObservationName.text
@@ -1956,13 +1915,6 @@ Public Sub mnuWebView_Click()
    
    Stop Event
    If IsNull(Last.tag) Then Return
-   If IsNull(Observations[Last.tag]!loinc) Then
-      Select Case Last.tag
-         Case "auto recall"
-            Auto_Recall
-      End Select
-      Return   'fixme see known bugs for this module
-   Endif
    If Form_Graph.graph(currentconsult, Observations[Last.tag]!loinc, Observations[Last.tag]!identifier) Then
       tlMissingProvider.Visible = False
       Form_Graph.Visible = True
@@ -2000,10 +1952,8 @@ Public Sub WebView_Menu()
    mnu.name = "separator_1"
    mnu.caption = "" '
    If Observations.count = 0 Then Return
-   
    For Each Observation In Observations
-      
-      mnu = New Menu(FPreview_HtmlDocument.mnuWebview) As "mnuWebview"
+       mnu = New Menu(FPreview_HtmlDocument.mnuWebview) As "mnuWebview"
       If Observation!value_type = "NM"                'graphable observation
          mnu.name = Observation!identifier
          mnu.caption = Observation!identifier
@@ -2011,7 +1961,6 @@ Public Sub WebView_Menu()
          mnu.Checked = False
       End If
    Next
-   
    FPreview_HtmlDocument.mnuWebView.Popup()
    
 End

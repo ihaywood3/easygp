@@ -376,7 +376,7 @@ def verify_brands(t):
                         r = query("select uuid_generate_v4() as uuid")
                         pk = r[0]['uuid']
                         cmd("""insert into drugs.brand (pk, fk_product, sct, brand, fk_company, from_pbs, price)
-                values ('%s', '%s', '%s', '%s', '%s', true, '%s'::money);""" % (pk, fk_product, brand['sct'], brand['brand'], code, brand['price']))
+                values ('%s', '%s', '%s', $$%s$$, '%s', true, '%s'::money);""" % (pk, fk_product, brand['sct'], brand['brand'], code, brand['price']))
                 else:
                     r = r[0]
                     price = r["price"]

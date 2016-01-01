@@ -26,35 +26,45 @@ Public Const DirRemote As Byte = 2
 Private sFoundDir As String
 
 Public Function Dir_Status(config As String, Optional fk_clinic As Variant) As Byte
-    Dim c As Collection
-    
-    c = modAdminDBI.Config_Get_Full(config, fk_clinic)
-    If IsNull(c) Then Return DirNotAvail
-    If c!value = "*notused*" Then Return DirNotAvail
-    If Access(c!value, gb.read And gb.write) Then 
-       sFoundDir = c!value
-       Return DirLocal
-    Endif
-    sFoundDir = Settings["Files/" & config, Null]
-    If Not IsNull(sFoundDir) And If Access(sFoundDir, gb.Read And gb.Write) Then
-       Return DirLocal
-    Endif
-    If c!server_dir Then 
+
+   Dim c As Collection
+
+   c = modAdminDBI.Config_Get_Full(config, fk_clinic)
+   If IsNull(c) Then
+      Log.DebugMsg("Null config for directory " & config & " so reported as unavailable")
+      Return DirNotAvail
+   Endif
+   If c!value = "*notused*" Then
+      Log.DebugMsg("config set to *notused* for " & config & " so reported as unavailable")
+      Return DirNotAvail
+   Endif
+   If Access(c!value, gb.read And gb.write) Then
+      Log.DebugMsg("real filesystem directory " & c!value & " found for " & config)
+      sFoundDir = c!value
+      Return DirLocal
+   Endif
+   sFoundDir = Settings["Files/" & config, Null]
+   If Not IsNull(sFoundDir) And If Access(sFoundDir, gb.Read And gb.Write) Then
+      Log.DebugMsg("real filesystem directory " & c!value & " found for " & config & " (using local config file)")
+      Return DirLocal
+   Endif
+   If c!server_dir Then
+      Log.DebugMsg("config " & config & " value " & c!value & " is remote")
       sFoundDir = c!value
       Return DirRemote
-    Endif
-    Return DirNotAvail
-    
+   Endif
+   Log.DebugMsg("config " & config & " value " & c!value & " no way to access")
+   Return DirNotAvail
+
 End
 
 ' returns true if a directory is available either by direct filesystem or server-side, false if not
 Public Function Dir_Working(config As String, Optional fk_clinic As Variant = Null) As Boolean
- 
+
    If Dir_Status(config, fk_clinic) = DirNotAvail Then Return False
    Return True
-    
-End
 
+End
 
 ' takes the name of the config option for the directory (e.g. "document_archiving_directory")
 ' and the filename
@@ -75,7 +85,7 @@ Public Function Get(config As String, fname As String) As String
    Else
       s = sFoundDir &/ fname
       If Not Exist(s) Then
-         Message.Error(Subst$("File &1 doesn't exist on the local filesystem", s)) 
+         Message.Error(Subst$("File &1 doesn't exist on the local filesystem", s))
          Error.Raise("File " & s & " does not exist")
       Endif
       Return s
@@ -102,7 +112,7 @@ Public Function Background_Get(config As String, fname As String, obj As CFileDo
    Else
       s = sFoundDir &/ fname
       If Not Exist(s) Then
-         Message.Error(Subst$("File &1 doesn't exist on the local filesystem", s)) 
+         Message.Error(Subst$("File &1 doesn't exist on the local filesystem", s))
          Error.Raise("File " & s & " does not exist")
       Endif
       obj.Got_File(s)
@@ -112,8 +122,9 @@ End
 ' puts a file in a remote filestore
 ' fname is the name you want it to have remotely
 ' local_filename is the local name (so this function does a name change on the file "for free")
+
 Public Sub Put(config As String, fname As String, local_filename As String, Optional task As CShellTask)
-   
+
    If Dir_Status(config) = DirRemote Then
       If IsNull(task) Then
          modDBConnect.Scp_Upload(local_filename, sFoundDir &/ fname)
@@ -121,7 +132,7 @@ Public Sub Put(config As String, fname As String, local_filename As String, Opti
          task.Send(modDBConnect.Scp_Upload_Cmd(local_filename, sFoundDir &/ fname))
       Endif
    Else
-      retry_copy_dir:
+   retry_copy_dir:
       If Not Access(sFoundDir, gb.Read And gb.Write) Then
          Wait 2
          If Not Access(sFoundDir, gb.Read And gb.write) Then
@@ -132,7 +143,7 @@ Public Sub Put(config As String, fname As String, local_filename As String, Opti
             Endif
          Endif
       Endif
-      retry_copy_file:
+   retry_copy_file:
       If Not Access(local_filename, gb.Read) Then
          Wait 2
          If Not Access(local_filename, gb.Read) Then
@@ -173,7 +184,7 @@ Public Sub List(config As String) As String[]
 
    Dim r As Result
    Dim ret As String[]
-   
+
    If Dir_Status(config) = DirRemote Then
       ret = New String[]
       r = modDBConnect.exec_query("select list_files(&1) as fname", [config])
@@ -190,7 +201,7 @@ End
 ' deletes a file on the server in the directory specified in the config
 ' remember it acts as athe "postgres" user there: UNIX permissions must be set correctly.
 Public Sub Delete(config As String, fname As String)
-   
+
    If Dir_Status(config) = DirRemote Then
       modDBConnect.exec_query("select delete_file(&1,&2)", [config, fname])
    Else
@@ -207,5 +218,6 @@ Public Sub UnitTest(form_main As FMain)
    Put("document_scanning_directory", "foo.pdf", "/home/ian/final-quantitative.pdf")
    Get("document_scanning_directory", "foo.pdf")
    files = List("document_scanning_directory")
-  Delete("document_scanning_directory", "foo.pdf")
+   Delete("document_scanning_directory", "foo.pdf")
+
 End

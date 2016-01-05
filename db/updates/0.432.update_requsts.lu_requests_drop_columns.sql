@@ -1,5 +1,5 @@
 ﻿alter table clin_requests.lu_requests drop column fk_decision_support cascade;
-alter table clin_requests.lu_requests add column fk_instruction integer references clin_requests.lu_instructons (pk);
+
 CREATE OR REPLACE VIEW clin_requests.vwrequestnames AS 
  SELECT lu_request_items.pk || '-1'::text AS pk_view,
     lu_request_items.pk AS fk_lu_request,
@@ -72,7 +72,7 @@ GRANT ALL ON TABLE clin_requests.vwrequestnames TO staff;
 COMMENT ON VIEW clin_requests.vwrequestnames
   IS 'a view of everything which is orderable, including lateralisation eg Xray wrist (LEFT), Xray wrist (RIGHT) or Xray Wrist (BOTH)';
 
---drop view clin_requests.vwrequestsordered;
+drop view clin_requests.vwrequestsordered;
 CREATE OR REPLACE VIEW clin_requests.vwrequestsordered AS 
  SELECT (forms.pk || '-'::text) || forms_requests.pk AS pk_view,
     forms.fk_lu_request_type,

@@ -21,7 +21,6 @@ ALTER TABLE contacts.data_employees add constraint "fk_branch_fkey" FOREIGN KEY 
 ALTER TABLE clin_vaccination.vaccinations add constraint "vaccinations_fk_progressnote_fkey" foreign key (fk_progressnote) references clin_consult.progressnotes (pk);
 ALTER TABLE clin_certificates.medical_certificates add constraint "medical_certificates_fk_progressnote_fkey" foreign key (fk_progressnote) references clin_consult.progressnotes (pk);
 ALTER TABLE clin_workcover.claims add constraint "claims_fk_person_fkey" foreign key (fk_person) references contacts.data_persons (pk);
-ALTER TABLE clin_workcover.claims add constraint "claims_fk_branch_fkey" foreign key (fk_branch) references contacts.data_branches (pk);
 ALTER TABLE clin_workcover.claims add constraint "claims_fk_consult_fkey" foreign key (fk_consult) references clin_consult.consult (pk);
 ALTER TABLE clin_workcover.claims add constraint "claims_fk_occupation_fkey" foreign key (fk_occupation) references common.lu_occupations (pk);
 ALTER TABLE blobs.images add constraint "images_fk_consult_fkey" foreign key (fk_consult) references clin_consult.consult (pk);
@@ -64,7 +63,6 @@ ALTER TABLE clerical.inventory add constraint "inventory_fk_person_purchased_fro
 ALTER TABLE clerical.inventory add constraint "inventory_fk_employee_purchased_from_fkey" foreign key (fk_employee_purchased_from) references contacts.data_employees (pk);
 ALTER TABLE clerical.inventory add constraint "inventory_fk_branch_purchased_from_fkey" foreign key (fk_branch_purchased_from) references contacts.data_branches (pk);
 ALTER TABLE clin_prescribing.prescribed add constraint "prescribed_fk_consult_fkey" foreign key (fk_consult) references clin_consult.consult (pk);
-ALTER TABLE clin_history.occupations_exposures add constraint "occupations_exposures_fk_occupational_history_fkey" foreign key (fk_occupational_history) references common.lu_occupations (pk);
 ALTER TABLE clin_procedures.lu_last_surgical_pack add constraint "lu_last_surgical_pack_fk_clinic_fkey" foreign key (fk_clinic) references admin.clinics (pk);
 ALTER TABLE clin_history.social_history add constraint "social_history_fk_progressnote_confidential_fkey" foreign key (fk_progressnote_confidential) references clin_consult.progressnotes (pk);
 ALTER TABLE clin_history.social_history add constraint "social_history_fk_consult_fkey" foreign key (fk_consult) references clin_consult.consult (pk);
@@ -85,7 +83,6 @@ ALTER TABLE clin_procedures.skin_procedures add constraint "skin_procedures_fk_p
 ALTER TABLE clin_procedures.skin_procedures add constraint "skin_procedures_fk_progressnote_user_fkey" foreign key (fk_progressnote_user) references clin_consult.progressnotes (pk);
 ALTER TABLE clin_procedures.skin_procedures add constraint "skin_procedures_fk_consult_fkey" foreign key (fk_consult) references clin_consult.consult (pk);
 ALTER TABLE clerical.task_component_notes add constraint "task_component_notes_fk_staff_made_note_fkey" foreign key (fk_staff_made_note) references admin.staff (pk);
--- ** done down to here
 ALTER TABLE clerical.data_patients add constraint "data_patients_fk_person_fkey" foreign key (fk_person) references contacts.data_persons (pk);
 ALTER TABLE admin.clinic_rooms add constraint "clinic_rooms_fk_clinic_fkey" foreign key (fk_clinic) references admin.clinics (pk);
 ALTER TABLE clerical.task_components add constraint "task_components_fk_staff_filed_fkey" foreign key (fk_staff_filed) references admin.staff (pk);
@@ -105,7 +102,6 @@ ALTER TABLE clerical.bookings add constraint "bookings_fk_clinic_fkey" foreign k
 ALTER TABLE clin_certificates.certificate_reasons add constraint "certificate_reasons_fk_staff_fkey" foreign key (fk_staff) references admin.staff (pk);
 ALTER TABLE admin.global_preferences add constraint "global_preferences_fk_staff_fkey" foreign key (fk_staff) references admin.staff (pk);
 ALTER TABLE admin.global_preferences add constraint "global_preferences_fk_clinic_fkey" foreign key (fk_clinic) references admin.clinics (pk);
--- ** done down to here
 ALTER TABLE clin_prescribing.instruction_habits add constraint "instruction_habits_fk_staff_fkey" foreign key (fk_staff) references admin.staff (pk);
 ALTER TABLE clin_history.family_links add constraint "family_links_fk_patient_fkey" foreign key (fk_patient) references clerical.data_patients (pk);
 ALTER TABLE clin_history.team_care_members add constraint "team_care_members_fk_branch_fkey" foreign key (fk_branch) references contacts.data_branches (pk);
@@ -125,7 +121,6 @@ ALTER TABLE clin_referrals.referrals add constraint "referrals_fk_consult_fkey" 
 ALTER TABLE clin_referrals.referrals add constraint "referrals_fk_progressnote_fkey" foreign key (fk_progressnote) references clin_consult.progressnotes (pk);
 ALTER TABLE clin_workcover.visits add constraint "visits_fk_coding_system_fkey" foreign key (fk_coding_system) references coding.lu_systems (pk);
 ALTER TABLE clin_workcover.visits add constraint "visits_fk_progressnote_fkey" foreign key (fk_progressnote) references clin_consult.progressnotes (pk);
--- ** done up to here
 ALTER TABLE clin_workcover.visits add constraint "visits_fk_consult_fkey" foreign key (fk_consult) references clin_consult.consult (pk);
 ALTER TABLE clin_measurements.inr_plan add constraint "inr_plan_fk_progressnote_fkey" foreign key (fk_progressnote) references clin_consult.progressnotes (pk);
 ALTER TABLE chronic_disease_management.diabetes_annual_cycle_of_care add constraint "diabetes_annual_cycle_of_care_fk_consult_fkey" foreign key (fk_consult) references clin_consult.consult (pk);
@@ -145,7 +140,6 @@ ALTER TABLE clin_measurements.patients_defaults add constraint "patients_default
 ALTER TABLE clin_requests.link_forms_requests_requests_results add constraint "link_forms_requests_requests_results_fk_forms_requests_fkey" foreign key (fk_forms_requests) references clin_requests.forms_requests (pk);
 ALTER TABLE contacts.data_persons add constraint "data_persons_fk_sex_fkey" foreign key (fk_sex) references contacts.lu_sex (pk);
 ALTER TABLE contacts.data_persons add constraint "data_persons_fk_marital_fkey" foreign key (fk_marital) references contacts.lu_marital (pk);
--- ** done up to here
 ALTER TABLE contacts.data_persons add constraint "data_persons_fk_title_fkey" foreign key (fk_title) references contacts.lu_title (pk);
 ALTER TABLE clin_requests.lu_requests add constraint "lu_requests_fk_laterality_fkey" foreign key (fk_laterality) references common.lu_laterality (pk);
 ALTER TABLE clin_mentalhealth.k10_results add constraint "k10_results_fk_lu_k10_component_fkey" foreign key (fk_lu_k10_component) references clin_mentalhealth.lu_k10_components (pk);
@@ -163,13 +157,11 @@ alter table common.lu_countries add constraint code_unique unique  (country_code
 ALTER TABLE clin_history.family_members add constraint "family_members_fk_country_birth_fkey" foreign key (fk_country_birth) references common.lu_countries (country_code);
 ALTER TABLE clin_history.family_members add constraint "family_members_fk_relationship_fkey" foreign key (fk_relationship) references common.lu_family_relationships (pk);
 ALTER TABLE clin_requests.request_providers add constraint "request_providers_fk_lu_request_type_fkey" foreign key (fk_lu_request_type) references clin_requests.lu_request_type (pk);
-ALTER TABLE clin_measurements.inr_dose_management add constraint "inr_dose_management_fk_observation_fkey" foreign key (fk_observation) references documents.observations (pk);
 ALTER TABLE coding.lu_icpc2_plain_language_mapper add constraint "lu_icpc2_plain_language_mapper_fk_icpc2_term_fkey" foreign key (fk_icpc2_term) references   coding.icpc2_terms  (pk);
 ALTER TABLE clerical.lu_inventory_items add constraint "lu_inventory_items_fk_lu_inventory_category_fkey" foreign key (fk_lu_inventory_category) references clerical.lu_inventory_categories (pk);
 ALTER TABLE clin_requests.notes add constraint "notes_fk_lu_type_fkey" foreign key (fk_lu_type) references clin_requests.lu_request_type (pk);
 ALTER TABLE clin_procedures.link_images_procedures add constraint "link_images_procedures_fk_image_fkey" foreign key (fk_image) references blobs.images (pk);
 ALTER TABLE clin_procedures.link_images_procedures add constraint "link_images_procedures_fk_procedure_fkey" foreign key (fk_procedure) references  clin_procedures.skin_procedures (pk);
--- ** done up to here
 ALTER TABLE clin_referrals.referrals add constraint "referrals_fk_type_fkey" foreign key (fk_type) references clin_referrals.lu_type (pk);
 ALTER TABLE clin_referrals.referrals add constraint "referrals_fk_lu_urgency_fkey" foreign key (fk_lu_urgency) references clin_referrals.lu_urgency (pk);
 ALTER TABLE admin.staff add constraint "staff_fk_lu_staff_type_fkey" foreign key (fk_lu_staff_type) references   admin.lu_staff_type (pk);
@@ -190,7 +182,6 @@ ALTER TABLE clin_recalls.recalls add constraint "recalls_fk_interval_unit_fkey" 
 ALTER TABLE clin_recalls.recalls add constraint "recalls_fk_contact_method_fkey" foreign key (fk_contact_method) references  contacts.lu_contact_type(pk);
 UPDATE clin_recalls.recalls SET fk_appointment_length=3 where fk_appointment_length>3;
 ALTER TABLE clin_recalls.recalls add constraint "recalls_fk_appointment_length_fkey" foreign key (fk_appointment_length) references common.lu_appointment_length(pk);
--- ** done up to here
 ALTER TABLE clin_recalls.recalls add constraint "recalls_fk_urgency_fkey" foreign key (fk_urgency) references common.lu_urgency(pk);
 ALTER TABLE clin_recalls.recalls add constraint "recalls_fk_sent_fkey" foreign key (fk_sent) references clin_recalls.sent(pk);
 ALTER TABLE clin_recalls.recalls add constraint "recalls_fk_template_fkey" foreign key (fk_template) references clin_recalls.lu_templates(pk);
@@ -221,7 +212,6 @@ ALTER TABLE clin_recalls.links_forms add constraint "links_forms_fk_recall_fkey"
 ALTER TABLE clin_recalls.links_forms add constraint "links_forms_fk_form_fkey" foreign key (fk_form) references clin_recalls.forms(pk);
 ALTER TABLE clerical.task_components add constraint "task_components_fk_role_fkey" foreign key (fk_role) references admin.lu_staff_roles(pk);
 ALTER TABLE clerical.task_components add constraint "task_components_fk_urgency_fkey" foreign key (fk_urgency) references  common.lu_urgency(pk);
--- ** done up to here
 ALTER TABLE clerical.task_components add constraint "task_components_fk_task_fkey" foreign key (fk_task) references clerical.tasks(pk);
 ALTER TABLE clerical.tasks add constraint "tasks_fk_role_can_finalise_fkey" foreign key (fk_role_can_finalise) references  admin.lu_staff_roles(pk);
 ALTER TABLE clerical.tasks add constraint "tasks_fk_row_fkey" foreign key (fk_row) references  documents.documents(pk);
@@ -248,7 +238,6 @@ ALTER TABLE clin_procedures.staff_skin_procedure_defaults add constraint "staff_
 ALTER TABLE clin_vaccination.lu_vaccines add constraint "lu_vaccines_fk_description_fkey" foreign key (fk_description) references  clin_vaccination.lu_descriptions(pk); 
 ALTER TABLE clin_history.social_history add constraint "social_history_fk_responsible_person_fkey" foreign key (fk_responsible_person) references  contacts.data_persons(pk);
 ALTER TABLE clin_referrals.inclusions add constraint "inclusions_fk_referral_fkey" foreign key (fk_referral) references clin_referrals.referrals(pk);
--- ** done up to here
 ALTER TABLE import_export.lu_demographics_field_templates add constraint "lu_demographics_field_templates_fk_source_program_fkey" foreign key (fk_source_program) references import_export.lu_source_program(pk);
 ALTER TABLE clin_prescribing.prescribed_for_habits add constraint "prescribed_for_habits_fk_prescribed_for_fkey" foreign key (fk_prescribed_for) references  clin_prescribing.prescribed_for(pk);
 ALTER TABLE clin_recalls.lu_recall_intervals add constraint "lu_recall_intervals_fk_reason_fkey" foreign key (fk_reason) references  clin_recalls.lu_reasons (pk);
@@ -291,7 +280,6 @@ ALTER TABLE documents.documents add constraint "documents_fk_request_fkey" forei
 ALTER TABLE documents.documents add constraint "documents_fk_unmatched_staff_fkey" foreign key (fk_unmatched_staff) references  documents.unmatched_staff (pk);
 ALTER TABLE chronic_disease_management.diabetes_group_allied_health_services add constraint "diabetes_group_allied_health_services_fk_document_history_items_fkey" foreign key (fk_document_history_items) references documents.documents (pk);
 ALTER TABLE contacts.lu_misspelt_towns add constraint "lu_misspelt_towns_fk_town_fkey" foreign key (fk_town) references contacts.lu_towns (pk);
-ALTER TABLE clerical.bookings add constraint "bookings_fk_patient_fkey" foreign key (fk_patient) references clerical.data_patients (pk);
 ALTER TABLE contacts.links_employees_comms add constraint "links_employees_comms_fk_comm_fkey" foreign key (fk_comm) references contacts.data_communications (pk);
 ALTER TABLE contacts.links_employees_comms add constraint "links_employees_comms_fk_employee_fkey" foreign key (fk_employee) references contacts.data_employees (pk);
 ALTER TABLE contacts.links_persons_comms add constraint "links_persons_comms_fk_comm_fkey" foreign key (fk_comm) references  contacts.data_communications (pk);
@@ -306,9 +294,6 @@ ALTER TABLE contacts.data_employees add constraint "data_employees_fk_status_fke
 ALTER TABLE contacts.data_employees add constraint "data_employees_fk_person_fkey" foreign key (fk_person) references contacts.data_persons (pk);
 ALTER TABLE contacts.data_employees add constraint "data_employees_fk_occupation_fkey" foreign key (fk_occupation) references common.lu_occupations (pk);
 ALTER TABLE documents.sending_entities add constraint "sending_entities_fk_employee_fkey" foreign key (fk_employee) references contacts.data_employees (pk);
-ALTER TABLE chronic_disease_management.group_allied_health_services add constraint "group_allied_health_services_fk_person_fkey" foreign key (fk_person) references contacts.data_persons (pk);                                                                                                                           
-ALTER TABLE chronic_disease_management.group_allied_health_services add constraint "group_allied_health_services_fk_employee_fkey" foreign key (fk_employee) references contacts.data_employees (pk);
-ALTER TABLE chronic_disease_management.group_allied_health_services add constraint "group_allied_health_services_fk_branch_fkey" foreign key (fk_branch) references contacts.data_branches (pk);
 ALTER TABLE contacts.data_communications add constraint "data_communications_fk_type_fkey" foreign key (fk_type) references  contacts.lu_contact_type (pk);
 ALTER TABLE contacts.links_persons_addresses add constraint "links_persons_addresses_fk_person_fkey" foreign key (fk_person) references contacts.data_persons (pk);
 ALTER TABLE contacts.data_addresses add constraint "data_addresses_fk_town_fkey" foreign key (fk_town) references contacts.lu_towns (pk);
@@ -316,5 +301,9 @@ ALTER TABLE clin_prescribing.instruction_habits add constraint "instruction_habi
 ALTER TABLE contacts.links_persons_comms add constraint "links_persons_comms_fk_person_fkey" foreign key (fk_person) references contacts.data_persons (pk);
 ALTER TABLE clin_prescribing.medications add constraint "medications_fk_generic_product_fkey" foreign key (fk_generic_product) references drugs.product (pk);
 ALTER TABLE clin_prescribing.prescribed add constraint "prescribed_fk_brand_fkey" foreign key (fk_brand) references  drugs.brand(pk);
+ALTER TABLE clin_measurements.inr_dose_management add constraint "inr_dose_management_fk_observation_fkey" foreign key (fk_observation) references documents.observations (pk);
+ALTER TABLE clin_history.occupations_exposures add constraint "occupations_exposures_fk_occupational_history_fkey" foreign key (fk_occupational_history) references clin_history.occupational_history (pk);
+ALTER TABLE clin_workcover.claims add constraint "claims_fk_branch_fkey" foreign key (fk_branch) references contacts.data_branches (pk);
+ALTER TABLE clerical.bookings add constraint "bookings_fk_patient_fkey" foreign key (fk_patient) references clerical.data_patients (pk);
 
 update db.lu_version set lu_minor = 476;

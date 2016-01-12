@@ -12,7 +12,7 @@ COMMENT ON COLUMN clin_history.occupations_exposures.fk_lu_units IS 'foreign key
   e.g 6 = month, 7 = year';
   
 alter table clin_history.lu_occupational_exposures drop column fk_decision_support cascade;
-alter table clin_history.occupational_history add column retired boolean default false not null;
+-- alter table clin_history.occupational_history add column retired boolean default false not null;
 
 CREATE OR REPLACE VIEW clin_history.vwoccupationalhistory AS 
  SELECT
@@ -27,7 +27,7 @@ CREATE OR REPLACE VIEW clin_history.vwoccupationalhistory AS
     occupational_history.to_age,
     occupational_history.current,
     occupational_history.retired,
-    occupational_history.notes_occupation,
+    occupational_history.notes_occupation,--
     occupational_history.deleted AS occupational_history_deleted,
     occupational_history.fk_progressnote,
     occupational_history.main_occupation,

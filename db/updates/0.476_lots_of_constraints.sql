@@ -74,9 +74,9 @@ ALTER TABLE clin_recalls.recalls add constraint "recalls_fk_staff_fkey" foreign 
 ALTER TABLE admin.tips_seen add constraint "tips_seen_fk_staff_fkey" foreign key (fk_staff) references admin.staff (pk);
 ALTER TABLE coding.usr_codes_weighting add constraint "usr_codes_weighting_fk_staff_fkey" foreign key (fk_staff) references admin.staff (pk);
 ALTER TABLE coding.usr_codes_weighting add constraint "usr_codes_weighting_fk_coding_system_fkey" foreign key (fk_coding_system) references coding.lu_systems (pk);
-ALTER TABLE defaults.incoming_message_handling add constraint "incoming_message_handling_fk_person_fkey" foreign key (fk_person) references contacts.data_persons (pk);
-ALTER TABLE defaults.incoming_message_handling add constraint "incoming_message_handling_fk_employee_fkey" foreign key (fk_employee) references contacts.data_employees (pk);
-ALTER TABLE defaults.incoming_message_handling add constraint "incoming_message_handling_fk_branch_fkey" foreign key (fk_branch) references contacts.data_branches (pk);
+--ALTER TABLE defaults.incoming_message_handling add constraint "incoming_message_handling_fk_person_fkey" foreign key (fk_person) references contacts.data_persons (pk);
+--ALTER TABLE defaults.incoming_message_handling add constraint "incoming_message_handling_fk_employee_fkey" foreign key (fk_employee) references contacts.data_employees (pk);
+--ALTER TABLE defaults.incoming_message_handling add constraint "incoming_message_handling_fk_branch_fkey" foreign key (fk_branch) references contacts.data_branches (pk);
 ALTER TABLE clin_procedures.skin_procedures add constraint "skin_procedures_fk_branch_fkey" foreign key (fk_branch) references contacts.data_branches (pk);
 ALTER TABLE clin_procedures.skin_procedures add constraint "skin_procedures_fk_document_fkey" foreign key (fk_document) references documents.documents (pk);
 ALTER TABLE clin_procedures.skin_procedures add constraint "skin_procedures_fk_pasthistory_fkey" foreign key (fk_pasthistory) references clin_history.past_history (pk);
@@ -189,8 +189,8 @@ ALTER TABLE clin_procedures.staff_skin_procedure_defaults add constraint "staff_
 ALTER TABLE clin_procedures.staff_skin_procedure_defaults add constraint "staff_skin_procedure_defaults_fk_lu_anaesthetic_agent_fkey" foreign key (fk_lu_anaesthetic_agent) references clin_procedures.lu_anaesthetic_agent(pk);
 ALTER TABLE clin_requests.user_default_type add constraint "user_default_type_fk_lu_type_fkey" foreign key (fk_lu_type) references  clin_requests.lu_request_type(pk);
 ALTER TABLE admin.staff_clinical_toolbar add constraint "staff_clinical_toolbar_fk_module_fkey" foreign key (fk_module) references  admin.lu_clinical_modules(pk);
-ALTER TABLE defaults.incoming_message_handling add constraint "incoming_message_handling_fk_lu_message_standard_fkey" foreign key (fk_lu_message_standard) references defaults.lu_message_standard(pk);
-ALTER TABLE defaults.incoming_message_handling add constraint "incoming_message_handling_fk_lu_message_display_style_fkey" foreign key (fk_lu_message_display_style) references defaults.lu_message_display_style(pk);
+--ALTER TABLE defaults.incoming_message_handling add constraint "incoming_message_handling_fk_lu_message_standard_fkey" foreign key (fk_lu_message_standard) references defaults.lu_message_standard(pk);
+--ALTER TABLE defaults.incoming_message_handling add constraint "incoming_message_handling_fk_lu_message_display_style_fkey" foreign key (fk_lu_message_display_style) references defaults.lu_message_display_style(pk);
 ALTER TABLE clin_measurements.lu_type add constraint "lu_type_fk_unit_fkey" foreign key (fk_unit) references common.lu_units(pk);
 ALTER TABLE clin_procedures.skin_procedures add constraint "skin_procedures_fk_lu_repair_type_fkey" foreign key (fk_lu_repair_type) references  clin_procedures.lu_repair_type(pk);
 ALTER TABLE clin_procedures.skin_procedures add constraint "skin_procedures_fk_lu_anaesthetic_agent_fkey" foreign key (fk_lu_anaesthetic_agent) references clin_procedures.lu_anaesthetic_agent(pk);
@@ -244,7 +244,7 @@ ALTER TABLE clin_recalls.lu_recall_intervals add constraint "lu_recall_intervals
 ALTER TABLE clerical.bookings add constraint "bookings_fk_lu_appointment_status_fkey" foreign key (fk_lu_appointment_status) references clerical.lu_appointment_status(pk); 
 ALTER TABLE clerical.bookings add constraint "bookings_fk_lu_reason_not_billed_fkey" foreign key (fk_lu_reason_not_billed) references billing.lu_reasons_not_billed(pk);
 ALTER TABLE clerical.bookings add constraint "bookings_fk_lu_appointment_icon_fkey" foreign key (fk_lu_appointment_icon) references clerical.lu_appointment_icons(pk);
-ALTER TABLE defaults.incoming_message_handling add constraint "incoming_message_handling_fk_blob_fkey" foreign key (fk_blob) references  blobs.blobs(pk);
+-- ALTER TABLE defaults.incoming_message_handling add constraint "incoming_message_handling_fk_blob_fkey" foreign key (fk_blob) references  blobs.blobs(pk);
 ALTER TABLE clin_procedures.skin_procedures add constraint "skin_procedures_fk_subcutaneous_suture_fkey" foreign key (fk_subcutaneous_suture) references  clin_procedures.lu_suture_type (pk);
 ALTER TABLE clin_procedures.staff_skin_procedure_defaults add constraint "staff_skin_procedure_defaults_fk_subcutaneous_suture_fkey" foreign key (fk_subcutaneous_suture) references clin_procedures.lu_suture_type (pk);
 ALTER TABLE clin_procedures.staff_skin_procedure_defaults add constraint "staff_skin_procedure_defaults_fk_skin_suture_fkey" foreign key (fk_skin_suture) references clin_procedures.lu_suture_type (pk);

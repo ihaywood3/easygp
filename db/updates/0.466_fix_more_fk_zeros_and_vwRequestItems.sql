@@ -24,7 +24,7 @@ GRANT SELECT ON TABLE common.vwreligions TO staff;
 
 -- View: clerical.vwtaskscomponents
 
--- DROP VIEW clerical.vwtaskscomponents;
+DROP VIEW clerical.vwtaskscomponents;
 
 CREATE OR REPLACE VIEW clerical.vwtaskscomponents AS 
  SELECT task_components.pk AS pk_view,
@@ -166,7 +166,7 @@ COMMENT ON VIEW clerical.vwtaskscomponentsandnotes
        this is also why staff_made_note_wholename to indicate which staff actually did the component';
 
 
-
+drop view chronic_disease_management.vwdiabetesgroupalliedhealth;
 CREATE OR REPLACE VIEW chronic_disease_management.vwdiabetesgroupalliedhealth AS 
  SELECT diabetes_group_allied_health_services.pk AS pk_diabetes_group_allied_health_services,
     diabetes_group_allied_health_services.fk_consult,

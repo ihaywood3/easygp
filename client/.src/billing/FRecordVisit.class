@@ -88,6 +88,9 @@ Private bPayingInvoice As Boolean
 Private timer_count As Integer
 Private onrow_items As Integer
 Private OnCol_Items As Integer
+' holds the "special" Medicare flags (not related, not normal aftercare, etc)
+' keyed on the gvwItemsBilled row.
+Private item_flags As Collection
 Private GridData As Collection
 Private GridRows As Collection
 Private iLeft As Integer
@@ -226,6 +229,7 @@ Public Sub BulkBilling_ShowClaims()
    '-------------------------------
 
    Bulk_Billed_Claims = modBillingDBI.Bulk_Bill_Batching_Get_Claims(combobox1.index)
+   If IsNull(Bulk_Billed_Claims) Then Return
    columnview99.Clear
    For Each Bulk_Billed_Claim In Bulk_Billed_Claims
       columnview99.Add(Bulk_Billed_Claim!pk, 0)
@@ -1101,6 +1105,7 @@ Public Sub gvwItemsBilled_ShowProperty()
       Case cGridColumnItem_FeeType
          cmbFeeType.Index = cmbFeeType.Find(gvwItemsBIlled[gvwItemsBIlled.Row, cGridColumnItem_FeeType].Text)
          hEditor = cmbFeeType
+         oncol_items = cGridColumnItem_FeeType
       Case Else
          hEditor = gvwItemsBilled_lblOverLay
    End Select
@@ -1148,14 +1153,20 @@ Public Sub gwItemsBilled_Cell_Overlay_Remove(char As String)
 
    If gvwItemsBIlled.Row = -1 Then Return
    cell_text = gvwItemsBIlled[gvwItemsBIlled.Row, gvwItemsBIlled.column].Text
-   If gvwItemsBIlled.column <> cGridColumnItem_FeeType Then
-      textbox1.text = Cell_Text
-      If textbox1.text = "" Then
-         $hEditor_gvwItems = textbox1
-         textbox1.text = char
-         gvwItemsBilled_lblOverLay.Visible = False
-      End If
-   End If
+   Select Case gvwItemsBIlled.column
+      Case cGridColumnItem_FeeType
+         Return ' don't do for the fee: it's a combo which has already been created
+      Case cGridColumnItem_ItemNumber
+         If cell_text <> "" Then Return ' can't edit the item number once set
+      Case cGridColumnItem_Fee
+         ' editing the fee is OK
+      Case Else
+         Return ' everything else, don't edit (yet)
+   End Select
+   oncol_items = gvwItemsBIlled.column ' remember which column we are editing
+   textbox1.text = char
+   $hEditor_gvwItems = textbox1
+   gvwItemsBilled_lblOverLay.Visible = False
    $hEditor_gvwItems.visible = True
    $hEditor_gvwItems.SetFocus
 
@@ -1294,7 +1305,7 @@ Private Sub gvwItemsBilled_MoveProperty()
    'Move the editing Hbox control to match a grid cell co-ordinates and size
    '------------------------------------------------------------------------
 
-   If IsNull($hEditor_gvwItems) Or gvwItemsBIlled.Row = - 1 Then Return
+   If IsNull($hEditor_gvwItems) Or gvwItemsBIlled.Row = -1 Then Return
    With gvwItemsBIlled[gvwItemsBIlled.Row, gvwItemsBIlled.column]
       panGvwItemsBilledEditor.Move(gvwItemsBIlled.X + .X - gvwItemsBIlled.ScrollX, gvwItemsBIlled.Y + .Y - gvwItemsBIlled.ScrollY, .Width, .Height)
       panGvwItemsBilledEditor.Raise
@@ -1380,6 +1391,12 @@ End
 
 Public Sub textbox1_Activate()
 
+   Dim fee As String
+   Dim fee_float As Float
+   Dim old_fee As Float
+   Dim gst As Float
+   Dim old_gap As Float
+
    If bexit Then Return
    panGvwItemsBilledEditor.Hide
    $hEditor_gvwItems = Null
@@ -1389,9 +1406,31 @@ Public Sub textbox1_Activate()
          textbox1.Visible = False
          Get_Items(textbox1.text)
       Case cGridColumnItem_Fee
-         gvwItemsBIlled[gvwItemsBIlled.row, 2].text = "$" & Trim(textbox1.text)
-         textbox1.Visible = False
-         gvwItemsBIlled.SetFocus()
+         fee = Trim(textbox1.text)
+         fee = Replace$(fee, "$", "")
+         Try fee_float = modUtil.MoneyToFloat(fee)
+         If Error Then
+            Message.Error("Not a valid monetary value")
+         Else
+            old_fee = 0
+            Try old_fee = modUtil.MoneyToFloat(gvwItemsBilled[gvwItemsBilled.Row, 2].Text)
+            gvwItemsBilled[gvwItemsBilled.Row, 2].Text = "$" & fee
+            textbox1.Visible = False
+            gvwItemsBIlled.SetFocus()
+            ' re-compute GST amounts if required
+            Try gst = modUtil.MoneyToFloat(gvwItemsBilled[gvwItemsBilled.Row, cGridColumnItem_gst_amount].Text)
+            If Not Error And If gst > 0 And If old_fee > 0 Then
+               gst = fee_float * (gst / old_fee)
+               gvwItemsBilled[gvwItemsBilled.Row, cGridColumnItem_gst_amount].Text = modUtil.Money_Format(gst)
+            Endif
+            ' re-compute the gap if required
+            Try old_gap = modUtil.MoneyToFloat(gvwItemsBilled[gvwItemsBilled.Row, cGridColumnItem_Gap].Text)
+            If Not Error And If old_gap > 0 Then
+               old_gap = old_gap + fee_float - old_fee
+               gvwItemsBilled[gvwItemsBilled.Row, cGridColumnItem_Gap].Text = modUtil.Money_Format(old_gap)
+            Endif
+            Invoice_Calculate_Total("Total Owing")
+         Endif
       Case cGridColumnItem_BriefDescriptor
          If IsNull(item) Then Return
          If IsNull(item!descriptor_brief) Then
@@ -2144,6 +2183,8 @@ Public Sub mnuItemsBilled_Click()
          gvwItemsBIlled_Clear()
       Case "add item"
          gvwItemsBIlled_Add_Row
+      Case "medicare"
+
    End Select
 Catch
    Return
@@ -2542,6 +2583,7 @@ Public Sub Invoice_New()
    bexit = True
    Unbilled_consultation = Null  'the invoice is not being raised from appointment list
    gvwItemsBIlled.Clear
+   item_flags = New Collection
    tbSaveNoPrint.Enabled = True                ''new invoice can be saved (either paid/unpaid) without printing
    lblEditAreaHeading.text = "New Invoice"
    bPayingInvoice = False
@@ -3749,13 +3791,15 @@ Public Sub columnview2_DblClick()
    'Set the patient collection key and display the patient
    '------------------------------------------------------
 
+   Inc Application.Busy
    columnview2.MoveCurrent()
    sPatient_Collection_Key = columnview2.Item.key
    columnview2.Visible = False
-   Inc Application.Busy
+
    EditArea_Clear()
    Account_Patient_Display()
    txtSearchInvoices_LostFocus()
+Finally
    Dec Application.Busy
 Catch
    Log.ErrorMsg(Error.text & " " & Error.Backtrace.Join(" "))

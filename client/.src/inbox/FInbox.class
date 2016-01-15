@@ -103,6 +103,8 @@ Private SelectedDocument As Collection          'currently selected document
 Private synonyms As Collection                  'collection matching a senders editorterms with readable users terms
 Private Observations As Collection              'Any 'observations' ie measurement results, associated with a document
 Private Documents As Collection
+Private lu_requests_names As Collection 
+
 '-------------
 'Database Keys
 '-------------
@@ -414,7 +416,7 @@ Public Sub Init()
    
    chkOnlyRecent.value = True                                           'default to showing on last months inbox contents
    timer1.start                                                         'delay loading inbox data until gui showing
-   synonyms_Reload
+   Synonyms_Reload
    With Form_ActionDocument = New FActionDocument(Vbox_ActionDocument)
       .Init("Inbox")                                                    'Loads its own forms, initially only an instance of the document metadata
    End With
@@ -494,7 +496,8 @@ Public Sub Init()
    loincs.Add("AST", "1920-8")
    loincs.Add("Alk Phos", "6769-4")
    loincs.Add("Gamma GT", "2324-2")
-  '  Inbox_Reload()
+   lu_requests_names = modDBConnect.exec_query_collection("select distinct lower(item) as pk, item from clin_requests.lu_requests")
+
 End
 
 Public Sub FmetaData_Keypress()
@@ -547,6 +550,7 @@ Public Function Synonyms_Update() As Boolean
    Dim syn As Collection
    Dim sMsg As String
    Dim bProvider_Synonym_Exists As Boolean
+   Dim bTermExists As Boolean
    Dim new_term As CRow
    Dim terms As String[]
    Dim term As String
@@ -557,6 +561,15 @@ Public Function Synonyms_Update() As Boolean
       Form_ActionDocument.FMetaData.txtUserObservationName.text &= ";"
    End If
    terms = Split(Form_ActionDocument.FMetaData.txtUserObservationName.text, ";", "", True)
+   
+   For Each term In terms  
+      term = Trim(term)                 'yes, shouldn't be possible but I've seen preceeding blanks.
+      bTermExists = True   
+      If Not (lu_requests_names.Exist(Lower(term))) Then
+         bTermExists = False 
+      Endif
+   Next
+   If bTermExists Then Return True
    For Each Term In terms
       term = Trim(term)                 'yes, shouldn't be possible but I've seen preceeding blanks.
       For Each syn In synonyms
@@ -568,31 +581,31 @@ Public Function Synonyms_Update() As Boolean
          End If
       Next
       If Not bProvider_Synonym_Exists Then
-            new_term = New CRow 
-            new_term!fk_lu_request_type = Form_ActionDocument.FMetaData.Get_Request_Type_PK()
-            new_term!item = term
-            new_term!fk_laterality = Form_ActionDocument.FMetaData.get_laterality()
-            smsg = "The term '" & new_term!item & "' does not exist in the requests table.\n\n"
-            sMsg &= "The following is very important. Some tests can be ordered for the left "
-            sMsg &= "right, or both sides of the body.\n\n"
-            sMsg &= "If you want your requests to come up looking like this in the popup lists, your should answer 'Yes' to Add lateralisation:\n\n"
-            sMsg &= new_term!item & " (LEFT)\n"
-            sMsg &= new_term!item & " (RIGHT)\n"
-            sMsg &= new_term!item & " (BOTH)\n\n"
-            sMsg &= "Add Lateralisation?\n\n"
-            Select Case Message.Warning(sMsg, "Yes - I want to see left/right/both ", "No - just add the term", "Cancel")
-               Case 1
-                  sMsg = "The term '" & new_term!item & "' will be added, and can be left/right/both sides of the body.\n\n"
-               Case 2
-                  sMsg = "The term '" & new_term!item & "' will be added without lateralisation.\n\n"
-               Case 3
-                  Return False
-            End Select
-            If Message.Warning(sMsg & "Are you absolutely sure this is accurate?", "Yes", "No") = 2 Then
+         new_term = New CRow 
+         new_term!fk_lu_request_type = Form_ActionDocument.FMetaData.Get_Request_Type_PK()
+         new_term!item = term
+         new_term!fk_laterality = Form_ActionDocument.FMetaData.get_laterality()
+         smsg = "The term '" & new_term!item & "' does not exist in the requests table.\n\n"
+         sMsg &= "The following is very important. Some tests can be ordered for the left "
+         sMsg &= "right, or both sides of the body.\n\n"
+         sMsg &= "If you want your requests to come up looking like this in the popup lists, your should answer 'Yes' to Add lateralisation:\n\n"
+         sMsg &= new_term!item & " (LEFT)\n"
+         sMsg &= new_term!item & " (RIGHT)\n"
+         sMsg &= new_term!item & " (BOTH)\n\n"
+         sMsg &= "Add Lateralisation?\n\n"
+         Select Case Message.Warning(sMsg, "Yes - I want to see left/right/both ", "No - just add the term", "Cancel")
+            Case 1
+               sMsg = "The term '" & new_term!item & "' will be added, and can be left/right/both sides of the body.\n\n"
+            Case 2
+               sMsg = "The term '" & new_term!item & "' will be added without lateralisation.\n\n"
+            Case 3
                Return False
-            Else
-               new_term.Save("clin_requests.lu_requests", "fk_lu_request")    
-            End If
+         End Select
+         If Message.Warning(sMsg & "Are you absolutely sure this is accurate?", "Yes", "No") = 2 Then
+            Return False
+         Else
+            new_term.Save("clin_requests.lu_requests", "fk_lu_request")    
+         End If
          Link_data = New CRow 
          Link_data!fk_lu_request = new_term!fk_lu_request
          Link_data!provider_request_name = SelectedDocument!tag
@@ -604,7 +617,6 @@ Public Function Synonyms_Update() As Boolean
    Return bSuccess
    
 End
-
 
 Public Sub mnuPatientsInInbox_Click()
    
@@ -822,7 +834,6 @@ Catch
    Form_ActionDocument.FMetaData.bexit = False
    
 End
-
 
 Public Sub Auto_Graph(observations As Collection)
    '-----------------------------------------------------------------------
@@ -1080,7 +1091,6 @@ Catch
    
 End
 
-
 Public Function Document_File(sFilingAction As String) As Boolean
    '----------------------------------------
    'Make sure no half completed staff tasks
@@ -1193,7 +1203,7 @@ Public Function Document_File(sFilingAction As String) As Boolean
       If Form_ActionDocument.FMetaData.Filed_As() <> fk_lu_message_display_style_clerical Then  'user changed clerical filing type
          Select Case fk_lu_message_display_style_clerical
             Case Const.Document_Display_As_Letter 
-                  FClinicalLists.Refresh_List_External(clinicalList_Correspondance)
+               FClinicalLists.Refresh_List_External(clinicalList_Correspondance)
             Case Const.Document_Display_As_Result
                FClinicalLists.Refresh_List_External(clinicalList_Results)
             Case Const.Document_Display_As_Certificate
@@ -1925,7 +1935,7 @@ Public Sub WebView_Menu()
    mnu.caption = "" '
    If Observations.count = 0 Then Return
    For Each Observation In Observations
-       mnu = New Menu(FPreview_HtmlDocument.mnuWebview) As "mnuWebview"
+      mnu = New Menu(FPreview_HtmlDocument.mnuWebview) As "mnuWebview"
       If Observation!value_type = "NM"                'graphable observation
          mnu.name = Observation!identifier
          mnu.caption = Observation!identifier
@@ -2034,8 +2044,8 @@ Public Sub mnuDocuments_Click()
       Case "refile"
          Document_SendBack_For_ReFiling()
    End Select
-'Catch
-  ' Return 
+   'Catch
+   ' Return 
    
 End
 
@@ -2196,6 +2206,7 @@ Public Function Valid_Document() As Boolean
    
    Select Case Form_ActionDocument.FMetaData.iDisplay_As
       Case const.Document_Display_As_Result
+         
          smsg = "Observation name:" & gvwInboxDocuments[gvwInboxDocuments.row, 1].text & "\n"
          smsg &= "User equivalent :" & Trim(Form_ActionDocument.FMetaData.txtUserObservationName.text) & "\n\n"
          "Often the name used by a company, i.e the name which it  delivers back, is not 'user-friendly' and dosn't correspond to the message content, nor what you ordered in the first place.\n\n"
@@ -2220,6 +2231,7 @@ Public Function Valid_Document() As Boolean
             Return
          End If
          If Not InStr(Lower(SelectedDocument!tag), "scanned") Then
+            'does the txtuserObservation name exist in Requests.lu_terms?
             If SelectedDocument!tag <> "" Then
                If Not Synonyms_Update() Then
                   Message.Title = "User Term Not Found"

@@ -23,19 +23,21 @@
 '                 naming of sections I've used through the program
 '                 FIXME
 '                 DON'T ALLOW EXPORT WHEN UNFILED RESULTS OR DOCUMENTS.
-'              pdfinfo combined.pdf | grep Pages | sed 's/[^0-9]*//' gives output of no of pages in a pdf
-'               pdftk A=first.pdf B=blank.pdf cat A1 B1 A1-end output res.pdf
+'                 pdfinfo combined.pdf | grep Pages | sed 's/[^0-9]*//' gives output of no of pages in a pdf
+'                 pdftk A=first.pdf B=blank.pdf cat A1 B1 A1-end output res.pdf
+'                 Dump_Documents_As_Single_PDFs has been hidden
+'                 as has other dump as single pdf checkboxes.
 '----------------------------------------------------------------------
 Private bExit As Boolean
+Private currentconsult As Cconsult
 Private pdf As Collection
 Private pdf_sections As Collection
 Private html_sections As Collection
 Private Included_Documents As Collection
+Private progressnotes As Collection  
+
+lvwIncludedDocument_Key As Variant
 Private Patient_INR_Count As Integer
-Private Form_Help As FHtmlViewer
-Public Form_PDF As FPdf
-Private Form_NotesEditor As FEditNotes
-Private currentconsult As Cconsult
 Private Page_Orientation As Integer
 Private patient As Collection
 Private progressbar_interval As Integer
@@ -45,26 +47,31 @@ Private cPage_Select_Documents As Integer = 2
 Private cPage_PDF As Integer = 3
 Private cPage_ZipOptions As Integer = 4
 Private cPage_CreateZip As Integer = 5
-Private Patient_Details As String
 Private current_page As Integer                 'page wizard currently on
-Private export_filename_and_path As String
-Private export_dir As String                    'directory to hold exported files
-Private bExportDocuments As Boolean            'if true user wants to export some documents
-Private filename_incoming_letters_joined As String
-Private filename_results_joined As String
-Private filename_health_summary As String
-Private filename_workcover_joined As String
 Private pagecount_results_joined As Integer
-Private final_filename As String
 Private pagecount_workcover_joined As Integer
 Private pagecount_health_summary As Integer
 Private Pagecount_final_filename As Integer
 Private page_count_tasks As Integer
+Private ProgressNotes_Keys As Integer[]
+Private bExportDocuments As Boolean            'if true user wants to export some documents
+
+Private sHelp As String                        'help to be displayed for each section
+Private Patient_Details As String
+Private export_filename_and_path As String
+Private export_dir As String                    'directory to hold exported files
+Private filename_incoming_letters_joined As String
+Private filename_results_joined As String
+Private filename_health_summary As String
+Private filename_workcover_joined As String
 Private filename_coverpage_toc As String
+Private final_filename As String
 Private filename_the_rest As String
 Private whoami As String
 Private hostname As String
 Private whoami_hosthame As String
+
+Public Form_PDF As FPdf
 
 Public Sub Form_Close()
    
@@ -97,12 +104,6 @@ Public Sub Init(cons As Cconsult)
    
    currentconsult = cons
    patient = currentconsult!patient
-   With Form_Help = New FHtmlViewer(Vbox_Help)
-      .tbWebBrowserZoomIn.Visible = True
-      .tbWebBrowserZoomOut.Visible = True
-      .Help_Show("medical-record-export-wizard.html")
-      .Padding = 0
-   End With
    With Form_PDF = New FPdf(HBox_PDF)                             'insert a pdf viewer
       .btZoomOut.Visible = True
       .btZoomIn.Visible = True
@@ -138,6 +139,8 @@ Public Sub Reload()
    filename_health_summary = ""
    filename_incoming_letters_joined = ""
    filename_workcover_joined = ""
+   sHelp = File.Load(modUtil.Find_File("help/medical-record-export-wizard.html"))
+   modUtilGUI.Decision_Support_Help_Show(sHelp, "Export Records - Decision Support")
    
 End
 
@@ -153,24 +156,9 @@ Public Sub Zoom_Out()
    
 End
 
-Public Sub Preview()
-   
-   Return
-   Export_File()
-   
-End
-
-Public Sub Export_File()
-   
-   '  Create_Indexed_PDF()
-   ' Message.info("starting the document dump")
-   
-   '  Message.info("finished the document dump")
-   
-End
-
 Public Sub Dump_Documents_As_Single_PDFs()
    '----------------------------------------------------------------------------------
+   'Currently this option is removed, don't remove the code
    'Dump any documents or results, certificates etc as single pdf's
    'These would include scanned pdfs or hl7 files sent to the practice for the patient
    'and any results downloaded as pdf's
@@ -190,138 +178,138 @@ Public Sub Dump_Documents_As_Single_PDFs()
    Dim files_to_join As New Collection
    
    Return
-   For Each hctrl In VBox_ProgressNotes.children
-      If hctrl Is CheckBox Then
-         Cbox = hctrl
-         If cbox.value = True Then
-            Select Case Cbox.Tag
-               Case "letters received"
-                  '------------------------------------------
-                  'make a temporary directory for the letters
-                  '------------------------------------------
-                  lboxProgress.Add("Copying all letters received")
-                  Wait
-                  Temp_dir = "/tmp/letters"
-                  Try Mkdir "/tmp/letters"
-                  If Error Then
-                     If Error.Code = const.File_ioError_DirectoryExists Then
-                        pro = Shell "rm /tmp/letters/*.pdf" Wait For Write
-                        Try Close #pro
-                     Else
-                        Message.Info("An error occurred code:" & Error.code & ".\n\nCannot process the letters.")
-                        Break
-                     End If
-                  End If
-                  
-                  For Each Member In currentconsult!letters_received
-                     file_extension = File.Ext(member!source_file)
-                     Select Case file_extension
-                        Case "pdf"
-                           filename = modFiles.Get("document_archiving_directory", member!source_file)
-                           If Left$(filename, 4) = "/tmp" Then
-                              Move filename To temp_dir &/ member!source_file
-                           Else
-                              Copy filename To temp_dir &/ member!source_file
-                           Endif
-                           files_to_join.Add(temp_dir &/ member!source_file, files_to_join.count)
-                        Case Else
-                           ' filename = Replace(member!originator & "_" & member!tag_user, " ", "_") & ".pdf" 'fix this for eg o'neil
-                           ' filename = Replace(filename, "(", "")
-                           ' filename = Replace(filename, ")", "")
-                           ' filename = Replace(filename, "'", "")
-                           ' filename = Replace(filename, ",", "")
-                           ' filename = Replace(filename, ">", "for")
-                           ' tempfile = modPrinting.Make_PDF_From_Html(member!html, const.orientation_portrait, "", False, filename, ProgressBar1)
-                           ' Try Move tempfile To Temp_dir &/ filename
-                           ' If Error Then
-                           '    Try Copy tempfile To Temp_dir &/ filename
-                           '    If Not Error Then Kill tempfile
-                           ' Endif
-                           ' files_to_join.Add(Temp_dir &/ filename, files_to_join.count)
-                           filename = Replace(member!originator & "_" & member!tag_user, " ", "_") & ".pdf" 'fix this for eg o'neil
-                           filename = Replace(filename, "(", "")
-                           filename = Replace(filename, ")", "")
-                           filename = Replace(filename, "'", "")
-                           filename = Replace(filename, ",", "")
-                           filename = Replace(filename, ">", "for")
-                           If member!fk_lu_data_content_type = Const.cData_Type_HTML Then
-                              tempfile = modPrinting.Make_PDF_From_Html(member!data, const.orientation_portrait, "", False, filename, ProgressBar1)
-                           End If
-                           If member!fk_lu_data_content_type = Const.cData_Type_Latex Then
-                              Message.info("Richard in extport - dumping documents as single pdf - fix this for a latex GPMP dump")
-                           Endif
-                           Try Move tempfile To Temp_dir &/ filename
-                           If Error Then
-                              Try Copy tempfile To Temp_dir &/ filename
-                              If Not Error Then Kill tempfile
-                           Endif
-                           files_to_join.Add(Temp_dir &/ filename, files_to_join.count)
-                     End Select
-                     
-                  Next
-                  '----------------------------------------------------------------------------
-                  'Now Zip these letters not password protected as will be within the other zip
-                  '----------------------------------------------------------------------------
-                  cmd = "zip --junk-paths " & export_dir &/ Patient_Details & "_letters_received.zip " & temp_dir &/ "*.pdf"
-                  Print cmd
-                  lboxProgress.Add("Creating zip file of letters .....")
-                  Wait
-                  Shell cmd Wait
-               Case "results"
-                  lboxProgress.Add("Creating Zip file of all results received.")
-                  Wait
-                  Temp_dir = "/tmp/results"
-                  Try Mkdir "/tmp/results"
-                  x = 1
-                  If Error Then
-                     If Error.Code = const.File_ioError_DirectoryExists Then
-                        pro = Shell "rm /tmp/results/*.pdf" Wait For Write
-                        Try Close #pro
-                     Else
-                        Message.Info("An error occurred code:" & Error.code & ".\n\nCannot process the results.")
-                        Break
-                     End If
-                  End If
-                  For Each Member In currentconsult!results_received
-                     '  Print currentconsult!results_received.count
-                     file_extension = File.Ext(member!source_file)
-                     Select Case file_extension
-                        Case "pdf"                                                                             'pdf simple, is old scanned result - just copy it over
-                           filename = modFiles.Get("document_archiving_directory", member!source_file)
-                           If Left$(filename, 5) = "/tmp/" Then
-                              Move filename To temp_dir &/ member!source_file
-                           Else
-                              Copy filename To temp_dir &/ member!source_file
-                           Endif
-                        Case Else 'it is html FIXME - WHAT ABOUT PICTURES                                      'html - construct a filename
-                           If Not IsNull(member!tag_user) Then
-                              filename = Replace(Trim(member!tag_user), ";", "")                                     'strip separators
-                              If Right(filename) = ";" Then filename = Left(filename, Len(filename) - 1)
-                              filename = Replace(filename, " ", "-")
-                              filename = Replace(filename, "/", "-")
-                              filename = Replace(filename, "(", "")
-                              filename = Replace(filename, ")", "")
-                              filename = Replace(filename, "&", "-")
-                              filename = Patient_Details & "_" & Format(member!date_created, "dd-mm-yyyy") & "_" & filename & ".pdf" 'eg. Mr-Joe-Blogs_10-02/2010_FBC
-                              Print filename, x
-                              modPrinting.Make_PDF_From_Html(member!html, const.orientation_portrait, "", False, filename, Null, temp_dir)
-                           Else
-                              Message.Title = "Fatal error"
-                              Message.info("This patient's record cannot be accurately exported as it contains unfiled results which will be skipped.")
-                           End If
-                           Inc x
-                     End Select
-                  Next
-                  '----------------------------------------------------------------------------
-                  'Now Zip these results not password protected as will be within the other zip
-                  '----------------------------------------------------------------------------
-                  '  cmd = "zip --junk-paths " & export_dir &/ Patient_Details & "_results_received.zip " & temp_dir &/ "*.pdf"
-                  '    ' Shell cmd Wait
-                  ' modPrinting.Join_PDF(
-            End Select
-         End If
-      End If
-   Next
+   ' For Each hctrl In VBox_ProgressNotes.children
+   '    If hctrl Is CheckBox Then
+   '       Cbox = hctrl
+   '       If cbox.value = True Then
+   '          Select Case Cbox.Tag
+   '             Case "letters received"
+   '                '------------------------------------------
+   '                'make a temporary directory for the letters
+   '                '------------------------------------------
+   '                lboxProgress.Add("Copying all letters received")
+   '                Wait
+   '                Temp_dir = "/tmp/letters"
+   '                Try Mkdir "/tmp/letters"
+   '                If Error Then
+   '                   If Error.Code = const.File_ioError_DirectoryExists Then
+   '                      pro = Shell "rm /tmp/letters/*.pdf" Wait For Write
+   '                      Try Close #pro
+   '                   Else
+   '                      Message.Info("An error occurred code:" & Error.code & ".\n\nCannot process the letters.")
+   '                      Break
+   '                   End If
+   '                End If
+   '                
+   '                For Each Member In currentconsult!letters_received
+   '                   file_extension = File.Ext(member!source_file)
+   '                   Select Case file_extension
+   '                      Case "pdf"
+   '                         filename = modFiles.Get("document_archiving_directory", member!source_file)
+   '                         If Left$(filename, 4) = "/tmp" Then
+   '                            Move filename To temp_dir &/ member!source_file
+   '                         Else
+   '                            Copy filename To temp_dir &/ member!source_file
+   '                         Endif
+   '                         files_to_join.Add(temp_dir &/ member!source_file, files_to_join.count)
+   '                      Case Else
+   '                         ' filename = Replace(member!originator & "_" & member!tag_user, " ", "_") & ".pdf" 'fix this for eg o'neil
+   '                         ' filename = Replace(filename, "(", "")
+   '                         ' filename = Replace(filename, ")", "")
+   '                         ' filename = Replace(filename, "'", "")
+   '                         ' filename = Replace(filename, ",", "")
+   '                         ' filename = Replace(filename, ">", "for")
+   '                         ' tempfile = modPrinting.Make_PDF_From_Html(member!html, const.orientation_portrait, "", False, filename, ProgressBar1)
+   '                         ' Try Move tempfile To Temp_dir &/ filename
+   '                         ' If Error Then
+   '                         '    Try Copy tempfile To Temp_dir &/ filename
+   '                         '    If Not Error Then Kill tempfile
+   '                         ' Endif
+   '                         ' files_to_join.Add(Temp_dir &/ filename, files_to_join.count)
+   '                         filename = Replace(member!originator & "_" & member!tag_user, " ", "_") & ".pdf" 'fix this for eg o'neil
+   '                         filename = Replace(filename, "(", "")
+   '                         filename = Replace(filename, ")", "")
+   '                         filename = Replace(filename, "'", "")
+   '                         filename = Replace(filename, ",", "")
+   '                         filename = Replace(filename, ">", "for")
+   '                         If member!fk_lu_data_content_type = Const.cData_Type_HTML Then
+   '                            tempfile = modPrinting.Make_PDF_From_Html(member!data, const.orientation_portrait, "", False, filename, ProgressBar1)
+   '                         End If
+   '                         If member!fk_lu_data_content_type = Const.cData_Type_Latex Then
+   '                            Message.info("Richard in extport - dumping documents as single pdf - fix this for a latex GPMP dump")
+   '                         Endif
+   '                         Try Move tempfile To Temp_dir &/ filename
+   '                         If Error Then
+   '                            Try Copy tempfile To Temp_dir &/ filename
+   '                            If Not Error Then Kill tempfile
+   '                         Endif
+   '                         files_to_join.Add(Temp_dir &/ filename, files_to_join.count)
+   '                   End Select
+   '                   
+   '                Next
+   '                '----------------------------------------------------------------------------
+   '                'Now Zip these letters not password protected as will be within the other zip
+   '                '----------------------------------------------------------------------------
+   '                cmd = "zip --junk-paths " & export_dir &/ Patient_Details & "_letters_received.zip " & temp_dir &/ "*.pdf"
+   '                Print cmd
+   '                lboxProgress.Add("Creating zip file of letters .....")
+   '                Wait
+   '                Shell cmd Wait
+   '             Case "results"
+   '                lboxProgress.Add("Creating Zip file of all results received.")
+   '                Wait
+   '                Temp_dir = "/tmp/results"
+   '                Try Mkdir "/tmp/results"
+   '                x = 1
+   '                If Error Then
+   '                   If Error.Code = const.File_ioError_DirectoryExists Then
+   '                      pro = Shell "rm /tmp/results/*.pdf" Wait For Write
+   '                      Try Close #pro
+   '                   Else
+   '                      Message.Info("An error occurred code:" & Error.code & ".\n\nCannot process the results.")
+   '                      Break
+   '                   End If
+   '                End If
+   '                For Each Member In currentconsult!results_received
+   '                   '  Print currentconsult!results_received.count
+   '                   file_extension = File.Ext(member!source_file)
+   '                   Select Case file_extension
+   '                      Case "pdf"                                                                             'pdf simple, is old scanned result - just copy it over
+   '                         filename = modFiles.Get("document_archiving_directory", member!source_file)
+   '                         If Left$(filename, 5) = "/tmp/" Then
+   '                            Move filename To temp_dir &/ member!source_file
+   '                         Else
+   '                            Copy filename To temp_dir &/ member!source_file
+   '                         Endif
+   '                      Case Else 'it is html FIXME - WHAT ABOUT PICTURES                                      'html - construct a filename
+   '                         If Not IsNull(member!tag_user) Then
+   '                            filename = Replace(Trim(member!tag_user), ";", "")                                     'strip separators
+   '                            If Right(filename) = ";" Then filename = Left(filename, Len(filename) - 1)
+   '                            filename = Replace(filename, " ", "-")
+   '                            filename = Replace(filename, "/", "-")
+   '                            filename = Replace(filename, "(", "")
+   '                            filename = Replace(filename, ")", "")
+   '                            filename = Replace(filename, "&", "-")
+   '                            filename = Patient_Details & "_" & Format(member!date_created, "dd-mm-yyyy") & "_" & filename & ".pdf" 'eg. Mr-Joe-Blogs_10-02/2010_FBC
+   '                            Print filename, x
+   '                            modPrinting.Make_PDF_From_Html(member!html, const.orientation_portrait, "", False, filename, Null, temp_dir)
+   '                         Else
+   '                            Message.Title = "Fatal error"
+   '                            Message.info("This patient's record cannot be accurately exported as it contains unfiled results which will be skipped.")
+   '                         End If
+   '                         Inc x
+   '                   End Select
+   '                Next
+   '                '----------------------------------------------------------------------------
+   '                'Now Zip these results not password protected as will be within the other zip
+   '                '----------------------------------------------------------------------------
+   '                '  cmd = "zip --junk-paths " & export_dir &/ Patient_Details & "_results_received.zip " & temp_dir &/ "*.pdf"
+   '                '    ' Shell cmd Wait
+   '                ' modPrinting.Join_PDF(
+   '          End Select
+   '       End If
+   '    End If
+   ' Next
    
 End
 
@@ -346,6 +334,9 @@ Public Sub Export_PDF_Create()
    Dim filename_for_all_the_letters As String
    Dim filename_for_all_the_results As String
    Dim final_pdfs_to_join As New String[]
+   Dim caveats As New String[]
+   Dim caveat As String
+   Dim additional_text As String
    
    pdf_sections = New Collection                              'will collect details of all individual pdf's created for each section dumped
    ProgressBar1.value = 0.0                                   'reset the progress bar
@@ -353,7 +344,27 @@ Public Sub Export_PDF_Create()
    lboxProgress.Add("Analysing data......")
    lboxProgress.Add("Preparing the coversheet......")  
    Wait
+   If rbSelectedProgressNotes.value = True Then
+      caveats.Add("progress notes")
+   Endif
+   If rbSelectedReferralLetters.value = True Then
+      caveats.Add("selected letters")
+   Endif
+   If rbSelectedResultsReceived.value = True Then
+      caveats.Add("selected results")
+   Endif
    ContentsPage = modProgressNotes.CoverSheet_Construct_HTML(currentconsult).GetData()   ' the patient's name, practice name
+   If caveats.count = 0 Then
+      ContentsPage = Replace(ContentsPage, "%caveats", "")
+   Else
+      additional_text = "<BR><BR><p><b>PLEASE NOTE:</b</p><P>The treating doctor has withheld some clinical data which is deemed either condfidential "
+      "or not necessary for the purpose for which this patient's record is being exported.<P><P>These sections include:<UL>"
+      For Each caveat In caveats
+         additional_text &= "<LI>" & caveat
+      Next
+      additional_text &= "</UL></P>"
+      ContentsPage = Replace(ContentsPage, "%caveats", additional_text)
+   Endif
    Output_file = patient!wholename                                                       'create filename and remove illegal characters
    Output_file = Replace(Output_file, " ", "_")
    Output_file = Replace(Output_file, "'", "")
@@ -1003,7 +1014,6 @@ Public Sub Include_Documents_Received()
       pdf!page_count = ModUtil.Read_PDF_Page_Count(fn)
       pdf!filename = fn
       pdf_sections.Add(pdf, pdf_sections.count)   
-      ' Endif
       If letters.count Then                                                               'Now, back to letters, if we have some which we always should
          lboxProgress.Add("Adding letters received.....")
          lblProgress.text = "Adding letters received...."
@@ -1047,16 +1057,12 @@ Public Sub Include_Documents_Received()
                   progressbar1.value = x / letters.Count
                   progressbar1.Refresh()
                   Wait
-                  '  Letter_PDF_paths.Add(modPrinting.Make_PDF_From_Html(letter!html, const.orientation_portrait, "", False, Str(x) & ".tmp.pdf", Progressbar1, "/tmp/letters/"))
                   If letter!fk_lu_data_content_type = Const.cData_Type_HTML Then
                      Letter_PDF_paths.Add(modPrinting.Make_PDF_From_Html(letter!data, const.orientation_portrait, "", False, Str(x) & ".tmp.pdf", Progressbar1, "/tmp/letters/"))
                   Endif
-                  '    Message.info("Richard - test if the latex of a gpmp is dumping ok")
-                  '   Print
                   If letter!fk_lu_data_content_type = Const.cData_Type_Latex Then
                      Letter_PDF_paths.Add(modPrinting.Latex_To_PDF(letter!data))
                   Endif
-                  Print Letter_PDF_paths
             End Select
             Inc x
          Next
@@ -1120,14 +1126,12 @@ Public Sub Include_Documents_Received()
             Case "pdf"
                filename = modFiles.Get("document_archiving_directory", result!source_file)
                Result_PDF_paths.Add(filename, x)
-               ' Print modFiles.Get("document_archiving_directory", result!source_file)
                If Left$(filename, 5) = "/tmp/" Then
                   Move filename To "/tmp/results" &/ result!source_file
                   Message.Warning("Richard this should never happen: Include documents line 1109")
                Else
                   Copy filename To "/tmp/results" &/ result!source_file
                Endif
-               
             Case Else                                                                    'if not a pdf must be hl7 (fixme could bomb if an image
                '------------------
                'must be a hl7 file
@@ -1135,7 +1139,6 @@ Public Sub Include_Documents_Received()
                progressbar1.value = x / results.Count
                progressbar1.Refresh()
                Wait
-               ' tempstring &= result!html
                tempstring &= result!data
                If Not IsNull(result!tag_user) Then
                   filename = Replace(Trim(result!tag_user), ";", "")                                     'strip separators
@@ -1150,238 +1153,10 @@ Public Sub Include_Documents_Received()
                Else
                   filename = Str(x) & ".tmp.pdf"
                Endif
-               '  Result_PDF_paths.Add(modPrinting.Make_PDF_From_Html(result!html, const.orientation_portrait, "", False, filename, Progressbar1, "/tmp/results/"), x)
                Result_PDF_paths.Add(modPrinting.Make_PDF_From_Html(result!data, const.orientation_portrait, "", False, filename, Progressbar1, "/tmp/results/"), x)
          End Select
          Inc x
       Next
-      '  End If   
-      'End If   
-      If Not IsNull(Result_PDF_paths) Then
-         Try Kill "/tmp/results_recieved.pdf"
-         filename_for_all_the_results = modPrinting.Join_PDF(Result_PDF_paths, "/tmp/results_recieved")  'this routine adds the .pdf extension
-         document_pagecount = ModUtil.Read_PDF_Page_Count(filename_for_all_the_results)
-         html_sections.add(modPrinting.Make_HTML_With_Heading_And_Blank_pages("Results Received", document_pagecount), html_sections.count)
-         pdf = New Collection  
-         pdf!name = "results received"
-         pdf!page_count = document_pagecount
-         pdf!filename = filename_for_all_the_results
-         pdf_sections.add(pdf, pdf_sections.count)   
-      End If
-   End If   
-   
-End
-
-Public Sub Include_Documents_Received_works()
-   '-------------------------------------------------------------------------------------------------------
-   'Add any letters or results received, either the sub-selection or the lot
-   'the documents_included collection which are those documents which have ended up on lvwIncludedDocuments
-   'only have the pk For a couple of reasons
-   '1) the drag command can only drag text (we have used str(documents.pk) or image
-   '2) the user can drop documents at random on the list, ie. unsorted, and can't tell from
-   '   the keys whether letter or documents so lvwIncludedDocuments_Refresh sorts this distinction out
-   'In this routine we pulll back the collection from the db (inefficient, ordered by date (inefficient)
-   'FIXME IAN DO SOMETHING CLEVERER
-   'if chkIncludeDocumentAuditTrail.value = True then each document has its audit trail included.
-   '--------------------------------------------------------------------------------------------------------
-   
-   Dim document As Collection
-   Dim document_pagecount As Integer
-   Dim results As New Collection
-   Dim letters As New Collection
-   Dim sql_letters As String
-   Dim sql_results As String
-   Dim temp_dir As String
-   Dim Letter_PDF_paths As Collection 
-   Dim Result_PDF_paths As Collection
-   Dim result As Collection
-   Dim letter As Collection
-   Dim pro As Process
-   Dim tempstring As String
-   Dim x As Integer
-   Dim filename_for_all_the_letters As String
-   Dim filename_for_all_the_results As String
-   Dim sHtml As String
-   Dim fn As String
-   
-   progressbar1.value = 0.0
-   progressbar1.Refresh()
-   '----------------------------------------------------------------------------------
-   'Firstly create the core sql depending on if want subset or all letters and results
-   '----------------------------------------------------------------------------------
-   If lvwIncludedDocuments.count Then                                                          'When the document or result is dragged from the letter or results list
-      lboxProgress.Add("Collating the subset of documents or results selected.....")           'the resultant order in our list is random, we want them sorted by letters or results
-      lblProgress.text = "Collating the subset of documents...."                                'fill the results and letters collections
-      Wait
-      For Each document In Included_Documents                                                  'included_documents is effectively a collection of random keys                                           
-         If Document!type = "letter" Then                                                      'get all documents which are letters
-            sql_letters &= "pk_document=" & document!fk_document & " OR "                      'these will be ordered by dates effectively because of the key               
-         End If   
-         If Document!type = "result" Then                                                      'get all documents which are results
-            sql_results &= "pk_document=" & document!fk_document & " OR "
-         End If   
-      Next
-      If sql_letters <> "" Then sql_letters = "Select * from documents.vwdocuments where " & Left(sql_letters, Len(sql_letters) - 4) 'ie Select * where pk=n or pk=n1 or pk=n2 etc
-      If sql_results <> "" Then sql_results = "Select * from documents.vwdocuments where " & Left(sql_results, Len(sql_results) - 4) 
-   Else                                                                                       'User has not selected a subset - check if user wanted to dump all letters or all results
-      If chkLettersReceivedSummary.value = True Then                                           'we will always include a summary, executive decision
-         lboxProgress.Add("Generating list of all letters received .....")                     'notify the gui
-         lblProgress.text = "Generating list of letters...."
-         Wait
-         sql_letters = "Select * from documents.vwDocuments where fk_patient = " & currentconsult!patient!fk_patient
-         sql_letters &= " AND fk_lu_display_as = " & const.Document_Display_As_Letter & " AND deleted = false " 
-      End If   
-      If chkResultsReceivedSummary.value = True Then    
-         lboxProgress.Add("Generating list of all results received .....")
-         lblProgress.text = "Generating list of results...."
-         Wait
-         sql_results = "Select * from documents.vwDocuments where fk_patient = " & currentconsult!patient!fk_patient
-         sql_results &= " AND fk_lu_display_as = " & const.Document_Display_As_Result
-         sql_results &= " AND deleted = false "
-      Endif
-   End If  
-   '--------------------------------------------------------------------------------------------------
-   'Next, order these according to the check boxes located on Page 3 of the wizard
-   'even if this page is not specifically used. If user just selects all from page 1 of the wizard
-   'and checks the e.g chkOrderAllResultsByTag on the first page, this sets the checkboxes on page 3
-   '--------------------------------------------------------------------------------------------------
-   If sql_letters <> "" Then                                                              'have some sort of sql to get the letters
-      If chkOrderLettersBySender.value = True Then                                        'order query as per checkbox values
-         sql_letters &= " ORDER BY originator, date_created"
-      Else
-         sql_letters &= " ORDER by date_created"
-      Endif
-      Letters = modDBConnect.exec_query_collection(sql_letters)                           'fetch data from backend
-      shtml = modProgressNotes.Letters_Summary_Construct_html(letters)                    'create the html summary about the letters
-      html_sections.add(shtml, html_sections.count)
-      fn = modPrinting.Make_PDF_From_Html(shtml,,,, "incoming_letters_summary.pdf")       'executive decision, will always make summary
-      pdf = New Collection
-      pdf!name = "summary incoming letters"
-      pdf!page_count = ModUtil.Read_PDF_Page_Count(fn)
-      pdf!filename = fn
-      pdf_sections.Add(pdf, pdf_sections.count)   
-      ' Endif
-      If letters.count Then                                                               'Now, back to letters, if we have some which we always should
-         lboxProgress.Add("Adding letters received.....")
-         lblProgress.text = "Adding letters received...."
-         Wait
-         Temp_dir = "/tmp/letters"                                                        'create temporary directory to join them all together in
-         Try Mkdir "/tmp/letters"
-         If Error Then
-            If Error.Code = const.File_ioError_DirectoryExists Then
-               pro = Shell "rm /tmp/letters/*.pdf" Wait For Write
-               Close #pro
-            Else
-               Message.Info("An error occurred code:" & Error.code & ".\n\nCannot process the letters.")
-               Return
-            End If
-         End If
-         Letter_PDF_paths = New Collection                                                   'collection to hold the letters including paths
-         '-------------------------------------------------------------------------
-         'Later on down this routine, all letters which are pdf's have to be joined
-         'to the pdf generated from the html for the coversheet, toc, etc etc
-         'Letters are added last in our single pdf so:
-         'Letter_PDF_path[0-n] = all the pdfs of the letters, which are either
-         ''native' pdfs on our system or pdf's generated from html recieved.
-         '-------------------------------------------------------------------------
-         x = 0
-         lblProgress.text = "Adding letters received...."
-         For Each letter In letters          
-            Tempstring = ""
-            Select Case File.Ext(letter!source_file)                                        'then  check file endings
-               Case "pdf"
-                  If InStr(letter!source_file, "'") Then
-                     Message.title = "Bad File Name"
-                     Message.Warning("The file:" & letter!source_file & " has an illegal character in the name, i.e - a ' character\n\nThis cannot be processed and will be skipped.\n\nYou should get your system admin to fix this.")
-                  Else
-                     Letter_PDF_paths.Add(modFiles.Get("document_archiving_directory", letter!source_file), x)
-                  End If 
-               Case Else                                                                    'if not a pdf must be hl7 (fixme could bomb if an image
-                  '------------------
-                  'must be a hl7 file
-                  '------------------
-                  tempstring &= letter!html
-                  progressbar1.value = x / letters.Count
-                  progressbar1.Refresh()
-                  Wait
-                  Letter_PDF_paths.Add(modPrinting.Make_PDF_From_Html(letter!html, const.orientation_portrait, "", False, Str(x) & ".tmp.pdf", Progressbar1, "/tmp/letters/"), x)
-            End Select
-            Inc x
-         Next
-         If Not IsNull(Letter_PDF_paths) Then                                                         'we have collection of letters to combine into one pdf
-            Try Kill "/tmp/letters_received.pdf"
-            filename_for_all_the_letters = modPrinting.Join_PDF(Letter_PDF_paths, "/tmp/letters_received") 'this routine adds the .pdf extension
-            document_pagecount = ModUtil.Read_PDF_Page_Count(filename_for_all_the_letters)           'get the total page count in this new pdf
-            html_sections.add(modPrinting.Make_HTML_With_Heading_And_Blank_pages("Letters Received", document_pagecount), html_sections.count)
-            pdf = New Collection  
-            pdf!name = "letters recieved"
-            pdf!page_count = document_pagecount
-            pdf!filename = filename_for_all_the_letters
-            pdf_sections.add(pdf, pdf_sections.count)   
-         End If
-      End If   
-   End If   
-   '---------------------------------------------------
-   'Complete the sql for results and fetch from backend
-   '---------------------------------------------------
-   If sql_results <> "" Then                                                               'have results ?make a summary list
-      If chkSortResultsByUserTag.value = True Then                                          'either ordered by like tags (not exact for actual loincs)
-         sql_results &= " ORDER BY tag_user, date_created"
-      Else
-         sql_results &= " ORDER by date_created"                                            'or by date they were created
-      End If  
-      results = modDBConnect.exec_query_collection(sql_results)                             'get collection from backend
-      shtml = modProgressNotes.Results_Summary_Construct_HTML(Results, chkIncludeINR.Value) 'create the html summary
-      html_sections.add(shtml, html_sections.count)                                         'add to sections for later wkhtml processing for TOC
-      fn = modPrinting.Make_PDF_From_Html(shtml,,,, "incoming_results_summary.pdf")         'create the actual pdf summary which will be used in final pdf
-      pdf = New Collection
-      pdf!name = "summary incoming results"
-      pdf!page_count = ModUtil.Read_PDF_Page_Count(fn)
-      pdf!filename = fn
-      pdf_sections.Add(pdf, pdf_sections.count)  
-      lboxProgress.Add("Adding results received.....")
-      lblProgress.text = "Adding results received...."
-      Wait
-      Temp_dir = "/tmp/results"                                                           'create temporary directory to join them all together in
-      Try Mkdir "/tmp/results"
-      If Error Then
-         If Error.Code = const.File_ioError_DirectoryExists Then
-            pro = Shell "rm /tmp/results/*.pdf" Wait For Write
-            Close #pro
-         Else
-            Message.Info("An error occurred code:" & Error.code & ".\n\nCannot process the results.")
-         End If
-      End If
-      Result_PDF_paths = New Collection                                                   'collection to hold the letters including paths
-      '-------------------------------------------------------------------------
-      'Later on down this routine, all letters which are pdf's have to be joined
-      'to the pdf generated from the html for the coversheet, toc, etc etc
-      'Letters are added last in our single pdf so:
-      'Letter_PDF_path[0-n] = all the pdfs of the letters, which are either
-      ''native' pdfs on our system or pdf's generated from html recieved.
-      '-------------------------------------------------------------------------
-      x = 0
-      lblProgress.text = "Adding results received...."
-      For Each result In results
-         Tempstring = ""
-         Select Case File.Ext(result!source_file)                                        'then  check file endings
-            Case "pdf"
-               Result_PDF_paths.Add(modFiles.Get("document_archiving_directory", result!source_file), x)
-               Print modFiles.Get("document_archiving_directory", result!source_file)
-            Case Else                                                                    'if not a pdf must be hl7 (fixme could bomb if an image
-               '------------------
-               'must be a hl7 file
-               '------------------
-               progressbar1.value = x / results.Count
-               progressbar1.Refresh()
-               Wait
-               tempstring &= result!html
-               Result_PDF_paths.Add(modPrinting.Make_PDF_From_Html(result!html, const.orientation_portrait, "", False, Str(x) & ".tmp.pdf", Progressbar1, "/tmp/results/"), x)
-         End Select
-         Inc x
-      Next
-      '  End If   
-      'End If   
       If Not IsNull(Result_PDF_paths) Then
          Try Kill "/tmp/results_recieved.pdf"
          filename_for_all_the_results = modPrinting.Join_PDF(Result_PDF_paths, "/tmp/results_recieved")  'this routine adds the .pdf extension
@@ -1734,14 +1509,11 @@ Public Sub Settings_Save()
    
    Settings["FExportClinical/Form_PDF.CurrentZoom"] = Form_PDF.CurrentZoom 
    
-   Settings["FExportClinical/Form_Help.CurrentZoom"] = Form_Help.WebView1.Zoom
-   
 End
 
 Private Sub Settings_Load()
    
    Form_PDF.CurrentZoom = Settings["FExportClinical/Form_PDF.currentZoom", 1.0]
-   Form_Help.WebView1.Zoom = Settings["FExportClinical/Form_Help.CurrentZoom", 1.0]
    
 End
 
@@ -1804,7 +1576,7 @@ Public Sub Refresh_Gui()
    Wizard1[1].Enabled = False   'the progress notes selection page
    Wizard1[2].Enabled = True  'the referral letter or results selection page
    HBox_ProgressNotes.Visible = currentconsult!progress_notes.count
-   chkDumpNotesAsPDF.Visible = currentconsult!progress_notes.count
+   'chkDumpNotesAsPDF.Visible = currentconsult!progress_notes.count 'currently have removed this option
    chkTasks.Visible = currentconsult!patient_tasks_outstanding.count
    HBox_MentalHealthPlans.visible = currentconsult!mentalhealthplans.count
    chkReferralLetterSummaries.Visible = currentconsult!referrals_written.count
@@ -1948,26 +1720,27 @@ Public Sub Wizard1_Change()
    '-------------------------------------------------------------
    'This event occurs as the wizard changes to the next page
    '-------------------------------------------------------------
-   
    current_page = Wizard1.Index
    Select Case Wizard1.Index
       Case cPage_Select_Options
-         Form_Help.Help_Show("medical-record-export-wizard.html")   
+         sHelp = File.Load(modUtil.Find_File("help/medical-record-export-wizard.html"))
       Case cPage_Select_ProgressNotes
-         Setup_Page_Select_ProgressNotes 
+         Load_Notes
+         sHelp = File.Load(modUtil.Find_File("help/selecting-progress-notes-for-export.html"))
       Case cPage_Select_Documents
-         Setup_Page_Select_Documents
+         If IsNull(Included_Documents) Then Included_Documents = New Collection
+         sHelp = File.Load(modUtil.Find_File("help/selecting-letters-or-results-for-export.html"))
       Case cPage_PDF
-         Form_Help.Help_Show("creating-the-export-pdf.html")
          Setup_Page_CreatePDF
          Export_PDF_Create 
-         Form_Help.Help_Show("checking-the-export-pdf.html")
+         sHelp = File.Load(modUtil.Find_File("help/checking-the-export-pdf.html"))
       Case cPage_ZipOptions
-         Form_Help.Help_Show("zipping-the-pdf-for-export.html")
          txtFilename.text = export_dir &/ File.Name(export_filename_and_path)
+         sHelp = File.Load(modUtil.Find_File("help/zipping-the-pdf-for-export.html"))
       Case cPage_CreateZip
          Create_Zip()
    End Select
+   modUtilGUI.Decision_Support_Help_Show(sHelp, "Export Records - Decision Support")
    
 End
 
@@ -2024,23 +1797,98 @@ Public Sub Setup_Page_CreatePDF()
    
 End
 
-Public Sub Setup_Page_Select_Documents()
+Public Sub Load_Notes()
+   '---------------------------------------------------------------------------
+   'Loads the entire progress notes as individual lines into the list container
+   '---------------------------------------------------------------------------   
    
-   'If user wants to select a subset of results or referras
-   If IsNull(Included_Documents) Then Included_Documents = New Collection
-   Form_Help.Help_Show("selecting-letters-or-results-for-export.html")
+   Dim NotesViewer As WebView
+   Dim HB As HBox                                         'container to hold each days notes
+   Dim tl As TextLabel
+   Dim last_fk_consult As Variant
+   Dim NotesBox As VBox
+   Dim sNotesHtml As String
+   Dim Editor As FEditor
+   Dim chkbox As CheckBox
+   Dim chkbox_Container As Vbox
+   Dim chkbox_spacer As Label
+   Dim progressnote As Collection
+   Dim notes_separator As Separator
+   
+   Inc Application.Busy                                                 'notify 'work in progress' for some reasons this can be slow ?why FIXME
+   ProgressNotes_Keys = New Integer[]
+   currentconsult.Refresh("progress_notes")                             'ensure have latest data (e.g) this could be after a deletion
+   For Each progressnote In currentconsult!progress_notes
+      ProgressNotes_Keys.Add(progressnote!pk_progressnote) 
+      '-------------------------------------------------------------------------
+      'This is the 'container' stuck onto the list container
+      'which contains all the other controls
+      '1) the textlabel showing the data/drs details  'fixme not done
+      '2) the notes_box - which contains initially a webview 
+      '                   and a hidden editor form in case user wants to edit
+      '                   This is BAD........ fixme to only put one in if needed
+      '                   the webview tag = the fk_consult for this progress note
+      '---------------------------------------------------------------------------
+      With HB = New HBox(ScrollView1)
+         .width = ScrollView1.Width
+         .tag = progressnote
+         .AutoResize = True
+         .Padding = 1
+         .Background = Color.White
+      End With
+      With chkbox_Container = New Vbox(HB)
+         .width = 25
+         .Expand = False      
+      End With
+      With chkbox = New CheckBox(chkbox_Container) As "chkSelectedNote"
+         .width = 25
+         .height = 25
+         .tag = progressnote!pk_progressnote 
+         .expand = False 
+         .Background = Color.White
+      End With
+      With chkbox_spacer = New Label(chkbox_Container)
+         .width = 25
+         .Height = 25
+         .expand = True 
+         .Background = Color.White
+      End With
+      With tl = New TextLabel(HB) As "lcNotes_Date"
+         .width = 120
+         .AutoResize = True     
+         .Expand = False   
+         .Background = Color.white
+         If last_fk_consult <> progressnote!fk_consult Then
+            .text = "<P>" & Format(progressnote!consult_date, "dd/mm/yyyy") & "</P>"
+            .text &= "<BR><small><small>" & progressnote!consult_type & "<BR>"
+            .text &= Format(progressnote!consult_date, gb.MediumTime) & "<BR>"
+            .text &= progressnote!title & " " & progressnote!firstname & " " & progressnote!surname & "</small></small>"
+            last_fk_consult = progressnote!fk_consult
+         End If  
+      End With 
+      sNotesHtml = modConsultDBI.Images_Get(progressnote!notes)
+      tlMeasure.text = "<P STYLE=\"background: #ffffff\"><FONT COLOR=\"#000000\">" & sNotesHtml & "</FONT></P>"
+      With NotesBox = New VBox(HB)
+         .Expand = True 
+         .height = tlMeasure.Height + 50
+         .Background = Color.White
+      End With
+      With NotesViewer = New Webview(NotesBox) As "WebView_Notes"
+         .html = sNotesHtml  'the notes + inserted images.
+         .tag = progressnote
+         .Expand = True   
+         .Background = Color.White
+      End With
+      With notes_separator = New Separator(Scrollview1)
+         .Background = Color.Black
+         .height = 1
+      End With
+   Next 
+   Dec Application.Busy
    
 End
 
-Public Sub Setup_Page_Select_ProgressNotes()
-   
-   If IsNull(Form_NotesEditor) Then 
-      With Form_NotesEditor = New FEditNotes(VBox_ProgressNotes)
-         .Init(currentConsult, True) 'True = include checkboxes
-         .Visible = True
-      End With 
-      Form_Help.Help_Show("selecting-progress-notes-for-export.html")
-   End If   
+Public Sub chkSelectedNote_Click()
    
 End
 
@@ -2155,13 +2003,11 @@ Public Sub lvwIncludedDocuments_Refresh(Inclusions As Collection)
          Endif
       Else
          inclusion!type = "result"
-         
       End If
       sString = Format(Document!date_created, "dd/mm/yyyy") & " " & Document!tag_user
       lvwIncludedDocuments.add(lvwIncludedDocuments.count, sSTring)
    Next
    lblDocuments.text = "Included Documents (" & Str(lvwIncludedDocuments.Count) & ")"
-   Print Included_Documents
    
 End
 
@@ -2195,12 +2041,13 @@ Public Function ProgressNotes_HTML_Prepare() As String
    "</TD>"
    "</TR>"
    notes = "<HTML><BODY<DIV ALIGN=CENTER><H3>Progress Notes"
+  
    If chkIncludeProgressNotesAuditTrail.Value = True Then
       notes &= " With Complete Audit Trails"
    Endif
    notes &= "</H3><Div>" 'This ensures the heading will be included in the table of contents"
-   If Not IsNull(Form_NotesEditor) Then    
-      For Each hctrl In Form_NotesEditor.lcNotes.Children
+   If rbSelectedProgressNotes.value = True Then    
+      For Each hctrl In Scrollview1.Children
          bHaveRow = False  
          If hctrl Is Hbox Then
             hb = hctrl   
@@ -2272,7 +2119,7 @@ Public Sub Notes_Checkboxes_Reset(bFlag As Boolean)
    Dim vb As VBox
    Dim bCheckboxFound As Boolean
    
-   For Each hctrl In Form_NotesEditor.lcNotes.Children
+   For Each hctrl In Scrollview1.Children
       If hctrl Is Hbox Then
          hb = hctrl   
          For Each hctrl In hb.Children
@@ -2341,4 +2188,42 @@ Public Sub checkboxExport_Click()
          chkSortResultsByUserTag.value = Last.value
    End Select
    
+End
+
+Public Sub included_Documents_Reload()
+   '------------------------------------------------
+   ' called after user deletes a document to get the 
+   ' keys back in order ie 0 > n 
+   '-------------------------------------------------
+
+   Included_Documents = modUtil.Copy_Collection_Keyed_Sequentially(Included_documents)
+   lvwIncludedDocuments_Refresh(Included_Documents)
+   
+End
+
+Public Sub lvwIncludedDocuments_Menu()
+   
+   If lvwIncludedDocuments.count Then mnuIncludedDocuments.popup 
+   
+End
+
+Public Sub mnuIncludedDocuments_Click()
+   
+   Select Case Last.tag
+      Case "remove single"
+         Included_Documents.Remove(lvwIncludedDocument_Key)
+         included_Documents_Reload  
+      Case "remove all"
+         If Message.Question("Are you sure you want to remove all these documents", "Yes", "No") = 2 Then Return
+         Included_Documents.Clear
+         lvwIncludedDocuments.Clear
+   End Select
+   
+End
+
+Public Sub lvwIncludedDocuments_Select()
+   
+   lvwIncludedDocuments.MoveCurrent
+   lvwIncludedDocument_Key = lvwIncludedDocuments.Item.Key
+   Print Included_Documents
 End

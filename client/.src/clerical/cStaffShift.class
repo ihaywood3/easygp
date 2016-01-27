@@ -1,0 +1,230 @@
+' Gambas class file
+
+' Copyright (C) 2008-2016 Dr. Richard Terry
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'----------------------------------------------------------------
+'Experimental - just seeing how to log staff's daily activities
+'----------------------------------------------------------------
+
+Private cache As Collection
+Private pk_shift As Variant
+Public summary As String
+Public fk_type As Variant
+Private shift_date As Date
+Private fk_staff As Variant
+
+Public Sub Refresh(key As String)
+   '--------------------------------------------------------------
+   ' Refreshes the cache by removing the key which effectively
+   ' means it will be re-loaded from the database when next called
+   '--------------------------------------------------------------
+   
+   cache.Remove(key)
+   
+End
+
+Public Function IsCreated() As Boolean
+   ' return flag if staff using terminal not yet logged on
+   
+   If IsNull(pk_shift) Then
+      Return False
+   Else
+      Return True
+   End If
+   
+End
+
+Public Function Get_Shift_Date() As Date
+   'returns the consult date, create consult if does not exist
+   
+   If Not IsCreated() Then
+      Create()
+   Endif
+   Return shift_date
+   
+End
+
+Public Function GetPK() As Variant
+   ' return shifts's pk
+   ' create the shift on the backend if required
+   
+   If Not IsCreated() Then
+      Create()
+   End If
+   Return pk_shift
+   
+End
+
+Public Sub Set_Date(d2 As Date)
+   
+   shift_date = d2
+   
+End
+
+Public Sub Set(fk_type2 As Variant)
+   ' set type
+   ' if shift has been saved to backend, will update the backend
+   ' otherwise just stored in RAM
+   
+   If (fk_type2 <> fk_type) And If Not IsNull(pk_shift) Then
+      ' we need to update the backend
+      modStaffShiftDBI.Activity_Update(pk_shift, fk_type2)
+     ' modStaffShiftsDBI
+      modDBConnect.CommitTrans()
+   End If
+   fk_type = fk_type2
+
+   
+End
+
+Public Sub _new(Optional bForceNew As Boolean = False, fk_staff2 As Variant = Null)
+   '------------------------------------------------------------------------------
+   ' creates a staff shift not saved to the backend until necessary
+   ' This is called by any form needing to save data related to a staff activities
+   ' When checking if shfit started today checks optionally against the notes type
+   ' -------------------------------------------------------------------
+   ' Create TABLE clerical.staff_shifts
+   ' (
+   '   pk serial primary key,
+   '   shift_date timestamp without Time zone Not Null,
+   '   fk_staff integer Not Null references admin.staff(pk)
+   '  
+   ' );
+   '--------------------------------------------------------------------
+   
+   Dim sql As String
+   Dim R As Result
+   
+   cache = New Collection
+  ' cache!shift = 
+   pk_shift = Null
+   shift_date = Null
+   If IsNull(fk_staff2) Then
+      fk_staff = modDBConnect.currentUser!fk_staff
+   Else
+      fk_staff = fk_staff2
+   Endif
+   If Not bForceNew Then
+      sql = "Select date(shift_date), pk from clerical.staff_shifts where fk_staff = " & fk_staff
+      ' If Not IsNull(iConsult_Type) Then                                                                          'if consult type defined
+      '    sql &= " AND fk_type=" & iConsult_Type                                                      'match to that type of consult
+      '    sql &= " AND  date(shift_date) = '" & Format(Now, "dd/mm/yyyy") & "'::date"             'and to today's date
+      '  Endif                                                                       '
+       sql &= " ORDER BY pk DESC limit 1"                                          'this pulls in the last consult of the requested type or the default FClinical consult
+      R = modDBConnect.exec_query(sql)
+      If Not R.count Then
+'         fk_type = iConsult_Type
+         Return                                                  'no records at all for this patient, start new consult
+      Else
+         If Format(R!date, "dd/mm/yyyy") = Format(Now, "dd/mm/yyyy") Then           'they have been seen ?is the last consult on today's date?
+            pk_shift = R!pk                                                       'Yes, then re-use the primary key of clin_consult.consult and the type
+        '    fk_type = R!fk_type
+            shift_date = R!date
+         Else
+         '   fk_type = iConsult_Type
+         Endif
+      End If
+   Else
+    '  fk_type = iConsult_Type
+   Endif
+  ' If IsNull(fk_type) Then
+  '    Log.WarningMsg("cConsult should not longer have a Null type")
+  ' Endif
+   
+End
+
+Public Function _get(key As String) As Collection
+   ' this implements the "!" notation
+   ' so currentconsult!past_history grabs the past history
+   ' it's a cache: it will get past history from the backend
+   ' if necessary
+   ' the consult's own properties can be accessed this way too:
+   ' currentconsult!pk, currentconsult!fk_type, etc.
+   
+   If Not cache.Exist(key) Then
+      cache[key] = GetData(key)
+   End If
+   Return cache[key]
+   
+End
+
+Public Sub SetData(key As String, data As Collection)
+   'temporary patch to update patients demographics, whilst the patient is loaded
+   'e.g if changed from contacts
+   
+   Select Case key
+      Case "patient"
+         cache!patient = data
+   End Select
+   
+End
+
+Private Function GetData(key As String) As Collection
+   '-----------------------------------------------------------------
+   ' this is where new cacheable values should be defined, like this
+   ' Case "name"
+   '   Return modBlahBlahDBI.GetBlah(cache!patient!pk_patient)
+   ' don't put a big load of code here: put it in the DBI module
+   '----------------------------------------------------------------
+   
+   Select Case key
+         
+      Case "whatever"
+         '     Return modMentalHealthDBI.Clozapine_Records_Get(cache!patient!fk_patient)
+      Case Else
+         ' someone needs to define a new cacheable object
+         Message.info("unknown patient data object in cConsult: " & key & "\n\n.Please notify the developers")
+   End Select
+   
+End
+
+Public Sub Set_pk(key As Variant)
+   'sets the consult pk
+   
+   pk_shift = Key
+   
+End
+
+Private Sub Create()
+   
+   Dim coll As Collection
+   
+   coll = modStaffShiftDBI.Shift_Create(fk_staff, shift_date)
+   shift_date = coll!shift_date
+   pk_shift = coll!pk
+   modDBConnect.CommitTrans()
+   
+End
+
+' expects a collection from a database query where there are
+' fields shift_date and fk_staff.
+' returns another collection, being only those rows where the
+' current user is fk_staff, and shift_date refers to date of consult
+' modified by richard on 31july14 to fulfil requirement of Ian to be
+' able to edit previous consult days
+' todays_date is hence relative!
+' Private Function Todays_Rows(original As Collection, Optional todays_date As Date) As Collection
+' 
+'    Dim r As New Collection
+'    Dim i As Variant
+'    Dim fk_staff As Variant
+' 
+'    If IsNull(todays_date) Then todays_date = Now()
+'    fk_staff = modDBConnect.currentUser!fk_staff
+'    For Each i In original
+'       If i!fk_staff = fk_staff And If modUtil.IsSameDay(i!shift_date, todays_date) Then
+'          r.Add(i, original.Key)
+'       End If
+'    Next
+'    Return r
+' 
+' End

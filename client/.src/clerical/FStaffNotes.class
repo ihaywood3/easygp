@@ -23,10 +23,11 @@ Private fk_note As Variant
 Private staff_notes_types As Collection
 Private staff_notes As Collection
 Private fk_lu_notes_type As Variant
-
+Private day_notes As Object[]
+Private cmb As ComboBox
 Public Sub _new()
-
-   Dim cmb As ComboBox
+   
+   
    
    ' With Form_Viewer = New FProgressNotesViewer(Vbox_StaffNotes)
    '    .HBox_EditMode.Visible = False 
@@ -43,7 +44,7 @@ Public Sub _new()
          staff_notes_types = modUtilGUI.LoadCombo(cmb, modUtil.Copy_Collection_Keyed_Sequentially(modStaffShiftDBI.Notes_Types_Get()), "type")
       End With
    End With
-   
+   VSplit1.Layout = Settings[Me.name & "/Vsplit1.Layout", modUtilGUI.VSplit([1, 8])]
 End
 
 Public Sub cmbNotesTypes_Click()
@@ -55,7 +56,9 @@ End
 Public Sub Init()
    
    currentShift = New CStaffShift(modDBConnect.currentUser!fk_staff)
+  
    Reload
+   
 End
 
 Public Sub ToolButton1_Click()
@@ -65,6 +68,13 @@ Public Sub ToolButton1_Click()
 End
 
 Public Sub Save()
+   
+   If IsNull(day_notes) Then day_notes = New Object[]
+ '  day_notes.Add(Note_Label(Form_Editor.teNotes.RichText))
+    day_notes.Add(New_Row(cmb.text, Form_Editor.teNotes.RichText))
+End
+
+Public Sub Save_old()
    ' CREATE TABLE clerical.staff_notes
    ' (
    '   pk serial primary key,
@@ -92,6 +102,67 @@ Public Sub Save()
    
 End
 
+Public Function New_Row(type As String, notes As String) As HBox
+   
+   Dim HB As HBox
+   Dim lbl As TextLabel
+   Dim lblNotesType As TextLabel
+   Dim hline As Separator
+   
+   With HB = New HBox(scrollview1) As "notes_row"
+   '   .border = Border.Plain
+      .AutoResize = True 
+      .Padding = 2
+    
+   End With
+   
+   With lblNotesType = New TextLabel(HB)
+      .width = 150
+      .Height = 28
+      .text = "<B>" & type & "</B>"
+      
+   End With
+   
+   With lbl = New TextLabel(HB) As "lbl"
+      .AutoResize = True 
+      .Alignment = Align.TopLeft
+      .width = scrollview1.width - lblNotesType.Width
+      .text = notes 
+     End With
+   Hb.Height = lbl.Height
+   With hline = New Separator(scrollview1)
+      .height = 1
+      .background = Color.DarkGray
+   End With
+   Return HB
+   
+End
+
+Public Function Note_Label(notes As String) As TextLabel
+   
+   Dim lbl As TextLabel
+   
+   With lbl = New TextLabel(scrollview1) As "lbl"
+      .AutoResize = True  
+      .text = notes 
+      .Border = Border.Dashed
+      .Padding = 5
+   End With
+   Return lbl
+   
+End
+
+Public Sub notes_row_Leave()
+   
+   Last.background = Color.white    
+   
+End
+
+Public Sub notes_row_Enter()
+   
+    Last.background = Color.RGB(255, 255, 223)
+End
+
 Public Sub Reload()
    
    Dim entry As Collection
@@ -99,10 +170,84 @@ Public Sub Reload()
    
    staff_notes = modStaffShiftDBI.Staff_Notes_Get()
    For Each entry In staff_notes
-       sHTML &= entry!notes  
+      sHTML &= entry!notes  
    Next
    Print sHTML
    WebView1.HTML = sHTML
    
-   
 End
+
+Public Sub VSplit1_ReSize()
+   
+   Settings[Me.name & "/Vsplit1.Layout"] = VSplit1.layout
+   
+
+End
+' -drop table  clerical.staff_shifts cascade;
+' --drop table  clerical.lu_staff_notes_type cascade;
+' --drop table clerical.staff_notes ;
+' CREATE TABLE clerical.lu_staff_notes_type
+' (
+'   pk serial NOT NULL,
+'   type text NOT NULL,
+'   CONSTRAINT lu_staff_notes_type_pkey PRIMARY KEY (pk)
+' )
+' WITH (
+'   OIDS=FALSE
+' );
+' 
+' ALTER TABLE clerical.lu_staff_notes_type   OWNER TO easygp;
+' GRANT SELECT ON TABLE clerical.lu_staff_notes_type TO staff;
+' 
+' COMMENT ON TABLE clerical.lu_staff_notes_type is 
+' 'the type of entry made by the staff';
+' 
+' INSERT INTO clerical.lu_staff_notes_type (type) values ('general notes');
+' INSERT INTO clerical.lu_staff_notes_type (type) values ('complaint');
+' INSERT INTO clerical.lu_staff_notes_type (type) values ('suggestion');
+' INSERT INTO clerical.lu_staff_notes_type (type) values ('staff meeting');
+' INSERT INTO clerical.lu_staff_notes_type (type) values ('adverse event');
+' 
+' CREATE TABLE clerical.staff_shifts
+' (
+'   pk serial primary key,
+'   shift_date timestamp without time zone NOT NULL,
+'   fk_staff integer NOT NULL references admin.staff(pk)
+'  
+' );
+' ALTER TABLE clerical.staff_shifts   OWNER TO easygp;
+' GRANT ALL ON TABLE clerical.staff_shifts TO staff;
+' 
+' comment on table clerical.staff_shifts is 'the record of the staff''s shift';
+' 
+' 
+' 
+' CREATE TABLE clerical.staff_notes
+' (
+'   pk serial primary key,
+'   fk_staff_shift integer NOT NULL references clerical.staff_shifts (pk),
+'   notes text not null,
+'   fk_lu_staff_notes_type integer NOT NULL references  clerical.lu_staff_notes_type (pk),
+'   deleted boolean DEFAULT false 
+' );
+' 
+' ALTER TABLE clerical.staff_notes   OWNER TO easygp;
+' GRANT ALL ON TABLE clerical.staff_notes TO richard;
+' create OR replace view Clerical.vwStaffNotes as (
+' 
+' select staff_shifts.pk as pk_staff_shift,
+'        staff_shifts.shift_date,
+'        staff_shifts.fk_staff,
+'        vwStaff.title,
+'        vwStaff.wholename,
+'        staff_notes.notes,
+'        lu_staff_notes_type.type
+' FROM
+'    clerical.staff_shifts
+' JOIN    admin.vwStaff on staff_shifts.fk_staff = vwSTaff.fk_staff
+' JOIN    clerical.staff_notes on staff_notes.fk_staff_shift = staff_shifts.pk
+' JOIN    clerical.lu_staff_notes_type on lu_staff_notes_type.pk = staff_notes.fk_lu_staff_notes_type
+'    );
+' 
+' ALTER TABLE clerical.vwStaffNotes   OWNER TO easygp;
+' GRANT SELECT ON TABLE clerical.vwStaffNotes TO staff;

@@ -19,16 +19,24 @@
 Private currentShift As CStaffShift
 Private Form_Viewer As FProgressNotesViewer
 Private Form_Editor As FEditor
-Private fk_note As Variant
+Private fk_staff_note As Variant
+
 Private staff_notes_types As Collection
 Private staff_notes As Collection
+Private staff_notes_selected As Collection 'the current row of saved data selected
 Private fk_lu_notes_type As Variant
-Private day_notes As Object[]
+Private day_notes As HBox[]
 Private cmb As ComboBox
 Private staff As Collection
 Private fk_lu_urgency As Variant
 Private current_status_combo As ComboBox
 Private current_status_label As Label
+Private current_notes_type_label As Label
+Private current_staff_label As Label
+Private current_pic_urgency As PictureBox
+Private current_notes As TextLabel
+Private current_transparent_Label As Label
+Private Last_Row_Clicked As HBox
 
 Public Sub _new()
    
@@ -39,17 +47,9 @@ Public Sub _new()
    With Form_Editor = New FEditor(VBox_Editor)
       .lblHeading.Visible = False
       .Hbox_WordProcessorButtons.Visible = False   
-      ' With cmb = New ComboBox(Form_Editor.Hbox_Editor) As "cmbNotesTypes"
-      '    .readonly = True
-      '    .Height = .Parent.height
-      '    .left = 0
-      '    .top = 0
-      '    .expand = True
-      '    staff_notes_types = modUtilGUI.LoadCombo(cmb, modUtil.Copy_Collection_Keyed_Sequentially(modStaffShiftDBI.Notes_Types_Get()), "type")
-      ' End With
    End With
-   Notes_Type_Make_Menu
    staff_notes_types = modUtilGUI.LoadCombo(cmbNotesType, modUtil.Copy_Collection_Keyed_Sequentially(modStaffShiftDBI.Notes_Types_Get()), "type")
+   Notes_Type_Make_Menu
    staff = modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.Staff_Get())
    modUtilGUI.LoadCombo(cmbStaff, staff, "wholename")
    lblMeasure.text = "  For Staff Member "
@@ -76,33 +76,10 @@ Public Sub Hb_Status_Leave()
    
 End
 
-Public Sub Hb_Status_Enter()
-   
-   Dim HCtrl As Control
-   Dim lbl As Label
-   Dim cb As ComboBox
-   
-   For Each Hctrl In Last.Children  
-      If hctrl Is Label Then
-         lbl = hctrl
-         lbl.Visible = False  
-         current_status_label = lbl 
-      Endif
-      If hctrl Is ComboBox Then
-         cb = hctrl
-         With cb
-            .Visible = True 
-            .Index = cb.Find(lbl.text)
-         End With
-         
-         current_status_combo = cb  
-      Endif
-   Next
-   
-End
-
 Public Sub EditArea_Clear()
    
+   Vbox_EditArea.Enabled = False 
+   modEditAreaHelpers.EditArea_Clear(Vbox_EditArea)
    cmbNotesType.Index = cmbNotesType.Find("General Note")
    fk_lu_notes_type = staff_notes_types[cmbNotesType.Index]!pk
    cmbStaff.Index = - 1
@@ -111,16 +88,6 @@ Public Sub EditArea_Clear()
    fk_lu_urgency = const.UrgencyLevelRoutine
    
 End
-
-' Public Sub StaffNote_Add_Row(type As String, notes As String, urgency_key, )
-'    
-' 
-'    If IsNull(day_notes) Then day_notes = New Object[]
-'    day_notes.Add(New_Row(cmbNotesType.text, Form_Editor.teNotes.RichText))
-'    EditArea_Clear
-'    rbUrgencyRoutine.value = True 
-'    
-' End
 
 Public Function Save() As Boolean
    '------------------------------------------------------------------------------
@@ -156,8 +123,8 @@ Public Function Save() As Boolean
    editor_notes = Replace$(editor_notes, "font-weight: 600", "font-weight: bold")
    editor_notes = Replace$(editor_notes, "-qt-paragraph-type:empty; margin-top:0px;", "")
    New_Note = New CRow  
-   If fk_note Then
-      New_Note.put_Unchanged(fk_note, "fk_note")
+   If fk_staff_note Then
+      New_Note.put_Unchanged(fk_staff_note, "fk_staff_note")
    Endif 
    New_Note!fk_staff_shift = currentShift.GetPK()
    If cmbStaff.Index <> -1 Then
@@ -166,13 +133,118 @@ Public Function Save() As Boolean
    New_Note!notes = editor_notes
    New_Note!fk_lu_staff_notes_type = fk_lu_notes_type
    New_Note!fk_lu_urgency = fk_lu_urgency
-   New_Note.Save("clerical.staff_notes", "fk_note")
+   New_Note!completed = CBool(chkCompleted.value)
+   If Trim(txtCompletionNotes.text) <> "" Then
+      New_Note!completion_notes = Trim(txtCompletionNotes.text)
+   Else
+      New_Note!completion_notes = Null
+   Endif
+   New_Note.Save("clerical.staff_notes", "fk_staff_note")
    modDBConnect.CommitTrans
    Reload() 
    
 End
 
 Public Sub New_Row(row_data As Collection)
+   
+   Dim HB As HBox
+   Dim lbl As TextLabel
+   Dim lblNotesType As Label
+   Dim lblStaff As Label
+   Dim hline As Separator
+   Dim cmbStatus As ComboBox
+   Dim urgency_pic As PictureBox
+   Dim HB_Status As HBox
+   Dim lblStatus As Label
+   Dim lblTransparent As Label
+   Dim Log_date As Label
+   
+   If IsNull(day_notes) Then day_notes = New HBox[]
+   With HB = New HBox(scrollview1) As "notes_row"
+      .AutoResize = True 
+      .Padding = 2
+      .tag = row_data
+      .Background = Color.White
+   End With
+   
+   With urgency_pic = New PictureBox(HB) As "picUrgency"
+      .height = 28
+      .Width = 28
+      .Alignment = Align.TopLeft
+      Select Case row_data!fk_lu_urgency
+         Case 1
+            .Picture = Picture.Load("icons/12/green_dot.png")
+         Case 2
+            .Picture = Picture.Load("icons/12/amber_dot.png")
+         Case 3
+            .Picture = Picture.Load("icons/12/red_dot.png")
+      End Select
+   End With
+   With Log_date = New Label(HB)
+      .text = Format(row_data!shift_date, "dd/mm/yyyy")
+      .height = 28
+      .width = 80 
+      .Alignment = Align.TopLeft
+   End With
+   With lblNotesType = New Label(HB) As "lblNotesType"
+      .width = 150
+      .Height = 28
+      .text = row_data!type
+      .Alignment = Align.TopLeft
+   End With
+   With lblStaff = New Label(HB) As "lblStaff"
+      .width = 150
+      .height = 28  
+      .text = row_data!staff_destination_title & " " & row_data!staff_destination_wholename
+      .Alignment = Align.TopLeft
+   End With
+   With lbl = New TextLabel(HB) As "lblNotes"
+      .AutoResize = True 
+      .Alignment = Align.TopLeft
+      .width = scrollview1.width - lblNotesType.Width
+      .text = row_data!notes 
+      .Expand = True
+   End With
+   Hb.Height = lbl.Height
+   With HB_Status = New HBox(HB) As "HBox_Status"
+      .height = 28 
+      .width = 100
+   End With
+   With lblStatus = New Label(HB_Status) As "lblStatus"
+      If row_data!completed = True Then
+         .text = "Completed"
+      Else
+         .text = "Logged"
+      Endif
+      .Expand = True 
+      .Alignment = Align.TopLeft
+   End With
+   With cmbStatus = New ComboBox(HB_Status) As "cmbStatus"
+      .Add("Logged")
+      .Add("Completed")
+      .Border = Border.None
+      .ReadOnly = True  
+      .Visible = False  
+      .Expand = True 
+   End With
+   With hline = New Separator(scrollview1)
+      .height = 1
+      .background = Color.DarkGray
+   End With
+   With lblTransparent = New Label(HB) As "lblTransparent"
+      .Ignore = True   
+      .Transparent = True   
+      .top = 2
+      .left = 2
+      .width = scrollview1.Width - 2
+      .Height = Hb.Height
+      .Visible = True
+   End With
+   Wait
+   
+End
+
+Public Sub New_Row_old(row_data As Collection)
    
    Dim HB As HBox
    Dim lbl As TextLabel
@@ -183,13 +255,17 @@ Public Sub New_Row(row_data As Collection)
    Dim urgency_pic As PictureBox
    Dim HB_Status As HBox
    Dim lblStatus As Label
+   Dim lblTransparent As Label
    
-   If IsNull(day_notes) Then day_notes = New Object[]
+   If IsNull(day_notes) Then day_notes = New HBox[]
    With HB = New HBox(scrollview1) As "notes_row"
       .AutoResize = True 
       .Padding = 2
+      .tag = row_data
+      .Background = Color.White
    End With
-   With urgency_pic = New PictureBox(HB)
+   
+   With urgency_pic = New PictureBox(HB) As "picUrgency"
       .height = 28
       .Width = 28
       .Alignment = Align.Center
@@ -207,13 +283,13 @@ Public Sub New_Row(row_data As Collection)
       .Height = 28
       .text = "<B>" & row_data!type & "</B>"
    End With
-   With lblStaff = New Label(HB)
+   With lblStaff = New Label(HB) As "lblStaff"
       .width = 150
       .height = 28  
       .text = row_data!staff_destination_title & " " & row_data!staff_destination_wholename
       .Alignment = Align.Top
    End With
-   With lbl = New TextLabel(HB) As "lbl"
+   With lbl = New TextLabel(HB) As "lblNotes"
       .AutoResize = True 
       .Alignment = Align.TopLeft
       .width = scrollview1.width - lblNotesType.Width
@@ -221,19 +297,21 @@ Public Sub New_Row(row_data As Collection)
       .Expand = True
    End With
    Hb.Height = lbl.Height
-   With HB_Status = New HBox(HB) As "Hb_Status"
+   With HB_Status = New HBox(HB) As "HBox_Status"
       .height = 28 
       .width = 100
    End With
-   With lblStatus = New Label(HB_Status)
-      .text = "Logged"
+   With lblStatus = New Label(HB_Status) As "lblStatus"
+      If row_data!completed = True Then
+         .text = "Completed"
+      Else
+         .text = "Logged"
+      Endif
       .Expand = True 
    End With
    With cmbStatus = New ComboBox(HB_Status) As "cmbStatus"
       .Add("Logged")
       .Add("Completed")
-      '  .height = 28 
-      ' .width = 100
       .Border = Border.None
       .ReadOnly = True  
       .Visible = False  
@@ -243,6 +321,28 @@ Public Sub New_Row(row_data As Collection)
       .height = 1
       .background = Color.DarkGray
    End With
+   With lblTransparent = New Label(HB) As "lblTransparent"
+      .Ignore = True   
+      .Transparent = True   
+      .top = 2
+      .left = 2
+      .width = scrollview1.Width - 2
+      .Height = Hb.Height
+      .Visible = True
+   End With
+   Wait
+   
+End
+
+Public Sub lblNotes_Menu()
+   
+   mnuOfficeLog.Popup 
+   
+End
+
+Public Sub lblNotesType_Menu()
+   
+   mnuOfficeLog.Children[2].Popup
    
 End
 
@@ -260,15 +360,57 @@ Public Function Note_Label(notes As String) As TextLabel
    
 End
 
-Public Sub notes_row_Leave()
+Public Sub lblTransparent_mousedown()
    
-   Last.background = Color.white    
+   Try Last_Row_Clicked.Background = Color.White
+   Last.Parent.background = Color.RGB(215, 232, 240) 'Color.LightBackground
+   Note_Display
+   Last_Row_Clicked = Last.Parent 
    
 End
 
-Public Sub notes_row_Enter()
+Public Sub lblTransparent_Menu()
    
-   Last.background = Color.RGB(255, 255, 223)
+   mnuOfficeLog.Popup
+   
+End
+
+Public Sub Notes_Row_Enter()
+   
+   Dim HCtrl As Control
+   Dim lbl As Label
+   Dim cb As ComboBox
+   Dim HB As HBox
+   Dim TL As TextLabel
+   
+   '  Last.background = Color.RGB(255, 255, 223)
+   staff_notes_selected = Last.tag
+   
+   For Each Hctrl In Last.Children  
+      Print hctrl.Name
+      Select Case Hctrl.Name
+         Case "lblTransparent"
+            current_transparent_Label = Hctrl
+         Case "picUrgency"
+            current_pic_urgency = Hctrl
+         Case "lblNotesType"
+            current_notes_type_label = Hctrl
+         Case "lblStaff"
+            current_staff_label = Hctrl
+         Case "lblNotes"
+            current_notes = hctrl
+         Case "HBox_Status"
+            HB = Hctrl
+            For Each hctrl In HB.Children
+               Select Case hctrl.Name
+                  Case "lblStatus"
+                     current_status_label = lbl
+                  Case "cmbStatus"
+                     current_status_combo = Hctrl
+               End Select
+            Next
+      End Select
+   Next
    
 End
 
@@ -368,6 +510,7 @@ Public Sub EditArea_Buttons_Click()
    Select Case Last.tag
       Case "new"
          EditArea_Clear
+         Vbox_EditArea.Enabled = True  
       Case "save"
          Save()
          EditArea_Clear
@@ -388,7 +531,7 @@ Public Sub rbDegreeUrgency_Click()
 End
 
 Public Sub EditArea_Combo_Click()
-
+   
    Print Last.tag
    Select Case Last.tag
       Case "notes type"
@@ -425,6 +568,35 @@ End
 
 Public Sub Note_Edit()
    
+   VBox_EditArea.Enabled = True  
+   Form_Editor.teNotes.SetFocus 
+   
+End
+
+Public Sub Note_Display()
+   
+   EditArea_Clear
+   fk_staff_note = staff_notes_selected!pk_staff_notes
+   cmbNotesType.Index = cmbNotesType.Find(staff_notes_selected!type)
+   cmbStaff.index = cmbStaff.Find(staff_notes_selected!staff_destination_wholename)
+   With Form_Editor
+      .bExit = True  
+      .teNotes.RichText = staff_notes_selected!notes
+      .bExit = False 
+   End With
+   Select Case staff_notes_selected!fk_lu_urgency
+      Case const.UrgencyLevelRoutine
+         rbUrgencyRoutine.Value = True  
+      Case const.UrgencyLevelModerate  
+         rbUrgencyModerate.value = True 
+      Case const.UrgencyLevelUrgent
+         rbUrgencyUrgent.value = True   
+   End Select
+   chkCompleted.value = staff_notes_selected!completed   
+   If Not IsNull(staff_notes_selected!completion_notes) Then
+      txtCompletionNotes.text = staff_notes_selected!completion_notes
+   Endif
+   
 End
 
 Public Sub Note_Change_Entry_Type()
@@ -441,9 +613,27 @@ End
 
 ' Add's types to the popup menu over a note or entry made by staff
 Public Sub Notes_Type_Make_Menu()
-   Dim mnu As New Menu(mnuOfficeLog)
-      
+   
+   Dim mnu As Menu
+   Dim type As Collection
+   
+   For Each type In staff_notes_types
+      With mnu = New Menu(mnuOfficeLog_ChangeEntrytype) As "mnuChangeOfficeType"
+         .Text = type!type
+         .tag = type
+         .Visible = True   
+      End With
+   Next
+   
 End
+
+Public Sub mnuChangeOfficeType_Click()
+   
+   Print "You clicked", Last.tag 
+   current_notes_type_label.text = Last.tag!type
+   
+End
+
 ' 
 ' --drop table  clerical.staff_shifts cascade;
 ' --drop table  clerical.lu_staff_notes_type cascade;
@@ -473,6 +663,35 @@ End
 ' INSERT INTO clerical.lu_staff_notes_type (type) values ('Document Needed');
 ' INSERT INTO clerical.lu_staff_notes_type (type) values ('Staff Meeting Agenda Item');
 ' 
+' 
+' --drop table  clerical.staff_shifts cascade;
+' --drop table  clerical.lu_staff_notes_type cascade;
+' --drop table clerical.staff_notes ;
+' CREATE TABLE clerical.lu_staff_notes_type
+' (
+'   pk serial NOT NULL,
+'   type text NOT NULL,
+'   CONSTRAINT lu_staff_notes_type_pkey PRIMARY KEY (pk)
+' )
+' WITH (
+'   OIDS=FALSE
+' );
+' 
+' ALTER TABLE clerical.lu_staff_notes_type   OWNER TO easygp;
+' GRANT SELECT ON TABLE clerical.lu_staff_notes_type TO staff;
+' 
+' COMMENT ON TABLE clerical.lu_staff_notes_type is 
+' 'the type of entry made by the staff';
+' 
+' INSERT INTO clerical.lu_staff_notes_type (type) values ('General Note');
+' INSERT INTO clerical.lu_staff_notes_type (type) values ('Complaint Received');
+' INSERT INTO clerical.lu_staff_notes_type (type) values ('Referral Needed');
+' INSERT INTO clerical.lu_staff_notes_type (type) values ('Make Phone Call');
+' INSERT INTO clerical.lu_staff_notes_type (type) values ('Scripts Needed');
+' INSERT INTO clerical.lu_staff_notes_type (type) values ('Call Patient');
+' INSERT INTO clerical.lu_staff_notes_type (type) values ('Document Needed');
+' INSERT INTO clerical.lu_staff_notes_type (type) values ('For Staff Meeting');
+' 
 ' CREATE TABLE clerical.staff_shifts
 ' (
 '   pk serial primary key,
@@ -494,6 +713,8 @@ End
 '   fk_staff_destination integer default null,
 '   fk_lu_urgency integer not null references common.lu_urgency(pk),
 '   fk_lu_staff_notes_type integer NOT NULL references  clerical.lu_staff_notes_type (pk),
+'   completed boolean default false,
+'   completion_notes text default null,
 '   deleted boolean DEFAULT false 
 ' );
 ' 
@@ -501,7 +722,7 @@ End
 ' GRANT ALL ON TABLE clerical.staff_notes TO richard;
 ' 
 ' create OR replace view Clerical.vwStaffNotes as (
-' select staff_shifts.pk as pk_staff_shift,
+' select staff_shifts.pk as fk_staff_shift,
 '        staff_shifts.shift_date,
 '        staff_shifts.fk_staff,
 '        vwStaff.title,
@@ -512,6 +733,8 @@ End
 '        staff_notes.fk_lu_urgency,
 '        staff_notes.fk_lu_staff_notes_type,
 '        staff_notes.deleted as staff_note_deleted,
+'        staff_notes.completed,
+'        staff_notes.completion_notes,
 '        lu_staff_notes_type.type,
 '        vwStaff1.wholename as staff_destination_wholename,
 '        vwStaff1.title as staff_destination_title
@@ -525,39 +748,9 @@ End
 ' 
 ' ALTER TABLE clerical.vwStaffNotes   OWNER TO easygp;
 ' GRANT SELECT ON TABLE clerical.vwStaffNotes TO staff;
-' 
-' -- added staff status to the admin.vwStaff
-' CREATE OR REPLACE VIEW admin.vwstaff AS 
-'  SELECT roles.role,
-'     staff.fk_person,
-'     staff.logon_name,
-'     staff.fk_role,
-'     staff.pk,
-'     staff.pk AS fk_staff,
-'     persons.firstname,
-'     persons.surname,
-'     (persons.firstname || ' '::text) || persons.surname AS wholename,
-'     persons.salutation,
-'     persons.fk_title,
-'     lu_title.title,
-'     staff.qualifications,
-'     persons.surname_normalised,
-'     employees_numbers.provider_number,
-'     data_numbers_persons.prescriber_number,
-'     employees_numbers.australian_business_number,
-'     data_numbers_persons.hpii,
-'     staff.fk_status,
-'     lu_employee_status.status
-'    FROM admin.staff staff
-'      JOIN admin.lu_staff_roles roles ON staff.fk_role = roles.pk
-'      JOIN contacts.data_persons persons ON staff.fk_person = persons.pk
-'      JOIN contacts.lu_title ON persons.fk_title = lu_title.pk
-'      LEFT JOIN contacts.data_numbers_persons ON staff.fk_person = data_numbers_persons.fk_person
-'      LEFT JOIN contacts.data_numbers employees_numbers ON staff.fk_person = employees_numbers.fk_person
-'      JOIN contacts.lu_employee_status ON staff.fk_status = lu_employee_status.pk;
-'      
-' ALTER TABLE admin.vwstaff   OWNER TO easygp;
-' GRANT ALL ON TABLE admin.vwstaff TO staff;
-' 
-' update db.lu_version set lu_minor = 484;
-' 
+
+Public Sub ScrollView1_Leave()
+   
+   ' staff_notes_selected = Null   
+   
+End

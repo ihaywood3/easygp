@@ -485,74 +485,6 @@ Public Function Staff_Create_Postgres_User(old_data As Collection, pk_view As Va
    
 End
 
-Public Function Staff_Postres_User_Save_old(staff As CRow, password As String, old_data As Collection) As Boolean
-   '-------------------------------------------------------------------------------
-   'Saves or changes a staff member with particular role returns True if successful
-   'easygp the only one who can add new staff members
-   '(unless of course you are a superuser!)
-   '-------------------------------------------------------------------------------
-   
-   Dim $Result As Result
-   Dim sql As String
-   Dim role As String
-   Dim extras As String = ""
-   Dim sMsg As String
-   
-   Select Case staff!fk_role
-      Case const.StaffRole_SysAdmin
-         role = "easygp"
-         extras = "CREATEROLE"
-      Case Else
-         role = "staff"
-   End Select
-   
-   If IsNull(staff!fk_staff) Then
-      '----------------------------------------------------
-      'New staff member? add as user with selected password
-      '----------------------------------------------------
-      If Not modDBConnect.Role_Check_If_Exists(staff!logon_name) Then
-         sql = "CREATE USER  \"" & staff!logon_name & "\" " & extras & " PASSWORD $$" & password & "$$ IN ROLE " & role
-         If Not (IsNull(staff!logon_date_to)) Then
-            sql &= " VALID UNTIL '" & Format$(staff!logon_date_to, "dd/mm/yyyy") & "'"
-         End If
-         $Result = modDBConnect.exec_query(sql)
-         sql = "GRANT staff to \"" & staff!logon_name & "\""
-         $Result = modDBConnect.exec_query(sql)
-      End If
-   Else
-      If staff!logon_name <> Old_Data!logon_name Then                                'has the postgres role aka logon name of user been changed?
-         sql = "ALTER ROLE \"&1\" RENAME TO \"&2\""                                   'if so - rename the postgres user
-         sql = Subst$(sql, Old_Data!logon_name, staff!logon_name)
-         modDBConnect.exec_query(sql)
-      Else
-         $Result = modDBConnect.exec_query("select 1 from pg_roles where rolname=$$" & staff!logon_name & "$$")  'check if logon name still exists
-         If Not $Result.count Then                                                                               'trust me, this has happened
-            sMsg = "Some idiot has deleted this user's role from your postgres installation.\n\n"
-            "This is really serious and you will have to talk to your system administrator.\n\nMmmmmm..... hope you are not the sys admin!!!!\n\n"
-            "Anway, EasyGP can't save this staff members changes and will now reload your staff list."
-            Message.title = "Major Problem Encountered"
-            Message.Warning(sMsg)
-            Return
-         Endif
-      End If
-      If staff!logon_date_to <> Old_Data!logon_date_to Then
-         sql = "ALTER ROLE \"&1\" VALID UNTIL '&2'"
-         sql = Subst$(sql, staff!logon_name, Format$(staff!logon_date_to, "dd/mm/yyyy"))
-         modDBConnect.exec_query(sql)            'GRANT Staff to DB;
-      Endif
-      If password <> "" Then
-         '  If staff.Exist("password") And If staff!password <> "" Then
-         sql = "ALTER ROLE \"&1\" WITH PASSWORD '&2'"
-         sql = Subst$(sql, staff!logon_name, password)
-         modDBConnect.exec_query(sql)
-      Endif
-   End If
-   Return True
-Catch
-   Return False
-   
-End
-
 Public Function Staff_Postres_User_Save(staff As CRow, password As String, old_data As Collection) As Boolean
    '-------------------------------------------------------------------------------
    'Saves or changes a staff member with particular role returns True if successful
@@ -579,10 +511,11 @@ Public Function Staff_Postres_User_Save(staff As CRow, password As String, old_d
       If Not $Result.count Then                                                                                   'trust me, this has happened
          sMsg = "Some idiot has deleted this user's role from your postgres installation.\n\n"
          "This is really serious and you will have to talk to your system administrator.\n\nMmmmmm..... hope you are not the sys admin!!!!\n\n"
-         "Anway, EasyGP can't save this staff members changes and will now reload your staff list."
+         "Anway, EasyGP can't save this staff members details like their logon_name and validity dates.\n\n"
+         "Do you wish to continue to save the rest of  your changes anyway?"
          Message.title = "Major Problem Encountered"
-         Message.Warning(sMsg)
-         Return                                                                                                'exit with false flag
+         If Message.Warning(sMsg, "Yes", "No") = 1 Then Return True                                           'allow save anyway
+         Return                                                                                               'not happy? exit with false flag
       Endif
       If staff!logon_name <> Old_Data!logon_name Then                                'has the postgres role aka logon name of user been changed?
          sql = "ALTER ROLE \"&1\" RENAME TO \"&2\""                                   'if so - rename the postgres user
@@ -962,7 +895,7 @@ Public Function Clinics_Get() As Collection
    
 End
 
-Public Function Staff_Get(Optional surname As String = "", Optional fk_staff_type As Variant = Null, inclinics As Boolean = True) As Collection
+Public Function Staff_Get(Optional surname As String = "", Optional fk_staff_type As Variant = Null, inclinics As Boolean = True, Optional bExludeInactive As Boolean = True, Optional bExclude_left_organisation As Boolean = True) As Collection
    '----------------------------------------------------------------------------------
    'Return a collection of staff(or member)  in our organisation. This is not the same
    'as employees in an organisation but specific to the practice running EasyGP
@@ -974,6 +907,56 @@ Public Function Staff_Get(Optional surname As String = "", Optional fk_staff_typ
    Dim coll As New Collection
    Dim i As Collection
    Dim allstaff As Collection
+   Dim sql As String
+   Dim sql_exclusions As String
+   
+   If bExludeInactive Then
+      sql_exclusions = " WHERE  fk_status <> " & const.StaffStatus_InActive
+   Endif
+   If bExclude_left_organisation Then
+      If Sql_exclusions <> "" Then
+         sql_exclusions &= " AND "
+      Else
+         sql_exclusions = "WHERE "
+      End If   
+      sql_exclusions &= " fk_status <> " & const.StaffStatus_LeftOrganisation
+   Endif
+   If inclinics Then
+      If IsNull(staff) Then
+         sql = "select * from admin.vwstaffinclinics " & sql_exclusions 
+         staff = modDBConnect.exec_query_collection(sql)
+       Endif
+      allstaff = staff
+   Else
+      sql = "select * from admin.vwstaff" & sql_exclusions
+      allstaff = modDBConnect.exec_query_collection(sql)
+   Endif
+   
+   For Each i In allstaff
+      If IsNull(fk_staff_type) Or If fk_staff_type = i!fk_lu_staff_type Then
+         If surname = "" Or If Left$(Lower$(i!surname), Len(surname)) = Lower$(surname) Then
+            coll[allstaff.Key] = i
+         Endif
+      Endif
+   Next
+   
+   Return coll
+   
+End
+
+Public Function Staff_Get_old(Optional surname As String = "", Optional fk_staff_type As Variant = Null, inclinics As Boolean = True, Optional bExludeInactive As Boolean = True, Optional bExclude_left_organisation As Boolean = True) As Collection
+   '----------------------------------------------------------------------------------
+   'Return a collection of staff(or member)  in our organisation. This is not the same
+   'as employees in an organisation but specific to the practice running EasyGP
+   '----------------------------------------------------------------------------------
+   ' this query gets done a lot: so cache in RAM and query on the cache to flush cache
+   ' use staff_flush_cache
+   '----------------------------------------------------------------------------------
+   
+   Dim coll As New Collection
+   Dim i As Collection
+   Dim allstaff As Collection
+   Dim sql As String
    
    If inclinics Then
       If IsNull(staff) Then

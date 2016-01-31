@@ -25,9 +25,12 @@ Private staff_notes As Collection
 Private fk_lu_notes_type As Variant
 Private day_notes As Object[]
 Private cmb As ComboBox
+Private staff As Collection
+Private fk_lu_urgency As Variant
+Private current_status_combo As ComboBox
+Private current_status_label As Label
+
 Public Sub _new()
-   
-   
    
    ' With Form_Viewer = New FProgressNotesViewer(Vbox_StaffNotes)
    '    .HBox_EditMode.Visible = False 
@@ -35,106 +38,213 @@ Public Sub _new()
    ' End With
    With Form_Editor = New FEditor(VBox_Editor)
       .lblHeading.Visible = False
-      With cmb = New ComboBox(Form_Editor.Hbox_Editor) As "cmbNotesTypes"
-         .readonly = True
-         .Height = .Parent.height
-         .left = 0
-         .top = 0
-         .expand = True
-         staff_notes_types = modUtilGUI.LoadCombo(cmb, modUtil.Copy_Collection_Keyed_Sequentially(modStaffShiftDBI.Notes_Types_Get()), "type")
-      End With
+      .Hbox_WordProcessorButtons.Visible = False   
+      ' With cmb = New ComboBox(Form_Editor.Hbox_Editor) As "cmbNotesTypes"
+      '    .readonly = True
+      '    .Height = .Parent.height
+      '    .left = 0
+      '    .top = 0
+      '    .expand = True
+      '    staff_notes_types = modUtilGUI.LoadCombo(cmb, modUtil.Copy_Collection_Keyed_Sequentially(modStaffShiftDBI.Notes_Types_Get()), "type")
+      ' End With
    End With
+   staff_notes_types = modUtilGUI.LoadCombo(cmbNotesType, modUtil.Copy_Collection_Keyed_Sequentially(modStaffShiftDBI.Notes_Types_Get()), "type")
+   staff = modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.Staff_Get())
+   modUtilGUI.LoadCombo(cmbStaff, staff, "wholename")
+   lblMeasure.text = "  For Staff Member "
+   modEditAreaHelpers.Resize_labels(Vbox_EditArea, lblMeasure) 
    VSplit1.Layout = Settings[Me.name & "/Vsplit1.Layout", modUtilGUI.VSplit([1, 8])]
+   
 End
 
-Public Sub cmbNotesTypes_Click()
-   
-   fk_lu_notes_type = staff_notes_types[Last.index]!pk
-   
-End
 
 Public Sub Init()
    
    currentShift = New CStaffShift(modDBConnect.currentUser!fk_staff)
-  
+   
    Reload
    
 End
 
-Public Sub ToolButton1_Click()
+Public Sub Hb_Status_Leave()
    
-   Save()
+   current_status_combo.Visible = False   
+   With current_status_label
+      .Visible = True 
+      .text = current_status_combo.Text
+   End With
    
 End
 
-Public Sub Save()
+Public Sub Hb_Status_Enter()
    
-   If IsNull(day_notes) Then day_notes = New Object[]
- '  day_notes.Add(Note_Label(Form_Editor.teNotes.RichText))
-    day_notes.Add(New_Row(cmb.text, Form_Editor.teNotes.RichText))
+   Dim HCtrl As Control
+   Dim lbl As Label
+   Dim cb As ComboBox
+   
+   For Each Hctrl In Last.Children  
+      If hctrl Is Label Then
+         lbl = hctrl
+         lbl.Visible = False  
+         current_status_label = lbl 
+      Endif
+      If hctrl Is ComboBox Then
+         cb = hctrl
+         With cb
+            .Visible = True 
+            .Index = cb.Find(lbl.text)
+         End With
+         
+         current_status_combo = cb  
+      Endif
+   Next
+   
 End
 
-Public Sub Save_old()
+Public Sub EditArea_Clear()
+   
+   cmbNotesType.Index = cmbNotesType.Find("General Note")
+   fk_lu_notes_type = staff_notes_types[cmbNotesType.Index]!pk
+   cmbStaff.Index = - 1
+   Form_Editor.teNotes.RichText = ""
+   rbUrgencyRoutine.Value = True 
+   fk_lu_urgency = const.UrgencyLevelRoutine
+   
+End
+
+' Public Sub StaffNote_Add_Row(type As String, notes As String, urgency_key, )
+'    
+' 
+'    If IsNull(day_notes) Then day_notes = New Object[]
+'    day_notes.Add(New_Row(cmbNotesType.text, Form_Editor.teNotes.RichText))
+'    EditArea_Clear
+'    rbUrgencyRoutine.value = True 
+'    
+' End
+
+Public Function Save() As Boolean
+   '------------------------------------------------------------------------------
+   'Saves another row of notes for the staff member
+   '------------------------------------------------------------------------------
    ' CREATE TABLE clerical.staff_notes
    ' (
-   '   pk serial primary key,
-   '   fk_staff_shift integer NOT NULL references clerical.staff_shifts (pk),
-   '   notes text not null,
-   '   fk_lu_staff_notes_type integer NOT NULL references  clerical.lu_staff_notes_type (pk),
-   '   deleted boolean DEFAULT false 
+   '   pk serial NOT NULL,
+   '   fk_staff_shift integer NOT NULL,
+   '   notes text NOT NULL,
+   '   fk_staff_destination integer,
+   '   fk_lu_staff_notes_type integer NOT NULL,
+   '   deleted boolean DEFAULT false,
+   '   CONSTRAINT staff_notes_pkey PRIMARY KEY (pk),
+   '   CONSTRAINT staff_notes_fk_lu_staff_notes_type_fkey FOREIGN KEY (fk_lu_staff_notes_type)
+   '       REFERENCES clerical.lu_staff_notes_type (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT staff_notes_fk_staff_shift_fkey FOREIGN KEY (fk_staff_shift)
+   '       REFERENCES clerical.staff_shifts (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
    ' );
+   '-------------------------------------------------------------------------
    
-   Dim Staff_Notes As CRow 
+   Dim New_Note As CRow 
    Dim editor_notes As String = Form_Editor.teNotes.RichText
+   
+   If Form_Editor.Vbox_ConsultNotes.Padding = 0 Then Return
+   If Not Notes_Valid() Then Return
    
    editor_notes = Replace$(editor_notes, "font-weight: 600", "font-weight: bold")
    editor_notes = Replace$(editor_notes, "-qt-paragraph-type:empty; margin-top:0px;", "")
-   Staff_Notes = New CRow  
+   New_Note = New CRow  
    If fk_note Then
-      Staff_Notes.put_Unchanged(fk_note, "fk_note")
+      New_Note.put_Unchanged(fk_note, "fk_note")
    Endif 
-   Staff_Notes!fk_staff_shift = currentShift.GetPK()
-   Staff_Notes!notes = editor_notes
-   Staff_Notes!fk_lu_staff_notes_type = fk_lu_notes_type
-   Staff_Notes.Save("clerical.staff_notes", "fk_note")
+   New_Note!fk_staff_shift = currentShift.GetPK()
+   If cmbStaff.Index <> -1 Then
+      New_Note!fk_staff_destination = staff[cmbStaff.index]!fk_staff
+   Endif
+   New_Note!notes = editor_notes
+   New_Note!fk_lu_staff_notes_type = fk_lu_notes_type
+   New_Note!fk_lu_urgency = fk_lu_urgency
+   New_Note.Save("clerical.staff_notes", "fk_note")
    modDBConnect.CommitTrans
    Reload() 
+ 
    
 End
 
-Public Function New_Row(type As String, notes As String) As HBox
+Public Sub New_Row(row_data As Collection)
    
    Dim HB As HBox
    Dim lbl As TextLabel
    Dim lblNotesType As TextLabel
+   Dim lblStaff As Label
    Dim hline As Separator
+   Dim cmbStatus As ComboBox
+   Dim urgency_pic As PictureBox
+   Dim HB_Status As HBox
+   Dim lblStatus As Label
    
+   If IsNull(day_notes) Then day_notes = New Object[]
    With HB = New HBox(scrollview1) As "notes_row"
-   '   .border = Border.Plain
       .AutoResize = True 
       .Padding = 2
-    
    End With
-   
-   With lblNotesType = New TextLabel(HB)
+   With urgency_pic = New PictureBox(HB)
+      .height = 28
+      .Width = 28
+      .Alignment = Align.Center
+      Select Case row_data!fk_lu_urgency
+         Case 1
+            .Picture = Picture.Load("icons/12/green_dot.png")
+         Case 2
+            .Picture = Picture.Load("icons/12/amber_dot.png")
+         Case 3
+            .Picture = Picture.Load("icons/12/red_dot.png")
+      End Select
+   End With
+   With lblNotesType = New TextLabel(HB) As "lblNotesType"
       .width = 150
       .Height = 28
-      .text = "<B>" & type & "</B>"
-      
+      .text = "<B>" & row_data!type & "</B>"
    End With
-   
+   With lblStaff = New Label(HB)
+      .width = 150
+      .height = 28  
+      .text = row_data!staff_destination_title & " " & row_data!staff_destination_wholename
+      .Alignment = Align.Top
+   End With
    With lbl = New TextLabel(HB) As "lbl"
       .AutoResize = True 
       .Alignment = Align.TopLeft
       .width = scrollview1.width - lblNotesType.Width
-      .text = notes 
-     End With
+      .text = row_data!notes 
+      .Expand = True
+   End With
    Hb.Height = lbl.Height
+   With HB_Status = New HBox(HB) As "Hb_Status"
+      .height = 28 
+      .width = 100
+   End With
+   With lblStatus = New Label(HB_Status)
+      .text = "Logged"
+      .Expand = True 
+   End With
+   With cmbStatus = New ComboBox(HB_Status) As "cmbStatus"
+      .Add("Logged")
+      .Add("Completed")
+      '  .height = 28 
+      ' .width = 100
+      .Border = Border.None
+      .ReadOnly = True  
+      .Visible = False  
+      .Expand = True 
+   End With
    With hline = New Separator(scrollview1)
       .height = 1
       .background = Color.DarkGray
    End With
-   Return HB
+
    
 End
 
@@ -160,7 +270,8 @@ End
 
 Public Sub notes_row_Enter()
    
-    Last.background = Color.RGB(255, 255, 223)
+   Last.background = Color.RGB(255, 255, 223)
+   
 End
 
 Public Sub Reload()
@@ -169,19 +280,21 @@ Public Sub Reload()
    Dim sHTML As String
    
    staff_notes = modStaffShiftDBI.Staff_Notes_Get()
+   scrollview1.Children.Clear
    For Each entry In staff_notes
       sHTML &= entry!notes  
+      new_row(entry)
    Next
    Print sHTML
-   WebView1.HTML = sHTML
-   
+  ' WebView1.HTML = sHTML
+   EditArea_Clear
+ 
 End
 
 Public Sub VSplit1_ReSize()
    
    Settings[Me.name & "/Vsplit1.Layout"] = VSplit1.layout
    
-
 End
 ' -drop table  clerical.staff_shifts cascade;
 ' --drop table  clerical.lu_staff_notes_type cascade;
@@ -251,3 +364,87 @@ End
 ' 
 ' ALTER TABLE clerical.vwStaffNotes   OWNER TO easygp;
 ' GRANT SELECT ON TABLE clerical.vwStaffNotes TO staff;
+
+Public Sub EditArea_Buttons_Click()
+   
+   Select Case Last.tag
+      Case "new"
+         EditArea_Clear
+      Case "save"
+         Save()
+         EditArea_Clear
+   End Select
+   
+End
+
+Public Function Notes_Valid() As Boolean
+   
+   Return True 
+   
+End
+
+Public Sub rbDegreeUrgency_Click()
+   
+   fk_lu_urgency = Last.tag   
+   
+End
+
+Public Sub EditArea_Combo_Click()
+   Print Last.tag
+   Select Case Last.tag
+      Case "notes type"
+           fk_lu_notes_type = staff_notes_types[Last.index]!pk
+   End Select
+
+End
+
+Public Sub lblNotes_Type_menu()
+   
+  mnuOfficeLog.Popup() 
+   
+End
+
+Public Sub mnuOfficeLog_Click()
+   
+  Select Case Last.tag
+  Case "edit"
+       Note_Edit
+  Case "change entry type"
+       Note_Change_Entry_Type
+  Case "change staff allocated"
+        Note_Change_Staff_Allocated
+  Case "mark completed"
+  Case "mark logged"
+  Case "delete"
+        Note_Delete
+  Case "print"
+  Case "help"
+      modUtilGUI.NotImplemented("Help for this section")
+  End Select   
+   
+End
+
+Public Sub Note_Edit()
+   
+   
+   
+End
+
+Public Sub Note_Change_Entry_Type()
+   
+   
+   
+End
+
+Public Sub Note_Change_Staff_Allocated()
+   
+   
+   
+End
+
+
+Public Sub Note_Delete()
+   
+   
+   
+End

@@ -112,11 +112,12 @@ Public Sub Init()
    Reset_Fonts(VBox_EditArea_Left)
    Reset_Fonts(Vbox_EditArea_Right)
    With cvwStaffMembers
-      .Columns.count = 7
+      .Columns.count = 8
       .Columns[0].text = "Name"
       .Columns[1].text = "Role"
       .Columns[2].text = "Occupation"
       .Columns[4].text = "Location"
+      .Columns[7].text = "Status"
    End With
    cvwPersonsAddresses.Columns.count = 3
    With form_contacts_person = New FCommunicationData(VBox_Contacts_Person) 'form to display/create employee contacts
@@ -987,48 +988,53 @@ Public Sub Save()
    '   mistake in the first place
    '-----------------------------------------------------------------------------
    If staff!fk_role = const.StaffRole_Doctor Or staff!fk_role = const.StaffRole_locum Or staff!fk_role = const.StaffRole_Practice_Principal Or staff!fk_role = const.StaffRole_Registered_Nurse Then   
-      If modAdminDBI.Clinical_Toolbuttons_Get(staff!fk_staff).count = 0 Then                    'no buttons yet for this staff member   
-         modAdminDBI.Toolbuttons_Add_All(staff!fk_staff)
-      End If   
-      '---------------------------------------------------------------------------------------------------
-      'next check and see if this staff member has default providers for all that are available
-      '---------------------------------------------------------------------------------------------------
-      ' CREATE TABLE clin_requests.user_provider_defaults
-      ' (
-      '   pk serial NOT NULL,
-      '   fk_staff integer NOT NULL, -- key to admin.staff table ie describes the user
-      '   fk_request_provider integer, -- foreign key to clin_requests.requests_provideris which ultimately will point to contact details of person/employee or organisation...
-      '   send_electronically boolean DEFAULT false,
-      '   print_paper boolean DEFAULT true,
-      '   deleted boolean DEFAULT false,
-      '   fk_lu_request_type integer NOT NULL,
-      '   CONSTRAINT user_provider_defaults_pkey PRIMARY KEY (pk),
-      '   CONSTRAINT user_provider_defaults_fk_default_branch_fkey FOREIGN KEY (fk_default_branch)
-      '       REFERENCES contacts.data_branches (pk) MATCH SIMPLE
-      '       ON UPDATE NO ACTION ON DELETE NO ACTION,
-      '   CONSTRAINT user_provider_defaults_fk_lu_request_type_fkey FOREIGN KEY (fk_lu_request_type)
-      '       REFERENCES clin_requests.lu_request_type (pk) MATCH SIMPLE
-      '       ON UPDATE NO ACTION ON DELETE NO ACTION,
-      '   CONSTRAINT user_provider_defaults_fk_request_provider_fkey FOREIGN KEY (fk_request_provider)
-      '       REFERENCES clin_requests.request_providers (pk) MATCH SIMPLE
-      '       ON UPDATE NO ACTION ON DELETE NO ACTION,
-      '   CONSTRAINT user_provider_defaults_fk_staff_fkey FOREIGN KEY (fk_staff)
-      '       REFERENCES admin.staff (pk) MATCH SIMPLE
-      '       ON UPDATE NO ACTION ON DELETE NO ACTION
-      ' )
-      ' WITH (
-      '   OIDS=FALSE
-      ' );
-      '---------------------------------------------------------------------------------------------------
-      If Not modPreferencesDBI.User_Provider_Defaults_Get(staff!fk_staff).count Then
-         Request_Provider_Defaults = modRequestsDBI.Request_Provider_Staff_Defaults_Get()
-         For Each RPD In Request_Provider_Defaults
-            user_provider_default = New CRow   
-            user_provider_default!fk_staff = staff!fk_staff
-            user_provider_default!fk_request_provider = RPD!pk_request_provider
-            user_provider_default!fk_lu_request_type = RPD!fk_lu_request_type
-            user_provider_default.Save("clin_requests.user_provider_defaults", "fk_user_provider_default")
-         Next
+      If staff!fk_status <> const.StaffStatus_LeftOrganisation Then
+         If modAdminDBI.Clinical_Toolbuttons_Get(staff!fk_staff).count = 0 Then                    'no buttons yet for this staff member   
+            modAdminDBI.Toolbuttons_Add_All(staff!fk_staff)
+         End If   
+         '---------------------------------------------------------------------------------------------------
+         'next check and see if this staff member has default providers for all that are available
+         '---------------------------------------------------------------------------------------------------
+         ' CREATE TABLE clin_requests.user_provider_defaults
+         ' (
+         '   pk serial NOT NULL,
+         '   fk_staff integer NOT NULL, -- key to admin.staff table ie describes the user
+         '   fk_default_branch_user integer NOT NULL, -- If  you look at the table clin_requests.request_providers you will see there is a fk_default_branch field....
+         '   fk_request_provider integer NOT NULL, -- foreign key to clin_requests.requests_provideris which ultimately will point to contact details of person/employee or organisation...
+         '   send_electronically boolean DEFAULT false,
+         '   print_paper boolean DEFAULT true,
+         '   deleted boolean DEFAULT false,
+         '   fk_lu_request_type integer NOT NULL,
+         '   CONSTRAINT user_provider_defaults_pkey PRIMARY KEY (pk),
+         '   CONSTRAINT user_provider_defaults_fk_default_branch_fkey FOREIGN KEY (fk_default_branch_user)
+         '       REFERENCES contacts.data_branches (pk) MATCH SIMPLE
+         '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+         '   CONSTRAINT user_provider_defaults_fk_lu_request_type_fkey FOREIGN KEY (fk_lu_request_type)
+         '       REFERENCES clin_requests.lu_request_type (pk) MATCH SIMPLE
+         '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+         '   CONSTRAINT user_provider_defaults_fk_request_provider_fkey FOREIGN KEY (fk_request_provider)
+         '       REFERENCES clin_requests.request_providers (pk) MATCH SIMPLE
+         '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+         '   CONSTRAINT user_provider_defaults_fk_staff_fkey FOREIGN KEY (fk_staff)
+         '       REFERENCES admin.staff (pk) MATCH SIMPLE
+         '       ON UPDATE NO ACTION ON DELETE NO ACTION
+         ' )
+         ' WITH (
+         '   OIDS=FALSE
+         ' );
+         
+         '---------------------------------------------------------------------------------------------------
+         If Not modPreferencesDBI.User_Provider_Defaults_Get(staff!fk_staff).count Then
+            Request_Provider_Defaults = modRequestsDBI.Request_Provider_Staff_Defaults_Get()
+            For Each RPD In Request_Provider_Defaults
+               user_provider_default = New CRow   
+               user_provider_default!fk_staff = staff!fk_staff
+               user_provider_default!fk_default_branch_user = RPD!fk_default_branch
+               user_provider_default!fk_request_provider = RPD!pk_request_provider
+               user_provider_default!fk_lu_request_type = RPD!fk_lu_request_type
+               user_provider_default.Save("clin_requests.user_provider_defaults", "fk_user_provider_default")
+            Next
+         End If 
       End If   
    End If   
    
@@ -1238,9 +1244,10 @@ Public Function Employee_Valid() As Boolean
       Goto InvalidExpiryDate
    End If
    If DateDiff(Now(), Val(txtExpires.text), gb.Date) < 0 Then
-      sMsg = "The expiry date for this user is invalid as it is < today's date.\n\n"
-      "This effectively means that the user will be locked out of the database."
-      Goto InvalidExpiryDate
+      sMsg = "The expiry date for this user is invalid as it is a date before today's date.\n\n"
+      "This effectively means that the user will be locked out of the database.\n\n"
+      "Are you sure you wish to continue?"
+      If Message.Warning(sMsg, "Yes", "No") = 2 Then Return
    Endif
    '----------------------------------------------------
    'If new password typed in, then check it is accurate
@@ -1333,9 +1340,9 @@ Public Sub Reload()
       cvwStaffMembers[x$][6] = staff_member!town
       lblmeasure.text = " " & staff_member!town
       col_widths[6] = Max(lblmeasure.Width, col_widths[6])
+      cvwStaffMembers[x$][7] = staff_member!status
    Next
    For x = 0 To 6
-      Print x
       cvwStaffMembers.Columns[x].width = col_widths[x]
    Next
    With Vbox_EditArea

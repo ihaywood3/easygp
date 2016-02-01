@@ -20,7 +20,7 @@ Private currentShift As CStaffShift
 Private Form_Viewer As FProgressNotesViewer
 Private Form_Editor As FEditor
 Private fk_staff_note As Variant
-
+Private Embedded_In_Form As String = Me.Name
 Private staff_notes_types As Collection
 Private staff_notes As Collection
 Private staff_notes_selected As Collection 'the current row of saved data selected
@@ -37,16 +37,18 @@ Private current_pic_urgency As PictureBox
 Private current_notes As TextLabel
 Private current_transparent_Label As Label
 Private Last_Row_Clicked As HBox
+Private Form_html_viewer As FHtmlViewer
 
 Public Sub _new()
    
-   ' With Form_Viewer = New FProgressNotesViewer(Vbox_StaffNotes)
-   '    .HBox_EditMode.Visible = False 
-   '    .WebView1.Visible = True   
-   ' End With
    With Form_Editor = New FEditor(VBox_Editor)
       .lblHeading.Visible = False
       .Hbox_WordProcessorButtons.Visible = False   
+   End With
+   With Form_html_viewer = New FHtmlViewer(VBox_StaffNotes)
+      .tbWebBrowserZoomIn.visible = True
+      .tbWebBrowserZoomout.visible = True
+      .tbWebBrowserPrint.Visible = True
    End With
    staff_notes_types = modUtilGUI.LoadCombo(cmbNotesType, modUtil.Copy_Collection_Keyed_Sequentially(modStaffShiftDBI.Notes_Types_Get()), "type")
    Notes_Type_Make_Menu
@@ -58,19 +60,45 @@ Public Sub _new()
    
 End
 
+Public Sub Form_KeyPress()
+   
+   Dim CtrlDown As Boolean
+   
+   Try CtrlDown = Key.Control
+   If CtrlDown Then
+      Select Case Key.code
+         Case Asc("=")
+            Form_html_viewer.zoom_in()
+            ' Zoom("zoom_in")
+         Case Asc("-")
+            Form_html_viewer.zoom_out() 
+            '  Zoom("zoom_out")
+      End Select
+   End If
+   
+End
+
+Public Sub Set_Embedded_In_Form(FN As String)
+   
+   Embedded_In_Form = FN  
+   
+End
+
 Public Sub Init()
    
-  
    modLater.Add(Me, "Shift_Create")
-   
+   If Embedded_In_Form = "FProgressNoteEditor" Then
+      Vbox_Right.Reparent(Me)
+      HSplit1.Visible = False 
+   Endif
    
 End
 
 Public Sub Shift_Create()
    
+   currentShift = New CStaffShift(modDBConnect.currentUser!fk_staff)
+   Reload()
    
-    currentShift = New CStaffShift(modDBConnect.currentUser!fk_staff)
-    Reload()
 End
 
 Public Sub Hb_Status_Leave()
@@ -188,29 +216,35 @@ Public Sub New_Row(row_data As Collection)
             .Picture = Picture.Load("icons/12/red_dot.png")
       End Select
    End With
-   With Log_date = New Label(HB)
-      .text = Format(row_data!shift_date, "dd/mm/yyyy")
-      .height = 28
-      .width = 80 
-      .Alignment = Align.TopLeft
-   End With
-   With lblNotesType = New Label(HB) As "lblNotesType"
-      .width = 150
-      .Height = 28
-      .text = row_data!type
-      .Alignment = Align.TopLeft
-   End With
-   With lblStaff = New Label(HB) As "lblStaff"
-      .width = 150
-      .height = 28  
-      .text = row_data!staff_destination_title & " " & row_data!staff_destination_wholename
-      If Trim(.text) = "" Then .text = "Anyone"
-      .Alignment = Align.TopLeft
-   End With
+   If Embedded_In_Form <> "FProgressNoteEditor" Then 
+      With Log_date = New Label(HB)
+         .text = Format(row_data!shift_date, "dd/mm/yyyy")
+         .height = 28
+         .width = 80 
+         .Alignment = Align.TopLeft
+      End With
+      With lblNotesType = New Label(HB) As "lblNotesType"
+         .width = 150
+         .Height = 28
+         .text = row_data!type
+         .Alignment = Align.TopLeft
+      End With
+      With lblStaff = New Label(HB) As "lblStaff"
+         .width = 150
+         .height = 28  
+         .text = row_data!staff_destination_title & " " & row_data!staff_destination_wholename
+         If Trim(.text) = "" Then .text = "Anyone"
+         .Alignment = Align.TopLeft
+      End With
+   End If   
    With lbl = New TextLabel(HB) As "lblNotes"
       .AutoResize = True 
       .Alignment = Align.TopLeft
-      .width = scrollview1.width - lblNotesType.Width
+      If Embedded_In_Form <> "FProgressNoteEditor" Then
+         .width = scrollview1.width - lblNotesType.Width
+      Else
+         .width = scrollview1.width - urgency_pic.Width
+      End If
       .text = row_data!notes 
       .Expand = True
    End With
@@ -228,6 +262,7 @@ Public Sub New_Row(row_data As Collection)
       Endif
       .Expand = True 
       .Alignment = Align.TopLeft
+      .Visible = False   
    End With
    With cmbStatus = New ComboBox(HB_Status) As "cmbStatus"
       .Add("Logged")
@@ -253,8 +288,6 @@ Public Sub New_Row(row_data As Collection)
    Wait
    
 End
-
-
 
 Public Sub lblNotes_Menu()
    
@@ -339,16 +372,15 @@ End
 Public Sub Reload()
    
    Dim entry As Collection
-   Dim sHTML As String
    
-   staff_notes = modStaffShiftDBI.Staff_Notes_Get()
+   staff_notes = modStaffShiftDBI.Staff_Notes_Get_Outstanding()
    scrollview1.Children.Clear
    For Each entry In staff_notes
-      sHTML &= entry!notes  
       new_row(entry)
    Next
-   Print sHTML
-   ' WebView1.HTML = sHTML
+   If Embedded_In_Form <> "FProgressNoteEditor" Then
+      Form_html_viewer.WebView1.HTML = modStaffShiftDBI.Offices_Notes_Create_HTML()
+   End If   
    EditArea_Clear
    
 End
@@ -358,74 +390,6 @@ Public Sub VSplit1_ReSize()
    Settings[Me.name & "/Vsplit1.Layout"] = VSplit1.layout
    
 End
-' -drop table  clerical.staff_shifts cascade;
-' --drop table  clerical.lu_staff_notes_type cascade;
-' --drop table clerical.staff_notes ;
-' CREATE TABLE clerical.lu_staff_notes_type
-' (
-'   pk serial NOT NULL,
-'   type text NOT NULL,
-'   CONSTRAINT lu_staff_notes_type_pkey PRIMARY KEY (pk)
-' )
-' WITH (
-'   OIDS=FALSE
-' );
-' 
-' ALTER TABLE clerical.lu_staff_notes_type   OWNER TO easygp;
-' GRANT SELECT ON TABLE clerical.lu_staff_notes_type TO staff;
-' 
-' COMMENT ON TABLE clerical.lu_staff_notes_type is 
-' 'the type of entry made by the staff';
-' 
-' INSERT INTO clerical.lu_staff_notes_type (type) values ('general notes');
-' INSERT INTO clerical.lu_staff_notes_type (type) values ('complaint');
-' INSERT INTO clerical.lu_staff_notes_type (type) values ('suggestion');
-' INSERT INTO clerical.lu_staff_notes_type (type) values ('staff meeting');
-' INSERT INTO clerical.lu_staff_notes_type (type) values ('adverse event');
-' 
-' CREATE TABLE clerical.staff_shifts
-' (
-'   pk serial primary key,
-'   shift_date timestamp without time zone NOT NULL,
-'   fk_staff integer NOT NULL references admin.staff(pk)
-'  
-' );
-' ALTER TABLE clerical.staff_shifts   OWNER TO easygp;
-' GRANT ALL ON TABLE clerical.staff_shifts TO staff;
-' 
-' comment on table clerical.staff_shifts is 'the record of the staff''s shift';
-' 
-' 
-' 
-' CREATE TABLE clerical.staff_notes
-' (
-'   pk serial primary key,
-'   fk_staff_shift integer NOT NULL references clerical.staff_shifts (pk),
-'   notes text not null,
-'   fk_lu_staff_notes_type integer NOT NULL references  clerical.lu_staff_notes_type (pk),
-'   deleted boolean DEFAULT false 
-' );
-' 
-' ALTER TABLE clerical.staff_notes   OWNER TO easygp;
-' GRANT ALL ON TABLE clerical.staff_notes TO richard;
-' create OR replace view Clerical.vwStaffNotes as (
-' 
-' select staff_shifts.pk as pk_staff_shift,
-'        staff_shifts.shift_date,
-'        staff_shifts.fk_staff,
-'        vwStaff.title,
-'        vwStaff.wholename,
-'        staff_notes.notes,
-'        lu_staff_notes_type.type
-' FROM
-'    clerical.staff_shifts
-' JOIN    admin.vwStaff on staff_shifts.fk_staff = vwSTaff.fk_staff
-' JOIN    clerical.staff_notes on staff_notes.fk_staff_shift = staff_shifts.pk
-' JOIN    clerical.lu_staff_notes_type on lu_staff_notes_type.pk = staff_notes.fk_lu_staff_notes_type
-'    );
-' 
-' ALTER TABLE clerical.vwStaffNotes   OWNER TO easygp;
-' GRANT SELECT ON TABLE clerical.vwStaffNotes TO staff;
 
 Public Sub EditArea_Buttons_Click()
    
@@ -480,7 +444,7 @@ Public Sub mnuOfficeLog_Click()
       Case "change staff allocated"
          Note_Change_Staff_Allocated
       Case "mark completed"
-            Note_Mark_Completed
+         Note_Mark_Completed
       Case "mark logged"
       Case "delete"
          Note_Delete
@@ -493,11 +457,10 @@ End
 
 Public Sub Note_Mark_Completed()
    
-  If modDBConnect.update("clerical.staff_notes", Null, ["pk": fk_staff_note, "completed": True]) Then
-     modDBConnect.CommitTrans
-     Reload 
-  Endif
-  
+   If modDBConnect.update("clerical.staff_notes", Null, ["pk": fk_staff_note, "completed": True]) Then
+      modDBConnect.CommitTrans
+      Reload 
+   Endif
    
 End
 
@@ -544,6 +507,12 @@ End
 
 Public Sub Note_Delete()
    
+   If Message.Question("Are you sure you wish to delete this entry", "Yes", "No") = 2 Then Return
+   If modDBConnect.update("clerical.staff_notes", Null, ["pk": fk_staff_note, "deleted": True]) Then
+      modDBConnect.CommitTrans
+      Reload
+   Endif
+   
 End
 
 ' Add's types to the popup menu over a note or entry made by staff
@@ -569,145 +538,159 @@ Public Sub mnuChangeOfficeType_Click()
    
 End
 
-' 
-' --drop table  clerical.staff_shifts cascade;
-' --drop table  clerical.lu_staff_notes_type cascade;
-' --drop table clerical.staff_notes ;
-' CREATE TABLE clerical.lu_staff_notes_type
-' (
-'   pk serial NOT NULL,
-'   type text NOT NULL,
-'   CONSTRAINT lu_staff_notes_type_pkey PRIMARY KEY (pk)
-' )
-' WITH (
-'   OIDS=FALSE
-' );
-' 
-' ALTER TABLE clerical.lu_staff_notes_type   OWNER TO easygp;
-' GRANT SELECT ON TABLE clerical.lu_staff_notes_type TO staff;
-' 
-' COMMENT ON TABLE clerical.lu_staff_notes_type is 
-' 'the type of entry made by the staff';
-' 
-' INSERT INTO clerical.lu_staff_notes_type (type) values ('General Note');
-' INSERT INTO clerical.lu_staff_notes_type (type) values ('Complaint Received');
-' INSERT INTO clerical.lu_staff_notes_type (type) values ('Referral Needed');
-' INSERT INTO clerical.lu_staff_notes_type (type) values ('Make Phone Call');
-' INSERT INTO clerical.lu_staff_notes_type (type) values ('Scripts Needed');
-' INSERT INTO clerical.lu_staff_notes_type (type) values ('Call Patient');
-' INSERT INTO clerical.lu_staff_notes_type (type) values ('Document Needed');
-' INSERT INTO clerical.lu_staff_notes_type (type) values ('Staff Meeting Agenda Item');
-' 
-' 
-' --drop table  clerical.staff_shifts cascade;
-' --drop table  clerical.lu_staff_notes_type cascade;
-' --drop table clerical.staff_notes ;
-' CREATE TABLE clerical.lu_staff_notes_type
-' (
-'   pk serial NOT NULL,
-'   type text NOT NULL,
-'   CONSTRAINT lu_staff_notes_type_pkey PRIMARY KEY (pk)
-' )
-' WITH (
-'   OIDS=FALSE
-' );
-' 
-' ALTER TABLE clerical.lu_staff_notes_type   OWNER TO easygp;
-' GRANT SELECT ON TABLE clerical.lu_staff_notes_type TO staff;
-' 
-' COMMENT ON TABLE clerical.lu_staff_notes_type is 
-' 'the type of entry made by the staff';
-' 
-' INSERT INTO clerical.lu_staff_notes_type (type) values ('General Note');
-' INSERT INTO clerical.lu_staff_notes_type (type) values ('Complaint Received');
-' INSERT INTO clerical.lu_staff_notes_type (type) values ('Referral Needed');
-' INSERT INTO clerical.lu_staff_notes_type (type) values ('Make Phone Call');
-' INSERT INTO clerical.lu_staff_notes_type (type) values ('Scripts Needed');
-' INSERT INTO clerical.lu_staff_notes_type (type) values ('Call Patient');
-' INSERT INTO clerical.lu_staff_notes_type (type) values ('Document Needed');
-' INSERT INTO clerical.lu_staff_notes_type (type) values ('For Staff Meeting');
-' 
-' CREATE TABLE clerical.staff_shifts
-' (
-'   pk serial primary key,
-'   shift_date timestamp without time zone NOT NULL,
-'   fk_staff integer NOT NULL references admin.staff(pk)
-' );
-' ALTER TABLE clerical.staff_shifts   OWNER TO easygp;
-' GRANT ALL ON TABLE clerical.staff_shifts TO staff;
-' 
-' comment on table clerical.staff_shifts is 'the record of the staff''s shift';
-' 
-' 
-' 
-' CREATE TABLE clerical.staff_notes
-' (
-'   pk serial primary key,
-'   fk_staff_shift integer NOT NULL references clerical.staff_shifts (pk),
-'   notes text not null,
-'   fk_staff_destination integer default null,
-'   fk_lu_urgency integer not null references common.lu_urgency(pk),
-'   fk_lu_staff_notes_type integer NOT NULL references  clerical.lu_staff_notes_type (pk),
-'   completed boolean default false,
-'   completion_notes text default null,
-'   deleted boolean DEFAULT false 
-' );
-' 
-' ALTER TABLE clerical.staff_notes   OWNER TO easygp;
-' GRANT ALL ON TABLE clerical.staff_notes TO richard;
-' 
-' create OR replace view Clerical.vwStaffNotes as (
-' select staff_shifts.pk as fk_staff_shift,
-'        staff_shifts.shift_date,
-'        staff_shifts.fk_staff,
-'        vwStaff.title,
-'        vwStaff.wholename,
-'        staff_notes.pk as pk_staff_notes,
-'        staff_notes.notes,
-'        staff_notes.fk_staff_destination,
-'        staff_notes.fk_lu_urgency,
-'        staff_notes.fk_lu_staff_notes_type,
-'        staff_notes.deleted as staff_note_deleted,
-'        staff_notes.completed,
-'        staff_notes.completion_notes,
-'        lu_staff_notes_type.type,
-'        vwStaff1.wholename as staff_destination_wholename,
-'        vwStaff1.title as staff_destination_title
-' FROM    clerical.staff_shifts
-' JOIN    admin.vwStaff on staff_shifts.fk_staff = vwSTaff.fk_staff
-' JOIN    clerical.staff_notes on staff_notes.fk_staff_shift = staff_shifts.pk
-' JOIN    common.lu_urgency on staff_notes.fk_lu_urgency = lu_urgency.pk
-' LEFT JOIN admin.vwStaff as vwStaff1 on staff_notes.fk_staff_destination = vwStaff1.fk_staff
-' JOIN    clerical.lu_staff_notes_type on lu_staff_notes_type.pk = staff_notes.fk_lu_staff_notes_type)
-' ;
-' 
-' ALTER TABLE clerical.vwStaffNotes   OWNER TO easygp;
-' GRANT SELECT ON TABLE clerical.vwStaffNotes TO staff;
 
-Public Sub ScrollView1_Leave()
-   
-   ' staff_notes_selected = Null   
-   
-End
+
 
 Public Sub Form_Leave()
    
-    Timer1.Stop
+   Timer1.Stop
    
 End
 
 Public Sub Form_Enter()
-
+   
    With Timer1
       .Enabled = True
       .delay = 1000 * 120
    End With
-
+   
 End
 
 Public Sub Timer1_Timer()
    
-  Reload  
-  Print "reloading"
+   Reload  
+   Print "reloading"
    
 End
+' 
+' - - drop table clerical.staff_shifts cascade;
+' - - drop table clerical.lu_staff_notes_type cascade;
+' - - drop table clerical.staff_notes;
+' Create TABLE clerical.lu_staff_notes_type
+' (
+'   pk serial Not Null,
+'   type text Not Null,
+'   CONSTRAINT lu_staff_notes_type_pkey PRIMARY KEY(pk)
+' )
+' With (
+'   OIDS = False
+' );
+' 
+' ALTER TABLE clerical.lu_staff_notes_type OWNER To easygp;
+' GRANT Select On TABLE clerical.lu_staff_notes_type To staff;
+' 
+' COMMENT On TABLE clerical.lu_staff_notes_type Is 
+' 'the type of entry made by the staff';
+' 
+' INSERT INTO clerical.lu_staff_notes_type(type)values( 'General');
+' INSERT INTO clerical.lu_staff_notes_type(type)values( 'Complaint');
+' INSERT INTO clerical.lu_staff_notes_type(type)values( 'Referral Needed');
+' INSERT INTO clerical.lu_staff_notes_type(type)values( 'Make Phone Call');
+' INSERT INTO clerical.lu_staff_notes_type(type)values( 'Scripts Needed');
+' INSERT INTO clerical.lu_staff_notes_type(type)values( 'Call Patient');
+' INSERT INTO clerical.lu_staff_notes_type(type)values( 'Document Needed');
+' INSERT INTO clerical.lu_staff_notes_type(type)values( 'Staff Meeting Item ');
+' 
+' Create TABLE clerical.staff_shifts
+' (
+'   pk serial primary key,
+'   shift_date timestamp without Time zone Not Null,
+'   fk_staff integer Not Null references admin.staff(pk)
+' );
+' ALTER TABLE clerical.staff_shifts OWNER To easygp;
+' GRANT ALL On TABLE clerical.staff_shifts To staff;
+' 
+' comment On table clerical.staff_shifts Is 'the record of the staff''s shift';
+' 
+' 
+' 
+' Create TABLE clerical.staff_notes
+' (
+'   pk serial primary key,
+'   time_logged Time Not Null;
+'   fk_staff_shift integer Not Null references clerical.staff_shifts(pk),
+'   notes text Not Null,
+'   fk_staff_destination integer Default Null,
+'   fk_lu_urgency integer Not Null references common.lu_urgency(pk),
+'   fk_staff_completed integer Default Null,
+'   fk_lu_staff_notes_type integer Not Null references clerical.lu_staff_notes_type(pk),
+'   completed boolean Default False,
+'   date_completed Date Default Null,
+'   completion_notes text Default Null,
+'   deleted boolean Default False 
+' );
+' 
+' ALTER TABLE clerical.staff_notes OWNER To easygp;
+' GRANT ALL On TABLE clerical.staff_notes To richard;
+' 
+' Create Or replace view Clerical.vwStaffNotes As (
+' Select staff_shifts.pk As Fk_staff_shift,
+'        staff_shifts.shift_date,
+'        staff_shifts.fk_staff As Fk_staff_logged,
+'        vwStaff.title As Staff_logged_title,
+'        vwStaff.wholename As Staff_logged_wholename,
+'        staff_notes.pk As Pk_staff_notes,
+'        staff_notes.time_logged,
+'        staff_notes.notes,
+'        staff_notes.fk_staff_destination,
+'        staff_notes.fk_staff_completed,
+'        staff_notes.fk_lu_urgency,
+'        staff_notes.fk_lu_staff_notes_type,
+'        staff_notes.deleted As Staff_note_deleted,
+'        staff_notes.completed,
+'        staff_notes.date_completed,
+'        staff_notes.completion_notes,
+'        lu_staff_notes_type.type,
+'        vwStaff1.wholename As Staff_destination_wholename,
+'        vwStaff1.title As Staff_destination_title,
+'        vwStaff2.wholename As Staff_completed_wholename,
+'        vwStaff2.title As Staff_completed_title
+' From clerical.staff_shifts
+' JOIN admin.vwStaff On staff_shifts.fk_staff = vwSTaff.fk_staff
+' JOIN clerical.staff_notes On staff_notes.fk_staff_shift = staff_shifts.pk
+' JOIN common.lu_urgency On staff_notes.fk_lu_urgency = lu_urgency.pk
+' LEFT JOIN admin.vwStaff As VwStaff1 On staff_notes.fk_staff_destination = vwStaff1.fk_staff
+' LEFT JOIN admin.vwStaff As VwStaff2 On staff_notes.fk_staff_completed = vwStaff2.fk_staff
+' JOIN clerical.lu_staff_notes_type On lu_staff_notes_type.pk = staff_notes.fk_lu_staff_notes_type)
+' ;
+' 
+' ALTER TABLE clerical.vwStaffNotes OWNER To easygp;
+' GRANT Select On TABLE clerical.vwStaffNotes To staff;
+' 
+' ALTER TABLE clerical.vwStaffNotes OWNER To easygp;
+' GRANT Select On TABLE clerical.vwStaffNotes To staff;
+
+- - added staff status To the admin.vwStaff
+' Create Or REPLACE VIEW admin.vwstaff As 
+'  Select roles.role,
+'     staff.fk_person,
+'     staff.logon_name,
+'     staff.fk_role,
+'     staff.pk,
+'     staff.pk As Fk_staff,
+'     persons.firstname,
+'     persons.surname,
+'     (persons.firstname || ' '::text) || persons.surname AS wholename,
+'     persons.salutation,
+'     persons.fk_title,
+'     lu_title.title,
+'     staff.qualifications,
+'     persons.surname_normalised,
+'     employees_numbers.provider_number,
+'     data_numbers_persons.prescriber_number,
+'     employees_numbers.australian_business_number,
+'     data_numbers_persons.hpii,
+'     staff.fk_status,
+'     lu_employee_status.status
+'    From admin.staff staff
+'      JOIN admin.lu_staff_roles roles On staff.fk_role = roles.pk
+'      JOIN contacts.data_persons persons On staff.fk_person = persons.pk
+'      JOIN contacts.lu_title On persons.fk_title = lu_title.pk
+'      LEFT JOIN contacts.data_numbers_persons On staff.fk_person = data_numbers_persons.fk_person
+'      LEFT JOIN contacts.data_numbers employees_numbers On staff.fk_person = employees_numbers.fk_person
+'      JOIN contacts.lu_employee_status On staff.fk_status = lu_employee_status.pk;
+'      
+' ALTER TABLE admin.vwstaff OWNER To easygp;
+' GRANT ALL On TABLE admin.vwstaff To staff;
+' 
+' update db.lu_version set lu_minor = 484;

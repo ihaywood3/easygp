@@ -26,16 +26,9 @@ Private staff_notes As Collection
 Private staff_notes_selected As Collection 'the current row of saved data selected
 Private fk_lu_notes_type As Variant
 Private day_notes As HBox[]
-Private cmb As ComboBox
 Private staff As Collection
 Private fk_lu_urgency As Variant
-Private current_status_combo As ComboBox
-Private current_status_label As Label
-Private current_notes_type_label As Label
-Private current_staff_label As Label
-Private current_pic_urgency As PictureBox
 Private current_notes As TextLabel
-Private current_transparent_Label As Label
 Private Last_Row_Clicked As HBox
 Private Form_html_viewer As FHtmlViewer
 
@@ -50,6 +43,8 @@ Public Sub _new()
       .tbWebBrowserZoomIn.visible = True
       .tbWebBrowserZoomout.visible = True
       .tbWebBrowserPrint.Visible = True
+      .VBox_HTML_SubHeading.visible = True   
+      .tlSubHeading.text = SubHeading()
    End With
    staff_notes_types = modUtilGUI.LoadCombo(cmbNotesType, modUtil.Copy_Collection_Keyed_Sequentially(modStaffShiftDBI.Notes_Types_Get()), "type")
    Notes_Type_Make_Menu
@@ -102,15 +97,6 @@ Public Sub Shift_Create()
    
 End
 
-Public Sub Hb_Status_Leave()
-   
-   current_status_combo.Visible = False   
-   With current_status_label
-      .Visible = True 
-      .text = current_status_combo.Text
-   End With
-   
-End
 
 Public Sub EditArea_Clear()
    
@@ -157,8 +143,8 @@ Public Function Save() As Boolean
    If Form_Editor.Vbox_ConsultNotes.Padding = 0 Then Return
    If Not Notes_Valid() Then Return
    
-   editor_notes = Replace$(editor_notes, "font-weight: 600", "font-weight: bold")
-   editor_notes = Replace$(editor_notes, "-qt-paragraph-type:empty; margin-top:0px;", "")
+   ' editor_notes = Replace$(editor_notes, "font-weight: 600", "font-weight: bold")
+   ' editor_notes = Replace$(editor_notes, "-qt-paragraph-type:empty; margin-top:0px;", "")
    New_Note = New CRow  
    If fk_staff_note Then
       New_Note.put_Unchanged(fk_staff_note, "fk_staff_note")
@@ -167,8 +153,10 @@ Public Function Save() As Boolean
    If cmbStaff.Index <> -1 Then
       New_Note!fk_staff_destination = staff[cmbStaff.index]!fk_staff
    Endif
+   Print editor_notes
+   ' New_Note!notes = Fix_HTML(editor_notes, [])
+   '  New_Note!notes = Replace(New_Note!notes, "p, li { white-space: pre-wrap; }", "")
    New_Note!notes = editor_notes
- '  New_Note!time_logged = Now()
    New_Note!time_logged = Format(Now, "yyyy-mm-dd hh:nn")
    New_Note!fk_lu_staff_notes_type = fk_lu_notes_type
    New_Note!fk_lu_urgency = fk_lu_urgency
@@ -184,29 +172,160 @@ Public Function Save() As Boolean
    
 End
 
-Public Sub New_Row(row_data As Collection)
+Public Function Fix_HTML(s As String, lastspan As String[]) As String
+   'Attempt to clean up the crappy html that comes out of the QT widgit
+   
+   Dim r As Regexp
+   Dim newtag As String
+   
+   If s = "" Then Return s
+   s = RegExp.Replace(s, "<style.*</style>", "", RegExp.DotAll Or RegExp.Multiline)
+   r = New Regexp(s, "<([^>]+)>")
+   If r.Offset = -1 Then
+      Return s
+   Else
+      newtag = Make_New_Tag(LCase$(r[1].Text), ByRef lastspan)
+      If IsNull(newtag) Or If newtag = "" Then
+         Return Left$(s, r.Offset) & Fix_HTML(Right$(s, - (r.Offset + Len(r.Text))), lastspan)
+      Else
+         Return Left$(s, r.Offset) & "<" & newtag & ">" & Fix_HTML(Right$(s, - (r.Offset + Len(r.Text))), lastspan)
+      Endif
+   Endif
+   
+End
+
+Private Function Make_New_Tag(tag As String, ByRef lastspan As String[]) As String
+   
+   Dim r As Regexp
+   Dim tokens As New String[]
+   Dim tokens_close As New String[]
+   
+   If IsNull(lastspan) Then lastspan = New String[]
+   r = New Regexp(tag, "^span.*")
+   If r.Offset = 0 Then
+      If InStr(tag, "font-weight:600") Then
+         tokens.Add("b")
+         tokens_close.Add("/b")
+      Endif
+      If InStr(tag, "font-style:italic") Then
+         tokens.Add("i")
+         tokens_close.Add("/i")
+      Endif
+      If InStr(tag, "text-decoration: underline") Then
+         tokens.Add("u")
+         tokens_close.Add("/u")
+      Endif
+      If Not IsNull(tokens) And If Not IsNull(tokens_close) And If tokens.Length > 0 And If tokens_close.Length > 0 Then
+         lastspan.Push(tokens_close.Join("><"))  ' calling code adds the final outer < >
+         Return tokens.Join("><")
+      Else  ' we didn't recognise anything in the span, so add nothing to the translated HTML stream
+         lastspan.Add("")
+         Return Null
+      Endif
+   Endif
+   If tag = "/span" Then
+      If lastspan.Length > 0 Then
+         Return lastspan.Pop()
+      Else
+         Return Null
+      Endif
+   Endif
+   r = New Regexp(tag, "^p.*")
+   If r.Offset = 0 Then
+      Return "p"
+   Endif
+   If tag = "/p" Then
+      Return "/p"
+   Endif
+   Return Null
+   
+End
+
+
+
+Public Sub lblNotes_mousedown()
+   
+   Try Last_Row_Clicked.Background = Color.White
+   Last.Parent.background = Color.RGB(215, 232, 240) 'Color.LightBackground
+   Note_Display
+   Last_Row_Clicked = Last.Parent 
+   
+End
+
+Public Sub lblNotes_Menu()
+   
+   mnuOfficeLog.Popup
+   
+End
+
+Public Function New_Row_HTML() As String
+   'Used in this module and FSTaffNotes
+   'date, category, destination, notes
+   
+   Dim sHtml As String
+   
+   If Embedded_In_Form = "FProgressNoteEditor" Then
+      'date and notes only will fit in the space
+      sHtml = ""
+      "<COL WIDTH=5%>"
+      "<COL WIDTH=85%>"
+      "<TR VALIGN=TOP>"
+      "<TD WIDTH=5%>"
+      "col1"
+      "</TD>"
+      "<TD WIDTH=85%>"
+      "col4"
+      "</TD>"
+      "</TR>" 
+   Else
+      'in the main staff messages form
+      'date, type, for whom, notes
+      sHtml = ""
+      "<COL WIDTH=5%>"
+      "<COL WIDTH=10%>"
+      "<COL WIDTH=15%>"
+      "<COL WIDTH=70%>"
+      "<TR VALIGN=TOP>"
+      "<TD WIDTH=5%>"
+      "col1"
+      "</TD>"
+      "<TD WIDTH=10%>"
+      "col2"
+      "</TD>"
+      "<TD WIDTH=15%>"
+      "col3"
+      "</TD>"
+      "<TD WIDTH=70%>"
+      "col4"
+      "</TD>"
+      "</TR>" 
+   Endif
+   Return sHTML
+   
+End
+
+Public Sub New_Message_Row(row_data As Collection) 
+   'adds a new row to a scrollview representing an internal office staff message
+   'fixme code duplicated in FProgressNoteEditor - no time to think tonight
+   'This sub creats a HBOX containing a picture dot: green, amber, red (urgency)
+   'the date of the message, who its for,the message.
+   'When the user clicks on the textlabel, it is  highlighted blue background
    
    Dim HB As HBox
    Dim lbl As TextLabel
-   Dim lblNotesType As Label
-   Dim lblStaff As Label
    Dim hline As Separator
-   Dim cmbStatus As ComboBox
    Dim urgency_pic As PictureBox
-   Dim HB_Status As HBox
-   Dim lblStatus As Label
-   Dim lblTransparent As Label
-   Dim Log_date As Label
+   Dim sTableTemplate As String
+   Dim sDestinationStaff As String
    
    If IsNull(day_notes) Then day_notes = New HBox[]
-   With HB = New HBox(scrollview1) As "notes_row"
+   With HB = New HBox(scrollview1) As "notes_row"         'create the box to hold everything
       .AutoResize = True 
       .Padding = 2
       .tag = row_data
       .Background = Color.White
    End With
-   
-   With urgency_pic = New PictureBox(HB) As "picUrgency"
+   With urgency_pic = New PictureBox(HB) As "picUrgency"  'green, amber and red
       .height = 28
       .Width = 28
       .Alignment = Align.TopLeft
@@ -219,117 +338,29 @@ Public Sub New_Row(row_data As Collection)
             .Picture = Picture.Load("icons/12/red_dot.png")
       End Select
    End With
-   If Embedded_In_Form <> "FProgressNoteEditor" Then 
-      With Log_date = New Label(HB)
-         .text = Format(row_data!shift_date, "dd/mm/yyyy")
-         .height = 28
-         .width = 80 
-         .Alignment = Align.TopLeft
-      End With
-      With lblNotesType = New Label(HB) As "lblNotesType"
-         .width = 150
-         .Height = 28
-         .text = row_data!type
-         .Alignment = Align.TopLeft
-      End With
-      With lblStaff = New Label(HB) As "lblStaff"
-         .width = 150
-         .height = 28  
-         .text = row_data!staff_destination_title & " " & row_data!staff_destination_wholename
-         If Trim(.text) = "" Then .text = "Anyone"
-         .Alignment = Align.TopLeft
-      End With
-   End If   
-   With lbl = New TextLabel(HB) As "lblNotes"
+   
+   With lbl = New TextLabel(HB) As "lblNotes"              'the row of notes
       .AutoResize = True 
       .Alignment = Align.TopLeft
-      If Embedded_In_Form <> "FProgressNoteEditor" Then
-         .width = scrollview1.width - lblNotesType.Width
+      .width = scrollview1.width
+      .text = "<TABLE WIDTH=100% BORDER=0 CELLPADDING=5 CELLSPACING=1>"
+      .text &= New_Row_HTML()
+      .text = Replace(.text, "col1", Format(row_data!shift_date, "dd/mm/yyyy"))
+      .text = Replace(.text, "col2", row_data!type)
+      If IsNull(row_data!staff_destination_wholename) Then
+         .text = Replace(.text, "col3", "")
       Else
-         .width = scrollview1.width - urgency_pic.Width
-      End If
-      .text = row_data!notes 
+         .text = Replace(.text, "col3", row_data!staff_destination_title & " " & row_data!staff_destination_wholename)
+      End If   
+      .text = Replace(.text, "col4", row_data!notes)
+      .text &= "</TABLE>"
       .Expand = True
    End With
    Hb.Height = lbl.Height
-   With HB_Status = New HBox(HB) As "HBox_Status"
-      .height = 28 
-      .width = 100
-      .Visible = False
-   End With
-   With lblStatus = New Label(HB_Status) As "lblStatus"
-      If row_data!completed = True Then
-         .text = "Completed"
-      Else
-         .text = "Logged"
-      Endif
-      .Expand = True 
-      .Alignment = Align.TopLeft
-      .Visible = False   
-   End With
-   With cmbStatus = New ComboBox(HB_Status) As "cmbStatus"
-      .Add("Logged")
-      .Add("Completed")
-      .Border = Border.None
-      .ReadOnly = True  
-      .Visible = False  
-      .Expand = True 
-   End With
-   With hline = New Separator(scrollview1)
+   With hline = New Separator(scrollview1)  ' a line to separate each noes
       .height = 1
       .background = Color.DarkGray
    End With
-   With lblTransparent = New Label(HB) As "lblTransparent"
-      .Ignore = True   
-      .Transparent = True   
-      .top = 2
-      .left = 2
-      .width = scrollview1.Width - 2
-      .Height = Hb.Height
-      .Visible = True
-   End With
-   Wait
-   
-End
-
-Public Sub lblNotes_Menu()
-   
-   mnuOfficeLog.Popup 
-   
-End
-
-Public Sub lblNotesType_Menu()
-   
-   mnuOfficeLog.Children[2].Popup
-   
-End
-
-Public Function Note_Label(notes As String) As TextLabel
-   
-   Dim lbl As TextLabel
-   
-   With lbl = New TextLabel(scrollview1) As "lbl"
-      .AutoResize = True  
-      .text = notes 
-      .Border = Border.Dashed
-      .Padding = 5
-   End With
-   Return lbl
-   
-End
-
-Public Sub lblTransparent_mousedown()
-   
-   Try Last_Row_Clicked.Background = Color.White
-   Last.Parent.background = Color.RGB(215, 232, 240) 'Color.LightBackground
-   Note_Display
-   Last_Row_Clicked = Last.Parent 
-   
-End
-
-Public Sub lblTransparent_Menu()
-   
-   mnuOfficeLog.Popup
    
 End
 
@@ -341,33 +372,13 @@ Public Sub Notes_Row_Enter()
    Dim HB As HBox
    Dim TL As TextLabel
    
-   '  Last.background = Color.RGB(255, 255, 223)
    staff_notes_selected = Last.tag
    
    For Each Hctrl In Last.Children  
-      Print hctrl.Name
       Select Case Hctrl.Name
-         Case "lblTransparent"
-            current_transparent_Label = Hctrl
-         Case "picUrgency"
-            current_pic_urgency = Hctrl
-         Case "lblNotesType"
-            current_notes_type_label = Hctrl
-         Case "lblStaff"
-            current_staff_label = Hctrl
-         Case "lblNotes"
+          Case "lblNotes"
             current_notes = hctrl
-         Case "HBox_Status"
-            HB = Hctrl
-            For Each hctrl In HB.Children
-               Select Case hctrl.Name
-                  Case "lblStatus"
-                     current_status_label = lbl
-                  Case "cmbStatus"
-                     current_status_combo = Hctrl
-               End Select
-            Next
-      End Select
+          End Select
    Next
    
 End
@@ -379,7 +390,7 @@ Public Sub Reload()
    staff_notes = modStaffShiftDBI.Staff_Notes_Get_Outstanding()
    scrollview1.Children.Clear
    For Each entry In staff_notes
-      new_row(entry)
+      New_Message_Row(entry)
    Next
    If Embedded_In_Form <> "FProgressNoteEditor" Then
       Form_html_viewer.WebView1.HTML = modStaffShiftDBI.Offices_Notes_Create_HTML()
@@ -534,14 +545,6 @@ Public Sub Notes_Type_Make_Menu()
    
 End
 
-Public Sub mnuChangeOfficeType_Click()
-   
-   Print "You clicked", Last.tag 
-   current_notes_type_label.text = Last.tag!type
-   
-End
-
-
 
 
 Public Sub Form_Leave()
@@ -553,8 +556,6 @@ End
 Public Sub Form_Enter()
    
    Timer1.Enabled = True
-  
-  
    
 End
 
@@ -564,6 +565,24 @@ Public Sub Timer1_Timer()
    Print "reloading"
    
 End
+
+Public Function SubHeading() As String
+   
+   Dim sHtml As String 
+   
+   sHtml = "<TABLE WIDTH=100% BORDER=0 CELLPADDING=5 CELLSPACING=1>"
+   sHtml &= modStaffShiftDBI.Staff_Notes_Table_Row_Template()
+   sHtml = Replace(sHtml, "col1", "Date")
+   sHtml = Replace(sHtml, "col2", "Time")
+   sHTMl = Replace(sHtml, "col3", "Sender")
+   sHtml = Replace(sHtml, "col4", "Recipient and Message")
+   sHtml = Replace(sHtml, "col5", "Status")
+   shtml &= "</TABLE>"
+   Print shtml
+   Return sHtml
+   
+End
+
 ' 
 ' - - drop table clerical.staff_shifts cascade;
 ' - - drop table clerical.lu_staff_notes_type cascade;

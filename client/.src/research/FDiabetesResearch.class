@@ -18,15 +18,8 @@
 ' Database interface for research
 '--------------------------------------------------------------------------------------------------
 'A MODULE TO ANALYSE PATIENT'S WITH HBA1C
-'  - This will be changed once I've imported my data to be patients
-'    with a coded diagnoses of diabetes. If then there are patients
-'    with hba1'c they will be added. IE the module's patient selection
-'    will need heaps more intelligence - ie allow coded diabetes even
-'    if they have no hba1c FIXME DO THIS
-'    in Reload work out patient's BMI if possi7.47.4ble
-'    add column to the patients table of BMI and OverweightKG.
-'    hence could later do things like - show all patient more than Xkg overweight
-'    or grade them into overweight, obese, morbid obese
+'PROBLEMS   - since 2015 doctors allowed to order hba1c as  screenning tool (sigh!)
+'             the code already exists to let you mark non-diabetic patients out of the dataset
 'KNOWN BUGS
 '  1) The hba1c >7 query when clicking on a cell dosn't match the initial count.
 '  2)the eye review number overdue Is Wrong, As Is eye - review In date.
@@ -91,11 +84,12 @@ Private num_obese As Integer
 Private Form_Graph_Hba1c As FGraph
 Private Form_Graph_Lipids As FGraph
 Private Form_Graph_eGFR As FGraph
-
 Private Form_Graph_Weight As FGraph
 Private Form_Graph_BP As FGraph
-Private iGraphFontSize As Integer 'applies to all graphs.
 Private form_pdf As FPdf
+Private form_patient_photo As FPatientPhoto  
+Private iGraphFontSize As Integer 'applies to all graphs.
+
 Private medications As Collection
 Private medications_display_by As String
 Private colours As Variant[]
@@ -143,6 +137,10 @@ Private cInDate As Integer = 3
 Private FBMI_Pie As FPie   
 Private FHba1c_Pie As FPie
 
+Public Sub _new()
+   
+End
+
 Public Sub Init()
    
    lblHba1cRange.width = lblFindPatient.Width
@@ -182,55 +180,40 @@ Public Sub Init()
    bExit = True   
    
    With Form_Graph_HBa1c = New FGraph(Hbox_GraphHba1c)
-      ' .tbGraphRemove.Visible = False   
-      '.tbInboxResults_AddGraph.Visible = False  
       .chkGraph_MakeDefault.Visible = False  
-      '  .HBox_Styletypes.Visible = False 
-      ' .Vbox_Left.visible = False
-      '.VBox_Right.visible = False   
-      '.pbMeasurementGraph.Background = Color.White
+      .pbMeasurementGraph.Background = Color.White
       .slGraphFontSize.value = iGraphFontSize
       .HBox_Background.Background = Color.White
+      .HBox_Creatinine_Clearance.visible = False   
+      .HBox_Buttons.visible = False  
    End With
    With Form_Graph_Weight = New FGraph(Hbox_GraphWeight)
-      ' .tbGraphRemove.Visible = False   
-      ' .tbInboxResults_AddGraph.Visible = False  
       .chkGraph_MakeDefault.Visible = False  
-      '  .HBox_Styletypes.Visible = False 
-      ' .Vbox_Left.visible = False
-      '  .VBox_Right.visible = False   
       .pbMeasurementGraph.Background = Color.White
       .slGraphFontSize.value = iGraphFontSize
+      .HBox_Creatinine_Clearance.visible = False  
+      .HBox_Buttons.visible = False   
    End With
    With Form_Graph_Lipids = New FGraph(Hbox_GraphLipids)
-      ' .tbGraphRemove.Visible = False   
-      '.tbInboxResults_AddGraph.Visible = False  
       .chkGraph_MakeDefault.Visible = False
-      ' .HBox_Styletypes.visible = False
-      ' .Vbox_Left.visible = False
-      ' .VBox_Right.visible = False   
       .pbMeasurementGraph.Background = Color.White
       .slGraphFontSize.value = iGraphFontSize
+      .HBox_Creatinine_Clearance.visible = False 
+      .HBox_Buttons.visible = False    
    End With
    With Form_Graph_eGFR = New FGraph(Hbox_GraphEGFR)
-      ' .tbGraphRemove.Visible = False   
-      ' .tbInboxResults_AddGraph.Visible = False  
       .chkGraph_MakeDefault.Visible = False  
-      '  .HBox_Styletypes.Visible = False 
-      '  .Vbox_Left.visible = False
-      '  .VBox_Right.visible = False   
       .pbMeasurementGraph.Background = Color.White
       .slGraphFontSize.value = iGraphFontSize
+      .HBox_Creatinine_Clearance.visible = False   
+      .HBox_Buttons.visible = False  
    End With
    With Form_Graph_BP = New FGraph(Hbox_GraphBP)
-      ' .tbGraphRemove.Visible = False     
-      ' .tbInboxResults_AddGraph.Visible = False  
       .chkGraph_MakeDefault.Visible = False  
-      '  .HBox_Styletypes.Visible = False 
-      '  .Vbox_Left.visible = False
-      '  .VBox_Right.visible = False   
       .pbMeasurementGraph.Background = Color.White
       .slGraphFontSize.value = iGraphFontSize
+      .HBox_Creatinine_Clearance.visible = False 
+      .HBox_Buttons.visible = False    
    End With
    With form_medications = New FClinLists_Medications(Vbox_Medications)
       .Set_Embedded_Form_Name("FResearch")
@@ -238,6 +221,7 @@ Public Sub Init()
    bExit = False 
    lblMeasure.text = "Last Total cholesterol"
    modEditAreaHelpers.Resize_labels(VBox_LastMeasurements, lblMeasure)
+   form_patient_photo = New FPatientPhoto(Vbox_Photo)
    Gridview1_Init()
    
 End
@@ -838,6 +822,7 @@ Public Sub Reload()
          data!fk_patient = patient!fk_patient
          data!fk_person = patient!fk_person
          data!fk_image = patient!fk_image
+         data!image = patient!image
          data!pk_observations = patient!pk_observations
          data!firstname = patient!firstname
          data!surname = patient!surname
@@ -848,6 +833,7 @@ Public Sub Reload()
          data!street2 = patient!street2
          data!town = patient!town
          data!postcode = patient!postcode
+         data!uses_webster_pack = patient!uses_webster_pack
          data!observation_date = patient!observation_date
          data!value_numeric = patient!value_numeric
          data!date_last_dacc = date_last_dacc
@@ -999,12 +985,11 @@ Public Sub Reload()
    '---------------------------
    'Finally, make the pie chart
    '---------------------------
-   ' HBA1C_Make_Pie()
    Pie_Chart_Hba1c()
    Pie_Chart_BMI()
    Dec Application.Busy
-   'Catch
-   '  Message.Info("An error occurred whilst trying to analyse the data.\n\nIf this persists please email the developers.")
+Catch
+   Message.Info("An error occurred whilst trying to analyse the data.\n\nIf this persists please email the developers.")
    
 End
 
@@ -1128,7 +1113,7 @@ Reload_DATA:
    If cvwPatients.count Then
       cvwPatients.MoveFirst
       cvwPatients.Item.Selected = True
-      cvwPatients.SetFocus()
+      ' cvwPatients.SetFocus()
    Else
       'bumma none are left 
       Gui_Clear()
@@ -1148,6 +1133,7 @@ Public Sub cvwPatients_Select()
    
    If cvwPatients.count = 0 Then Return   
    cvwPatients.MoveCurrent()
+   Wait  
    patient = patients[cvwPatients.Item.Key]
    Patient_Display()
    
@@ -1161,8 +1147,9 @@ Public Sub Patient_Display_Summary()
    '  - a list of their medications
    '------------------------------------------------------------------------
    
-   Vbox_PictureFrame.Background = Vbox_PictureFrame.Parent.Background
-   pbPatientPicture.Picture = Null
+   Dim comm As Collection
+   
+   VBox_Photo.Background = VBox_Photo.Parent.Background
    lblhba1c.Foreground = Color.Black
    lbllastBP.Foreground = Color.Black
    lblLastBMI.Foreground = Color.Black
@@ -1184,18 +1171,15 @@ Public Sub Patient_Display_Summary()
          lblsummaryheading.text = "Current Diabetes Cycle of Care - Due " & Format(DateAdd(patient!date_last_dacc, gb.year, 1), "dd/mm/yyyy")
       Endif
    End If   
-   Try pbPatientPicture.Picture = modContactsDBI.Person_Get_Photo(patient!fk_image)
    If Year(patient!date_last_dacc) = 1900 Then
-      Vbox_PictureFrame.Background = Color.White
+      VBox_Photo.Background = Color.White
    Else If patient!dacc_overdue = True Then
-      Vbox_PictureFrame.background = Color.Red
+      VBox_Photo.background = Color.Red
    Else
-      Vbox_PictureFrame.Background = Color.Green
+      VBox_Photo.Background = Color.Green
    End If 
    Wait                                                              'update the gui.
    VBox_Summary.visible = True
-   Consult_CheckStarted()
-   lblpatientID.text = "ID=" & Str(patient!fk_patient)
    lblPatientName.text = modStrings.Capitalise_Words_In_String(patient!wholename)
    tlPatientDetails.text = ""
    tlPatientDetails.text &= "Age:" & patient!age_numeric & "<BR>"
@@ -1204,11 +1188,15 @@ Public Sub Patient_Display_Summary()
    If Not IsNull(patient!street2) Then
       tlPatientDetails.text &= Patient!street2 & "<BR>"
    Endif
-   tlPatientDetails.text &= Patient!town & " " & patient!postcode & "<BR><BR>"
-   ' medications = modPrescribingDBI.Prescriptions_Written(patient!fk_patient)
-   ' modPrescribingDBI.Prescriptions_Fill_Columnview(cvwMedications, medications, medications_display_by, True) 'active meds
-   ' cvwMedications.Height = (cvwMedications.count + 1) * 18
-   
+   tlPatientDetails.text &= Patient!town & " " & patient!postcode & "<BR>"
+   For Each comm In modContactsDBI.person_comms_get(patient!fk_person)
+      Select Case comm!fk_type
+         Case const.CommModalityPhone, const.CommModalityHome
+            tlPatientDetails.text &= "Phone:" & comm!value & "<BR>"
+         Case const.CommModalityMobile
+            tlPatientDetails.text &= "Mobile:" & comm!value
+      End Select
+   Next
    Try lblLastHba1c.text = Format(patient!observation_date, "dd/mm/yyyy") & " " & Str(patient!last_hba1c)
    If patient!last_hba1c > 8.0 Then
       lblLastHba1c.Foreground = Color.Red
@@ -1347,11 +1335,11 @@ Public Sub Patient_Display_Summary()
    '------------------------
    'Finally graph everything
    '------------------------
-    Hba1c_ShowGraph
-    Lipids_ShowGraph
-    EGFR_ShowGraph
-    Weight_ShowGraph
-    BP_ShowGraph '
+   Hba1c_ShowGraph
+   Lipids_ShowGraph
+   EGFR_ShowGraph
+   Weight_ShowGraph
+   BP_ShowGraph '
    
 End
 
@@ -1369,20 +1357,11 @@ End
 
 Public Sub Patient_Display_DACC()
    
-   ' If IsNull(form_pdf) Then
-   '    With form_pdf = New FPdf(VBox_DACC)
-   '       .visible = True  
-   '       .btZoomIn.Visible = True
-   '       .btZoomOut.Visible = True  
-   '       .BtPrint.Visible = True 
-   '    End With
-   ' Endif
    If IsNull(form_dacc) Then
       With form_dacc = New FDacc(VBox_DACC)
          .Init(currentconsult)
       End With
    Endif
-   '  Dacc_View_Last()
    
 End
 
@@ -1396,38 +1375,25 @@ Public Sub Patient_Recalls()
    
 End
 
-Public Sub Patient_StaffTasks()
-   
-   ' Consult_CheckStarted()
-   ' If IsNull(form_tasks) Then
-   '    form_tasks = New FStaffTasks(Vbox_Staff_Tasks)
-   '    form_tasks.Init()
-   ' Endif
-   
-End
-
 Public Sub Patient_Display()
    '-----------------------------------------------------
    'display a summary of the patients diabetes parameters
    '-----------------------------------------------------
    
+   Inc Application.Busy
    lblPatientName.text = patient!title & " " & patient!wholename
    currentconsult = Null
-   Select Case iCurrentTab
-      Case cTab_Summary
-         Patient_Display_Summary
-      Case cTab_ProgressNotes
-         Patient_Display_Notes
-      Case cTab_LastDACC
-         Patient_Recalls()
-   End Select
+   Consult_CheckStarted()
+   form_patient_photo.Init(currentconsult)
+   Patient_Display_Summary()
+   Dec Application.Busy
    
 End
 
 Public Sub Weight_ShowGraph()
    
    With Form_Graph_Weight
-       .Init(currentconsult)
+      .Init(currentconsult)
       .Set_fk_Patient(Patient!fk_patient)
       .Measurement_Graph("", "weight")
    End With 
@@ -1437,7 +1403,7 @@ End
 Public Sub Lipids_ShowGraph()
    
    With Form_Graph_Lipids
-       .Init(currentconsult)
+      .Init(currentconsult)
       .Set_fk_Patient(Patient!fk_patient)
       .Measurement_Graph(const.Loinc_TotalCholesterol, "HDL")
    End With 
@@ -1447,7 +1413,7 @@ End
 Public Sub EGFR_ShowGraph()
    
    With Form_Graph_EGFR
-       .Init(currentconsult)
+      .Init(currentconsult)
       .Set_fk_Patient(Patient!fk_patient)
       .Measurement_Graph(const.Loinc_EGFR, "eGFR")
    End With 
@@ -1457,7 +1423,7 @@ End
 Public Sub BP_ShowGraph()
    
    With Form_Graph_BP
-       .Init(currentconsult)
+      .Init(currentconsult)
       .Set_fk_Patient(Patient!fk_patient)
       .Measurement_Graph("", "blood pressure")
    End With 
@@ -1702,11 +1668,10 @@ Public Sub Dacc_View_Last()
 End
 
 Public Sub Consult_CheckStarted()
+   'there Is No commit Until the consult type Is Set
    
    If IsNull(currentconsult) Then  
       currentconsult = New CConsult(Patient)           'Each patient has a new consult 
-      'there is no commit until the consult type is set
-      'currentconsult.Set(const.ConsultType_NotesPatientNotPresent, "diabetes audit") 
    End If
    
 End
@@ -1814,11 +1779,12 @@ Public Sub Analyse()
    End If   
    Reload()                                        'create temporary table, load all data work out stats
    cvwPatients_Refresh()                           'fill the columnview to display the data
-   If cvwPatients.count Then
-      cvwPatients.MoveFirst
-      cvwPatients.Item.Selected = True             'trigger cvwPatients_Select()
-      cvwPatients.SetFocus()                       'which shows the first patient's data summary   
-   Endif  
+   ' If cvwPatients.count Then
+   '    cvwPatients.MoveFirst 
+   '    cvwPatients.SetFocus()     
+   '    cvwPatients.Item.Selected = True             'trigger cvwPatients_Select()
+   '    
+   ' Endif  
    
 End
 

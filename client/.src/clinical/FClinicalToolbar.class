@@ -43,6 +43,7 @@ Const cTabCertificates_Centrelink As Integer = 1
 Const cTabCertificates_Workcover As Integer = 2
 Private obs As Observer
 Public form_clinical As FClinical
+Public form_patient_photo As FPatientPhoto
 Private form_select As FPatientsSelect
 
 Static Private form_clinical_toolbar As FClinicalToolbar
@@ -51,6 +52,7 @@ Public Sub _new()
    
    form_clinical_toolbar = Me                        'allows toolbar Access from anywhere  = Me -see Init()
    form_clinical = New FClinical(VBox_Clinical)      'load the workspace editor and all the right side tabs etc
+   form_patient_photo = New FPatientPhoto(Vbox_Photo)
    Init_Gui                                          'initialise lists, combo's observers etc for this form
    
 End
@@ -408,7 +410,6 @@ Public Sub Patient_Load_Record(patient As Collection, bPhotoConfirmed As Boolean
    mnuDecisionSupport_K10.Enabled = True
    mnuDecisionSupport_Dass.Enabled = True
    mnuDecisionSupport_Chads.Enabled = True
-   Try PicPatient.Picture = P
    '---------------------------------------------------------------------------
    'Has there been a consulation today already?, if yes, then re-use fk_consult
    'then show all previous notes and general notes, reloading these if a
@@ -417,6 +418,7 @@ Public Sub Patient_Load_Record(patient As Collection, bPhotoConfirmed As Boolean
    Inc Application.Busy
    currentconsult = New CConsult(patient, consultationtypes[cmbConsultationType.Index]!pk)
    Patient_Demographics_Display()            'display name address phone, pregnancy status
+   Try form_patient_photo.Init(currentconsult)
    form_clinical.Init_Patient(currentconsult)
    GPMP_Reload                               'reload GPMP and change toolbutton headings/tag
    Refresh_Warning_Panel                     'display patient specific warnings
@@ -835,7 +837,7 @@ End
 Public Sub Patient_Demographics_Display()
    '--------------------------------------------------------
    'Display core demographics,
-   'name, address, sex, age
+   'name, address, sex, age 
    'comms limited to (FIXME) user defined list
    'medicare number or other clerical FIXME when implemented
    '--------------------------------------------------------
@@ -859,9 +861,7 @@ Public Sub Patient_Demographics_Display()
    Else
       tlHealthFund.text = "No Health Fund"
    Endif
-   tlHealthFund.Visible = True
    Patient_Occupation_Show()
-   
    If Not IsNull(currentconsult!patient!veteran_number) Then
       lblMedicareNumber.text = currentconsult!patient!veteran_number
    Else
@@ -870,7 +870,6 @@ Public Sub Patient_Demographics_Display()
          lblMedicareNumber.text &= " Pos:" & currentconsult!patient!medicare_ref_number
       End If
    Endif
-   
    txtOccupation.Enabled = True
    cmbSearch.Tag = currentconsult!patient!firstname & " " & currentconsult!patient!surname & "\n"
    '----------------------------------------------------------------
@@ -903,7 +902,6 @@ Public Sub Patient_Demographics_Display()
       tlPatientComms.text &= "<BR>"
    Next
    If tlPatientComms.text = "" Then tlPatientComms.text = "Contact Numbers"
-   LBLID.text = "ID:" & currentconsult!patient!fk_patient 'show database ID under photo"
    If currentconsult!patient!fk_sex = const.cSexFemale Then
       Patient_Show_Pregnant 'check if patient pregnant
       Toolbar_Pregnancy_Button_Enable_Disable(True)
@@ -1032,10 +1030,7 @@ Public Sub Gui_Clear()
    lblHappyBirthday.Visible = False
    VBox_Aboriginality.Visible = False
    lblAWarning.Visible = False      'generic label for use for anything
-   With tlHealthFund
-      .Visible = False
-      .text = "Never Asked"
-   End With
+   tlHealthFund.text = ""
    With tbHealthSummary
       .text = "View Health Summary"
       .tag = "Health Summary"
@@ -1064,7 +1059,7 @@ Public Sub Gui_Clear()
    lblMedicareNumber.text = ""
    txtAge.text = ""
    lblAlert.text = ""
-   lblID.text = ""
+   
    lblBirthdate.Visible = False
    gvAllergies.Clear()
    tlRecalls.text = ""
@@ -1080,7 +1075,7 @@ Public Sub Gui_Clear()
    mnuView_AllNotes.Enabled = False
    mnuView_ByProblem.Enabled = False
    cmbConsultationType.index = cmbConsultationType.Find("At consulting rooms")
-   Patient_Picture_Clear()
+   form_patient_photo.Patient_Picture_Clear
    bExit = False                                 '?still need this
    modEditAreaHelpers.Warnings_Panel_Clear(pnlWarnings)
    lblwarnings.text = "Click to add warnings"
@@ -1089,18 +1084,6 @@ Public Sub Gui_Clear()
    
 End
 
-Public Sub Patient_Picture_Clear()
-   '---------------------------------------------
-   ' Clears the picture from the main picture box
-   ' puts back in the default
-   '---------------------------------------------
-   
-   With PicPatient
-      .Picture = Picture.Load("icons/misc/no_photo.png")
-   End With
-   Wait        'otherwise, visually, picture won't disappear
-   
-End
 
 Public Sub tlRecalls_Refresh()
    '---------------------------------------------------------------
@@ -1271,112 +1254,7 @@ Public Sub Notifications_Refresh()
    
 End
 
-Public Sub mnuPatientPhoto_Click()
-   '----------------------------------------------------
-   'this is the popup menu over the patient's photograph
-   '-----------------------------------------------------  
-   
-   Dim fk_image As Integer
-   Dim NewImage As Image
-   Dim pic As Picture
-   Dim tempfile As String
-   Dim sMsg As String
-   Dim PersonPicture As Collection
-   
-   Select Case Last.tag
-      Case "paste image"
-         If Clipboard.type = Clipboard.Image Then
-            tempfile = Temp() & ".png"                                                     'create file to save image to
-            NewImage = Clipboard.Paste()                                                   'retrieve the image
-            Goto SavePatientPicture                                                        'Save the picture
-         Else
-            Message.Info("Sorry, the clipboard does not seem to contain image data")
-         End If
-      Case "brightness"
-         With FImageGet
-            .btnOK.Caption = "Save Changes"
-            .tbGetPicture.Visible = False 
-            .HBox_ImageSize.Enabled = False  
-            .Hbox_Quality.Enabled = False 
-         End With
-         Try FImageGet.Set_Image(PicPatient.Picture.Image)                                 'load picture to Image Manipulator
-         If Not Error Then
-            FImageGet.ShowModal()
-             If Clipboard.type = Clipboard.Image Then
-            NewImage = Clipboard.Paste()                                                   'retrieve the image
-            tempfile = Temp() & ".png"                                                     'create file to save image to
-            Goto SavePatientPicture     
-            End If                                                      'Save the picture
-         End If   
-      Case "delete"
-         If Message.Question("Are you sure you want to delete this patient's picture?", "Yes", "No") = 2 Then Return
-         modDBConnect.exec_query("Update contacts.data_persons set fk_image =  null WHERE pk=" & currentconsult!patient!fk_person)
-         modDBConnect.CommitTrans()
-         PicPatient.Picture = Picture.Load("icons/misc/no_photo.png")
-      Case "load image"
-         Dialog.Title = "Select Image File"
-         Dialog.Filter = ["*.png", "Image Files", "*", "All files"]
-         If Dialog.OpenFile() Then Return
-         Try picPatient.picture = Picture.Load(Dialog.Path)
-         If Error Then
-            sMsg = "An error occurred the file couldn't be loaded.\n\n"
-            sMsg &= "Filename:" & Dialog.Path & "\n\n"
-            sMsg &= "Perhaps it was not a valid picture file?"
-            Message.Info(sMsg)
-            PicPatient.Picture = Picture.Load("icons/misc/no_photo.png")
-            Return
-         End If
-         tempfile = Dialog.Path
-         Goto SavePatientPicture         
-   End Select
-   Return
-   
-SavePatientPicture:
-   If Not IsNull(NewImage) Then
-       NewImage.Save(Tempfile)                               'create a filepath if a pasted image or brightness adjusted image
-   End If   
-   fk_image = modConsultDBI.Image_Save(Tempfile, Currentconsult.GetPK(), modUtil.Calc_md5sum_File(Tempfile))                           'save to backend
-   modDBConnect.exec_query("Update contacts.data_persons set fk_image = " & fk_image & " WHERE pk=" & currentconsult!patient!fk_person) 'link to the person
-   modDBConnect.CommitTrans()
-   Try PicPatient.Picture = Picture.Load(Tempfile)                     'show the picture Bug here
-Catch
-   Message.Info("An error occurred whilst trying to save the patient's photo.\n\nIf this persists please contact your system administrator.")
-   Return   
-   
-End
 
-Public Sub Calc_md5sum_File(filename As String) As String
-   
-   Dim md5Output As String
-   
-   Exec ["/usr/bin/md5sum", filename] To md5Output
-   Return Left(md5Output, InStr(md5Output, " ") - 1)
-   
-End
-
-Public Sub PatientPhoto_Acquire()
-   
-   Message.info("Photo Acquisition is not implemented yet")
-   
-End
-
-Public Sub PatientPhoto_Import()
-   
-   Message.info("Photo Import is not implemented yet")
-   
-End
-
-Public Sub PatientPhoto_Edit()
-   
-   Message.info("Photo Editing is not implemented yet")
-   
-End
-
-Public Sub PatientPhoto_Save()
-   
-   Message.info("Photo Saving is not implemented yet")
-   
-End
 
 Public Sub tbSections_Menu()
    
@@ -1461,8 +1339,9 @@ Public Sub ToolBar_Buttons_Activate(BtnName As String)
    'enable or disable apppropriate buttons and change button tooltips
    '------------------------------------------------------------------
    'Disable all - will be enabled as needed
+   
    Dim EditorPage As Form  
- '  Dim FD As FDiabetes
+   '  Dim FD As FDiabetes
    
    tbPreview.Enabled = False
    tbPreview.Tooltip = ""
@@ -1477,8 +1356,6 @@ Public Sub ToolBar_Buttons_Activate(BtnName As String)
    tbEdit.Enabled = False
    tbEdit.Tooltip = ""
    tbDecisionSupport.Enabled = False
-   Print BtnName
-   
    Select Case BtnName
       Case "FDocumentViewer"
          tbPrint.Enabled = True
@@ -1720,7 +1597,7 @@ Public Sub ToolBar_Buttons_Activate(BtnName As String)
    End Select
    
 Catch
- '  Message.Info("bugged on with:" & BtnName)
+   '  Message.Info("bugged on with:" & BtnName)
    Return
    
 End
@@ -1830,71 +1707,6 @@ Public Sub mnuView_Click()
          form_clinical.Editor_ShowPage("All Previous Notes")
          ToolBar_Buttons_Activate("All Previous Notes")
    End Select
-Catch
-   Return
-   
-End
-
-Public Sub mnuImages_Click()
-   '----------------------------------------------------
-   'this is the popup menu over the patient's photograph
-   '-----------------------------------------------------
-   
-   Dim fk_image As Variant
-   Dim NewImage As Image
-   Dim tempfile As String
-   
-   Select Case Last.tag
-      Case "paste image"
-         If Clipboard.type = Clipboard.Image Then
-            NewImage = Clipboard.Paste()                                                   'retrieve the image
-            tempfile = Temp() & ".png"                                                     'create file to save image to
-            Goto SavePatientPicture                                                        'Save the picture
-         Else
-            Message.Info("Sorry, the clipboard does not seem to contain image data")
-         End If
-      Case "brightness"
-         With FImageGet
-            .btnOK.Caption = "Save Changes"
-            .tbGetPicture.Visible = False
-            .HBox_ImageSize.Enabled = False
-            .Hbox_Quality.Enabled = False
-         End With
-         Try FImageGet.Set_Image(PicPatient.Picture.Image)                                 'load picture to Image Manipulator
-         If Not Error Then
-            FImageGet.ShowModal()
-            NewImage = Clipboard.Paste()                                                   'retrieve the image
-            tempfile = Temp() & ".png"                                                     'create file to save image to
-            Goto SavePatientPicture                                                        'Save the picture
-         End If
-      Case "delete"
-         'Print patient!image_data
-         If Message.Question("Are you sure you want to delete this patient's picture?", "Yes", "No") = 2 Then Return
-         modDBConnect.exec_query("Update contacts.data_persons set fk_image =  null WHERE pk=" & currentconsult!patient!fk_person)
-         '  modDBConnect.exec_query("Update blobs.images set deleted = True where fk_image = "
-         modDBConnect.CommitTrans()
-         PicPatient.Picture = Picture.Load("icons/misc/no_photo.png")
-      Case "patient picture"
-         ' PatientPicture = Currentconsult!progress_notes_images[lcImages.children[lcImages.index].tag]
-         ' fk_image = Currentconsult!progress_notes_images[lcImages.children[lcImages.index].tag]!pk
-         ' '    PersonPicture!path = CurrentThumb.Tag
-         ' '     P!fk_image = modContactsDBI.Image_Save(PersonPicture, currentconsult.GetPK())
-         ' '    If Not Error Then
-         ' sql = "Update contacts.data_persons set fk_image = " & fk_image & " WHERE pk=" & currentconsult!patient!fk_person
-         ' modDBConnect.exec_query(sql)
-         ' modDBConnect.CommitTrans()
-         ' Try PicPatient.Picture = Picture.Load(PatientPicture!path)
-         ' '    Endif
-         
-   End Select
-   Return
-   
-SavePatientPicture:
-   NewImage.Save(Tempfile)                                                        'create a filepath
-   fk_image = modConsultDBI.Image_Save(Tempfile, Currentconsult.GetPK(), modUtil.Calc_md5sum_File(Tempfile))                           'save to backend
-   modDBConnect.exec_query("Update contacts.data_persons set fk_image = " & fk_image & " WHERE pk=" & currentconsult!patient!fk_person) 'link to the person
-   modDBConnect.CommitTrans()
-   Try PicPatient.Picture = Picture.Load(Tempfile)                     'show the picture
 Catch
    Return
    
@@ -2212,14 +2024,7 @@ Public Sub Consult_Edit(consult_to_edit As Collection)
    
 End
 
-Public Sub picPatient_Menu()
-   'Display the popup menu over the patient phot
-   'Lets user add, delete, change brightness of the patient photo
-   
-   If IsNull(currentconsult) Then Return
-   mnuPatientPhoto.Popup()
-   
-End
+
 
 Public Sub gvAllergies_Menu()
    '-------------------------------------------------------------------------------
@@ -2456,8 +2261,10 @@ Public Sub Health_Funds_Menu_Create()
 End
 
 Public Sub tlHealthFund_Menu()
-   
-   mnuHealthFunds.popup
+
+   If tlHealthFund.text <> "" Then
+      mnuHealthFunds.popup
+   End If   
    
 End
 
@@ -2504,3 +2311,4 @@ Public Sub HSplit_Comms_Birthdate_Resize()
    Settings["FClinical/HSplit_Comms_Birthdate.Layout"] = HSplit_Comms_Birthdate.layout
    
 End
+

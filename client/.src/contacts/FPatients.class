@@ -30,6 +30,7 @@ Private iTimer_Count As Integer
 Private sSearchMode As String
 Private bKeyValid As Boolean
 Private PersonPicture As Collection
+Private P As Picture
 Private bNewAddress As Boolean
 Private bAddFamilyMember As Boolean
 Private Const cStatusMsg_Info As Integer = 0
@@ -81,12 +82,16 @@ Private Embedded_In_Form As String
 Private form_billing As FPatientBillingCards
 Private Suburb As Collection
 Private suburbs As Collection
+Private form_patient_photo As FPatientPhoto
+Private currentconsult As CConsult
 
-' Public Sub Embedded_In_Form_Set(form_name As String)
-'    
-'   Embedded_In_Form = form_name    
-'    
-' End
+Public Sub _new()
+
+   With form_patient_photo = New FPatientPhoto(VBox_Photo)
+      .lblID.Visible = False  
+   End With
+
+End   
 
 Public Sub Form_Open()
    
@@ -302,16 +307,7 @@ Public Sub Patients_List_Fill()
    
 End
 
-Public Sub Person_Picture_Clear()
-   
-   With PictureBox2
-      .Picture = Picture.Load("icons/misc/no_photo.png")
-      .tag = ""
-      .Refresh()
-   End With
-   Wait        'otherwise, visually, picture won't disappear
-   
-End
+
 
 Public Sub Patient_Display()
    '---------------------------------------------------
@@ -328,6 +324,7 @@ Public Sub Patient_Display()
    cvwPatients.MoveCurrent()
    pk_view = rows_in_view[cvwPatients_key]!pk_view
    row_in_view = rows_in_view[cvwPatients_key]
+   currentConsult = New CConsult(row_in_view, const.ConsultType_ClericalNote)
    EditArea_Clear()   'clear the display fields and the patients picture
    bExit = True
    fk_person = row_in_view!fk_person
@@ -347,7 +344,9 @@ Public Sub Patient_Display()
    Else
       lblContactType.text = "Edit Details: " & row_in_view!title & " " & row_in_view!firstname & " " & row_in_view!surname
       Try lblContactType.text &= " File ID:" & Str$(row_in_view!fk_patient)
-      form_billing.Display_Patient_Data(row_in_view) 'ignore the crap mixed up code in this module - will all be re-written
+    '  form_billing.Display_Patient_Data(row_in_view) 'ignore the crap mixed up code in this module - will all be re-written
+      form_billing.Display_Patient_Data(currentconsult) 'ignore the crap mixed up code in this module - will all be re-written
+
    End If
    lblPerson.text = ""
    txtSurname.text = row_in_view!surname
@@ -426,7 +425,10 @@ Public Sub Patient_Display()
    BExit = True
    If Not IsNull(fk_image) Then
       Patient_Picture_Display()
+    
    End If
+ 
+   form_patient_photo.Init(currentconsult)
    tbSave.Enabled = True
    VBox_EditArea.Enabled = True
    Address_New() 'default to new address in case they type here
@@ -439,21 +441,21 @@ End
 
 Public Sub Patient_Picture_Display()
    
-   Dim tempFile As String
-   Dim tempPicture As Variant
-   
-   tempFile = Temp() & ".png"
-   tempPicture = row_in_view!image
-   
-   If tempPicture.data Then
-      File.Save(tempFile, tempPicture.data)
-      PictureBox2.Picture = Picture.Load(Tempfile)
-      PersonPicture = New Collection
-      PersonPicture!fk_image = row_in_view!fk_image
-      PersonPicture!picture = PictureBox2.Picture
-      PersonPicture!path = Tempfile
-   End If
-   
+   ' Dim tempFile As String
+   ' Dim tempPicture As Variant
+   ' 
+   ' tempFile = Temp() & ".png"
+   ' tempPicture = row_in_view!image
+   ' 
+   ' If tempPicture.data Then
+   '    File.Save(tempFile, tempPicture.data)
+   '    PictureBox2.Picture = Picture.Load(Tempfile)
+   '    PersonPicture = New Collection
+   '    PersonPicture!fk_image = row_in_view!fk_image
+   '    PersonPicture!picture = PictureBox2.Picture
+   '    PersonPicture!path = Tempfile
+   ' End If
+   ' 
 End
 
 Public Sub EditArea_Notify_DataChange(flag As Boolean)
@@ -482,16 +484,16 @@ Public Sub EditArea_Buttons_Click()
       Case "new communication"
          Communication_New()
          txtCommValue.SetFocus()
-      Case "load photo"
-         Patient_Picture_Import()
-      Case "remove photo"
-         Person_Picture_Clear()
-         If Not IsNull(fk_image) Then
-            PersonPicture!path = "icons/misc/no_photo.png"
-            PersonPicture!picture = Picturebox2.picture
-         End If
-         EditArea_Notify_DataChange(True)
-      Case "export"
+      ' Case "load photo"
+      '    Patient_Picture_Import()
+      ' ' Case "remove photo"
+      '    Person_Picture_Clear()
+      '    If Not IsNull(fk_image) Then
+      '       PersonPicture!path = "icons/misc/no_photo.png"
+      '       PersonPicture!picture = Picturebox2.picture
+      '    End If
+      '    EditArea_Notify_DataChange(True)
+      ' Case "export"
       Case "reset"
          Reset_Gui()
       Case "save"
@@ -541,8 +543,9 @@ Public Sub EditArea_Clear()
    pk_last_comm_deleted = Null
    listview1.Visible = False
    listview2.Visible = False
-   PersonPicture = New Collection
-   Person_Picture_Clear()
+  ' PersonPicture = New Collection
+  ' Person_Picture_Clear()
+   form_patient_photo.Patient_Picture_Clear
    bExit = False
    EditArea_Notify_DataChange(False)
    cvwPatients_key = Null
@@ -642,9 +645,9 @@ Public Sub Save()
       patient!fk_payer_branch = form_billing.Responsible_Payer_Get_fk_branch()
    Endif
    If Trim(txtAppointmentBookMemo.text) <> "" Then
-       patient!appointment_memo = Trim(txtAppointmentBookMemo.text)
+      patient!appointment_memo = Trim(txtAppointmentBookMemo.text)
    Else
-       patient!appointment_memo = Null
+      patient!appointment_memo = Null
    End If   
    patient!long_appointment = CBool(chkLongAppointments.value)
    patient!medicare_number = form_billing.Medicare_Number()
@@ -726,21 +729,21 @@ Public Sub Save()
    Else
       person!language_problems = False
    End If
-   If PersonPicture!path Then
-      If Not IsNull(fk_image) Then                                            'patient has existing photo
-         If PersonPicture!path = "icons/misc/no_photo.png" Then  'if is a 'no photo' then must have deleted the real image
-            person!fk_image = Null                                'set this back to null in backend
-            Image = New CRow
-            Image.put_unchanged(fk_image, "fk_image")             'and mark existing image in blobs
-            Image!deleted = True                                  'to deleted (still recoverable via fk_consult
-            Image.Save("blobs.images", "fk_image")
-         Else
-            person!fk_image = modContactsDBI.Image_Save(PersonPicture)
-         End If
-      Else                                                        ' no fk_image?
-         person!fk_image = modContactsDBI.Image_Save(PersonPicture) 'save their new photo
-      End If
-   End If
+   ' If PersonPicture!path Then
+   '    If Not IsNull(fk_image) Then                                            'patient has existing photo
+   '       If PersonPicture!path = "icons/misc/no_photo.png" Then  'if is a 'no photo' then must have deleted the real image
+   '          person!fk_image = Null                                'set this back to null in backend
+   '          Image = New CRow
+   '          Image.put_unchanged(fk_image, "fk_image")             'and mark existing image in blobs
+   '          Image!deleted = True                                  'to deleted (still recoverable via fk_consult
+   '          Image.Save("blobs.images", "fk_image")
+   '       Else
+   '          person!fk_image = modContactsDBI.Image_Save(PersonPicture)
+   '       End If
+   '    Else                                                        ' no fk_image?
+   '       person!fk_image = modContactsDBI.Image_Save(PersonPicture) 'save their new photo
+   '    End If
+   ' End If
    person.Save("contacts.data_persons", "fk_person")
    For Each Coll In Comms
       communication = New CRow
@@ -912,6 +915,7 @@ Catch
    Message.Error("An error occurred whilst trying to save this patient's record.\n\nIf this persists then please contact your SysAdmin "
    "who can notify the developers of the problem")
    modDBConnect.RollBack
+   
 End
 
 Public Sub Reset_Gui()
@@ -1136,9 +1140,8 @@ Public Sub Person_Merge()
    
 End
 
-   
 Sub Address_Delete()
-
+   
    Dim i As Integer
    
    bExit = True
@@ -1156,7 +1159,6 @@ Sub Address_Delete()
    bExit = True
    
 End
-   
 
 Public Sub Patient_New()
    
@@ -1726,26 +1728,26 @@ End
 
 Public Sub Patient_Picture_Import()
    
-   Dim sMsg As String
-   
-   Dialog.Title = "Select Image File"
-   Dialog.Filter = ["*.png", "Image Files", "*", "All files"]
-   
-   If Dialog.OpenFile() Then Return
-   Try PictureBox2.picture = Picture.Load(Dialog.Path)
-   If Error Then
-      sMsg = "An error occurred the file couldn't be loaded.\n\n"
-      sMsg &= "Filename:" & Dialog.Path & "\n\n"
-      sMsg &= "Perhaps it was not a valid picture file?"
-      Message.Info(sMsg)
-      Person_Picture_Clear()
-      Return
-   End If
-   Try PictureBox2.tag = Dialog.Path
-   PersonPicture = New Collection
-   PersonPicture!path = Dialog.Path
-   PersonPicture!picture = Picturebox2.picture
-   EditArea_Notify_DataChange(True)
+   ' Dim sMsg As String
+   ' 
+   ' Dialog.Title = "Select Image File"
+   ' Dialog.Filter = ["*.png", "Image Files", "*", "All files"]
+   ' 
+   ' If Dialog.OpenFile() Then Return
+   ' Try PictureBox2.picture = Picture.Load(Dialog.Path)
+   ' If Error Then
+   '    sMsg = "An error occurred the file couldn't be loaded.\n\n"
+   '    sMsg &= "Filename:" & Dialog.Path & "\n\n"
+   '    sMsg &= "Perhaps it was not a valid picture file?"
+   '    Message.Info(sMsg)
+   '    Person_Picture_Clear()
+   '    Return
+   ' End If
+   ' Try PictureBox2.tag = Dialog.Path
+   ' PersonPicture = New Collection
+   ' PersonPicture!path = Dialog.Path
+   ' PersonPicture!picture = Picturebox2.picture
+   ' EditArea_Notify_DataChange(True)
    
 End
 
@@ -2555,3 +2557,5 @@ Public Sub MbtnReligions_Menu()
    mnuReligions.Popup()
    
 End
+
+

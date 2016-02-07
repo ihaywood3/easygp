@@ -16,19 +16,21 @@
 '-------------------------------------------------------------------------------
 ' PURPOSE      A form to allow entry and viewing of day to day staff activities
 '-------------------------------------------------------------------------------
+Private bExit As Boolean
+Private bSaving As Boolean
 Private currentShift As CStaffShift
 Private Form_Viewer As FProgressNotesViewer
 Private Form_Editor As FEditor
-Private fk_staff_note As Variant
+Private fk_staff_message As Variant
 Private Embedded_In_Form As String = Me.Name
-Private staff_notes_types As Collection
-Private staff_notes As Collection
-Private staff_notes_selected As Collection 'the current row of saved data selected
-Private fk_lu_notes_type As Variant
+Private staff_message_types As Collection
+Private staff_messages As Collection
+Private staff_message_selected As Collection 'the current row of saved data selected
+Private fk_lu_message_type As Variant
 Private day_notes As HBox[]
 Private staff As Collection
 Private fk_lu_urgency As Variant
-Private current_notes As TextLabel
+Private current_message As TextLabel
 Private Last_Row_Clicked As HBox
 Private Form_html_viewer As FHtmlViewer
 
@@ -46,7 +48,7 @@ Public Sub _new()
       .VBox_HTML_SubHeading.visible = True   
       .tlSubHeading.text = SubHeading()
    End With
-   staff_notes_types = modUtilGUI.LoadCombo(cmbNotesType, modUtil.Copy_Collection_Keyed_Sequentially(modStaffShiftDBI.Notes_Types_Get()), "type")
+   staff_message_types = modUtilGUI.LoadCombo(cmbNotesType, modUtil.Copy_Collection_Keyed_Sequentially(modStaffShiftDBI.Notes_Types_Get()), "type")
    Notes_Type_Make_Menu
    staff = modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.Staff_Get())
    modUtilGUI.LoadCombo(cmbStaff, staff, "wholename")
@@ -65,10 +67,8 @@ Public Sub Form_KeyPress()
       Select Case Key.code
          Case Asc("=")
             Form_html_viewer.zoom_in()
-            ' Zoom("zoom_in")
          Case Asc("-")
             Form_html_viewer.zoom_out() 
-            '  Zoom("zoom_out")
       End Select
    End If
    
@@ -97,79 +97,92 @@ Public Sub Shift_Create()
    
 End
 
-
 Public Sub EditArea_Clear()
    
+   bExit = True   
    Vbox_EditArea.Enabled = False 
    modEditAreaHelpers.EditArea_Clear(Vbox_EditArea)
    cmbNotesType.Index = cmbNotesType.Find("General")
-   Try fk_lu_notes_type = staff_notes_types[cmbNotesType.Index]!pk
+   Try fk_lu_message_type = staff_message_types[cmbNotesType.Index]!pk
    cmbStaff.Index = - 1
    Form_Editor.teNotes.RichText = ""
    rbUrgencyRoutine.Value = True 
    fk_lu_urgency = const.UrgencyLevelRoutine
-   fk_staff_note = Null
+   fk_staff_message = Null
+   bExit = False     
    
 End
 
 Public Function Save() As Boolean
    '------------------------------------------------------------------------------
-   'Saves another row of notes for the staff member
+   'Saves another message for the staff member
    '------------------------------------------------------------------------------
-   ' CREATE TABLE clerical.staff_notes
+   ' CREATE TABLE clerical.staff_messages
    ' (
-   '   pk serial NOT NULL,
-   '   fk_staff_shift integer NOT NULL,
-   '   notes text NOT NULL,
-   '   fk_staff_destination integer,
-   '   fk_lu_staff_notes_type integer NOT NULL,
-   '   deleted boolean DEFAULT false,
-   '   CONSTRAINT staff_notes_pkey PRIMARY KEY (pk),
-   '   CONSTRAINT staff_notes_fk_lu_staff_notes_type_fkey FOREIGN KEY (fk_lu_staff_notes_type)
-   '       REFERENCES clerical.lu_staff_notes_type (pk) MATCH SIMPLE
-   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
-   '   CONSTRAINT staff_notes_fk_staff_shift_fkey FOREIGN KEY (fk_staff_shift)
-   '       REFERENCES clerical.staff_shifts (pk) MATCH SIMPLE
-   '       ON UPDATE NO ACTION ON DELETE NO ACTION
-   ' )
-   ' WITH (
-   '   OIDS=FALSE
+   '   pk serial primary key,
+   '   time_logged timestamp without time zone NOT NULL,
+   '   fk_staff_shift integer NOT NULL references clerical.staff_shifts (pk),
+   '   notes text not null,
+   '   fk_staff_destination integer default null,
+   '   fk_lu_urgency integer not null references common.lu_urgency(pk),
+   '   fk_staff_completed integer default null,
+   '   fk_lu_staff_message_type integer NOT NULL references  clerical.lu_staff_message_type (pk),
+   '   completed boolean default false,
+   '   date_completed date default null,
+   '   completion_notes text default null,
+   '   deleted boolean DEFAULT false 
    ' );
-   '-------------------------------------------------------------------------
+   ' 
+   '---------------------------------------------------------------------------------
    
-   Dim New_Note As CRow 
+   Dim New_Message As CRow 
    Dim editor_notes As String = Form_Editor.teNotes.RichText
    
-   If Form_Editor.Vbox_ConsultNotes.Padding = 0 Then Return
-   If Not Notes_Valid() Then Return
-   
+   bSaving = True
+   If Form_Editor.Vbox_ConsultNotes.Padding = 0 Then 
+      bSaving = False   
+      Return
+   End If   
+   If Vbox_EditArea_Outer.Padding = 0 Then
+      bSaving = False   
+      Return   
+   Endif
+   If Not Mesage_Valid() Then 
+      bSaving = False   
+      Return
+   Endif
    ' editor_notes = Replace$(editor_notes, "font-weight: 600", "font-weight: bold")
    ' editor_notes = Replace$(editor_notes, "-qt-paragraph-type:empty; margin-top:0px;", "")
-   New_Note = New CRow  
-   If fk_staff_note Then
-      New_Note.put_Unchanged(fk_staff_note, "fk_staff_note")
+   New_Message = New CRow  
+   If Not IsNull(fk_staff_message) Then
+      New_Message.put_Unchanged(fk_staff_message, "fk_staff_message")
    Endif 
-   New_Note!fk_staff_shift = currentShift.GetPK()
+   New_Message!fk_staff_shift = currentShift.GetPK()
    If cmbStaff.Index <> -1 Then
-      New_Note!fk_staff_destination = staff[cmbStaff.index]!fk_staff
+      New_Message!fk_staff_destination = staff[cmbStaff.index]!fk_staff
    Endif
    Print editor_notes
-   ' New_Note!notes = Fix_HTML(editor_notes, [])
-   '  New_Note!notes = Replace(New_Note!notes, "p, li { white-space: pre-wrap; }", "")
-   New_Note!notes = editor_notes
-   New_Note!time_logged = Format(Now, "yyyy-mm-dd hh:nn")
-   New_Note!fk_lu_staff_notes_type = fk_lu_notes_type
-   New_Note!fk_lu_urgency = fk_lu_urgency
-   New_Note!completed = CBool(chkCompleted.value)
+   ' New_Message!notes = Fix_HTML(editor_notes, [])
+   '  New_Message!notes = Replace(New_Message!notes, "p, li { white-space: pre-wrap; }", "")
+   New_Message!notes = editor_notes
+   New_Message!time_logged = Format(Now, "yyyy-mm-dd hh:nn")
+   New_Message!fk_lu_staff_message_type = fk_lu_message_type
+   New_Message!fk_lu_urgency = fk_lu_urgency
+   New_Message!completed = CBool(chkCompleted.value)
    If Trim(txtCompletionNotes.text) <> "" Then
-      New_Note!completion_notes = Trim(txtCompletionNotes.text)
+      New_Message!completion_notes = Trim(txtCompletionNotes.text)
    Else
-      New_Note!completion_notes = Null
+      New_Message!completion_notes = Null
    Endif
-   New_Note.Save("clerical.staff_notes", "fk_staff_note")
+   New_Message.Save("clerical.staff_messages", "fk_staff_message")
    modDBConnect.CommitTrans
+   bSaving = False   
+   VBox_EditArea_Outer.Padding = 0
    Reload() 
-   
+Catch 
+   Message.Info("An error occurred whilst trying to save the message.")
+   bSaving = False      
+
 End
 
 Public Function Fix_HTML(s As String, lastspan As String[]) As String
@@ -241,13 +254,11 @@ Private Function Make_New_Tag(tag As String, ByRef lastspan As String[]) As Stri
    
 End
 
-
-
 Public Sub lblNotes_mousedown()
    
    Try Last_Row_Clicked.Background = Color.White
    Last.Parent.background = Color.RGB(215, 232, 240) 'Color.LightBackground
-   Note_Display
+   Message_Display
    Last_Row_Clicked = Last.Parent 
    
 End
@@ -372,13 +383,13 @@ Public Sub Notes_Row_Enter()
    Dim HB As HBox
    Dim TL As TextLabel
    
-   staff_notes_selected = Last.tag
+   staff_message_selected = Last.tag
    
    For Each Hctrl In Last.Children  
       Select Case Hctrl.Name
-          Case "lblNotes"
-            current_notes = hctrl
-          End Select
+         Case "lblNotes"
+            current_message = hctrl
+      End Select
    Next
    
 End
@@ -387,13 +398,13 @@ Public Sub Reload()
    
    Dim entry As Collection
    
-   staff_notes = modStaffShiftDBI.Staff_Notes_Get_Outstanding()
+   staff_messages = modStaffShiftDBI.staff_messages_Get_Outstanding()
    scrollview1.Children.Clear
-   For Each entry In staff_notes
+   For Each entry In staff_messages
       New_Message_Row(entry)
    Next
    If Embedded_In_Form <> "FProgressNoteEditor" Then
-      Form_html_viewer.WebView1.HTML = modStaffShiftDBI.Offices_Notes_Create_HTML()
+      Form_html_viewer.WebView1.HTML = modStaffShiftDBI.Offices_Messages_Create_HTML()
    End If   
    EditArea_Clear
    
@@ -405,12 +416,23 @@ Public Sub VSplit1_ReSize()
    
 End
 
+Public Sub EditArea_Notify_Datachange(bFlag As Boolean)
+   
+   If bFlag Then
+      Vbox_EditArea_Outer.Padding = 1
+   Else
+      VBox_EditArea_Outer.Padding = 0
+   End If  
+   
+End
+
 Public Sub EditArea_Buttons_Click()
    
    Select Case Last.tag
       Case "new"
          EditArea_Clear
          Vbox_EditArea.Enabled = True  
+         EditArea_Notify_Datachange(True)
       Case "save"
          Save()
          EditArea_Clear
@@ -420,7 +442,7 @@ Public Sub EditArea_Buttons_Click()
    
 End
 
-Public Function Notes_Valid() As Boolean
+Public Function Mesage_Valid() As Boolean
    
    Return True 
    
@@ -428,17 +450,20 @@ End
 
 Public Sub rbDegreeUrgency_Click()
    
+   If bExit Then Return
    fk_lu_urgency = Last.tag   
+   EditArea_Notify_Datachange(True)
    
 End
 
 Public Sub EditArea_Combo_Click()
    
-   Print Last.tag
+   If bExit Then Return
    Select Case Last.tag
       Case "notes type"
-         fk_lu_notes_type = staff_notes_types[Last.index]!pk
+         fk_lu_message_type = staff_message_types[Last.index]!pk
    End Select
+   EditArea_Notify_Datachange(True)
    
 End
 
@@ -471,7 +496,7 @@ End
 
 Public Sub Note_Mark_Completed()
    
-   If modDBConnect.update("clerical.staff_notes", Null, ["pk": fk_staff_note, "completed": True]) Then
+   If modDBConnect.update("clerical.staff_messages", Null, ["pk": fk_staff_message, "completed": True]) Then
       modDBConnect.CommitTrans
       Reload 
    Endif
@@ -485,18 +510,19 @@ Public Sub Note_Edit()
    
 End
 
-Public Sub Note_Display()
+Public Sub Message_Display()
    
    EditArea_Clear
-   fk_staff_note = staff_notes_selected!pk_staff_notes
-   cmbNotesType.Index = cmbNotesType.Find(staff_notes_selected!type)
-   cmbStaff.index = cmbStaff.Find(staff_notes_selected!staff_destination_wholename)
+   bExit = True  
+   fk_staff_message = staff_message_selected!pk_staff_messages
+   cmbNotesType.Index = cmbNotesType.Find(staff_message_selected!type)
+   cmbStaff.index = cmbStaff.Find(staff_message_selected!staff_destination_wholename)
    With Form_Editor
       .bExit = True  
-      .teNotes.RichText = staff_notes_selected!notes
+      .teNotes.RichText = staff_message_selected!notes
       .bExit = False 
    End With
-   Select Case staff_notes_selected!fk_lu_urgency
+   Select Case staff_message_selected!fk_lu_urgency
       Case const.UrgencyLevelRoutine
          rbUrgencyRoutine.Value = True  
       Case const.UrgencyLevelModerate  
@@ -504,11 +530,11 @@ Public Sub Note_Display()
       Case const.UrgencyLevelUrgent
          rbUrgencyUrgent.value = True   
    End Select
-   chkCompleted.value = staff_notes_selected!completed   
-   If Not IsNull(staff_notes_selected!completion_notes) Then
-      txtCompletionNotes.text = staff_notes_selected!completion_notes
+   chkCompleted.value = staff_message_selected!completed   
+   If Not IsNull(staff_message_selected!completion_notes) Then
+      txtCompletionNotes.text = staff_message_selected!completion_notes
    Endif
-   
+   bExit = False  
 End
 
 Public Sub Note_Change_Entry_Type()
@@ -522,7 +548,7 @@ End
 Public Sub Note_Delete()
    
    If Message.Question("Are you sure you wish to delete this entry", "Yes", "No") = 2 Then Return
-   If modDBConnect.update("clerical.staff_notes", Null, ["pk": fk_staff_note, "deleted": True]) Then
+   If modDBConnect.update("clerical.staff_notes", Null, ["pk": fk_staff_message, "deleted": True]) Then
       modDBConnect.CommitTrans
       Reload
    Endif
@@ -535,7 +561,7 @@ Public Sub Notes_Type_Make_Menu()
    Dim mnu As Menu
    Dim type As Collection
    
-   For Each type In staff_notes_types
+   For Each type In staff_message_types
       With mnu = New Menu(mnuOfficeLog_ChangeEntrytype) As "mnuChangeOfficeType"
          .Text = type!type
          .tag = type
@@ -544,8 +570,6 @@ Public Sub Notes_Type_Make_Menu()
    Next
    
 End
-
-
 
 Public Sub Form_Leave()
    
@@ -561,8 +585,9 @@ End
 
 Public Sub Timer1_Timer()
    
+   If VBox_EditArea.Padding = 1 Then Return
+   If bSaving Then Return
    Reload  
-   Print "reloading"
    
 End
 
@@ -583,135 +608,114 @@ Public Function SubHeading() As String
    
 End
 
+Public Sub chkCompleted_Click()
+   
+   If bExit Then Return
+   EditArea_Notify_Datachange(True)
+   
+End
+
+Public Sub EditArea_TextBox_Change()
+   
+   If bExit Then Return
+   EditArea_Notify_Datachange(True)
+   
+End
+
 ' 
-' - - drop table clerical.staff_shifts cascade;
-' - - drop table clerical.lu_staff_notes_type cascade;
-' - - drop table clerical.staff_notes;
-' Create TABLE clerical.lu_staff_notes_type
+' --drop table  clerical.staff_shifts cascade;
+' --drop table  clerical.lu_staff_notes_type cascade;
+' --drop table clerical.staff_notes ;
+' CREATE TABLE clerical.lu_staff_message_type
 ' (
-'   pk serial Not Null,
-'   type text Not Null,
-'   CONSTRAINT lu_staff_notes_type_pkey PRIMARY KEY(pk)
+'   pk serial NOT NULL,
+'   type text NOT NULL,
+'   CONSTRAINT lu_staff_message_type_pkey PRIMARY KEY (pk)
 ' )
-' With (
-'   OIDS = False
+' WITH (
+'   OIDS=FALSE
 ' );
 ' 
-' ALTER TABLE clerical.lu_staff_notes_type OWNER To easygp;
-' GRANT Select On TABLE clerical.lu_staff_notes_type To staff;
+' ALTER TABLE clerical.lu_staff_message_type   OWNER TO easygp;
+' GRANT SELECT ON TABLE clerical.lu_staff_message_type TO staff;
 ' 
-' COMMENT On TABLE clerical.lu_staff_notes_type Is 
-' 'the type of entry made by the staff';
+' COMMENT ON TABLE clerical.lu_staff_message_type is 
+' 'the type of message entry made by the staff';
 ' 
-' INSERT INTO clerical.lu_staff_notes_type(type)values( 'General');
-' INSERT INTO clerical.lu_staff_notes_type(type)values( 'Complaint');
-' INSERT INTO clerical.lu_staff_notes_type(type)values( 'Referral Needed');
-' INSERT INTO clerical.lu_staff_notes_type(type)values( 'Make Phone Call');
-' INSERT INTO clerical.lu_staff_notes_type(type)values( 'Scripts Needed');
-' INSERT INTO clerical.lu_staff_notes_type(type)values( 'Call Patient');
-' INSERT INTO clerical.lu_staff_notes_type(type)values( 'Document Needed');
-' INSERT INTO clerical.lu_staff_notes_type(type)values( 'Staff Meeting Item ');
+' INSERT INTO clerical.lu_staff_message_type (type) values ('General');
+' INSERT INTO clerical.lu_staff_message_type (type) values ('Complaint');
+' INSERT INTO clerical.lu_staff_message_type (type) values ('Referral');
+' INSERT INTO clerical.lu_staff_message_type (type) values ('Phone Call');
+' INSERT INTO clerical.lu_staff_message_type (type) values ('Scripts');
+' INSERT INTO clerical.lu_staff_message_type (type) values ('Document');
+' INSERT INTO clerical.lu_staff_message_type (type) values ('Staff Meeting ');
 ' 
-' Create TABLE clerical.staff_shifts
+' CREATE TABLE clerical.staff_shifts
 ' (
 '   pk serial primary key,
-'   shift_date timestamp without Time zone Not Null,
-'   fk_staff integer Not Null references admin.staff(pk)
+'   shift_date timestamp without time zone NOT NULL,
+'   fk_staff integer NOT NULL references admin.staff(pk)
 ' );
-' ALTER TABLE clerical.staff_shifts OWNER To easygp;
-' GRANT ALL On TABLE clerical.staff_shifts To staff;
+' ALTER TABLE clerical.staff_shifts   OWNER TO easygp;
+' GRANT ALL ON TABLE clerical.staff_shifts TO staff;
 ' 
-' comment On table clerical.staff_shifts Is 'the record of the staff''s shift';
+' comment on table clerical.staff_shifts is 'the record of the staff''s shift';
 ' 
 ' 
 ' 
-' Create TABLE clerical.staff_notes
+' CREATE TABLE clerical.staff_messages
 ' (
 '   pk serial primary key,
-'   time_logged Time Not Null;
-'   fk_staff_shift integer Not Null references clerical.staff_shifts(pk),
-'   notes text Not Null,
-'   fk_staff_destination integer Default Null,
-'   fk_lu_urgency integer Not Null references common.lu_urgency(pk),
-'   fk_staff_completed integer Default Null,
-'   fk_lu_staff_notes_type integer Not Null references clerical.lu_staff_notes_type(pk),
-'   completed boolean Default False,
-'   date_completed Date Default Null,
-'   completion_notes text Default Null,
-'   deleted boolean Default False 
+'   time_logged timestamp without time zone NOT NULL,
+'   fk_staff_shift integer NOT NULL references clerical.staff_shifts (pk),
+'   notes text not null,
+'   fk_staff_destination integer default null,
+'   fk_lu_urgency integer not null references common.lu_urgency(pk),
+'   fk_staff_completed integer default null,
+'   fk_lu_staff_message_type integer NOT NULL references  clerical.lu_staff_message_type (pk),
+'   completed boolean default false,
+'   date_completed date default null,
+'   completion_notes text default null,
+'   deleted boolean DEFAULT false 
 ' );
 ' 
-' ALTER TABLE clerical.staff_notes OWNER To easygp;
-' GRANT ALL On TABLE clerical.staff_notes To richard;
+' ALTER TABLE clerical.staff_messages   OWNER TO easygp;
+' GRANT ALL ON TABLE clerical.staff_messages TO staff;
 ' 
-' Create Or replace view Clerical.vwStaffNotes As (
-' Select staff_shifts.pk As Fk_staff_shift,
+' create OR replace view Clerical.vwStaffMessages as (
+' select staff_shifts.pk as fk_staff_shift,
 '        staff_shifts.shift_date,
-'        staff_shifts.fk_staff As Fk_staff_logged,
-'        vwStaff.title As Staff_logged_title,
-'        vwStaff.wholename As Staff_logged_wholename,
-'        staff_notes.pk As Pk_staff_notes,
-'        staff_notes.time_logged,
-'        staff_notes.notes,
-'        staff_notes.fk_staff_destination,
-'        staff_notes.fk_staff_completed,
-'        staff_notes.fk_lu_urgency,
-'        staff_notes.fk_lu_staff_notes_type,
-'        staff_notes.deleted As Staff_note_deleted,
-'        staff_notes.completed,
-'        staff_notes.date_completed,
-'        staff_notes.completion_notes,
-'        lu_staff_notes_type.type,
-'        vwStaff1.wholename As Staff_destination_wholename,
-'        vwStaff1.title As Staff_destination_title,
-'        vwStaff2.wholename As Staff_completed_wholename,
-'        vwStaff2.title As Staff_completed_title
-' From clerical.staff_shifts
-' JOIN admin.vwStaff On staff_shifts.fk_staff = vwSTaff.fk_staff
-' JOIN clerical.staff_notes On staff_notes.fk_staff_shift = staff_shifts.pk
-' JOIN common.lu_urgency On staff_notes.fk_lu_urgency = lu_urgency.pk
-' LEFT JOIN admin.vwStaff As VwStaff1 On staff_notes.fk_staff_destination = vwStaff1.fk_staff
-' LEFT JOIN admin.vwStaff As VwStaff2 On staff_notes.fk_staff_completed = vwStaff2.fk_staff
-' JOIN clerical.lu_staff_notes_type On lu_staff_notes_type.pk = staff_notes.fk_lu_staff_notes_type)
+'        staff_shifts.fk_staff as fk_staff_logged,
+'        vwStaff.title as staff_logged_title,
+'        vwStaff.wholename as staff_logged_wholename,
+'        staff_messages.pk as pk_staff_messages,
+'        staff_messages.time_logged,
+'        staff_messages.notes,
+'        staff_messages.fk_staff_destination,
+'        staff_messages.fk_staff_completed,
+'        staff_messages.fk_lu_urgency,
+'        staff_messages.fk_lu_staff_message_type,
+'        staff_messages.deleted as staff_note_deleted,
+'        staff_messages.completed,
+'        staff_messages.date_completed,
+'        staff_messages.completion_notes,
+'        lu_staff_message_type.type,
+'        vwStaff1.wholename as staff_destination_wholename,
+'        vwStaff1.title as staff_destination_title,
+'        vwStaff2.wholename as staff_completed_wholename,
+'        vwStaff2.title as staff_completed_title
+' FROM    clerical.staff_shifts
+' JOIN    admin.vwStaff on staff_shifts.fk_staff = vwSTaff.fk_staff
+' JOIN    clerical.staff_messages on staff_messages.fk_staff_shift = staff_shifts.pk
+' JOIN    common.lu_urgency on staff_messages.fk_lu_urgency = lu_urgency.pk
+' LEFT JOIN admin.vwStaff as vwStaff1 on staff_messages.fk_staff_destination = vwStaff1.fk_staff
+' LEFT JOIN  admin.vwStaff as vwStaff2 on staff_messages.fk_staff_completed = vwStaff2.fk_staff
+' JOIN    clerical.lu_staff_message_type on lu_staff_message_type.pk = staff_messages.fk_lu_staff_message_type)
 ' ;
 ' 
-' ALTER TABLE clerical.vwStaffNotes OWNER To easygp;
-' GRANT Select On TABLE clerical.vwStaffNotes To staff;
+' ALTER TABLE clerical.vwStaffmessages   OWNER TO easygp;
+' GRANT SELECT ON TABLE clerical.vwStaffmessages TO staff;
 ' 
-' ALTER TABLE clerical.vwStaffNotes OWNER To easygp;
-' GRANT Select On TABLE clerical.vwStaffNotes To staff;
-
-'- - added staff status To the admin.vwStaff
-' Create Or REPLACE VIEW admin.vwstaff As 
-'  Select roles.role,
-'     staff.fk_person,
-'     staff.logon_name,
-'     staff.fk_role,
-'     staff.pk,
-'     staff.pk As Fk_staff,
-'     persons.firstname,
-'     persons.surname,
-'     (persons.firstname || ' '::text) || persons.surname AS wholename,
-'     persons.salutation,
-'     persons.fk_title,
-'     lu_title.title,
-'     staff.qualifications,
-'     persons.surname_normalised,
-'     employees_numbers.provider_number,
-'     data_numbers_persons.prescriber_number,
-'     employees_numbers.australian_business_number,
-'     data_numbers_persons.hpii,
-'     staff.fk_status,
-'     lu_employee_status.status
-'    From admin.staff staff
-'      JOIN admin.lu_staff_roles roles On staff.fk_role = roles.pk
-'      JOIN contacts.data_persons persons On staff.fk_person = persons.pk
-'      JOIN contacts.lu_title On persons.fk_title = lu_title.pk
-'      LEFT JOIN contacts.data_numbers_persons On staff.fk_person = data_numbers_persons.fk_person
-'      LEFT JOIN contacts.data_numbers employees_numbers On staff.fk_person = employees_numbers.fk_person
-'      JOIN contacts.lu_employee_status On staff.fk_status = lu_employee_status.pk;
-'      
-' ALTER TABLE admin.vwstaff OWNER To easygp;
-' GRANT ALL On TABLE admin.vwstaff To staff;
 ' 
-' update db.lu_version set lu_minor = 484;
+' update db.lu_version set lu_minor = 486;
+' 

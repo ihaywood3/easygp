@@ -304,6 +304,6 @@ ALTER TABLE clin_prescribing.prescribed add constraint "prescribed_fk_brand_fkey
 ALTER TABLE clin_measurements.inr_dose_management add constraint "inr_dose_management_fk_observation_fkey" foreign key (fk_observation) references documents.observations (pk);
 ALTER TABLE clin_history.occupations_exposures add constraint "occupations_exposures_fk_occupational_history_fkey" foreign key (fk_occupational_history) references clin_history.occupational_history (pk);
 ALTER TABLE clin_workcover.claims add constraint "claims_fk_branch_fkey" foreign key (fk_branch) references contacts.data_branches (pk);
-ALTER TABLE clerical.bookings add constraint "bookings_fk_patient_fkey" foreign key (fk_patient) references clerical.data_patients (pk);
+-- ALTER TABLE clerical.bookings add constraint "bookings_fk_patient_fkey" foreign key (fk_patient) references clerical.data_patients (pk);
 
 update db.lu_version set lu_minor = 476;

@@ -1,14 +1,13 @@
 ﻿
-
+--drop table  clerical.staff_shifts cascade;
+--drop table  clerical.lu_staff_notes_type cascade;
+--drop table clerical.staff_notes ;
 CREATE TABLE clerical.lu_staff_message_type
 (
-  pk serial NOT NULL,
-  type text NOT NULL,
-  CONSTRAINT lu_staff_message_type_pkey PRIMARY KEY (pk)
+  pk serial primary key,
+  type text NOT NULL
 )
-WITH (
-  OIDS=FALSE
-);
+;
 
 ALTER TABLE clerical.lu_staff_message_type   OWNER TO easygp;
 GRANT SELECT ON TABLE clerical.lu_staff_message_type TO staff;

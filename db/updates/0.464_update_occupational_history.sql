@@ -12,7 +12,8 @@ COMMENT ON COLUMN clin_history.occupations_exposures.fk_lu_units IS 'foreign key
   e.g 6 = month, 7 = year';
   
 alter table clin_history.lu_occupational_exposures drop column fk_decision_support cascade;
--- alter table clin_history.occupational_history add column retired boolean default false not null;
+alter table clin_history.occupational_history add column retired boolean default false not null;
+COMMENT ON COLUMN clin_history.occupational_history.retired IS 'if true then the patient is retired';
 
 CREATE OR REPLACE VIEW clin_history.vwoccupationalhistory AS 
  SELECT

@@ -1807,8 +1807,7 @@ CREATE OR REPLACE VIEW research.vwmostrecenteyerelateddocuments AS
   WHERE (vwdocuments.organisation_category::text ~~* '%ophthal%'::text OR vwdocuments.organisation_category::text ~~* '%optom%'::text OR vwdocuments.person_occupation ~~* '%ophthal%'::text OR vwdocuments.person_occupation ~~* '%optom%'::text) AND vwdocuments.deleted = false
   ORDER BY vwdocuments.fk_patient, vwdocuments.date_created DESC;
 
-ALTER TABLE research.vwmostrecenteyerelateddocuments
-  OWNER TO richard;
+ALTER TABLE research.vwmostrecenteyerelateddocuments   OWNER TO richard;
 GRANT ALL ON TABLE research.vwmostrecenteyerelateddocuments TO easygp;
 GRANT SELECT ON TABLE research.vwmostrecenteyerelateddocuments TO staff;
 
@@ -1917,8 +1916,7 @@ CREATE OR REPLACE VIEW research.vwdiabetes_patients_with_hba1c AS
     documents.vwgraphableobservations
   WHERE vwgraphableobservations.fk_patient = vwpatients.fk_patient AND vwgraphableobservations.loinc = '4548-4'::text;
 
-ALTER TABLE research.vwdiabetes_patients_with_hba1c
-  OWNER TO richard;
+ALTER TABLE research.vwdiabetes_patients_with_hba1c   OWNER TO richard;
 GRANT ALL ON TABLE research.vwdiabetes_patients_with_hba1c TO easygp;
 GRANT ALL ON TABLE research.vwdiabetes_patients_with_hba1c TO staff;
 COMMENT ON VIEW research.vwdiabetes_patients_with_hba1c
@@ -1946,8 +1944,7 @@ CREATE OR REPLACE VIEW research.vwdiabetics_with_ldlcholesterol AS
     documents.vwgraphableobservations
   WHERE vwdiabetes_patients_with_hba1c.fk_patient = vwgraphableobservations.fk_patient AND vwgraphableobservations.loinc = '22748-8'::text;
 
-ALTER TABLE research.vwdiabetics_with_ldlcholesterol
-  OWNER TO richard;
+ALTER TABLE research.vwdiabetics_with_ldlcholesterol   OWNER TO richard;
 GRANT ALL ON TABLE research.vwdiabetics_with_ldlcholesterol TO easygp;
 GRANT SELECT ON TABLE research.vwdiabetics_with_ldlcholesterol TO staff;
 
@@ -1978,8 +1975,7 @@ COMMENT ON VIEW research.vwdiabetics_with_ldlcholesterol
   WHERE vwmicroalbuminuria.fk_patient = vwdiabetes_patients_with_hba1c.fk_patient
   ORDER BY vwdiabetes_patients_with_hba1c.fk_patient, vwmicroalbuminuria.observation_date;
 
-ALTER TABLE research.vwdiabetics_with_microalbumins
-  OWNER TO richard;
+ALTER TABLE research.vwdiabetics_with_microalbumins   OWNER TO richard;
 GRANT ALL ON TABLE research.vwdiabetics_with_microalbumins TO easygp;
 GRANT ALL ON TABLE research.vwdiabetics_with_microalbumins TO staff;
 COMMENT ON VIEW research.vwdiabetics_with_microalbumins

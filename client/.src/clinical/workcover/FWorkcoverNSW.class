@@ -449,7 +449,7 @@ Public Sub New_Entry()
    'all across easyp this is the wording I've chosen
    'see FClinicalToolbar.MainToolbar_Click for details
    '---------------------------------------------------------------   
-
+   
    Claim_New()
    
 End
@@ -1927,42 +1927,42 @@ Public Sub Visit_Delete()
    Dim reason As String
    Dim R As Result
    Dim audit_notes As String
+   Dim bReverseEntry As Boolean
    
-   Message.Info("Currently cannot delete a workcover form... sorry... fixing the code")
-   Return 
+   ' Message.Info("Currently cannot delete a workcover form... sorry... fixing the code")
+   
    If bClaimLoaded = False Then
       lvwClaims_Select()
       Claim_Display()
    End If
    If Message.Question("Do you really want to delete this workcover form?", "Yes", "No") = 2 Then Return
-   For Each PN In currentconsult!progress_notes
-      If PN!pk_progressnote = visit!fk_progressnote Then    'must be visit!fk_progressnote As Note being edited now when found the associated progress note                                                      
-         If modUtil.IsSameDay(currentconsult!consult_date, visit!visit_date) Then          'if visit created today, delete progress note
-                                                                                           'and mark visit deleted.
-         Else
-         
-         End If   
-         pn!notes = Replace$(pn!notes, "<TABLE", "<TABLE BACKGROUND='/tmp/watermark.png' BGCOLOR='#E7E7E7' ") 'FIXME PUT IN PROPER NOTE background watermark
-         audit_notes = pn!notes                                                                         'start audit notes
-         R = modDBConnect.exec_query("Select * from clin_workcover.visits where fk_claim= " & visit!fk_claim & " AND deleted = False")  
-         If R.count = 1 Then                                                                                 'delete claim if no visits left
-            modDBConnect.update("clin_workcover.claims", Null, ["pk": visit!fk_claim, "deleted": True])       
-            audit_notes &= "<BR>The claim will also be deleted:" & claim!identifier & " the diagnosis was: " & visit!diagnosis & "<BR>"
-         End If
-         pn!notes = Replace(pn!notes, "</table><HR>", "</TABLE><small><BR><B><I>Audit note:</B> this workcover form was deleted by " & modDBConnect.currentUser!wholename & " on " & Format(currentconsult.GetConsultDate(), "dd/mm/yyyy") & ". Please refer to the audit trail of " & Format(currentconsult.GetConsultDate(), "dd/mm/yyyy") & " for the explanation</I></small><HR>")
-         modDBConnect.update("clin_consult.progressnotes", Null, ["pk": fk_progressnote, "notes": pn!notes])
-         modDBConnect.update("clin_workcover.visits", Null, ["pk": visit!fk_visit, "deleted": True])
-         R = modDBConnect.exec_query("Select * from clin_workcover.visits where fk_claim= " & visit!fk_claim & " AND deleted = False")
-         If modAudit.MakeAudit(currentconsult, "mark deleted", "clin_workcover.visits", visit!fk_visit, const.cSection_Workcover, audit_notes) Then
-            modDBConnect.CommitTrans()
-            Deleted_WorkcoverVisit = visit
-            Deleted_Workcoverclaim = claim
-            Try FClinical.Refresh_Section(const.cSection_Workcover) 
-            ' Try FClinical.Refresh_AllPreviousNotes() 'may not be open
-            Break
-         End If 
+   
+   If modUtil.IsSameDay(currentconsult.GetConsultDate(), visit!visit_date) Then                                'this form was created today
+      bReverseEntry = True                                                                                     'won't keep the progress notes
+      modDBConnect.update("clin_consult.progressnotes", Null, ["pk": visit!fk_progressnote, "deleted": True])  'mark progress note deleted
+   Else
+      PN = currentconsult!progress_notes[visit!fk_progressnote]
+   End If   
+   R = modDBConnect.exec_query("Select * from clin_workcover.visits where fk_claim= " & visit!fk_claim & " AND deleted = False")  
+   If R.count = 1 Then   
+      modDBConnect.update("clin_workcover.claims", Null, ["pk": visit!fk_claim, "deleted": True]) 
+   End If
+   If bReverseEntry = False Then    
+     ' pn!notes = Replace$(pn!notes, "<TABLE", "<TABLE 'BGCOLOR='#E7E7E7' ")                                         'FIXME PUT IN PROPER NOTE background watermark
+      pn!notes = Replace$(pn!notes, "<TABLE", "<TABLE BACKGROUND='' BGCOLOR='#E7E7E7' ")
+      audit_notes = pn!notes                                                                                        'start audit notes
+      audit_notes &= "<BR>The claim will also be deleted:" & claim!identifier & " the diagnosis was: " & visit!diagnosis & "<BR>" 
+      pn!notes = Replace(pn!notes, "</table><HR>", "</TABLE><small><BR><B><I>Audit note:</B> this workcover form was deleted by " & modDBConnect.currentUser!wholename & " on " & Format(currentconsult.GetConsultDate(), "dd/mm/yyyy") & ". Please refer to the audit trail of " & Format(currentconsult.GetConsultDate(), "dd/mm/yyyy") & " for the explanation</I></small><HR>")
+      modDBConnect.update("clin_consult.progressnotes", Null, ["pk": PN!pk_progressnote, "notes": pn!notes])
+      If modAudit.MakeAudit(currentconsult, "mark deleted", "clin_workcover.visits", visit!fk_visit, const.cSection_Workcover, audit_notes) Then
+         modDBConnect.CommitTrans()
+         Deleted_WorkcoverVisit = visit
+         Deleted_Workcoverclaim = claim
       Endif
-   Next
+   End If   
+   modDBConnect.update("clin_workcover.visits", Null, ["pk": visit!fk_visit, "deleted": True]) 
+   modDBConnect.CommitTrans()
+   Try FClinical.Refresh_Section(const.cSection_Workcover) 
    Reload()  
 Catch
    Message.Info("An error occurred whilst trying to delete a workcover visit.\n\nIf this persists please talk to your system administrator.")

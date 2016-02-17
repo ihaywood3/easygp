@@ -1,0 +1,229 @@
+' Gambas class file
+
+Private Form_PreviousNotes As FProgressNotesViewer
+Private Form_Medications As FClinLists_Medications
+
+Private Average_BPs As Collection
+Private currentconsult As CConsult
+Private columnview1_key As Integer
+Private fk_patient As Variant
+
+Public Sub _new()
+   
+   With Form_PreviousNotes = New FProgressNotesViewer(Vbox_PreviousNotes)
+      .Embedded_In_Form_Set_Name("FResearchHypertension")
+   End With
+   Form_Medications = New FClinLists_Medications(Vbox_Medications)
+   
+   With ColumnView1
+      .Columns.Count = 5   
+   End With
+   
+   ' If Not IsNull(currentconsult) Then
+   '    Form_PreviousNotes.Init(currentconsult, modProgressNotes.AllProgressNotes_Construct_Html(currentconsult))
+   ' Endif 
+   ' 
+   
+End
+
+Public Sub EditArea_TxtBox_KeyPress()
+   
+   If EditArea_TxtBox_ExcludeKeys(key.code, Last.tag) = False Then  
+      Stop Event
+      Return
+   End If
+   If Key.code = Key.tab Or Key.code = Key.Return Then
+      If Last.tag = "systolic" Then txtDiastolic.SetFocus
+   Endif
+   
+End
+
+Public Function EditArea_TxtBox_ExcludeKeys(keycode As Integer, tag As String) As Boolean
+   
+   Dim bKeyValid As Boolean
+   
+   Select Case tag
+      Case "systolic", "diastolic"
+         bKeyValid = modUtilGUI.AllowKeys(const.AllowKeys_NumbersOnly, keycode)
+   End Select
+   Return bKeyValid
+   
+End
+
+Public Sub EditArea_TxtBox_LostFocus()
+   
+   Last.BackGround = Color.white
+   
+End
+
+Public Sub EditArea_TxtBox_GotFocus()
+   
+   Last.BackGround = Color.rgb(95, 255, 175)
+   
+End
+
+Public Sub tbReload_Click()
+   
+   Dim Average_BP As Collection
+   Dim x As Integer
+   
+   If Trim(txtSystolic.text) = "" Or Trim(txtDiastolic.text) = "" Then 
+      Message.Info("Please indicate the blood pressure range you are interested in")
+      txtSystolic.SetFocus
+      Return
+   Endif
+   
+   ColumnView1.Clear
+   Average_BPs = modUtil.Copy_Collection_Keyed_Sequentially(modResearchDBI.Blood_Pressure_Averages_Get(Val(txtSystolic.text), Val(txtDiastolic.text)))
+   For Each average_BP In Average_BPs
+      ColumnView1.Add(x, 0)
+      ColumnView1[x][0] = average_BP!surname
+      ColumnView1[x][1] = average_BP!firstname
+      ColumnView1[x][2] = average_BP!age_numeric
+      ColumnView1[x][3] = Str(average_BP!average_systolic) & "/" & Str(average_BP!average_diastolic)
+      Inc x 
+   Next
+   modUtilGUI.Columnview_Columns_Set_Size(ColumnView1, lblMeasure)
+   
+End
+
+Public Sub EditArea_TxtBox_Activate()
+   
+   If Trim(txtSystolic.text) <> "" And Trim(txtDiastolic.text) <> "" Then
+      If Val(txtSystolic.text) > Val(txtDiastolic.text) Then
+         tbReload_Click
+      Endif
+   End If   
+   
+End
+
+Public Sub ColumnView1_Select()
+   
+   ColumnView1.MoveCurrent
+   columnview1_Key = ColumnView1.Item.Key
+   currentconsult = Null   
+   lblPatient.text = Average_BPs[columnview1_Key]!title & " " & Average_BPs[columnview1_Key]!firstname & " " & Average_BPs[columnview1_Key]!surname   
+   Patient_Show_Notes   
+   Patient_Show_Medications
+   Patient_Show_BP_Measurements
+   
+End
+
+Public Sub Patient_Show_BP_Measurements()
+   '-----------------------------------------------------
+   'when user clicks on the tabbed lists for measurments
+   'show list for bp/height/weight in a numerical list
+   '-----------------------------------------------------
+   
+   Dim M As Collection
+   Dim Measurement_value As String
+   
+   With cvwMeasurementValues
+      .Clear
+      .Columns.count = 2
+      .Columns[0].width = 80
+   End With
+   currentconsult.Refresh("measurements")
+   For Each M In currentconsult!measurements
+      If M!fk_type = const.Measurement_BP Then
+         'bad bug in measurements Ive not found FIXME
+         'MEASUREMENT can be null bad bug
+         If Not IsNull(M!measurement) Then
+            measurement_value = modMeasurementsDBI.BP_Format(M!measurement)
+            cvwMeasurementValues.Add(M!pk_measurement, 0)
+            cvwMeasurementValues[M!pk_measurement][0] = Format(M!consult_date, "dd/mm/yyyy")
+            cvwMeasurementValues[M!pk_measurement][1] = measurement_value
+         End If
+      Endif
+   Next
+Catch
+   Return 'may have been called when currentconsult in this module is null (i.e not yet created)
+   
+End
+
+Private Sub Patient_Show_Medications()
+   
+   Form_Medications.Init(currentconsult) 
+   
+End
+
+Public Sub Patient_Show_Notes()
+   
+   currentconsult = New CConsult(Average_BPs[columnview1_key], const.ConsultType_NotesPatientNotPresent)  
+   If Not IsNull(currentconsult) Then
+      With Form_PreviousNotes
+         .Embedded_In_Form_Set_Name("FInbox")
+         .Init(currentconsult, modProgressNotes.AllProgressNotes_Construct_Html(currentconsult))
+      End With
+   Endif
+   
+End
+' select fk_patient, round(avg (systolic)) as average_systolic,
+' round(avg (diastolic)) as
+' average_diastolic from clin_measurements.vwSystolicDiastolic
+' GROUP BY fk_patient;
+' 
+' will give you the average BPs for each patient in your practice (for
+' whom you recorded a BP)
+' you can do averages on other measures in the same query.
+' You can filter patients by using WHERE before the GROUP BY
+' 
+' you can also filter on the averages using the HAVING clause
+' 
+' select fk_patient, round(avg (systolic)) as average_systolic,
+' round(avg (diastolic)) as
+' average_diastolic from clin_measurements.vwSystolicDiastolic
+' GROUP BY fk_patient
+' HAVING avg(systolic) > 140;
+' 
+' drop view clin_measurements.vwSystolicDiastolic cascade;
+' 
+' Create or replace view clin_measurements.vwSystolicDiastolic as
+' SELECT  
+'    vwmeasurements.fk_patient, 
+'         vwpatients.wholename, 
+'         vwPatients.surname, 
+'         vwpatients.firstname,
+'         vwPatients.title,
+'         vwPatients.sex,
+'         vwPatients.age_numeric,
+'         vwPatients.fk_lu_active_status,
+'         vwPatients.deceased,
+'         vwmeasurements.pk_measurement, 
+'    vwmeasurements.consult_date,
+'    vwmeasurements.measurement,
+'    round(vwmeasurements.measurement/1000) as systolic,
+'    vwmeasurements.measurement%1000 as diastolic
+' FROM 
+'    clin_measurements.vwmeasurements
+' JOIN 
+'    contacts.vwpatients on vwpatients.fk_patient = vwMeasurements.fk_patient
+' WHERE 
+'    vwmeasurements.deleted = false AND 
+'    vwmeasurements.fk_type = 1 AND
+'    vwPatients.deceased = False AND
+'    vwPatients.fk_lu_active_status = 1 -- active
+' ORDER BY
+'    vwmeasurements.fk_patient, vwmeasurements.consult_date DESC;
+' 
+' ALTER TABLE clin_measurements.vwSystolicDiastolic   OWNER TO easygp;
+' GRANT ALL ON TABLE clin_measurements.vwSystolicDiastolic TO staff;
+' 
+' Create or replace view clin_measurements.vwAverageBP as 
+' select 
+'    fk_patient as pk_patient, 
+'    surname, 
+'    firstname,  
+'    title,
+'    sex,
+'    age_numeric,
+'    round(avg (systolic)) as average_systolic,
+'    round(avg (diastolic)) as average_diastolic 
+' FROM   
+'    clin_measurements.vwSystolicDiastolic
+' GROUP BY
+'    fk_patient, surname , firstname, title, sex,age_numeric order by surname;
+' 
+' ALTER TABLE clin_measurements.vwAverageBP   OWNER TO easygp;
+' GRANT ALL ON TABLE clin_measurements.vwAverageBP TO staff;
+'  

@@ -16,59 +16,47 @@
 '----------------------------------------------------------------------
 'PURPOSE    To display a practices demographic profile etc
 '----------------------------------------------------------------------
-Private picture_file As String
-Private form_sex_pie As FPie
 Private date_first_progress_note As String
+Private form_year1 As FAgeByDecade
+Private form_year2 As FAgeByDecade
+Private form_year3 As FAgeByDecade
+Private form_year4 As FAgeByDecade
+Private picture_file As String
+Private year_periods As Collection
 
 Public Sub _new()
    
-   Inc Application.Busy
    Settings_Load
-   EasyGP_Stats 
-   txtDateFrom.text = date_first_progress_note
-   txtDateto.text = Format(Now, "dd/mm/yyyy")
-   Analyse_Age_Distribution
-   form_sex_pie = New FPie(Vbox_SexPie)
-   
-   Pie_Chart_Sex
-   Dec Application.Busy
-   
+   form_year1 = New FAgeByDecade(Vbox_Year1)
+   form_year2 = New FAgeByDecade(Vbox_year2)
+   form_year3 = New FAgeByDecade(Vbox_Year3)
+   form_year4 = New FAgeByDecade(Vbox_Year4)
+   Caveats
 End
 
-Public Sub Pie_Chart_Sex()
+Public Sub Caveats()
    
-   Dim Colours As Variant
-   Dim sex As Integer[] = modResearchDBI.EasyGP_Sex_Male_Female()
-   Dim c As New Collection
-   Dim data As Collection
+  tlCaveats.text = "<B>For a variety of reasons, this data will only be an approximation:</B>"
+  tlCaveats.text &= "<UL>"
+  tlCaveats.text &= "<LI>The data is taken from the progress note entries not the billing system visits."
+  tlCaveats.text &= "<LI>The patient may not have been present when a progress note was entered, for "
+  "example it could have been a telephone conversation, or a staff member may have entered a note."
+  tlCaveats.text &= "<LI>Legacy data, imported with an incorrect audit_action may skew the numbers."
+  tlCaveats.text &= "</UL>"
+  tlCaveats.text &= "<B>Fixing the Text Size/Spacing on the graphs</B><BR>"
+  tlCaveats.text &= "You should use the resizers to make your graphs the optimal size "
+  "however, you will have to re-run the analysis after this, which should re-set the graph "
+  "image to improve its appearance."
+
    
-   Colours = New Variant[]
-   colours.Add(Color.Blue)
-   colours.Add(Color.Red) 
-   
-   data = New Collection
-   data!label = "Male"
-   data!number = sex[0]
-   
-   c.Add(data, c.count)
-   
-   data = New Collection
-   data!label = "Female"
-   data!number = sex[1]
-   c.Add(data, c.count)
-   form_sex_pie.Init(sex[0] + sex[1], c)
-   With form_sex_pie
-      .top = VBox5.top - 500
-      .left = vBox5.Left + 800
-   End With
 End
 
 Public Sub EasyGP_Stats()
    
    date_first_progress_note = Format(modResearchDBI.First_Progress_Note_In_EasyGP(), "dd/mm/yyyy")
-   tlEasyGPStats.text &= "<TABLE>"
+   tlEasyGPStats.text = "<TABLE>"
    tlEasyGPStats.text &= Row_Template()
-   tlEasyGPStats.text = Replace(tlEasyGPStats.text, "col1", "Date first progress note was written")
+   tlEasyGPStats.text = Replace(tlEasyGPStats.text, "col1", "Date first progress note")
    tlEasyGPStats.text = Replace(tlEasyGPStats.text, "col2", date_first_progress_note)
    tlEasyGPStats.text &= "</TABLE>"
    
@@ -79,13 +67,13 @@ Public Function Row_Template() As String
    'col 1 = the question, col2 = the text eg high, medium, low, none, col3 = a spacer
    
    Return ""
-   "<COL WIDTH=50%>"
-   "<COL WIDTH=20%>"
+   "<COL WIDTH=60%>"
+   "<COL WIDTH=40%>"
    "<TR VALIGN=TOP>"
-   "<TD WIDTH=50%>"
+   "<TD WIDTH=60%>"
    "col1"
    "</TD>"
-   "<TD WIDTH=20%>"
+   "<TD WIDTH=40%>"
    "col2"
    "</TR>"
    
@@ -96,75 +84,106 @@ Public Sub Analyse_Age_Distribution()
    'Calculate the last 3 years age distribution
    Dim D1 As String
    Dim D2 As String
+   Dim data As Result
+   
+   year_periods = New Collection
    
    D2 = Format(Now(), "dd/mm/yyyy")
    D1 = Format(DateAdd(Now(), gb.year, -1), "dd/mm/yyyy")
-   Age_Distribution_Make_Graph(D1, D2, pbAgesByDecade1, lblYear1)
+   form_year4.Init(D1, D2)
+   year_periods.Add(D1 & "|" & D2, 4)
+   
    D2 = D1
    D1 = Format(DateAdd(Now(), gb.year, -2), "dd/mm/yyyy")
-   Age_Distribution_Make_Graph(D1, D2, pbAgesByDecade2, lblYear2)
+   form_year3.Init(D1, D2)
+   year_periods.Add(D1 & "|" & D2, 3)
    D2 = D1
    D1 = Format(DateAdd(Now(), gb.year, -3), "dd/mm/yyyy")
-   Print D1, D2 
-   Age_Distribution_Make_Graph(D1, D2, pbAgesByDecade3, lblYear3) 
+   form_year2.Init(D1, D2)
+   year_periods.Add(D1 & "|" & D2, 2)
+   D2 = D1
+   D1 = Format(DateAdd(Now(), gb.year, -4), "dd/mm/yyyy")
+   year_periods.Add(D1 & "|" & D2, 1)
+   form_year1.Init(D1, D2)
    
 End
 
-Public Sub Age_Distribution_Make_Graph(fromdate As String, todate As String, pb As PictureBox, lbl As Label)
+Public Sub Patients_Per_Year()          
    
-   Dim pic As Picture
-   Dim res As Result
-   Dim gnuplot As String
-   Dim i As Integer
-   Dim j As Integer
-   
-   If Not IsNull(picture_file) Then Try Kill picture_file
-   res = modResearchDBI.Age_Distribution_By_Decade(fromdate, todate)
-   gnuplot = "box"
-   If Lower$(gnuplot) = "box" Then gnuplot = modPlot.Gnuplot_Boxgraph(res)
-   picture_file = modPlot.Gnuplot_Run(pb.Width, pb.Height, gnuplot, res)
-   pic = Picture.Load(picture_file)
-   pb.Background = Color.White
-   pb.Picture = pic
-   lbl.text = fromdate & " - " & todate
-   
-Catch
-   Message.Error(Error.Text)
-   
-End
+   Dim pic As Picture                   
+   Dim gnuplot As String                
+   Dim m As Integer                     
+   Dim f As Integer                     
+   Dim data As Result                   
+   Dim sql As String                    
+   Dim sql_base As String               
+   Dim x As Integer                     
+   Dim dates As String[]                
 
-Public Sub Age_Distribution_Make_Graph_old(fromdate As String, todate As String, pb As PictureBox, lbl As Label)
+   For x = 1 To 4                       
+      sql_base = ""                      
+      "SELECT 'insert_time_period' as time_period, " & x & " as sort_order, "
+      "COUNT(distinct vwProgressNOtes.fk_patient)"
+      " from clin_consult.vwProgressNotes"
+      " JOIN contacts.vwPatients on vwPatients.fk_patient = vwProgressnotes.fk_patient "
+      " WHERE  fk_audit_action = 1  AND vwProgressNotes.deleted  is false "
+      " AND consult_date BETWEEN $$date_from$$ AND $$date_to$$ AND  vwPatients.person_deleted is  false "
+      data = modDBConnect.exec_query(sql)
+      sql &= sql_base                   
+      dates = Split(year_periods[x], "|")
+      sql = Replace(sql, "insert_time_period", Right(dates[0], 7) & "-" & Right(dates[1], 7))
+      sql = Replace(sql, "date_from", dates[0])
+      sql = Replace(sql, "date_to", dates[1])
+      If x < 4 Then sql &= " UNION "    
+   Next   
+   sql &= " ORDER By sort_order"                              
+   Print sql                            
+   data = modDBConnect.exec_query(sql)  
+   If Not IsNull(picture_file) Then Try Kill picture_file
+   gnuplot = modPlot.Gnuplot_BoxGraph(data)
+   picture_file = modPlot.Gnuplot_Run(pbAveragePatients.Width, pbAveragePatients.Height, gnuplot, data, 5)
+   pic = Picture.Load(picture_file)     
+   pbAveragePatients.Background = Color.White
+   pbAveragePatients.Picture = pic      
+   
+End     
+
+Public Sub Patients_Per_Year_demo()
    
    Dim pic As Picture
-   Dim res As Result
    Dim gnuplot As String
-   Dim i As Integer
-   Dim j As Integer
+   Dim m As Integer
+   Dim f As Integer
+   Dim data As Result
+   Dim sql As String = ""
    
+   "SELECT '21/02/2014-21/02/2015' as time_period, "
+   "COUNT(distinct vwProgressNOtes.fk_patient)"
+   " from clin_consult.vwProgressNotes"
+   " JOIN contacts.vwPatients on vwPatients.fk_patient = vwProgressnotes.fk_patient"
+   " where consult_date BETWEEN $$21/02/2014$$ AND $$21/02/2015$$  AND  vwPatients.person_deleted is  false "
+   " UNION"
+   " SELECT '21/02/2015-21/02/2016' as time_period, "
+   " COUNT(distinct vwProgressNOtes.fk_patient)"
+   " from clin_consult.vwProgressNotes"
+   " JOIN contacts.vwPatients on vwPatients.fk_patient = vwProgressnotes.fk_patient"
+   " where consult_date BETWEEN $$21/02/2015$$ AND $$21/02/2016$$  AND  vwPatients.person_deleted is  false ;" 
+   data = modDBConnect.exec_query(sql)
+   
+   ' data = modResearchDBI.Age_Distribution_By_Decade(fromdate, todate)
    If Not IsNull(picture_file) Then Try Kill picture_file
-   res = modResearchDBI.Age_Distribution_By_Decade(fromdate, todate)
-   gnuplot = "box"
-   If Lower$(gnuplot) = "box" Then gnuplot = modPlot.Gnuplot_Boxgraph(res)
-   picture_file = modPlot.Gnuplot_Run(pbAgesByDecade1.Width, pbAgesByDecade1.Height, gnuplot, res)
+   gnuplot = modPlot.Gnuplot_BoxGraph(data)
+   picture_file = modPlot.Gnuplot_Run(pbAveragePatients.Width, pbAveragePatients.Height, gnuplot, data, 3)
    pic = Picture.Load(picture_file)
-   pbAgesByDecade1.Background = Color.White
-   pbAgesByDecade1.Picture = pic
-   
-Catch
-   Message.Error(Error.Text)
+   pbAveragePatients.Background = Color.White
+   pbAveragePatients.Picture = pic
    
 End
 
 Public Sub Settings_Load()
    
-   HSplit1.Layout = Settings[Me.name & "/HSplit1.Layout", modUtilGUI.HSplit([1, 2])]
    VSplit1.Layout = Settings[Me.name & "/VSplit1.Layout", modUtilGUI.VSplit([1, 1])]
-   
-End
-
-Public Sub HSplit1_Resize()
-   
-   Settings[Me.name & "/HSplit1.Layout"] = HSplit1.Layout
+   HSplit1.Layout = Settings[Me.name & "/HSplit1.Layout", [563, 660, 467]]
    
 End
 
@@ -180,6 +199,8 @@ End
 Public Sub tbReload_Click()
    
    Analyse_Age_Distribution
+   EasyGP_Stats
+   Patients_Per_Year
    
 End
 ' CREATE OR REPLACE FUNCTION research.first_progressnote()
@@ -202,4 +223,10 @@ Public Sub VSplit1_Resize()
    
    Settings[Me.name & "/VSplit1.Layout"] = VSplit1.Layout
    
+End
+
+Public Sub HSplit1_Resize()
+
+   Settings[Me.name & "/HSplit1.Layout"] = HSplit1.Layout
+
 End

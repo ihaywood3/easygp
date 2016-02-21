@@ -1,12 +1,31 @@
 ' Gambas class file
 
+' Copyright (C) 2008-2016 Dr. Richard Terry
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'----------------------------------------------------------------------
+' PURPOSE   A research module for hypertension in the practics
+'----------------------------------------------------------------------
+
+' "K86005" "K85004"
 Private Form_PreviousNotes As FProgressNotesViewer
 Private Form_Medications As FClinLists_Medications
-
+Private Form_Graph As FGraph
 Private Average_BPs As Collection
 Private currentconsult As CConsult
-Private columnview1_key As Integer
+Private cvwPatients_Key As Integer
 Private fk_patient As Variant
+Private Patients_With_Coded_Hypertension As Collection   
 
 Public Sub _new()
    
@@ -14,14 +33,14 @@ Public Sub _new()
       .Embedded_In_Form_Set_Name("FResearchHypertension")
    End With
    Form_Medications = New FClinLists_Medications(Vbox_Medications)
-   
-   With ColumnView1
+   With Form_Graph = New FGraph(HBox_Graph)
+      .Set_Embedded_Form(Me.Name)
+   End With
+   With cvwPatients
       .Columns.Count = 5   
    End With
-   
-   ' If Not IsNull(currentconsult) Then
-   '    Form_PreviousNotes.Init(currentconsult, modProgressNotes.AllProgressNotes_Construct_Html(currentconsult))
-   ' Endif 
+   Settings_Load
+   Reload
    ' 
    
 End
@@ -64,6 +83,12 @@ End
 
 Public Sub tbReload_Click()
    
+   Reload  
+   
+End
+
+Public Sub Reload()
+   
    Dim Average_BP As Collection
    Dim x As Integer
    
@@ -72,18 +97,51 @@ Public Sub tbReload_Click()
       txtSystolic.SetFocus
       Return
    Endif
-   
-   ColumnView1.Clear
+   Patients_With_Coded_Hypertension = modResearchDBI.Hypertension_Patients_With_Coded_Diagnosis()
+   cvwPatients.Clear
+   tlStats.text = "<TABLE>"
+   tlStats.TEXT &= Row_Template()
+   tlStats.TEXT = Replace(tlStats.Text, "col1", "Patients with coded diagnosis of Hypertension or equivalent")
+   tlStats.TEXT = Replace(tlStats.Text, "col2", Str(Patients_With_Coded_Hypertension.count))
+   tlStats.TEXT &= Row_Template()
+   tlStats.TEXT = Replace(tlStats.Text, "col1", "Patients with hypertension without a coded diagnosis")
    Average_BPs = modUtil.Copy_Collection_Keyed_Sequentially(modResearchDBI.Blood_Pressure_Averages_Get(Val(txtSystolic.text), Val(txtDiastolic.text)))
    For Each average_BP In Average_BPs
-      ColumnView1.Add(x, 0)
-      ColumnView1[x][0] = average_BP!surname
-      ColumnView1[x][1] = average_BP!firstname
-      ColumnView1[x][2] = average_BP!age_numeric
-      ColumnView1[x][3] = Str(average_BP!average_systolic) & "/" & Str(average_BP!average_diastolic)
+      cvwPatients.Add(x, 0)
+      cvwPatients[x][0] = average_BP!surname
+      cvwPatients[x][1] = average_BP!firstname
+      cvwPatients[x][2] = average_BP!age_numeric
+      cvwPatients[x][3] = Str(average_BP!average_systolic) & "/" & Str(average_BP!average_diastolic)
+      If Not Patients_With_Coded_Hypertension.Exist(average_BP!fk_patient) Then
+         If InStr(tlStats.text, "col2") Then
+            tlStats.TEXT = Replace(tlStats.Text, "col2", average_BP!surname & average_BP!firstname)
+         Else
+            tlStats.TEXT &= Row_Template()
+            tlStats.TEXT = Replace(tlStats.Text, "col1", "")
+            tlStats.TEXT = Replace(tlStats.Text, "col2", average_BP!surname & average_BP!firstname)
+         Endif
+      Endif
       Inc x 
    Next
-   modUtilGUI.Columnview_Columns_Set_Size(ColumnView1, lblMeasure)
+   tlStats.text &= "</TABLE>"
+   modUtilGUI.Columnview_Columns_Set_Size(cvwPatients, lblMeasure)
+   
+End
+
+Public Function Row_Template() As String
+   'for each row in the quiz
+   'col 1 = the question, col2 = the text eg high, medium, low, none, col3 = a spacer
+   
+   Return ""
+   "<COL WIDTH=50%>"
+   "<COL WIDTH=20%>"
+   "<TR VALIGN=TOP>"
+   "<TD WIDTH=50%>"
+   "col1"
+   "</TD>"
+   "<TD WIDTH=20%>"
+   "col2"
+   "</TR>"
    
 End
 
@@ -97,15 +155,16 @@ Public Sub EditArea_TxtBox_Activate()
    
 End
 
-Public Sub ColumnView1_Select()
+Public Sub cvwPatients_Select()
    
-   ColumnView1.MoveCurrent
-   columnview1_Key = ColumnView1.Item.Key
+   cvwPatients.MoveCurrent
+   cvwPatients_Key = cvwPatients.Item.Key
    currentconsult = Null   
-   lblPatient.text = Average_BPs[columnview1_Key]!title & " " & Average_BPs[columnview1_Key]!firstname & " " & Average_BPs[columnview1_Key]!surname   
+   lblPatient.text = Average_BPs[cvwPatients_Key]!title & " " & Average_BPs[cvwPatients_Key]!firstname & " " & Average_BPs[cvwPatients_Key]!surname   
    Patient_Show_Notes   
    Patient_Show_Medications
    Patient_Show_BP_Measurements
+   Form_Graph.Init(currentconsult)
    
 End
 
@@ -149,7 +208,7 @@ End
 
 Public Sub Patient_Show_Notes()
    
-   currentconsult = New CConsult(Average_BPs[columnview1_key], const.ConsultType_NotesPatientNotPresent)  
+   currentconsult = New CConsult(Average_BPs[cvwPatients_key], const.ConsultType_NotesPatientNotPresent)  
    If Not IsNull(currentconsult) Then
       With Form_PreviousNotes
          .Embedded_In_Form_Set_Name("FInbox")
@@ -158,30 +217,45 @@ Public Sub Patient_Show_Notes()
    Endif
    
 End
-' select fk_patient, round(avg (systolic)) as average_systolic,
-' round(avg (diastolic)) as
-' average_diastolic from clin_measurements.vwSystolicDiastolic
-' GROUP BY fk_patient;
-' 
-' will give you the average BPs for each patient in your practice (for
-' whom you recorded a BP)
-' you can do averages on other measures in the same query.
-' You can filter patients by using WHERE before the GROUP BY
-' 
-' you can also filter on the averages using the HAVING clause
-' 
-' select fk_patient, round(avg (systolic)) as average_systolic,
-' round(avg (diastolic)) as
-' average_diastolic from clin_measurements.vwSystolicDiastolic
-' GROUP BY fk_patient
-' HAVING avg(systolic) > 140;
-' 
+
+Public Sub cvwPatients_Menu()
+   
+   If cvwPatients.count Then mnuPatients.Popup
+   
+End
+
+Public Sub mnuPatients_Click()
+
+   Dim sMsg As String = "Are you sure you want to mark this patient as "
+   
+   Select Case Last.tag
+      Case "mark deceased"
+         smsg &= "deceased."
+         If Message.Question(smsg, "Yes", "No") = 2 Then Return
+         If modDBConnect.update("contacts.data_persons", Null, ["pk": Average_BPs[cvwPatients_Key]!fk_person, "deceased": True]) Then
+            modDBConnect.CommitTrans
+            Reload 
+         Endif
+      Case "mark inactive"
+         smsg &= "inactive"
+         If Message.Question(smsg, "Yes", "No") = 2 Then Return
+         If modDBConnect.update("clerical.data_patients", Null, ["pk": Average_BPs[cvwPatients_Key]!fk_patient, "fk_lu_active_status": const.PatientStatus_Inactive]) Then
+            modDBConnect.CommitTrans()
+            Reload 
+         Endif
+      Case "font"
+         modUtilGUI.Columnview_SetFont(cvwpatients, Me.name)
+   End Select 
+   
+End
+
 ' drop view clin_measurements.vwSystolicDiastolic cascade;
 ' 
 ' Create or replace view clin_measurements.vwSystolicDiastolic as
 ' SELECT  
 '    vwmeasurements.fk_patient, 
 '         vwpatients.wholename, 
+'         vwpatients.fk_person,
 '         vwPatients.surname, 
 '         vwpatients.firstname,
 '         vwPatients.title,
@@ -211,7 +285,9 @@ End
 ' 
 ' Create or replace view clin_measurements.vwAverageBP as 
 ' select 
-'    fk_patient as pk_patient, 
+'    fk_patient,
+'    fk_patient as pk, 
+'    fk_person,
 '    surname, 
 '    firstname,  
 '    title,
@@ -222,8 +298,35 @@ End
 ' FROM   
 '    clin_measurements.vwSystolicDiastolic
 ' GROUP BY
-'    fk_patient, surname , firstname, title, sex,age_numeric order by surname;
+'    fk_patient, fk_person, surname , firstname, title, sex,age_numeric order by surname;
 ' 
 ' ALTER TABLE clin_measurements.vwAverageBP   OWNER TO easygp;
 ' GRANT ALL ON TABLE clin_measurements.vwAverageBP TO staff;
 '  
+
+Public Sub Settings_Load()
+   
+   cvwPatients.Font = Font[Settings[Me.Name & "/cvwPatients.font", "DejaVu Sans,9"]]
+   Hsplit1.Layout = Settings[Me.Name & "/Hsplit1.Layout", modUtilGUI.HSplit([1, 1])]
+   Vsplit1.Layout = Settings[Me.Name & "/Vsplit1.Layout", modUtilGUI.VSplit([2, 1])]
+   Vsplit_Measurements.Layout = Settings[Me.Name & "/Vsplit_Measurements.Layout", modUtilGUI.VSplit([1, 1])]
+   
+End
+
+Public Sub VSplit1_Resize()
+   
+   Settings[Me.Name & "/Vsplit1.Layout"] = Vsplit1.Layout
+   
+End
+
+Public Sub HSplit1_Resize()
+   
+   Settings[Me.Name & "/Hsplit1.Layout"] = Hsplit1.Layout
+   
+End
+
+Public Sub VSplit_Measurements_Resize()
+   
+   Settings[Me.Name & "/Vsplit_Measurements.Layout"] = VSplit_Measurements.layout
+   
+End

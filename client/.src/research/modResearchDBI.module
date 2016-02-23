@@ -46,7 +46,7 @@ Public Function Sex_Distribution(fromdate As String, todate As String) As Result
    sql &= " AND  vwPatients.person_deleted is false  "
    sql &= " order by vwProgressNotes.fk_patient) as foo GROUP BY sex"
    Return modDBConnect.exec_query(sql)
-
+   
 End
 
 Public Function Age_Distribution_By_Decade(fromdate As String, todate As String) As Result
@@ -88,7 +88,7 @@ End
 Public Function Patient_Get_Average_BP(fk_patient As Variant) As String
    
    Dim R As Result
-
+   
    R = modDBConnect.exec_query("Select * from clin_measurements.vwAverageBP WHERE fk_patient = " & fk_patient)
    If R.count Then
       Return R!average_systolic & "/" & R!average_diastolic
@@ -367,7 +367,7 @@ End
 
 Public Sub Patient_Get_Average_Last_n_BPs(fk_patient As Variant, Optional Last_num_previous_measurements As Integer = 4) As String
    'Returns the last Last_num_previous_measurements (four as a default) BP measurements as a average string
-      
+   
    Dim sql As String
    Dim sBP As String
    Dim R As Result
@@ -383,6 +383,56 @@ Public Sub Patient_Get_Average_Last_n_BPs(fk_patient As Variant, Optional Last_n
    sql &= "LIMIT " & Last_num_previous_measurements & ") As Foo" 
    R = modDBConnect.exec_query(sql)
    If R.count Then Return Str(R!average_systolic) & "/" & R!average_diastolic
+   
+End
+
+Public Sub Patient_Average_BPs_last_5years(fk_Patient As Variant) As Collection
+   
+   Dim sql As String
+   Dim D1 As String
+   Dim D2 As String
+   
+   'first from 1 year ago till current date ie. last 12 months
+   D1 = Format(DateAdd(Now(), gb.year, -1), "dd/mm/yyyy")
+   D2 = Format(Now(), "dd/mm/yyyy")
+   sql = Bp_Sub_Sql(D1, D2, 1, fk_patient) & " UNION "
+   'next the 12 months before that till current date ie. last 2  years
+   D2 = D1
+   D1 = Format(DateAdd(Now(), gb.year, -2), "dd/mm/yyyy")
+   sql &= Bp_Sub_Sql(D1, D2, 2, fk_patient) & " UNION "
+   'next from 5 years for the next 2 years
+   D2 = D1
+   D1 = Format(DateAdd(Now(), gb.year, -5), "dd/mm/yyyy")
+   sql &= Bp_Sub_Sql(D1, D2, 3, fk_patient) 
+   sql &= " order by pk_display_order ASC" 
+   Print sql
+   Return modDBConnect.exec_query_collection(sql)
+   
+End
+
+Public Function Bp_Sub_Sql(D1 As String, D2 As String, display_order As Integer, fk_patient As Variant) As String
+   
+   Dim sql As String
+
+   If display_order = 1 Then   
+      sql = "SELECT '" & "Last 12M" & " ' as time_period, "
+   Else
+      sql = "SELECT '" & Right(D1, 7) & "-" & Right(D2, 7) & "' as time_period, "
+   End If   
+   Print sql
+   sql &= "Round(avg(systolic)) As Average_systolic, " 
+   "        round(avg(diastolic)) AS average_diastolic, "
+   sql &= display_order & "::integer as pk_display_order "
+   "        FROM    (SELECT Round(vwmeasurements.measurement / 1000:: numeric) As Systolic,"
+   "                              vwmeasurements.measurement % 1000::numeric AS diastolic,"
+   "                              vwMeasurements.consult_date"
+   "                              FROM clin_measurements.vwMeasurements "
+   "                              WHERE fk_type = 1 AND  deleted is false AND "
+   sql &= "consult_date BETWEEN $$" & D1 & "$$ AND $$" & D2 & "$$ AND "
+   sql &= "fk_patient = " & fk_patient & " ORDER BY consult_date DESC ) As Foo"
+   Print sql
+   Return sql 
+   
 End
 
 Public Function Patients_Get_Most_Recent_BP() As Collection

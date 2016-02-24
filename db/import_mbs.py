@@ -33,7 +33,7 @@ def grab_mbs_xml():
     else:
         print >>sys.stderr, "Could not find link to XML"
         sys.exit(1)
-        
+
 def process_args():
     """
     Go through the UNIX command line arguments and provide a Python dictionary of the values
@@ -84,8 +84,6 @@ def xml_mbs_items(etree):
                 item[our_name] = j.text
         yield item
 
-0161d83e.6.43.1.2
-'0161d83e.6.40.1.0'
 def to_money(m):
     """Accepts an integer as integer cents
     Rounds to the nearest $0.05, and then to 

@@ -17,10 +17,11 @@
 'PURPOSE       Enable admin to set basic stuff like eg path to hl7,  path
 '              where scanned documents are kept
 '-------------------------------------------------------------------------
-
+Private iHBoxHeight As Integer
 Private fk_clinic As Variant
 Private bExit As Boolean
 Private staff_members As Collection
+Private staff_members_appointment_defaults As Collection
 Private Form_Help As FHtmlViewer
 Private Clinics As Collection
 Private cvwGeneralPreferences_key As Variant
@@ -29,18 +30,24 @@ Public Sub Init()
    '-----------------------------------------------------
    'Basic housekeeping, this is called from FAdmin.Init()
    '-----------------------------------------------------
-
+   
    staff_members = modUtilGUI.LoadCombo(cmbStaffMembers, modInboxDBI.Inbox_Staff_Get(), "wholename")
+   staff_members_appointment_defaults = modUtilGUI.LoadCombo(cmbStaffMembersAppointmentDefaults, modInboxDBI.Inbox_Staff_Get(), "wholename")
+   
    With Form_Help = New FHtmlViewer(Vbox_Help)
       .tbWebBrowserZoomIn.Visible = True
       .tbWebBrowserZoomOut.Visible = True
       .Help_Show("global-preferences.html")
    End With
    Settings_Load()
-   lblmeasure.text = " Path to Full Production Information PDF's   "
-   modEditAreaHelpers.Resize_labels(VBox_EditArea, lblmeasure)
+   lblmeasure.text = " Path to Drug Product Information  "
+   modEditAreaHelpers.Resize_labels(VBox_Documents, lblmeasure)
+   modEditAreaHelpers.Resize_labels(VBox_PracticeDetails, lblmeasure)
+   modEditAreaHelpers.Resize_labels(VBox_BillingDefaults, lblmeasure)
+   modEditAreaHelpers.Resize_labels(VBox_ClinicalDefaults, lblmeasure)
+   modEditAreaHelpers.Resize_labels(VBox_LibraryDefaults, lblmeasure)
    modEditAreaHelpers.Resize_label(lblDefaultStaffMember, lblmeasure)
-   With cvwGeneralPreferences
+    With cvwGeneralPreferences
       .columns.count = 3
       .Columns[0].width = 150
       .Columns[0].text = "Location"
@@ -48,17 +55,40 @@ Public Sub Init()
       .Columns[2].width = cvwGeneralPreferences.Parent.width - 350
    End With
    HBox_ToolBar_Right.width = HSplit_GlobalSettings.Children[1].Width
-   Reload()
+   Reload
+   
+End
 
+Public Sub Form_Show()
+   
+   iHBoxHeight = HBox_DocumentHeading.Height
+   Resize_HBoxes_Other_EditAreas(VBox_BillingDefaults)
+   Resize_HBoxes_Other_EditAreas(VBox_ClinicalDefaults)
+   Resize_HBoxes_Other_EditAreas(VBox_LibraryDefaults)
+
+End
+
+Public Sub Resize_HBoxes_Other_EditAreas(VB As Vbox)
+   
+   Dim hctrl As Control
+   Dim HB As HBox
+   
+   For Each hctrl In VB.Children
+      If hCtrl Is Hbox Then
+         HB = hctrl
+         Hb.Height = iHBoxHeight
+      Endif
+   Next 
+   
 End
 
 Public Sub Save()
    '----------------------------------------------------------------
    ' Saves the global preferences
    '----------------------------------------------------------------
-
+   
    Dim v As String
-
+   
    If Not (HBox_EditArea.Padding) Then Return       'no padding = nothing changed
    If Not EditArea_Data_Valid() Then                'ensure minimal valid data
       Return
@@ -72,6 +102,7 @@ Public Sub Save()
       modAdminDBI.Config_Save(fk_clinic, "hl7_incoming_directory", Trim(txtHL7Incoming.text))
       modAdminDBI.Config_Save(fk_clinic, "hl7_outgoing_directory", Trim(txtHL7Outgoing.text))
       modAdminDBI.Config_Save(fk_clinic, "fk_hl7_fallback_staff_member", staff_members[cmbStaffMembers.index]!fk_staff)
+      modAdminDBI.Config_Save(fk_clinic, "fk_default_staff_member_appointments", staff_members[cmbStaffMembersAppointmentDefaults.index]!fk_staff)
       modAdminDBI.Config_Save(fk_clinic, "library_directory_network", Trim(txtLibraryPathNetwork.text))
       modAdminDBI.Config_Save(fk_clinic, "product_information_directory", Trim(txtProductInformationPath.text))
       modAdminDBI.Config_Save(fk_clinic, "area_of_need", CBool(chkAreaOfNeed.value))
@@ -97,13 +128,13 @@ Public Sub Save()
       modAdminDBI.Config_Refresh()
       Reload()
    End If
-
+   
 End
 
 Public Sub Form_KeyPress()
-
+   
    Dim CtrlDown As Boolean
-
+   
    If key.code = Key.f12 Then
       Save()
    Endif
@@ -116,17 +147,18 @@ Public Sub Form_KeyPress()
             Try form_help.Zoom_Out
       End Select
    End If
-
+   
 End
 
 Public Sub Reload()
-
+   
    Dim clinic As Collection
    Dim x As Integer
-
+   
    EditArea_Clear
    cvwGeneralPreferences.Clear()
    clinics = modutil.Copy_Collection_Keyed_Sequentially(modContactsDBI.Clinics_Get())
+   If Not clinics.count Then Return
    For Each clinic In clinics
       cvwGeneralPreferences.Add(x, 0)
       cvwGeneralPreferences[x][0] = clinic!branch
@@ -134,14 +166,18 @@ Public Sub Reload()
       cvwGeneralPreferences[x][2] = clinic!town & " " & clinic!postcode
       Inc x
    Next
-
+   With cvwGeneralPreferences
+      .MoveFirst()
+      .SetFocus()
+      .Item.Selected = True   
+   End With
 End
 
 Public Function EditArea_Data_Valid() As Boolean
    '-------------------------------------------
    'make sure directories etc are valid paths
    '-------------------------------------------
-
+   
    If Not Check_Dir(Trim(txtFilePathScannedDocuments.text), "incoming scans") Then
       With txtFilePathScannedDocuments
          .BackGround = Color.rgb(95, 255, 175)
@@ -182,20 +218,20 @@ Public Function EditArea_Data_Valid() As Boolean
       cmbStaffMembers.SetFocus()
       Return False
    End If
-
+   
    If IsNull(fk_clinic) Then
       Message.info("Please select a clinic you wish to apply these global preferences to\nfrom the combo box at the bottom")
       cvwGeneralPreferences.SetFocus()
       Return False
    End If
    Return True
-
+   
 End
 
 Private Function Check_Dir(sDir As String, desc As String) As Boolean
-
+   
    Dim errmsg As String
-
+   
    If sDir = "*notused*" Then Return True
    If IsDir(sDir) Then
       If Not Access(sDir, gb.Read And gb.Write) Then
@@ -214,7 +250,7 @@ Private Function Check_Dir(sDir As String, desc As String) As Boolean
    errmsg = Subst$(errmsg, desc)
    Message.Error(errmsg, "OK")
    Return False
-
+   
 End
 
 Public Sub EditArea_Notify_Datachanged(flag As Boolean)
@@ -222,78 +258,79 @@ Public Sub EditArea_Notify_Datachanged(flag As Boolean)
    'Adds or removes padding around edit area
    'to indicate if data is changed and unsaved
    '--------------------------------------------------
-
+   
    If Bexit Then Return
    If flag Then
       HBox_EditArea.Padding = 1
       HBox_EditArea.Background = Color.red
       tbSave.Foreground = color.red
-
+      
    Else
       HBox_EditArea.Padding = 0
       HBox_EditArea.Background = Color.white
       tbSave.Foreground = color.black
    End If
-
+   
 End
 
 Public Sub EditArea_TextBox_Activate()
-
+   
    If Bexit Then Return
    Select Case Last.tag
       Case "scanned document path"
          txtFilePathArchivedDocuments.SetFocus()
    End Select
-
+   
 End
 
 Public Sub EditArea_TextBox_LostFocus()
-
+   
    Last.BackGround = Color.white
    Last.pos = 0
-
+   
 End
 
 Public Sub EditArea_TextBox_GotFocus()
-
+   
    Last.BackGround = Color.rgb(95, 255, 175)
    If Last.enabled Or Last.readonly Then Return
-
+   
 End
 
 Public Sub EditArea_TextBox_Change()
-
+   
    EditArea_Notify_Datachanged(True)
-
+   
 End
 
 Public Sub Settings_Save()
-
+   
    Settings["FAdminPreferencesGlobal/HSplit_GlobalSettings.layout"] = HSplit_GlobalSettings.layout
    Settings["FAdminPreferencesGlobal/VSplit_EditArea.layout"] = VSplit_EditArea.layout
    Settings["FAdminPreferencesGlobal/Help_Zoom"] = Form_Help.WebView1.Zoom
-
+   
 End
 
 Private Sub Settings_Load()
-
+   
    HSplit_GlobalSettings.layout = Settings["FAdminPreferencesGlobal/HSplit_GlobalSettings.layout", modUtilGUI.HSplit([915, 792])]
    VSplit_EditArea.layout = Settings["FAdminPreferencesGlobal/VSplit_EditArea.layout", modUtilGUI.VSplit([320, 609])]
    Form_Help.WebView1.Zoom = Settings["FAdminPreferencesGlobal/Help_Zoom", 1.0]
    cvwGeneralPreferences.Font = Font[Settings["FAdminPreferencesGlobal/cvwGeneralPreferences.font", "DejaVu Sans,9"]]
-
+   
 End
 
 Public Sub Preference_Show()
    '----------------------------------------------------------------------------------------
    'User has selected one of the clinics, show the defaults for that clinic at it's address
    '----------------------------------------------------------------------------------------
-
+   
    Dim v As Variant
    Dim clinic As Collection
    Dim sm As Collection
    Dim fk_staff_fallback As Variant
-
+   Dim fk_staff_default_appointments As Variant
+   
    If Not cvwGeneralPreferences.count Then Return
    Preference_new()
    fk_clinic = clinics[cvwGeneralPreferences_key]!fk_clinic
@@ -332,9 +369,17 @@ Public Sub Preference_Show()
    txtHL7Incoming.text = modAdminDBI.Config_Get("hl7_incoming_directory", Null, Null, fk_clinic)
    txtHL7Outgoing.text = modAdminDBI.Config_Get("hl7_outgoing_directory", Null, Null, fk_clinic)
    fk_staff_fallback = modAdminDBI.Config_Get("fk_hl7_fallback_staff_member", -1, Null, fk_clinic)
+   fk_staff_default_appointments = modAdminDBI.Config_Get("fk_default_staff_member_appointments", -1, Null, fk_clinic)
+   Print fk_staff_default_appointments
    For Each sm In staff_members
       If sm!fk_staff = fk_staff_fallback Then
          cmbStaffMembers.index = cmbStaffMembers.Find(sm!wholename)
+         Break
+      Endif
+   Next
+   For Each sm In staff_members
+      If sm!fk_staff = fk_staff_default_appointments Then
+         cmbStaffMembersAppointmentDefaults.index = cmbStaffMembersAppointmentDefaults.Find(sm!wholename)
          Break
       Endif
    Next
@@ -349,42 +394,48 @@ Public Sub Preference_Show()
    bExit = False
    EditArea_Notify_Datachanged(False)
    HBox_EditArea.Enabled = True
-
+   
 End
 
 Public Sub Preference_new()
-
+   
    bexit = False
    fk_clinic = Null
    lblOrganisation.Text = "Branch"
    With txtBranch
       .text = ""
-      .ReadOnly = False
+     ' .ReadOnly = False
       .SetFocus
    End With
    EditArea_Notify_Datachanged(False)
    bExit = False
-
+   
 End
 
 Public Sub EditArea_Clear()
-
+   
    bExit = True
-   modEditAreaHelpers.EditArea_Clear(VBox_EditArea)
+   modEditAreaHelpers.EditArea_Clear(VBox_Documents)
+   modEditAreaHelpers.EditArea_Clear(VBox_BillingDefaults)
+   modEditAreaHelpers.EditArea_Clear(VBox_ClinicalDefaults)
+   modEditAreaHelpers.EditArea_Clear(VBox_LibraryDefaults)
    cmbStaffMembers.index = -1
+   cmbStaffMembersAppointmentDefaults.index = -1
    bExit = False
-
+   
 End
 
 Public Sub EditArea_Buttons_Click()
-
+   
    Dim hCtrl As Control
    Dim aTextbox As TextBox
-
+   
    If bexit Then Return
    Select Case Last.tag
       Case "save"
          Save()
+      Case "reload"
+         Reload
       Case "new"
          Preference_new()
       Case "Path to find scanned documents", "Path to place archived documents", "Path to library files network", "Path to library files local"
@@ -398,74 +449,87 @@ Public Sub EditArea_Buttons_Click()
             End If
          Next
    End Select
-
+   
 End
 
 Public Sub EditArea_RadioButtons_Click()
-
+   
    If bexit Then Return
    EditArea_Notify_Datachanged(True)
-
+   
 End
 
 Public Sub cvwGeneralPreferences_Select()
-
+   
    cvwGeneralPreferences.MoveCurrent
    cvwGeneralPreferences_key = cvwGeneralPreferences.Item.Key
    EditArea_Clear
    Preference_Show
-
+   
 End
 
 Public Sub cmbStaffMembers_Click()
-
+   
    If bexit Then Return
    EditArea_Notify_Datachanged(True)
-
+   
 End
 
 Public Sub EditArea_CheckBox_Click()
-
+   
    If bexit Then Return
    EditArea_Notify_Datachanged(True)
-
+   
 End
 
 Public Sub HSplit_GlobalSettings_Resize()
-
-   modEditAreaHelpers.Resize_labels(VBox_EditArea, lblmeasure)
+   
+   modEditAreaHelpers.Resize_labels(VBox_Documents, lblmeasure)
    HBox_ToolBar_Right.width = HSplit_GlobalSettings.Children[1].Width
-
+   
 End
 
 Public Sub mnuGeneralPreferences_Click()
-
+   
    Select Case Last.tag
       Case "edit"
-         VBox_EditArea.Enabled = True
+         VBox_Documents.Enabled = True
+         VBox_BillingDefaults.Enabled = True 
+         VBox_ClinicalDefaults.Enabled = True   
+         VBox_LibraryDefaults.Enabled = True 
       Case "font"
          modUtilGUI.Columnview_SetFont(cvwGeneralPreferences, "FAdminPreferencesGlobal")
    End Select
-
+   
 Catch
    Return
-
+   
 End
 
 Public Sub cvwGeneralPreferences_Menu()
-
+   
    If cvwGeneralPreferences.count Then
       mnuGeneralPreferences.Popup()
    Endif
-
+   
 End
 
 Public Sub Form_Resize()
-
+   
    HSplit_GlobalSettings_Resize()
-
+   
 End
 
 Public Sub EditArea_TextBox_KeyPress()
+   
+End
+
+Public Sub Vbox_Staff1_MouseDown()
+   
+End
+
+Public Sub cmbStaffMembersAppointmentDefaults_Click()
+
+   EditArea_Notify_Datachanged(True)
 
 End

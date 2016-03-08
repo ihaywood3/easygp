@@ -187,19 +187,37 @@ Private Const cTab_Banking As Integer = 2
 Private Const cTab_Reports As Integer = 3
 Private Const cTab_ScheduleFees As Integer = 4
 Private form_batching As FBulkBillBatching
-Private cInvoiceDisplayMode_Overdue As Integer = 0
-Private cInvoiceDisplayMode_Overdue_1Month As Integer = 1
-Private cInvoiceDisplayMode_Overdue_2Month As Integer = 2
-Private cInvoiceDisplayMode_Overdue_Over3Months As Integer = 3
+Private cInvoiceDisplayMode_UnbilledAll As Integer = 0
+Private cInvoiceDisplayMode_UnbilledToday As Integer = 1
+Private cInvoiceDisplayMode_Overdue As Integer = 2
+Private cInvoiceDisplayMode_Overdue_1Month As Integer = 3
+Private cInvoiceDisplayMode_Overdue_2Month As Integer = 4
+Private cInvoiceDisplayMode_Overdue_Over3Months As Integer = 5
 'Private cInvoiceDisplayMode_InstitutionalAccounts As Integer = 5
 Private Reasons_not_billed As Collection
 Private gvwItemsBIlled_columnWidths As Integer
 Private bAreaOfNeed As Boolean 'see FAdminGlobalPreferences/billing help if true the area attracts 10991 item numbers
 Private bComplainedAboutNoItem As Boolean 'don't complain to the user multiple times about not finding a item/fee code.
+Private form_patient_photo As FPatientPhoto 
+Private form_bank As FBankDetails
 
 Public Sub _new()
    
    tlPatientDetails.Background = lblEditAreaHeading.Background 
+   
+   With form_patient_photo = New FPatientPhoto(Vbox_Photo)
+      .lblID.Visible = False 
+      .lblLeft.Visible = True 
+      .lblRight.Visible = True 'spacers just for this module
+   End With
+   With form_billingcards = New FPatientBillingCards(VBox_PatientBillingCards)
+      .Init(VBox_EditArea_Outer, "FRecordVisit")
+      .Hbox_LegacyFileNumber.Visible = False
+      .HBox_ResponsiblePayer.Visible = False
+   End With
+
+   form_bank = New FBankDetails(form_billingcards.Vbox_BankDetails)
+   cvwSearchAccounts.Columns.count = 3
    
 End
 
@@ -266,13 +284,8 @@ Public Sub Init()
    Dim HB As HBox
    
    lblSearchAccounts.Foreground = Color.LightGray
-   comboBox1_Load()
+   ' comboBox1_Load()
    Form_Billing = Me
-   With form_billingcards = New FPatientBillingCards(VBox_PatientBillingCards)
-      .Init(VBox_EditArea_Outer, "FRecordVisit")
-      .Hbox_LegacyFileNumber.Visible = False
-      .HBox_ResponsiblePayer.Visible = False
-   End With
    lblmeasure.text = "  Medicare Voucher  "
    tbUniversal.width = lblmeasure.Width
    Item_Number_Categories = New String[]
@@ -288,8 +301,12 @@ Public Sub Init()
    modEditAreaHelpers.Resize_label(lblDisplayAccounts, lblmeasure)
    modEditAreaHelpers.Resize_label(lblPayment, lblmeasure)
    modEditAreaHelpers.Resize_label(lblComment, lblmeasure)
-   lblmeasure.text = " Filter Account Name "
-   modEditAreaHelpers.Resize_labels(Vbox_Invoices, lblmeasure)
+   lblMeasure.text = "   Quick View    "
+   
+   modEditAreaHelpers.Resize_label(lblName, lblMeasure)
+   modEditAreaHelpers.Resize_label(lblQuickview, lblMeasure)
+   modEditAreaHelpers.Resize_label(lblfilterDate, lblMeasure)
+   Vbox_Photo.width = lblmeasure.Width
    Payment_methods = modBillingDBI.Payment_Methods_Get()
    'fix this duplication but check save to see why I did it.
    modUtilGUI.LoadCombo(cmbPaymentMethods, modUtil.Copy_Collection_Keyed_Sequentially(modBillingDBI.Payment_Methods_Get()), "method") 'show on top 3 methods
@@ -317,10 +334,19 @@ Public Sub Init()
       .Columns[11].text = "Owing  "
       .Columns[12].text = "Comment"
    End With
-   cmbInvoices.Add("Unpaid Accounts", 0)
-   cmbInvoices.Add("Accounts Overdue 1 Month", 1)
-   cmbInvoices.Add("Accounts Overdue 2 Month", 2)
-   cmbInvoices.Add("Accounts Overdue > 3 Months", 3)
+   cmbInvoices.Clear
+   cmbInvoices.Add("All Unbilled Consultations", 0)
+   cmbInvoices.Add("Unbilled  Consultations Today", 1)
+   cmbInvoices.Add("Accounts Overdue 1 Month", 2)
+   cmbInvoices.Add("Accounts Overdue 2 Month", 3)
+   cmbInvoices.Add("Accounts Overdue > 3 Months", 4)
+   cmbInvoices.Add("Accounts - Institutional Payers", 5)
+   
+   'IAN HAD CHANGED THE CODE TO JUST THESE OPTIONS:
+   ' cmbInvoices.Add("Unpaid Accounts", 0)
+   ' cmbInvoices.Add("Accounts Overdue 1 Month", 1)
+   ' cmbInvoices.Add("Accounts Overdue 2 Month", 2)
+   ' cmbInvoices.Add("Accounts Overdue > 3 Months", 3)
    'cmbInvoices.Add("Accounts - Institutional Payers", 5)
    'cmbInvoices.Add("Accounts - Patients", 5)
    bAreaOfNeed = modAdminDBI.Config_Get("area_of_need", False)
@@ -336,6 +362,11 @@ Public Sub Init()
    bComplainedAboutNoItem = False
    fk_invoice = Null
    fk_invoice_for_printing = Null
+   If modAdminDBI.Config_Get("display_unbilled_consults_in_billing", False, Null, modDBConnect.currentUser!fk_clinic) Then
+      bexit = True   
+      cmbInvoices.Index = cInvoiceDisplayMode_UnbilledAll
+      bExit = False  
+   Endif
    Accounts_Reload()
    modDBConnect.Register_Listener("invoice_print", Me)
    
@@ -391,6 +422,8 @@ Public Sub EditArea_Clear()
    cmbInvoiceComments.Clear
    form_billingcards.EditArea_Clear()
    lblEditAreaHeading.text = ""
+   tlPatientDetails.text = ""
+   form_patient_photo.Patient_Picture_Clear
    With lblInvoiceTotalAndPaid
       .text = ""
       .visible = False
@@ -579,6 +612,22 @@ Public Sub Reports_Available_Refresh()
 End
 
 Public Sub Unbilled_refresh(Optional single_day As Date = Null)
+   
+   cvwAccounts.Clear()
+   fk_patient = Null
+   If Trim(txtFilterAccountDate.text) <> "" And IsDate(Trim(txtFilterAccountDate.text)) Then
+      single_day = Val(txtFilterAccountDate.text)
+   Endif
+   Unbilled_Consultations = modBillingDBI.Consultations_UnBilled_Get(single_day, fk_patient)
+   For Each Unbilled_consultation In Unbilled_Consultations
+      cvwAccounts.Add(Unbilled_consultation!pk, 0)
+      cvwAccounts[Unbilled_consultation!pk][0] = Format(Unbilled_consultation!begin, "dd/mm/yyyy")
+      cvwAccounts[Unbilled_consultation!pk][1] = Unbilled_consultation!wholename
+   Next
+   
+End
+
+Public Sub Unbilled_refresh_old(Optional single_day As Date = Null)
    
    cvwAccounts.Clear()
    If Trim(txtFilterAccountDate.text) <> "" And IsDate(Trim(txtFilterAccountDate.text)) Then
@@ -1506,7 +1555,8 @@ Private Sub Settings_Load()
    cvwInvoices.Font = Font[Settings["FRecordVisit/cvwItemsBilled.font", "DejaVu Sans,9"]]
    cvwAccounts.Font = Font[Settings["FRecordVisit/cvwAccounts.font", "DejaVu Sans,9"]]
    ' Try Hsplit_Main.Layout = Settings["FRecordVisit/Tabstrip1_" & Str(TabStrip1.index) & ".HSplit_Main.Layout"]
-   
+   VSplit_INvoices.Layout = Settings[Me.name & "/VSplit_Invoices.Layout", modUtilGUI.VSplit([1, 2])]
+
 End
 
 Public Sub Settings_Save()
@@ -1905,30 +1955,24 @@ Public Sub Patients_Get()
    If Trim(txtSearchInvoices.text) = "" Then Return
    Inc Application.Busy
    timer1.Stop
-   With columnview2
-      .Clear
-      .Visible = False
-   End With
+   cvwSearchAccounts.Clear
    patients = modContactsDBI.patients_get_firstname_surname(Trim(txtSearchInvoices.text), True) 'include decesased (could be looking at old accounts)
    patients.Remove("sql_in_english")
    If patients.count Then
       For Each patient In patients
          If last_fk_patient <> patient!fk_patient Then
-            columnview2.Add(patient!pk_view, 0)
-            columnview2[patient!pk_view][0] = patient!wholename
-            columnview2[patient!pk_view][1] = Format(patient!birthdate, "dd/mm/yyyy")
+            cvwSearchAccounts.Add(patient!pk_view, 0)
+            cvwSearchAccounts[patient!pk_view][0] = patient!wholename
+            cvwSearchAccounts[patient!pk_view][1] = Format(patient!birthdate, "dd/mm/yyyy")
+            cvwSearchAccounts[patient!pk_view][2] = patient!street1 & " " & patient!town & " " & patient!postcode  
             last_fk_patient = patient!fk_patient
          End If
       Next
       If patients.count = 1 Then
          sPatient_Collection_Key = patient!pk_view
          EditArea_Clear()
-         Account_Patient_Display
+         Account_Patient_Display(True)
          txtSearchInvoices_LostFocus()
-      Else
-         With columnview2
-            .Visible = True
-         End With
       Endif
    Endif
    Dec Application.Busy
@@ -2609,7 +2653,6 @@ Public Sub Invoice_New()
    rbOnline_Yes.Visible = True
    rbOnline_No.Visible = True
    lblOnlineStatus.Visible = False
-   bBankDetails.Visible = True
    bExit = False
    
 End
@@ -2725,8 +2768,7 @@ Private Sub Set_Online_Data(inv As Crow, Optional items As Collection)
    rbOnline_No.Visible = False
    rbOnline_Yes.Visible = False
    lblOnlineStatus.Visible = True
-   bBankDetails.Visible = False
-   If inv!result_code = 4006 Then
+    If inv!result_code = 4006 Then
       If IsNull(items) Then
          items = modBillingDBI.Get_Billed_Items(inv)
       Endif
@@ -3000,7 +3042,91 @@ Public Sub Account_Institutional_Display()
    
 End
 
-Public Sub Account_Patient_Display()
+Public Sub Account_Patient_Display(Optional bFromSearchingAccounts As Boolean = False)
+   '----------------------------------------------------------------------------------------
+   ' columnview2:
+   ' This is the list of patient's which user has searched for on the accounts tab
+   ' the patient collection is set in columnview2_dblclick()
+   ' and  gives us this stuff:
+   ' patient name (have this) and hence fk_patient
+   ' date as visit_date
+   ' duration (not displayed)
+   ' seen by (dr combo) as staff_provider_service_title, wholename match combo text
+   ' location combo as branch (match combo text)
+   ' Invoice to (patient/medicare/veteran/other)
+   ' Find and display the payer
+   ' Reference (not yet in the back end)
+   ' Items: item/description/fee/gap/rate/gst
+   ' fk_item_billed (is there as pk_items_billed)
+   ' have fk_invoice, billing_type, fk_lu_billing_type, mbs_item etc, descriptor
+   ' & descriptor_brief, gst_rate, percentage_fee_rule
+   ' also have fk_staff_invoicing and associated datae, patient details,
+   ' but not the medicare numbers etc.
+   '-----------------------------------------------------------------------------------------
+   
+   EditArea_Clear()
+   If bFromSearchingAccounts Then
+      Patient = Patients[sPatient_Collection_Key]
+   Else
+      If cmbInvoices.index <> -1 Then   
+         Patient = Unbilled_Consultations[sPatient_Collection_Key]
+      Else
+         Patient = Patients[sPatient_Collection_Key]
+      End If   
+   End If   
+   ' If cmbInvoices.index < 3 Then ' And cmbInvoiceComments.index <> -1 
+   '    If cmbInvoices.index <> -1 Then   
+   '       Patient = Unbilled_Consultations[sPatient_Collection_Key]
+   '    Else
+   '       Patient = Patients[sPatient_Collection_Key]
+   '    End If   
+   ' Else
+   '    Patient = Patients[sPatient_Collection_Key]
+   ' Endif
+   
+   fk_patient = Patient!fk_patient
+   Try fk_lu_default_billing_level = patient!fk_lu_default_billing_level            'if no billling level in backend
+   If Error Then fk_lu_default_billing_level = const.Billing_Default_Level_Private  'default to private $$
+   If fk_lu_default_billing_level = const.Billing_Default_Level_BulkBill Then
+      If Not IsNull(form_billingcards.Veteran_Card_Type()) Then     'they must be an entitled veteran in some capacity
+         rbInvoiceToVeterans.Value = True
+      Else
+         rbInvoiceToMedicare.Value = True
+      Endif
+   Else
+      If fk_lu_default_billing_level = const.Billing_Default_Level_MedicoLegal Then
+         rbInvoiceToOther.Value = True
+      Else
+         rbInvoiceToPatient.Value = True
+      Endif
+   Endif
+   Invoice_To_Set_Billing_To_Details(patient)
+   bExit = True                                                                     'prevent textbox events firing
+   'txtSearchInvoices.text = Patient!wholename
+   currentconsult = New CConsult(patient, const.ConsultType_ClericalNote)
+   form_patient_photo.Init(currentconsult)
+   form_billingcards.Display_Patient_Data(currentconsult)                                  'load billing defaults into embedded form
+   txtBirthdate.text = Format(Patient!birthdate, "dd/mm/yyyy")
+   txtAddress.text = Patient!street1 & Trim(" " & patient!street2) & " " & patient!town & " " & patient!postcode
+   txtAge.text = Patient!age_display
+   lblPatient_Show_Details(patient)
+   With txtpatient
+      .text = Patient!wholename
+      .pos = 0
+   End With
+   fk_payer_branch = Null
+   fk_payer_person = Null
+   Try Payer_Get(Patient)                                                           'show payer if exists
+   VBox_EditArea_Outer.Enabled = True
+   gvwItemsBIlled.Enabled = True
+   iAccountDisplayMode = const.Billing_Accounts_Unpaid
+   cvwInvoices_Refresh()                                                         'show this patients unbilled consultations
+   Invoice_New()
+   bExit = False
+   
+End
+
+Public Sub Account_Patient_Display_old()
    '----------------------------------------------------------------------------------------
    ' columnview2:
    ' This is the list of patient's which user has searched for on the accounts tab
@@ -3467,7 +3593,8 @@ Public Sub TabStrip1_Click()
       Case cTab_Invoices
          DateChooser1.visible = False
          VBox_ForOtherTabs.Visible = False
-         VBox_Invoices.Visible = True
+         'VBox_Invoices.Visible = True
+         VSplit_INvoices.Visible = True   
          Hbox_Filter.Visible = True
          Hbox_Period.Visible = False
          bexit = True
@@ -3480,7 +3607,8 @@ Public Sub TabStrip1_Click()
          '----------------------------------------------------------------------
          DateChooser1.visible = False
          Hbox_Period.Visible = False
-         VBox_Invoices.Visible = False
+         ' VBox_Invoices.Visible = False
+         VSplit_INvoices.Visible = False  
          VBox_ForOtherTabs.Visible = True
          gvwFeeScheduleItems.Visible = False
          columnview99.Visible = True
@@ -3506,13 +3634,15 @@ Public Sub TabStrip1_Click()
          BulkBilling_ShowClaims()
       Case cTab_Reports
          Hbox_Filter.Visible = False
-         VBox_Invoices.Visible = False
+         'VBox_Invoices.Visible = False
+         VSplit_INvoices.Visible = False  
          VBox_ForOtherTabs.Visible = True
          gvwFeeScheduleItems.Visible = False
          columnview99.Visible = True          'generic columnview
          DateChooser1.visible = True
          Hbox_Period.visible = True
-         VBox_Invoices.Visible = False
+         'VBox_Invoices.Visible = False
+         VSplit_INvoices.Visible = False     
          VBox_ForOtherTabs.Visible = True
          If IsNull(form_reports) Then
             With form_reports = New FBillingReports(Vbox_Reports)
@@ -3526,14 +3656,16 @@ Public Sub TabStrip1_Click()
          columnview99_Refresh()
          
       Case cTab_ScheduleFees
-         VBox_Invoices.Visible = False
+         'VBox_Invoices.Visible = False
+         VSplit_INvoices.Visible = False  
          Hbox_Filter.Visible = True
          Hbox_Period.Visible = False
          VBox_ForOtherTabs.Visible = True
          DateChooser1.visible = False
          gvwFeeScheduleItems.visible = True
          columnview99.Visible = False
-         VBox_Invoices.Visible = False
+         'Box_Invoices.Visible = False
+         VSplit_INvoices.Visible = False  
          VBox_ForOtherTabs.Visible = True
          If IsNull(form_feeschedule) Then
             With form_feeschedule = New FDescriptorsBrowser(Vbox_FeeSchedule)
@@ -3742,7 +3874,9 @@ End
 
 Public Sub cmbInvoices_Click()
    
+   If Bexit Then Return
    lblSearchAccounts.Foreground = Color.LightGray
+   txtFindPayer.text = ""
    Accounts_Reload()
    
 End
@@ -3756,6 +3890,7 @@ End
 
 Public Sub Accounts_Reload()
    
+   EditArea_Clear()
    tbNewInvoice.Visible = False
    With cvwAccounts
       .Columns.count = 2
@@ -3763,6 +3898,10 @@ Public Sub Accounts_Reload()
       .Header = False
    End With
    Select Case cmbInvoices.Index
+      Case cInvoiceDisplayMode_UnbilledAll
+         Unbilled_refresh
+      Case cInvoiceDisplayMode_UnbilledToday
+         Unbilled_refresh(Now())
       Case cInvoiceDisplayMode_Overdue
          Accounts_Overdue_Display("0 month", "6 month")
       Case cInvoiceDisplayMode_Overdue_1Month
@@ -3790,28 +3929,60 @@ Private Sub Accounts_Overdue_Display(start_duration As String, end_duration As S
    
 End
 
-Public Sub columnview2_KeyPress()
+Public Sub cvwSearchAccounts_KeyPress()
    '-----------------------------------------------------------
    'User has hit a key whilst the patients columnview has focus
    'if <enter> then display selected patient
    '-----------------------------------------------------------
    
    If Key.code = Key.return Then
-      columnview2_DblClick()
+      cvwSearchAccounts_DblClick()
    End If
    
 End
 
-Public Sub columnview2_DblClick()
+Public Sub cvwSearchAccounts_Select()
+   
+   cvwSearchAccounts.MoveCurrent()
+   sPatient_Collection_Key = cvwSearchAccounts.Item.key
+   Account_Patient_Display(True)
+   txtSearchInvoices_LostFocus
+   
+End
+
+Public Sub cvwSearchAccounts_DblClick()
+   '------------------------------------------------------
+   'User has clicked on the popup list of patients
+   'Set the patient collection key and display the patient
+   '------------------------------------------------------
+   
+   Return 
+   
+   Inc Application.Busy
+   cvwSearchAccounts.MoveCurrent()
+   sPatient_Collection_Key = cvwSearchAccounts.Item.key
+   ' columnview2.Visible = False
+   
+   EditArea_Clear()
+   Account_Patient_Display(patients)
+   txtSearchInvoices_LostFocus()
+Finally
+   Dec Application.Busy
+Catch
+   Log.ErrorMsg(Error.text & " " & Error.Backtrace.Join(" "))
+   
+End
+
+Public Sub cvwSearchAccounts_DblClick_old()
    '------------------------------------------------------
    'User has clicked on the popup list of patients
    'Set the patient collection key and display the patient
    '------------------------------------------------------
    
    Inc Application.Busy
-   columnview2.MoveCurrent()
-   sPatient_Collection_Key = columnview2.Item.key
-   columnview2.Visible = False
+   cvwSearchAccounts.MoveCurrent()
+   sPatient_Collection_Key = cvwSearchAccounts.Item.key
+   cvwSearchAccounts.Visible = False
    
    EditArea_Clear()
    Account_Patient_Display()
@@ -3826,6 +3997,7 @@ End
 Public Sub cvwAccounts_Select()
    
    If bexit Then Return
+   cvwSearchAccounts.UnselectAll
    Inc Application.Busy
    'Select Case cmbInvoices.Index
    ' Case cInvoiceDisplayMode_InstitutionalAccounts
@@ -3834,11 +4006,19 @@ Public Sub cvwAccounts_Select()
    'Case cInvoiceDisplayMode_UnbilledAll, cInvoiceDisplayMode_UnbilledToday
    '   Patient_Unbilled_Consultation_Display()
    'Case Else
+   bExit = True  
+   
+   bexit = False  
    cvwAccounts.MoveCurrent
    sPatient_Collection_Key = cvwAccounts.Item.Key
    Account_Patient_Display()
-   LblEditAreaHeading.text = "ACCOUNT DETAILS FOR"  '& patient!Wholename
+   'LblEditAreaHeading.text = "ACCOUNT DETAILS FOR"  '& patient!Wholename
    lblPatient_Show_Details(patient)
+   If Not IsNull(Unbilled_Consultations) Then
+      Invoice_New()
+   Endif
+   '    cmbInvoices.index = 0
+   ' Endif
    'End Select
    Dec Application.Busy
    
@@ -3852,20 +4032,41 @@ Public Sub txtSearchInvoices_KeyRelease()
    
 End
 
+Public Sub txtSearchInvoices_KeyPress()
+   
+   If Key.code = Key.down
+      If cvwSearchAccounts.Visible Then
+         With cvwSearchAccounts
+            .MoveFirst()
+            .SetFocus()
+            '            .Item.Selected = True
+         End With
+      Endif
+   End If
+   
+End
+
+Public Sub txtSearchInvoices_Change()
+   
+   If Len(Last.text) = "" Then
+      EditArea_Clear()
+   Endif
+   
+End
+
 Public Sub txtSearchInvoices_GotFocus()
    
-   Debug "search invoices got focus"
+   cvwAccounts.UnselectAll
+   cvwSearchAccounts.Clear
+   patients = Null
+   bExit = True   
+  ' cmbInvoices.Index = -1
+   EditArea_Clear
+   bexit = False  
    txtSearchInvoices.Text = ""
    Last.BackGround = Color.rgb(95, 255, 175)
    iTimer_Search_Mode = cTimer_SearchMode_Patient
    tbNewInvoice.Visible = True
-   With columnview2
-      .top = Last.parent.Parent.top + Last.height + Last.Parent.Padding
-      .left = Last.parent.left + Last.Parent.padding
-      .width = txtSearchInvoices.Width
-      .visible = False
-   End With
-   Debug "search box focus?"
    txtSearchInvoices.Clear()
    
 End
@@ -3934,28 +4135,6 @@ Public Sub tbRefreshInvoices_Click()
    
 End
 
-Public Sub txtSearchInvoices_KeyPress()
-   
-   If Key.code = Key.down
-      If columnview2.Visible Then
-         With columnview2
-            .MoveFirst()
-            .SetFocus()
-            '            .Item.Selected = True
-         End With
-      Endif
-   End If
-   
-End
-
-Public Sub txtSearchInvoices_Change()
-   
-   If Len(Last.text) = "" Then
-      Accounts_Reload()  '
-   Endif
-   
-End
-
 Public Sub gvwFeeScheduleItems_Select()
    '----------------------------------------------------------------------
    'User has clicked on the gridview containing the list of scheduled fees
@@ -3985,9 +4164,21 @@ End
 
 Public Sub bBankDetails_Click()
    
-   Dim form_bank As FBankDetails
+   ' Dim form_bank As FBankDetails
+   ' 
+   ' form_bank = New FBankDetails
+   ' form_bank.ShowModal()
+   ' 
+End
+
+Public Sub Form_Enter()
    
-   form_bank = New FBankDetails
-   form_bank.ShowModal()
+   'If IsNull(fk_patient) Then Unbilled_refresh
+   
+End
+
+Public Sub VSplit_Invoices_Resize()
+   
+   modUtilGUI.Split_Save_Settings(Me.Name, VSplit_INvoices)
    
 End

@@ -82,6 +82,7 @@ Private bAccount_Yes As Boolean = True
 Private bAccount_No As Boolean = False
 Private bPaid_Yes As Boolean = True
 Private bPaid_No As Boolean = False
+Private bSearchingAccounts As Boolean  'if True the patient has been found by an account search, not an unbilled appointment
 Private VSplitMain_Layout As Integer[]
 Private bKeyValid As Integer
 Private bPayingInvoice As Boolean
@@ -199,7 +200,6 @@ Private gvwItemsBIlled_columnWidths As Integer
 Private bAreaOfNeed As Boolean 'see FAdminGlobalPreferences/billing help if true the area attracts 10991 item numbers
 Private bComplainedAboutNoItem As Boolean 'don't complain to the user multiple times about not finding a item/fee code.
 Private form_patient_photo As FPatientPhoto 
-Private form_bank As FBankDetails
 
 Public Sub _new()
    
@@ -215,8 +215,7 @@ Public Sub _new()
       .Hbox_LegacyFileNumber.Visible = False
       .HBox_ResponsiblePayer.Visible = False
    End With
-
-   form_bank = New FBankDetails(form_billingcards.Vbox_BankDetails)
+   
    cvwSearchAccounts.Columns.count = 3
    
 End
@@ -418,6 +417,7 @@ End
 Public Sub EditArea_Clear()
    
    bExit = True
+   form_billingcards.TabStrip1.index = 0
    modEditAreaHelpers.EditArea_Clear(VBox_EditArea_Inner)
    cmbInvoiceComments.Clear
    form_billingcards.EditArea_Clear()
@@ -613,31 +613,31 @@ End
 
 Public Sub Unbilled_refresh(Optional single_day As Date = Null)
    
-   cvwAccounts.Clear()
+   cvwQuickView.Clear()
    fk_patient = Null
    If Trim(txtFilterAccountDate.text) <> "" And IsDate(Trim(txtFilterAccountDate.text)) Then
       single_day = Val(txtFilterAccountDate.text)
    Endif
    Unbilled_Consultations = modBillingDBI.Consultations_UnBilled_Get(single_day, fk_patient)
    For Each Unbilled_consultation In Unbilled_Consultations
-      cvwAccounts.Add(Unbilled_consultation!pk, 0)
-      cvwAccounts[Unbilled_consultation!pk][0] = Format(Unbilled_consultation!begin, "dd/mm/yyyy")
-      cvwAccounts[Unbilled_consultation!pk][1] = Unbilled_consultation!wholename
+      cvwQuickView.Add(Unbilled_consultation!pk, 0)
+      cvwQuickView[Unbilled_consultation!pk][0] = Format(Unbilled_consultation!begin, "dd/mm/yyyy")
+      cvwQuickView[Unbilled_consultation!pk][1] = Unbilled_consultation!wholename
    Next
    
 End
 
 Public Sub Unbilled_refresh_old(Optional single_day As Date = Null)
    
-   cvwAccounts.Clear()
+   cvwQuickView.Clear()
    If Trim(txtFilterAccountDate.text) <> "" And IsDate(Trim(txtFilterAccountDate.text)) Then
       single_day = Val(txtFilterAccountDate.text)
    Endif
    Unbilled_Consultations = modBillingDBI.Consultations_UnBilled_Get(single_day, fk_patient)
    For Each Unbilled_consultation In Unbilled_Consultations
-      cvwAccounts.Add(Unbilled_consultation!pk, 0)
-      cvwAccounts[Unbilled_consultation!pk][0] = Format(Unbilled_consultation!begin, "dd/mm/yyyy")
-      cvwAccounts[Unbilled_consultation!pk][1] = Unbilled_consultation!wholename
+      cvwQuickView.Add(Unbilled_consultation!pk, 0)
+      cvwQuickView[Unbilled_consultation!pk][0] = Format(Unbilled_consultation!begin, "dd/mm/yyyy")
+      cvwQuickView[Unbilled_consultation!pk][1] = Unbilled_consultation!wholename
    Next
    
 End
@@ -648,13 +648,13 @@ Public Sub Patient_Unbilled_Consultation_Display()
    'Display the patient and consultation details in the editing area
    '----------------------------------------------------------------------------------
    
-   cvwAccounts.MoveCurrent()
+   cvwQuickView.MoveCurrent()
    EditArea_Clear()                                                                    'clear input area
    tbSaveBillingNextOfKin.Enabled = False
    bPayingInvoice = False
    txtpatient.ReadOnly = True
    txtDate.ReadOnly = True
-   Unbilled_consultation = Unbilled_Consultations[cvwAccounts.Item.key]
+   Unbilled_consultation = Unbilled_Consultations[cvwQuickView.Item.key]
    Try fk_lu_default_billing_level = Unbilled_consultation!fk_lu_default_billing_level
    If Error Then fk_lu_default_billing_level = const.Billing_Default_Level_Private
    fk_patient = Unbilled_consultation!fk_patient
@@ -718,7 +718,7 @@ Public Sub mnuUnbilled_Click()
    
    Select Case Last.tag
       Case "font"
-         modUtilGUI.Columnview_SetFont(cvwAccounts, "FRecordVisit")
+         modUtilGUI.Columnview_SetFont(cvwQuickView, "FRecordVisit")
       Case Else   'tag is a number = reason not billed key to billing.lu_reasons_not_billed table
          If Message.Question("Mark this patient not to be charged?", "Yes", "No") = 2 Then Return
          modDBConnect.update("clerical.bookings", Null, ["pk": Unbilled_consultation!pk, "fk_lu_reason_not_billed": Last.tag])
@@ -1553,10 +1553,10 @@ Private Sub Settings_Load()
    Hsplit_Main.Layout = Settings["FRecordVisit/HSplit_Main.Layout", modUtilGUI.HSplit([362, 1335])]
    Hsplit_EditArea.Layout = Settings["FRecordVisit/HSplit_EditArea.Layout", modUtilGUI.HSplit([653, 658])]
    cvwInvoices.Font = Font[Settings["FRecordVisit/cvwItemsBilled.font", "DejaVu Sans,9"]]
-   cvwAccounts.Font = Font[Settings["FRecordVisit/cvwAccounts.font", "DejaVu Sans,9"]]
+   cvwQuickView.Font = Font[Settings["FRecordVisit/cvwAccounts.font", "DejaVu Sans,9"]]
    ' Try Hsplit_Main.Layout = Settings["FRecordVisit/Tabstrip1_" & Str(TabStrip1.index) & ".HSplit_Main.Layout"]
    VSplit_INvoices.Layout = Settings[Me.name & "/VSplit_Invoices.Layout", modUtilGUI.VSplit([1, 2])]
-
+   
 End
 
 Public Sub Settings_Save()
@@ -2482,7 +2482,6 @@ Public Sub Billing_Defaults_Save()
    
    Dim patient_billing_data As New CRow
    
-   Print Patients
    If Not form_billingcards.Valid_Data() Then Return
    patient_billing_data.put_unchanged(fk_patient, "fk_patient")
    If Not IsNull(form_billingcards.Responsible_Payer_Get_fk_Person()) Then
@@ -2520,22 +2519,35 @@ Public Sub Billing_Defaults_Save()
    Endif
    patient_billing_data!nursing_home_resident = form_billingcards.Nursing_home_resident()
    patient_billing_data!fk_doctor = form_billingcards.Preferred_Doctor()
+   If Not IsNull(form_billingcards.fk_patient_pharmacy_get()) Then    'get pharmacy stuff if it exists
+      patient_billing_data!fk_branch_pharmacy = form_billingcards.fk_patient_pharmacy_get()
+   Else
+      patient_billing_data!fk_branch_pharmacy = Null
+   End If  
+   If form_billingcards.patient_pharmacy_memo_get() <> "" Then
+      patient_billing_data!memo_for_pharmacy = form_billingcards.patient_pharmacy_memo_get()
+   Else
+      patient_billing_data!memo_for_pharmacy = Null
+   Endif
+   patient_billing_data!uses_webster_pack = form_billingcards.webster_pack_get()
    patient_billing_data.Save("clerical.data_patients", "fk_patient")
+   form_billingcards.Contacts_Save()
    modDBConnect.CommitTrans()
    '-----------------------------------------------------------------------------------
    'Update the current patient collection by re-loading it from the backend
    'Insert it back into the appropriate spot in its collection
    'First get the correct key for either patients or unbilled_consultations collection
    '-----------------------------------------------------------------------------------
-   cvwAccounts.MoveCurrent
-   
-   If Not IsNull(patient) And Not IsNull(cvwAccounts.Item) Then
-      patients[cvwAccounts.Item.Key] = modContactsDBI.Patient_Get_Using_PK(patients[cvwAccounts.Item.Key]!fk_patient)
-      patient = patients[cvwAccounts.Item.Key]
-   Endif
-   If Not IsNull(Unbilled_consultation) And Not IsNull(cvwAccounts.Item) Then
-      Unbilled_Consultations[cvwAccounts.Item.key] = modBillingDBI.Consultation_Ubilled_Get(cvwAccounts.Item.key)
-      Unbilled_consultation = Unbilled_Consultations[cvwAccounts.Item.key]
+   If Not IsNull(patient) Then ' And Not IsNull(cvwAccounts.Item) Then
+      If bSearchingAccounts Then
+         cvwSearchAccounts.MoveCurrent
+         patients[cvwSearchAccounts.Item.key] = modContactsDBI.Patient_Get_Using_PK(patients[cvwSearchAccounts.Item.Key]!fk_patient)
+         patient = patients[cvwSearchAccounts.Item.Key]
+      Else
+         cvwQuickView.MoveCurrent
+         Unbilled_Consultations[cvwQuickView.Item.Key] = modBillingDBI.Consultation_Ubilled_Get(cvwQuickView.Item.Key)
+         patient = Unbilled_Consultations[cvwQuickView.Item.Key]
+      Endif
    Endif
    '------------------------------------------------------------------------------
    'finally update any billing data already in the edit area, this may only update
@@ -2652,7 +2664,7 @@ Public Sub Invoice_New()
    VBox5.Enabled = True
    rbOnline_Yes.Visible = True
    rbOnline_No.Visible = True
-   lblOnlineStatus.Visible = False
+   lblOnlineStatus.text = ""
    bExit = False
    
 End
@@ -2767,8 +2779,8 @@ Private Sub Set_Online_Data(inv As Crow, Optional items As Collection)
    ' set online data
    rbOnline_No.Visible = False
    rbOnline_Yes.Visible = False
-   lblOnlineStatus.Visible = True
-    If inv!result_code = 4006 Then
+   'lblOnlineStatus.Visible = True
+   If inv!result_code = 4006 Then
       If IsNull(items) Then
          items = modBillingDBI.Get_Billed_Items(inv)
       Endif
@@ -3594,7 +3606,7 @@ Public Sub TabStrip1_Click()
          DateChooser1.visible = False
          VBox_ForOtherTabs.Visible = False
          'VBox_Invoices.Visible = True
-         VSplit_INvoices.Visible = True   
+         VBox_Accounts.Visible = True   
          Hbox_Filter.Visible = True
          Hbox_Period.Visible = False
          bexit = True
@@ -3608,7 +3620,7 @@ Public Sub TabStrip1_Click()
          DateChooser1.visible = False
          Hbox_Period.Visible = False
          ' VBox_Invoices.Visible = False
-         VSplit_INvoices.Visible = False  
+         VBox_Accounts.Visible = False  
          VBox_ForOtherTabs.Visible = True
          gvwFeeScheduleItems.Visible = False
          columnview99.Visible = True
@@ -3635,14 +3647,14 @@ Public Sub TabStrip1_Click()
       Case cTab_Reports
          Hbox_Filter.Visible = False
          'VBox_Invoices.Visible = False
-         VSplit_INvoices.Visible = False  
+         VBox_Accounts.Visible = False  
          VBox_ForOtherTabs.Visible = True
          gvwFeeScheduleItems.Visible = False
          columnview99.Visible = True          'generic columnview
          DateChooser1.visible = True
          Hbox_Period.visible = True
          'VBox_Invoices.Visible = False
-         VSplit_INvoices.Visible = False     
+         VBox_Accounts.Visible = False     
          VBox_ForOtherTabs.Visible = True
          If IsNull(form_reports) Then
             With form_reports = New FBillingReports(Vbox_Reports)
@@ -3657,7 +3669,7 @@ Public Sub TabStrip1_Click()
          
       Case cTab_ScheduleFees
          'VBox_Invoices.Visible = False
-         VSplit_INvoices.Visible = False  
+         VBox_Accounts.Visible = False  
          Hbox_Filter.Visible = True
          Hbox_Period.Visible = False
          VBox_ForOtherTabs.Visible = True
@@ -3665,7 +3677,7 @@ Public Sub TabStrip1_Click()
          gvwFeeScheduleItems.visible = True
          columnview99.Visible = False
          'Box_Invoices.Visible = False
-         VSplit_INvoices.Visible = False  
+         VBox_Accounts.Visible = False  
          VBox_ForOtherTabs.Visible = True
          If IsNull(form_feeschedule) Then
             With form_feeschedule = New FDescriptorsBrowser(Vbox_FeeSchedule)
@@ -3892,7 +3904,7 @@ Public Sub Accounts_Reload()
    
    EditArea_Clear()
    tbNewInvoice.Visible = False
-   With cvwAccounts
+   With cvwQuickView
       .Columns.count = 2
       .clear
       .Header = False
@@ -3920,11 +3932,11 @@ Private Sub Accounts_Overdue_Display(start_duration As String, end_duration As S
    Dim p As Collection
    
    patients = modBillingDBI.Accounts_Overdue_Find(start_duration, end_duration)
-   cvwAccounts.Clear()
+   cvwQuickView.Clear()
    Debug start_duration
    Debug end_duration
    For Each p In patients
-      cvwAccounts.Add(p!pk_view, p!wholename)
+      cvwQuickView.Add(p!pk_view, p!wholename)
    Next
    
 End
@@ -3994,10 +4006,11 @@ Catch
    
 End
 
-Public Sub cvwAccounts_Select()
+Public Sub cvwQuickView_Select()
    
    If bexit Then Return
    cvwSearchAccounts.UnselectAll
+   bSearchingAccounts = False 
    Inc Application.Busy
    'Select Case cmbInvoices.Index
    ' Case cInvoiceDisplayMode_InstitutionalAccounts
@@ -4006,11 +4019,8 @@ Public Sub cvwAccounts_Select()
    'Case cInvoiceDisplayMode_UnbilledAll, cInvoiceDisplayMode_UnbilledToday
    '   Patient_Unbilled_Consultation_Display()
    'Case Else
-   bExit = True  
-   
-   bexit = False  
-   cvwAccounts.MoveCurrent
-   sPatient_Collection_Key = cvwAccounts.Item.Key
+   cvwQuickView.MoveCurrent
+   sPatient_Collection_Key = cvwQuickView.Item.Key
    Account_Patient_Display()
    'LblEditAreaHeading.text = "ACCOUNT DETAILS FOR"  '& patient!Wholename
    lblPatient_Show_Details(patient)
@@ -4056,11 +4066,12 @@ End
 
 Public Sub txtSearchInvoices_GotFocus()
    
-   cvwAccounts.UnselectAll
+   cvwQuickView.UnselectAll
    cvwSearchAccounts.Clear
+   bSearchingAccounts = True 
    patients = Null
    bExit = True   
-  ' cmbInvoices.Index = -1
+   ' cmbInvoices.Index = -1
    EditArea_Clear
    bexit = False  
    txtSearchInvoices.Text = ""
@@ -4162,13 +4173,13 @@ Public Sub txtSearch_KeyPress()
    
 End
 
-Public Sub bBankDetails_Click()
+Public Sub tbBankDetails_Click()
    
-   ' Dim form_bank As FBankDetails
-   ' 
-   ' form_bank = New FBankDetails
-   ' form_bank.ShowModal()
-   ' 
+   Dim form_bank As FBankDetails
+   
+   form_bank = New FBankDetails
+   form_bank.ShowModal()
+   
 End
 
 Public Sub Form_Enter()

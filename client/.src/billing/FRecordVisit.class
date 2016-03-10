@@ -67,6 +67,7 @@
 '       Sometimes Medicare "miss" entire vouchers - maybe this won't happen when done electronically
 '    fixme - put in code in cvwAccounts_select > get payer for branch as a payer
 '-----------------------------------------------------------------------------------------------
+Private cell_text As String
 Private currentconsult As CConsult
 Private last_Fee_type As String
 Private bexit As Boolean
@@ -333,13 +334,13 @@ Public Sub Init()
       .Columns[11].text = "Owing  "
       .Columns[12].text = "Comment"
    End With
-   cmbInvoices.Clear
-   cmbInvoices.Add("All Unbilled Consultations", 0)
-   cmbInvoices.Add("Unbilled  Consultations Today", 1)
-   cmbInvoices.Add("Accounts Overdue 1 Month", 2)
-   cmbInvoices.Add("Accounts Overdue 2 Month", 3)
-   cmbInvoices.Add("Accounts Overdue > 3 Months", 4)
-   cmbInvoices.Add("Accounts - Institutional Payers", 5)
+   cmbQuickView.Clear
+   cmbQuickView.Add("All Unbilled Consultations", 0)
+   cmbQuickView.Add("Unbilled  Consultations Today", 1)
+   cmbQuickView.Add("Accounts Overdue 1 Month", 2)
+   cmbQuickView.Add("Accounts Overdue 2 Month", 3)
+   cmbQuickView.Add("Accounts Overdue > 3 Months", 4)
+   cmbQuickView.Add("Accounts - Institutional Payers", 5)
    
    'IAN HAD CHANGED THE CODE TO JUST THESE OPTIONS:
    ' cmbInvoices.Add("Unpaid Accounts", 0)
@@ -363,7 +364,7 @@ Public Sub Init()
    fk_invoice_for_printing = Null
    If modAdminDBI.Config_Get("display_unbilled_consults_in_billing", False, Null, modDBConnect.currentUser!fk_clinic) Then
       bexit = True   
-      cmbInvoices.Index = cInvoiceDisplayMode_UnbilledAll
+      cmbQuickView.Index = cInvoiceDisplayMode_UnbilledAll
       bExit = False  
    Endif
    Accounts_Reload()
@@ -424,6 +425,7 @@ Public Sub EditArea_Clear()
    lblEditAreaHeading.text = ""
    tlPatientDetails.text = ""
    form_patient_photo.Patient_Picture_Clear
+   cell_text = ""
    With lblInvoiceTotalAndPaid
       .text = ""
       .visible = False
@@ -1153,6 +1155,8 @@ Public Sub gvwItemsBilled_ShowProperty()
    Dim hEditor As Object
    
    textbox1.Hide
+   textbox1.text = ""
+   If cell_text <> "" Then textbox1.text = cell_text
    cmbFeeType.Hide
    gvwItemsBilled_lblOverLay.Hide
    panGvwItemsBilledEditor.Hide
@@ -1163,6 +1167,7 @@ Public Sub gvwItemsBilled_ShowProperty()
          oncol_items = cGridColumnItem_FeeType
       Case Else
          hEditor = gvwItemsBilled_lblOverLay
+         hEditor = textbox1
    End Select
    $hEditor_gvwItems = hEditor
    gvwItemsBilled_MoveProperty        ' Move the Hbox panGvwItemsBilledEditor into position over the cell
@@ -1295,6 +1300,7 @@ Public Sub gvwItemsBIlled_Delete_Row()
    HBox_Descriptor.Visible = False
    columnview1.Visible = False
    Invoice_Calculate_Total("Total Owing")
+   cell_text = ""
    
 End
 
@@ -1327,6 +1333,14 @@ Public Sub gvwItemsBIlled_Data_Valid() As Boolean
    
 End
 
+Public Sub gvwItemsBilled_MouseDown()
+
+   Print gvwItemsBilled[gvwItemsBIlled.row, gvwItemsBIlled.Column].Text
+   If gvwItemsBilled[gvwItemsBIlled.row, gvwItemsBIlled.Column].Text <> "" Then
+      Cell_Text = gvwItemsBilled[gvwItemsBIlled.row, gvwItemsBIlled.Column].Text
+   Endif
+End
+
 Public Sub gvwItemsBIlled_MouseUp()
    '------------------------------------------------
    'User has clicked on one of the cells in the grid
@@ -1335,6 +1349,11 @@ Public Sub gvwItemsBIlled_MouseUp()
    If bPayingInvoice Or bexit Then Return                  'no-go if paying an invoice -can't change existing items
    If gvwItemsBIlled.Row > 0 And gvwItemsBIlled[0, 0].text = "" Then 'if user clicks on row and row above not filled in move back FIXME THIS CODE DOES NOT DO THIS
       gvwItemsBIlled.row = 0
+   Endif
+   Print "gvwItemsBilled.column", gvwItemsBilled.column
+   If gvwItemsBIlled.Column = 1 Then
+      Return  
+      '  gvwItemsBilled_lblOverLay_Menu
    Endif
    gvwItemsBilled_ShowProperty                              'bad name but show the control we want to overlay a cell
    
@@ -1785,6 +1804,9 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True)
    'fixme only update  this on first pass
    'fime  misnomer invoice or reciept
    '-----------------------------------------
+   If fk_appointment Then
+      modDBConnect.update("clerical.bookings", Null, ["pk": fk_appointment, "invoiced": True])
+   Endif
    'fixme won't always be printed, but need to always save latex
    invoice!latex = modBillingDBI.Print_Invoice(invoice!fk_invoice, bPrint, bBulkBill, Null, referrer)
    If Not IsNull(invoice!latex) Then
@@ -1792,8 +1814,8 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True)
    Endif
    fk_invoice = Null
    EditArea_Notify_Data_Change(False)
-   If Not IsNull(Unbilled_consultation) Then
-      Accounts_Reload()
+   If Not bSearchingAccounts Then 
+      tbQuickView_Click
    End If
    If Not IsNull(patient) Then
       cvwInvoices_Refresh()
@@ -3080,8 +3102,16 @@ Public Sub Account_Patient_Display(Optional bFromSearchingAccounts As Boolean = 
    If bFromSearchingAccounts Then
       Patient = Patients[sPatient_Collection_Key]
    Else
-      If cmbInvoices.index <> -1 Then   
+      If cmbQuickView.index <> -1 Then   
          Patient = Unbilled_Consultations[sPatient_Collection_Key]
+         fk_appointment = Unbilled_Consultations[sPatient_Collection_Key]!pk
+         fk_staff = Unbilled_Consultations[sPatient_Collection_Key]!fk_staff
+         For Each Staff_Member In staff
+            If Staff_Member!fk_staff = fk_staff Then
+               cmbSeenBy.index = cmbSeenBy.Find(Staff_Member!wholename)
+               Break
+            Endif
+         Next
       Else
          Patient = Patients[sPatient_Collection_Key]
       End If   
@@ -3884,7 +3914,7 @@ Public Sub txtFilter_GotFocus()
    
 End
 
-Public Sub cmbInvoices_Click()
+Public Sub cmbQuickView_Click()
    
    If Bexit Then Return
    lblSearchAccounts.Foreground = Color.LightGray
@@ -3909,7 +3939,7 @@ Public Sub Accounts_Reload()
       .clear
       .Header = False
    End With
-   Select Case cmbInvoices.Index
+   Select Case cmbQuickView.Index
       Case cInvoiceDisplayMode_UnbilledAll
          Unbilled_refresh
       Case cInvoiceDisplayMode_UnbilledToday
@@ -4137,11 +4167,11 @@ Public Sub DateChooserAccountDate_LostFocus()
    
 End
 
-Public Sub tbRefreshInvoices_Click()
+Public Sub tbQuickView_Click()
    
    Select Case TabStrip1.Index
       Case cTab_Invoices
-         cmbInvoices_Click()
+         cmbQuickView_Click()
    End Select
    
 End
@@ -4193,3 +4223,10 @@ Public Sub VSplit_Invoices_Resize()
    modUtilGUI.Split_Save_Settings(Me.Name, VSplit_INvoices)
    
 End
+
+Public Sub gvwItemsBilled_Menu()
+   
+   mnuItemsBilled.Popup()
+   
+End
+

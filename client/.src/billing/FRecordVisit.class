@@ -17,27 +17,7 @@
 '
 ' A class to record the patients visit and raise the invoice
 '----------------------------------------------------------------------
-'THIS FORM WILL NOT WORK IT IS VERY MUCH PROTOTYPE PRE-ALPHA ONLY
-'ONLY FOR PROOF OF CONCEPT, much of the code is really bad
-'many routines are redundant/duplicated
-'many of the database calls are redundant duplicated
-'fix this constraint in back end which is named wrong.
-' CONSTRAINT invoices_fk_doctor_raising_fkey FOREIGN KEY (fk_staff_provided_service)
-'       REFERENCES admin.staff (pk) MATCH SIMPLE
-'       ON UPDATE NO ACTION ON DELETE NO ACTION,
-' NOTE:  Ian - don't get hung up on all the inappriopriate names
-'        for columnviews and controls - work in progress - will fix
-'         table to save how the patient usually pays > to auto-put it into the grid
-' BULK BILL RECONCILIATION WORK-FLOW   - goes something like this
-' 1) Practice receives notification of EFT depost to nominated account
-' 2) Electronic notification or paper printout in mail displays columnised data:
-' need billing option per
-' gst not being include
-' do the abn stuff
-' put in delete payment codebillbill
-' finish payments of accounts
-
-' -----------------------------------------------------------------------------------------------
+'' -----------------------------------------------------------------------------------------------
 ' Claim Num: PatientName: MedicareNumber DateSeen Item_Number Assigned$ Payable$ ExplanationCode
 '  U1892     Peter patient 2111111111    10 July 12   31265    150.90    0.00        374
 '
@@ -167,6 +147,11 @@ Private Items_Billed As Collection
 Private invoice As Crow
 Private ScheduledFeeItems As Collection
 Private FeeItem As Collection
+Private iLast_Invoice_Type As Integer
+Private Const cLast_Invoice_Type_Private As Integer = 0
+Private Const cLast_Invoice_Type_Medicare As Integer = 1
+Private Const cLast_Invoice_Type_Veteran As Integer = 2
+Private Const cLast_Invoice_Type_Other As Integer = 3
 Private iTimer_Search_Mode As Integer
 Private cTimer_SearchMode_Patient As Integer = 0
 Private cTimer_SearchMode_Descriptor As Integer = 1
@@ -1333,12 +1318,23 @@ Public Sub gvwItemsBIlled_Data_Valid() As Boolean
    
 End
 
-Public Sub gvwItemsBilled_MouseDown()
 
+
+Public Sub gvwItemsBilled_MouseDown()
+   'User has clicked somewhere on a row in the items billed grid
+   
+   If IsNull(patient) Then Return
+   
+   onrow_items = gvwItemsBIlled.Row
+   If gvwItemsBIlled.Column > cGridColumnItem_BriefDescriptor Then
+      If Not Valid_Item_And_Descriptor() Then Return
+   End If   
    Print gvwItemsBilled[gvwItemsBIlled.row, gvwItemsBIlled.Column].Text
    If gvwItemsBilled[gvwItemsBIlled.row, gvwItemsBIlled.Column].Text <> "" Then
       Cell_Text = gvwItemsBilled[gvwItemsBIlled.row, gvwItemsBIlled.Column].Text
    Endif
+Catch
+   
 End
 
 Public Sub gvwItemsBIlled_MouseUp()
@@ -1346,16 +1342,37 @@ Public Sub gvwItemsBIlled_MouseUp()
    'User has clicked on one of the cells in the grid
    '------------------------------------------------
    
+   Dim onRow As Integer = gvwItemsBIlled.Row
+   
+   If IsNull(patient) Then Return
+   Print gvwItemsBIlled.Row
    If bPayingInvoice Or bexit Then Return                  'no-go if paying an invoice -can't change existing items
-   If gvwItemsBIlled.Row > 0 And gvwItemsBIlled[0, 0].text = "" Then 'if user clicks on row and row above not filled in move back FIXME THIS CODE DOES NOT DO THIS
-      gvwItemsBIlled.row = 0
+   If gvwItemsBIlled.Column = 1 Then Return
+   If gvwItemsBIlled.Column > cGridColumnItem_BriefDescriptor Then
+      If Not Valid_Item_And_Descriptor() Then Return
+   End If  
+   Print "Last row used:" & Last_Billing_Row_Used()
+   If Last_Billing_Row_Used() + 1 <> gvwItemsBIlled.Row And gvwItemsBIlled.column = 0 Then
+      gvwItemsBIlled.Row = Last_Billing_Row_Used() + 1
+      cell_text = ""
+      onrow_items = gvwItemsBIlled.Row 
+      
    Endif
    Print "gvwItemsBilled.column", gvwItemsBilled.column
-   If gvwItemsBIlled.Column = 1 Then
-      Return  
-      '  gvwItemsBilled_lblOverLay_Menu
-   Endif
    gvwItemsBilled_ShowProperty                              'bad name but show the control we want to overlay a cell
+   
+End
+
+Public Function Last_Billing_Row_Used() As Integer
+   
+   Dim x As Integer
+   
+   For x = 0 To gvwItemsBIlled.Rows.Count - 1
+      If Trim(gvwItemsBIlled[x, 0].text) = "" Then
+         Return x - 1
+      Endif
+   Next
+   Return x
    
 End
 
@@ -1402,6 +1419,22 @@ Public Sub cmbEditArea_LostFocus()
    
 End
 
+Public Sub Reset_Last_Billing_Type()
+   
+   ' bexit = True   
+   ' Select Case iLast_Invoice_Type
+   '    Case cLast_Invoice_Type_Private
+   '       rbInvoiceToPatient.value = True
+   '    Case cLast_Invoice_Type_Medicare
+   '        rbInvoiceToMedicare.Value = True
+   '    Case cLast_Invoice_Type_Veteran
+   '       rbInvoiceToVeterans.value = True 
+   '    Case cLast_Invoice_Type_Other
+   '       rbInvoiceToOther.Value = True 
+   ' End Select
+   ' bExit = False  
+End
+
 Public Sub cmbFeeType_Click()
    '-------------------------------------------------------------------------------------------
    'Change the fee type re-calculate the columns
@@ -1411,6 +1444,14 @@ Public Sub cmbFeeType_Click()
    
    Dim gap_payment As Float
    
+   If InStr(cmbFeeType.text, "DVA") Then
+      If IsNull(currentconsult!patient!Veteran_Card_Number) Then
+         Message.Info("You have selected a Veterans fee level, the patient has no veterans card number.\n\n"
+         "If they have this entitlement, please add the appropriate details in the Cards tab above.")
+         Reset_Last_Billing_Type
+         Return
+      Endif
+   Endif
    gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_FeeType].text = cmbFeeType.Text
    If gvwItemsBIlled[gvwItemsBIlled.row, 0].text <> "" Then
       Try gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_Fee].text = modBillingDBI.Fee_Get_For_Item_And_Billing_Type(gvwItemsBIlled[gvwItemsBIlled.row, 0].text, FeeTypes[cmbFeeType.index]!pk)!price
@@ -2093,10 +2134,12 @@ Public Sub Get_Items(txt As String)
    If items.count = 0 Then
       Message.title = "Fee Search"
       sMsg = "Item:" & txt & "\n\n"
-      sMsg &= "The item number could be found.\n\n"
+      sMsg &= "The item number could not be found.\n\n"
       sMsg &= "Please check this in the Fee Schedule and try again"
       Message.Info(sMsg)
-      gvwItemsBilled_Delete_Row()
+      ' gvwItemsBilled_Delete_Row()
+      gvwItemsBIlled[gvwItemsBIlled.row, 0].text = ""
+      cell_text = ""
       bExit = False
       item = Null
       Return
@@ -2254,7 +2297,10 @@ Public Sub mnuItemsBilled_Click()
       Case "delete all items"
          gvwItemsBIlled_Clear()
       Case "add item"
-         gvwItemsBIlled_Add_Row
+         Print Last_Billing_Row_Used()
+         If Last_Billing_Row_Used() >= 3 Then
+            gvwItemsBIlled_Add_Row
+         End If   
       Case "medicare"
          
    End Select
@@ -2421,6 +2467,16 @@ Public Sub rbInvoiceTo_Click()
    If bExit Then Return
    textlabelPayer.text = ""
    
+   Select Case Last.tag
+      Case "private fee"
+         iLast_Invoice_Type = cLast_Invoice_Type_Private
+      Case "medicare"
+         iLast_Invoice_Type = cLast_Invoice_Type_Medicare
+      Case "veteran"
+         iLast_Invoice_Type = cLast_Invoice_Type_Veteran
+      Case "other"
+         iLast_Invoice_Type = cLast_Invoice_Type_Other
+   End Select
    cbSendClaimantAddress.Visible = False
    If rbInvoiceToPatient.value = True Then
       If form_billingcards.Billing_Level_Get() <> const.Billingtype_Health_Care_Card_Concession Or form_billingcards.Billing_Level_Get() <> const.Billingtype_Pensioner_Concession Then
@@ -3309,7 +3365,7 @@ Public Sub Payer_Search()
             .tag = "payer person"
          End With
       Else
-         Payer_Person_Select(person!pk_view)
+         If persons.count <> 0 Then Payer_Person_Select(person!pk_view)
       End If
    Endif
    
@@ -4230,3 +4286,20 @@ Public Sub gvwItemsBilled_Menu()
    
 End
 
+Public Sub textbox1_Change()
+   
+   If Bexit Then Return
+   bexit = True   
+   textbox1.text = UCase(textbox1.text)
+   bexit = False  
+   
+End
+
+Public Function Valid_Item_And_Descriptor() As Boolean
+   
+   If Trim(gvwItemsBilled[gvwItemsBIlled.row, cGridColumnItem_ItemNumber].Text) = "" Or Trim(gvwItemsBilled[gvwItemsBIlled.row, cGridColumnItem_BriefDescriptor].text) = "" Then
+      Return
+   End If   
+   Return True
+   
+End

@@ -14,6 +14,11 @@ GRANT SELECT ON TABLE clin_measurements.vwlabinrs TO staff;
 GRANT USAGE ON SEQUENCE clin_recalls.lu_status_pk_seq TO staff;
 GRANT EXECUTE ON FUNCTION clerical.listsessions(timestamp without time zone, integer) TO staff;
 
+GRANT USAGE ON SEQUENCE clin_consult.lu_shortcut_category_pk_seq TO staff;
+GRANT USAGE ON SEQUENCE clin_consult.shortcuts_user_temp_pk_seq TO staff;
+
+GRANT USAGE ON SEQUENCE common.lu_blood_group_pk_seq TO staff;
+GRANT USAGE ON SEQUENCE common.lu_rhesus_group_pk_seq TO staff;
 
 
 update db.lu_version set lu_minor = 492;

@@ -54,6 +54,7 @@ Private bexit As Boolean
 Private bHSplit_Resized As Boolean        'true if user has re-sized the main horizontal split
 Private $hEditor_gvwItems As Object
 Private $hEditor_gvwPayments As Object
+Private appointment_icons As Collection  
 'save flags for readability
 Private bBulkBill_Yes As Boolean = True
 Private bBulkBill_No As Boolean = False
@@ -95,7 +96,7 @@ Private iAccountDisplayMode As Integer  'const.Billing_Accounts_Paid,  Billing_A
 Private form_billingcards As FPatientBillingCards
 'Private form_reports As FBillingReports
 Private form_reports As FHtmlViewer
-Private appointment_icons As Collection
+Private form_unbilled_comment As FUnbilledComment
 Private sPatient_Collection_Key As Variant
 Private staff As Collection
 Private Staff_Member As Collection
@@ -187,11 +188,15 @@ Private gvwItemsBIlled_columnWidths As Integer
 Private bAreaOfNeed As Boolean 'see FAdminGlobalPreferences/billing help if true the area attracts 10991 item numbers
 Private bComplainedAboutNoItem As Boolean 'don't complain to the user multiple times about not finding a item/fee code.
 Private form_patient_photo As FPatientPhoto 
+Private pic_annual_checkup As Picture = Picture["icons/22/heart.png"]
+Private pic_home_visit As Picture = Picture["icons/22/user-home.png"]
+Private pic_procedure As Picture = Picture["icons/24/glove-scalple_2424.png"]
+Private pic_empty As Picture = Picture["icons/20/empty2020.png"]
 
 Public Sub _new()
    
    tlPatientDetails.Background = lblEditAreaHeading.Background 
-   
+   Appointment_Icons = Appointment_icons_Get_Picture(modAppointmentsDBI.Appointment_icons_get())  
    With form_patient_photo = New FPatientPhoto(Vbox_Photo)
       .lblID.Visible = False 
       .lblLeft.Visible = True 
@@ -598,6 +603,65 @@ End
 
 Public Sub Unbilled_refresh(Optional single_day As Date = Null)
    
+   Dim pic As Picture
+   Dim widest_name As String
+   Dim name_length As Integer
+   Dim x As Integer
+   
+   cvwQuickView.Clear()
+   fk_patient = Null
+   If Trim(txtFilterAccountDate.text) <> "" And IsDate(Trim(txtFilterAccountDate.text)) Then
+      single_day = Val(txtFilterAccountDate.text)
+   Endif
+   Unbilled_Consultations = modUtil.Copy_Collection_Keyed_Sequentially(modBillingDBI.Consultations_UnBilled_Get(single_day, fk_patient))
+   For Each Unbilled_consultation In Unbilled_Consultations
+      If Not IsNull(Unbilled_consultation!fk_lu_appointment_icon) Then
+         ' "1";"pregnancy"
+         ' "2";"blood test"
+         ' "3";"mental health plan"
+         ' "4";"home visit"
+         ' "5";"over 75 health assessment"
+         ' "6";"procedure"
+         ' "7";"immunization"
+         ' "8";"workcover"
+         ' "9";"annual checkup"
+         ' "10";"prescription"
+         ' "11";"diabetes cycle of care"
+         ' 
+         
+         Select Case Unbilled_consultation!fk_lu_appointment_icon
+            Case 4
+               pic = pic_home_visit
+            Case 6
+               pic = pic_procedure
+            Case 9
+               pic = pic_annual_checkup
+            Case Else
+               pic = pic_empty
+         End Select
+      Endif
+      cvwQuickView.Add(x, "", pic)
+      cvwQuickView[x][0] = Format(Unbilled_consultation!begin, "dd/mm/yyyy")
+      cvwQuickView[x][1] = Unbilled_consultation!wholename   
+      If Not IsNull(Unbilled_consultation!comment_for_billing) Then
+         cvwQuickView[x][2] = Unbilled_consultation!comment_for_billing   
+      Endif
+      If Len(Unbilled_consultation!wholename) > name_length Then
+         lblMeasure.text = Unbilled_consultation!wholename
+         name_length = Len(Unbilled_consultation!wholename)
+      Endif
+      Inc x
+   Next
+   modUtilGUI.Columnview_Columns_Set_Size(cvwQuickView, lblMeasure)
+   
+End
+
+Public Sub Unbilled_refresh_Second_Oldest(Optional single_day As Date = Null)
+   
+   Dim pic As Picture
+   Dim widest_name As String
+   Dim name_length As Integer
+   
    cvwQuickView.Clear()
    fk_patient = Null
    If Trim(txtFilterAccountDate.text) <> "" And IsDate(Trim(txtFilterAccountDate.text)) Then
@@ -605,10 +669,41 @@ Public Sub Unbilled_refresh(Optional single_day As Date = Null)
    Endif
    Unbilled_Consultations = modBillingDBI.Consultations_UnBilled_Get(single_day, fk_patient)
    For Each Unbilled_consultation In Unbilled_Consultations
-      cvwQuickView.Add(Unbilled_consultation!pk, 0)
+      If Not IsNull(Unbilled_consultation!fk_lu_appointment_icon) Then
+         ' "1";"pregnancy"
+         ' "2";"blood test"
+         ' "3";"mental health plan"
+         ' "4";"home visit"
+         ' "5";"over 75 health assessment"
+         ' "6";"procedure"
+         ' "7";"immunization"
+         ' "8";"workcover"
+         ' "9";"annual checkup"
+         ' "10";"prescription"
+         ' "11";"diabetes cycle of care"
+         ' 
+         
+         Select Case Unbilled_consultation!fk_lu_appointment_icon
+            Case 4
+               pic = pic_home_visit
+            Case 6
+               pic = pic_procedure
+            Case 9
+               pic = pic_annual_checkup
+            Case Else
+               pic = pic_empty
+         End Select
+      Endif
+      cvwQuickView.Add(Unbilled_consultation!pk, "", pic)
       cvwQuickView[Unbilled_consultation!pk][0] = Format(Unbilled_consultation!begin, "dd/mm/yyyy")
-      cvwQuickView[Unbilled_consultation!pk][1] = Unbilled_consultation!wholename
+      cvwQuickView[Unbilled_consultation!pk][1] = Unbilled_consultation!wholename   
+      
+      If Len(Unbilled_consultation!wholename) > name_length Then
+         lblMeasure.text = Unbilled_consultation!wholename
+         name_length = Len(Unbilled_consultation!wholename)
+      Endif
    Next
+   modUtilGUI.Columnview_Columns_Set_Size(cvwQuickView, lblMeasure)
    
 End
 
@@ -701,9 +796,32 @@ End
 
 Public Sub mnuUnbilled_Click()
    
+   Dim comment_for_billing As Variant 'see text, don't want to save a "" empty string as empty string but null
+   
    Select Case Last.tag
       Case "font"
-         modUtilGUI.Columnview_SetFont(cvwQuickView, "FRecordVisit")
+         modUtilGUI.Columnview_SetFont(cvwQuickView, Me.Name)
+      Case "wait for histology", "clarify with doctor", "remove comment" 'tag of remove comment = ""
+         If Last.tag = "remove comment" Then
+            comment_for_billing = ""
+         Else
+            comment_for_billing = Last.tag
+         Endif
+         modDBConnect.update("clerical.bookings", Null, ["pk": patient!fk_appointment, "comment_for_billing": comment_for_billing]) 
+          '   modDBConnect.update("clerical.bookings", Null, ["pk": patient!pk, "fk_lu_reason_not_billed": Last.tag])
+            modDBConnect.CommitTrans
+            If comment_for_billing = "" Then
+               cvwQuickView[sPatient_Collection_Key][2] = "" 
+            Else
+               cvwQuickView[sPatient_Collection_Key][2] = comment_for_billing  
+             Endif
+            
+        ' Endif
+      Case "add free text"
+         With form_unbilled_comment = New FUnbilledComment
+            .Init(patient!fk_appointment, cvwQuickView, sPatient_Collection_Key)
+            .ShowModal  
+         End With
       Case Else   'tag is a number = reason not billed key to billing.lu_reasons_not_billed table
          Message.Title = "Unbilled Appointments - No Invoice?"
          If Message.Question(Patient!wholename & "\n\nMark this patient not to be charged:\n\n" & Last.text, "Yes", "No") = 2 Then Return
@@ -711,8 +829,7 @@ Public Sub mnuUnbilled_Click()
          modDBConnect.CommitTrans()
          Accounts_Reload()
    End Select
-Catch
-   Return
+
    
 End
 
@@ -2906,7 +3023,7 @@ Public Sub MainToolbar_Click()
                sCardType = "medicare"
                Goto Missing_CardNumber
             Endif
-            If rbInvoiceToVeterans.value = True And IsNull(patient!veteran_numnber) Then
+            If rbInvoiceToVeterans.value = True And IsNull(patient!veteran_number) Then
                sCardType = "veteran"
                Goto Missing_CardNumber
             Endif
@@ -3378,8 +3495,10 @@ Public Sub Account_Patient_Display(Optional bFromSearchingAccounts As Boolean = 
                Break
             Endif
          Next
+         lblInvoiceDate.text = "Date Seen"
       Else
          Patient = Patients[sPatient_Collection_Key]
+         lblInvoiceDate = "Invoice Date"
       End If   
    End If   
    ' If cmbInvoices.index < 3 Then ' And cmbInvoiceComments.index <> -1 
@@ -4223,7 +4342,7 @@ Public Sub Accounts_Reload()
    EditArea_Clear()
    tbNewInvoice.Visible = False
    With cvwQuickView
-      .Columns.count = 2
+      .Columns.count = 3
       .clear
       .Header = False
    End With
@@ -4551,6 +4670,8 @@ End
 
 Public Sub cvwQuickView_Menu()
    
+   cvwQuickView.MoveCurrent
+   sPatient_Collection_Key = cvwQuickView.Item.Key
    If cvwQuickView.count Then mnuUnBIlled.Popup()
    
 End

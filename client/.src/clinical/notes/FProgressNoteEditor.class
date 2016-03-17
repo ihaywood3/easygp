@@ -218,8 +218,26 @@ Public Sub Init(cons As CConsult, Optional bEditLastNotes As Boolean = False)
    lblBMICalculator.width = lblToDoNextVisit.Width
    Todos_Next_Visit_Reload
    tbStickyNotes_Click
+   'appointment_times usually one, but could be eg am/pm visit
+   cmbDefaultItems_Load
+   Appointment_Times = modUtil.Copy_Collection_Keyed_Sequentially(modAppointmentsDBI.Appointment_Patient_Staff_Day_Clinic(Now(), modDBConnect.currentUser!fk_staff, modDBConnect.currentUser!fk_clinic, currentconsult!patient!fk_patient))
    Appointments_Load_Combo 'show the appointment time (s) patient was booked for
+   
    DataChange_Update_Indicators(False)
+   
+End
+
+Public Sub cmbDefaultItems_Load()
+   'These are set in user preferences clinical to save user typing billing items/texxt
+   'that they wish to post to the front desk 
+   
+   Dim items As String[] = Split(modAdminDBI.Config_Get_Staff_Member("clinical_default_billing_items", "", Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff), ",")
+   Dim item As String
+   
+   For Each item In items  
+      cmbDefaultItems.Add(Trim(item))
+   Next
+   cmbDefaultItems.index = -1
    
 End
 
@@ -1694,7 +1712,7 @@ Public Sub Settings_Load() 'do not make this private
    cvwReasonForEncounter.font = Font[Settings["Notes_Editor/cvwReasonForEncounter.font", "DejaVu Sans,9"]]
    lvwFavourites.font = Font[Settings["Notes_Editor/lvwFavourites.font", "DejaVu Sans,9"]] 
    cvwMedicationsToday.font = Font[Settings["Notes_Editor/cvwMedicationsToday.font", "DejaVu Sans,9"]]
-  ' VSplit_Meds_StickyNotes.Layout = Settings["Notes_Editor/VSplit_Meds_StickyNotes.Layout", modUtilGUI.VSplit([1, 1])]   
+   ' VSplit_Meds_StickyNotes.Layout = Settings["Notes_Editor/VSplit_Meds_StickyNotes.Layout", modUtilGUI.VSplit([1, 1])]   
    
 End
 
@@ -1975,8 +1993,9 @@ Public Sub mnuStickyNotes_Click()
             Sticky_Notes_Reload
          Endif
    End Select 
-   Catch
-      Return   
+Catch
+   Return   
+   
 End
 
 Public Sub Sticky_Notes_Row(row_data As Collection)
@@ -2081,17 +2100,34 @@ Public Sub mnuMedicationsPrescribedToday_Click()
    
 End
 
-
- Public Sub Appointments_Load_Combo()
+Public Sub Appointments_Load_Combo()
    
    Dim App_time As Collection
-  'Loads the appointment(s) times for the patient in the editor
-  'this is used to link this consult to the appointment book for billing
-   Appointment_Times = modAppointmentsDBI.Appointment_Patient_Staff_Day_Clinic(Now(), modDBConnect.currentUser!fk_staff, modDBConnect.currentUser!fk_clinic, currentconsult!patient!fk_patient)
+   
+   'Loads the appointment(s) times for the patient in the editor
+   'this is used to link this consult to the appointment book for billing
    cmbAppointmentTime.Clear
    For Each App_time In Appointment_Times
-      cmbAppointmentTime.Add(Format(App_time!begin, "hh:nn"))
+      cmbAppointmentTime.Add("Appointment was: " & Format(App_time!begin, "hh:nn"))
    Next
+   If cmbAppointmentTime.count Then Behind_Time_Calculate(App_time)
+   
+End
+
+Public Sub Behind_Time_Calculate(app_time As Collection)
+   
+   With lblBehindTime
+      .text = " " & Str(DateDiff(app_time!begin, Now(), gb.Minute) Div 60) & "hr " & Str(DateDiff(app_time!begin, Now(), gb.Minute) Mod 60) & "min \n\nbehind time" 
+      .foreground = Color.Red
+   End With
+   
+End
+
+Public Sub cmbAppointmentTime_Click()
+   'user has clicked the combo containing the patients appointment time
+   'show user how far ahead of behind they are   
+   
+   If cmbAppointmentTime.count Then Behind_Time_Calculate(Appointment_Times[cmbAppointmentTime.index])
    
 End
 
@@ -2122,5 +2158,25 @@ Public Sub tbStickyNotes_Click()
       Next
       tbStickyNotes.Text = "Hide"
    End If   
+   
+End
+
+Public Sub cmbDefaultItems_Click()
+   
+   
+   If Trim(cmbDefaultItems.text) <> "" Then
+      If InStr(Trim(txtItemsForBilling.text), cmbDefaultItems.text) = 0 Then
+         If Trim(txtItemsForBilling.text) <> "" Then
+            txtItemsForBilling.text &= "+"
+         End If      
+         txtItemsForBilling.text &= cmbDefaultItems.text
+         Inc Application.Busy
+         modDBConnect.update("clerical.bookings", Null, ["pk": Appointment_Times[cmbAppointmentTime.index]!fk_appointment, "comment_for_billing": Trim(txtItemsForBilling.text)]) 
+         modDBConnect.CommitTrans
+         Dec Application.Busy
+         tenotes.SetFocus
+      End If  
+   End If   
+   cmbDefaultItems.index = -1
    
 End

@@ -84,6 +84,21 @@ def xml_mbs_items(etree):
                 item[our_name] = j.text
         yield item
 
+
+def process_benefit_type(item):
+    """choose 85% or 100% as appropriate from the item"""
+    if item['benefit_type'] == 'A': # benefit paid at 75% only
+        return item['benefit75']    
+    if item['benefit_type'] == 'B': # benefit paid at 85% only
+        return item['benefit85']
+    if item['benefit_type'] == 'C': # benefit paid at 75% & 85%
+        # FIXME: ignore inpatient items
+        return item['benefit85']
+    if item['benefit_type'] == 'D': # benefit paid at 75% & 100%
+        return item['benefit100']
+    if item['benefit_type'] == 'E': # benefit paid at 100%
+        return item['benefit100']
+
 def to_money(m):
     """Accepts an integer as integer cents
     Rounds to the nearest $0.05, and then to 
@@ -140,10 +155,11 @@ def load_item(item):
         cur.execute("update billing.fee_schedule set descriptor=%s, derived_fee=%s where mbs_item=%s and number_of_patients=%s", (item['descriptor'],item.get('derived_fee',None),item['item'],item['number_of_patients']))
     if not item['schedule_fee'] is None:
         cur.execute("select 1 from billing.prices where fk_fee_schedule=%s and fk_lu_billing_type=8",(pk_schedule,))
+        fee = process_benefit_type(item)
         if cur.rowcount == 0:
-            cur.execute("insert into billing.prices (fk_fee_schedule,price,fk_lu_billing_type) values (%s,%s,8)",(pk_schedule,item['schedule_fee']))
+            cur.execute("insert into billing.prices (fk_fee_schedule,price,fk_lu_billing_type) values (%s,%s,8)",(pk_schedule,fee))
         else:
-            cur.execute("update billing.prices set price=%s where fk_lu_billing_type=8 and fk_fee_schedule=%s",(item['schedule_fee'],pk_schedule))
+            cur.execute("update billing.prices set price=%s where fk_lu_billing_type=8 and fk_fee_schedule=%s",(fee,pk_schedule))
     cur.close()
 
 

@@ -219,15 +219,15 @@ Public Sub Init(cons As CConsult, Optional bEditLastNotes As Boolean = False)
    Todos_Next_Visit_Reload
    tbStickyNotes_Click
    'appointment_times usually one, but could be eg am/pm visit
-   cmbDefaultItems_Load
-   Appointment_Times = modUtil.Copy_Collection_Keyed_Sequentially(modAppointmentsDBI.Appointment_Patient_Staff_Day_Clinic(Now(), modDBConnect.currentUser!fk_staff, modDBConnect.currentUser!fk_clinic, currentconsult!patient!fk_patient))
-   Appointments_Load_Combo 'show the appointment time (s) patient was booked for
    
+   Appointment_Times = modUtil.Copy_Collection_Keyed_Sequentially(modAppointmentsDBI.Appointment_Patient_Staff_Day_Clinic(Now(), modDBConnect.currentUser!fk_staff, modDBConnect.currentUser!fk_clinic, currentconsult!patient!fk_patient))
+   Appointments_Load                    'show the appointment time (s) patient was booked for
+   cmbDefaultBillingItems_Load       ' 'users shortcuts for allocating billing items
    DataChange_Update_Indicators(False)
    
 End
 
-Public Sub cmbDefaultItems_Load()
+Public Sub cmbDefaultBillingItems_Load()
    'These are set in user preferences clinical to save user typing billing items/texxt
    'that they wish to post to the front desk 
    
@@ -235,9 +235,9 @@ Public Sub cmbDefaultItems_Load()
    Dim item As String
    
    For Each item In items  
-      cmbDefaultItems.Add(Trim(item))
+      cmbDefaultBillingItems.Add(item)
    Next
-   cmbDefaultItems.index = -1
+   cmbDefaultBillingItems.index = -1
    
 End
 
@@ -1712,7 +1712,7 @@ Public Sub Settings_Load() 'do not make this private
    cvwReasonForEncounter.font = Font[Settings["Notes_Editor/cvwReasonForEncounter.font", "DejaVu Sans,9"]]
    lvwFavourites.font = Font[Settings["Notes_Editor/lvwFavourites.font", "DejaVu Sans,9"]] 
    cvwMedicationsToday.font = Font[Settings["Notes_Editor/cvwMedicationsToday.font", "DejaVu Sans,9"]]
-   ' VSplit_Meds_StickyNotes.Layout = Settings["Notes_Editor/VSplit_Meds_StickyNotes.Layout", modUtilGUI.VSplit([1, 1])]   
+   HSplit_BMI_Billing_Notes.Layout = Settings[Me.Name & "/HSplit_BMI_Billing_Notes.Layout", modUtilGUI.HSplit([5, 1, 2])]  
    
 End
 
@@ -2100,17 +2100,23 @@ Public Sub mnuMedicationsPrescribedToday_Click()
    
 End
 
-Public Sub Appointments_Load_Combo()
+Public Sub Appointments_Load()
+   'Checks the apointment book for the appointment(s) time for this patient today
+   'load this or these into the combo, there will usually only be one anyway
+   'this is used to link this consult to the appointment book for billing
+   'if there are already comments about this appointment posted to billing, show these
    
    Dim App_time As Collection
    
-   'Loads the appointment(s) times for the patient in the editor
-   'this is used to link this consult to the appointment book for billing
    cmbAppointmentTime.Clear
    For Each App_time In Appointment_Times
       cmbAppointmentTime.Add("Appointment was: " & Format(App_time!begin, "hh:nn"))
    Next
-   If cmbAppointmentTime.count Then Behind_Time_Calculate(App_time)
+   If cmbAppointmentTime.count Then 
+      behind_Time_Calculate(App_time)
+      txtItemsForBilling.text = app_time!comment_for_billing
+      lblConsultStarted.text = "Consult started:" & Format(Now, "hh:nn")
+   End If    
    
 End
 
@@ -2162,38 +2168,53 @@ Public Sub tbStickyNotes_Click()
 End
 
 Public Sub Post_item_to_Billing()
-
-   Inc Application.Busy
-   modDBConnect.update("clerical.bookings", Null, ["pk": Appointment_Times[cmbAppointmentTime.index]!fk_appointment, "comment_for_billing": Trim(txtItemsForBilling.text)]) 
-   modDBConnect.CommitTrans
-   Dec Application.Busy
+   
+   If appointment_Times[cmbAppointmentTime.index]!invoiced = False Then   
+      Inc Application.Busy
+      modDBConnect.update("clerical.bookings", Null, ["pk": Appointment_Times[cmbAppointmentTime.index]!fk_appointment, "comment_for_billing": Trim(txtItemsForBilling.text)]) 
+      modDBConnect.CommitTrans
+      txtItemsForBilling.Foreground = Color.DarkGray
+      Dec Application.Busy
+   Else
+      Message.Warning("This patient has already been issued an invoice for this consultation")
+      txtItemsForBilling.text = ""
+   End If   
+   
    tenotes.SetFocus
    
 End
 
-Public Sub cmbDefaultItems_Click()
+Public Sub cmbDefaultBillingItems_Click()
    
-   If Trim(cmbDefaultItems.text) <> "" Then
-      If InStr(Trim(txtItemsForBilling.text), cmbDefaultItems.text) = 0 Then
+   If Trim(cmbDefaultBillingItems.text) <> "" Then
+      If InStr(Trim(txtItemsForBilling.text), cmbDefaultBillingItems.text) = 0 Then
          If Trim(txtItemsForBilling.text) <> "" Then
             txtItemsForBilling.text &= "+"
          End If      
-         txtItemsForBilling.text &= cmbDefaultItems.text
-         Post_item_to_Billing
+         txtItemsForBilling.text &= cmbDefaultBillingItems.text
       End If  
    End If   
-   cmbDefaultItems.index = -1
-   
-End
-
-Public Sub txtItemsForBilling_Activate()
-   
-   Post_item_to_Billing
+   cmbDefaultBillingItems.index = -1
    
 End
 
 Public Sub tbPostToBilling_Click()
-
+   
    Post_item_to_Billing
+   
+End
 
+Public Sub HSplit_BMI_Billing_Notes_Resize()
+   
+   modUtilGUI.Split_Save_Settings(Me.Name, HSplit_BMI_Billing_Notes)
+   
+End
+
+Public Sub txtItemsForBilling_GotFocus()
+   
+   With txtItemsForBilling
+      .Foreground = Color.black
+      .pos = Len(Last.text)
+   End With
+   
 End

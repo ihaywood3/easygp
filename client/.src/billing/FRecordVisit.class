@@ -55,6 +55,7 @@ Private bHSplit_Resized As Boolean        'true if user has re-sized the main ho
 Private $hEditor_gvwItems As Object
 Private $hEditor_gvwPayments As Object
 Private appointment_icons As Collection  
+Private current_gvwItemsBilled_Row As Integer
 'save flags for readability
 Private bBulkBill_Yes As Boolean = True
 Private bBulkBill_No As Boolean = False
@@ -451,6 +452,7 @@ Public Sub EditArea_Clear()
    FBankDetails.account_name = Null
    FBankDetails.account_number = Null
    FBankDetails.bsb = Null
+   current_gvwItemsBilled_Row = 0
    bexit = False
    
 End
@@ -812,11 +814,11 @@ Public Sub mnuUnbilled_Click()
          modDBConnect.update("clerical.bookings", Null, ["pk": patient!fk_appointment, "comment_for_billing": comment_for_billing]) 
          modDBConnect.CommitTrans
          If comment_for_billing = "" Then
-               cvwQuickView[sPatient_Collection_Key][2] = "" 
-            Else
-               cvwQuickView[sPatient_Collection_Key][2] = comment_for_billing  
-             Endif
-        Case "add free text"
+            cvwQuickView[sPatient_Collection_Key][2] = "" 
+         Else
+            cvwQuickView[sPatient_Collection_Key][2] = comment_for_billing  
+         Endif
+      Case "add free text"
          With form_unbilled_comment = New FUnbilledComment
             .Init(patient!fk_appointment, cvwQuickView, sPatient_Collection_Key)
             .ShowModal  
@@ -828,7 +830,6 @@ Public Sub mnuUnbilled_Click()
          modDBConnect.CommitTrans()
          Accounts_Reload()
    End Select
-
    
 End
 
@@ -1159,6 +1160,7 @@ Public Sub gvwPayments_Add_Row()
       Endif
    Next
    Inc gvwPayments.Rows.Count
+   
    HBox_PaymentGrid.height = (gvwPayments.rows.count + 3) * gvwPayments.rows[0].height
    Vsplit_Main.layout = [Vsplit_Main.layout[0] + 20, VSplit_Main.layout[1] - 20]
    
@@ -2369,6 +2371,7 @@ Public Sub Get_Items(txt As String)
       .Row = onrow_items
       .SetFocus()
    End With
+   current_gvwItemsBilled_Row = onrow_items
    HBox_InvoiceGrid.height = (gvwItemsBIlled.rows.count + 3) * gvwItemsBIlled.rows[0].height
    bExit = False
    
@@ -2534,6 +2537,7 @@ Public Sub gvwItemsBIlled_Add_Row()
    
    Inc gvwItemsBIlled.Rows.count
    gvwItemsBIlled.row = gvwItemsBIlled.Rows.Max
+   current_gvwItemsBilled_Row = gvwItemsBIlled.row
    HBox_InvoiceGrid.height = (gvwItemsBIlled.rows.count + 3) * gvwItemsBIlled.rows[0].height
    Vsplit_Main.layout = [Vsplit_Main.layout[0] + 20, VSplit_Main.layout[1] - 20]
    
@@ -3545,7 +3549,7 @@ Public Sub Account_Patient_Display(Optional bFromSearchingAccounts As Boolean = 
       .text = Patient!wholename
       .pos = 0
    End With
-
+   
    fk_payer_branch = Null
    fk_payer_person = Null
    Try Payer_Get(Patient)                                                           'show payer if exists
@@ -4106,7 +4110,6 @@ Public Sub TabStrip1_Click()
          columnview99_Refresh()
          
       Case cTab_ScheduleFees
-         'VBox_Invoices.Visible = False
          VBox_Accounts.Visible = False  
          Hbox_Filter.Visible = True
          Hbox_Period.Visible = False
@@ -4114,7 +4117,6 @@ Public Sub TabStrip1_Click()
          DateChooser1.visible = False
          gvwFeeScheduleItems.visible = True
          columnview99.Visible = False
-         'Box_Invoices.Visible = False
          VBox_Accounts.Visible = False  
          VBox_ForOtherTabs.Visible = True
          If IsNull(form_feeschedule) Then
@@ -4445,6 +4447,14 @@ Catch
 End
 
 Public Sub cvwQuickView_Select()
+   'If the doctor or nurse posted an item number in the patient!comment_for_billing field
+   'the try and auto-bill
+   
+   Dim Possible_Item_Numbers As String[] 
+   Dim sPossible_Item_Numbers As String
+   Dim item As String
+   Dim Real_Items As New String[]
+   Dim gwItemsBilled_Row As Integer
    
    If bexit Then Return
    cvwSearchAccounts.UnselectAll
@@ -4462,12 +4472,30 @@ Public Sub cvwQuickView_Select()
    Account_Patient_Display()
    'LblEditAreaHeading.text = "ACCOUNT DETAILS FOR"  '& patient!Wholename
    lblPatient_Show_Details(patient)
-  ' If Not IsNull(Unbilled_Consultations) Then
+   ' If Not IsNull(Unbilled_Consultations) Then
    '   Invoice_New()
-  ' Endif
+   ' Endif
    '    cmbInvoices.index = 0
    ' Endif
    'End Select
+   sPossible_Item_Numbers = Replace(patient!comment_for_billing, ", ", ",")
+   Possible_Item_Numbers = Split(Trim(sPossible_Item_Numbers), ",")
+   'now check any numbers are valid
+   gvwItemsBIlled.row = 0
+ '  current_gvwItemsBilled_Row
+   For Each Item In Possible_Item_Numbers
+      If IsInteger(item) Then  
+         If modBillingDBI.Item_Exists(Item) Then
+            Real_Items.Add(item)
+         Endif
+      End If   
+   Next
+   For Each item In Real_Items
+      textbox1.text = item
+    '  gvwItemsBIlled.row = gwItemsBilled_Row
+      textbox1_Activate()
+     ' Inc gwItemsBilled_Row
+   Next
    Dec Application.Busy
    
 End
@@ -4674,5 +4702,9 @@ Public Sub cvwQuickView_Menu()
    cvwQuickView.MoveCurrent
    sPatient_Collection_Key = cvwQuickView.Item.Key
    If cvwQuickView.count Then mnuUnBIlled.Popup()
+   
+End
+
+Public Sub txtFilter_KeyPress()
    
 End

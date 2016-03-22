@@ -73,7 +73,7 @@ Private current_transparent_Label As Label
 Private Last_Row_Clicked As HBox
 Private form_fee_browser As FFeeBrowser   
 Private form_stop_watch As FStopWatch
- 
+
 Static Private form_progress_note_editor As FProgressNoteEditor   
 
 Public Sub _new()
@@ -85,6 +85,8 @@ Public Sub _new()
    With form_stop_watch = New FStopWatch(PnlStopWatch)
       .Start
    End With
+   lblMeasure.text = "   Patient Billing Level     "
+   modEditAreaHelpers.Resize_labels(VBox_Post_Billing, lblMeasure)
 End
 
 Public Sub Set_Embedded_In_Form(form_name As String)
@@ -351,6 +353,7 @@ Public Sub Save()
    
    Dim progress_note_code As CRow   
    Dim PNC As Collection 
+   Dim consult_time As CRow   
    
    If bCancelSave Then Return
    '-----------------------------------------------------------------------------------------
@@ -360,9 +363,18 @@ Public Sub Save()
    'save just an empty editor. At moment I  just re-save but save an empty string
    '-----------------------------------------------------------------------------------------
    Todos_Save                                'must be done separately as if user just put in todo, no notes, don't want empty progress notes
+   If Not IsNull(appointment_Times) Then  
+      If Appointment_Times.count Then   
+         consult_time = New CRow   
+         consult_time.put_unchanged(Appointment_Times[cmbAppointmentTime.index]!fk_appointment, "fk_appointment")
+         consult_time!elapsed_consult_time = form_stop_watch.Elapsed_Time_Get()
+         consult_time.Save("clerical.bookings", "fk_appointment")    'connection isn't open on easygp close bug
+      End If   
+   End If  
    If (Trim(teNotes.text) = "" And copy_of_Editor_text = "") Or Not data_changed Then
       Return
    End If
+   
    pk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, teNotes.RichText, const.cSection_GeneralNotes, pk_progressnote, "New General Notes")
    '---------------------------------------------------------------------------------------
    ' CREATE TABLE clin_consult.progressnotes_codes
@@ -918,7 +930,7 @@ Public Sub CalcBMI()
    lowest = Format(20 * height ^ 2, "##.#")
    heighest = Format(25 * height ^ 2, "###.#")
    Try sString = Format(20 * (height ^ 2), "##.#") & " - " & Format(25 * (height ^ 2), "###.#") & "Kg "  'IDEAL
-   lblBMIComment.text = "Ideal Weight Range " & sString
+   lblBMIComment.text = "Ideal Weight " & sString
    If weight > 25 * height ^ 2 Then
       With lblOverweight
          .text = "Overweight"
@@ -2124,14 +2136,26 @@ Public Sub Appointments_Load()
       txtItemsForBilling.text = app_time!comment_for_billing
       lblConsultStarted.text = "started:" & Format(Now, "hh:nn")
    End If    
-   
+   Try form_stop_watch.Elapsed_Time_Set(App_time!elapsed_consult_time) 'could be null if patient has no appt
+   Try lblPatientBillingLevel.text = "Patient Biling Level: " & App_time!billing_level
 End
 
 Public Sub Behind_Time_Calculate(app_time As Collection)
    
+   Dim comment_on_time As String
+   
+   Comment_on_time = Str(DateDiff(app_time!begin, Now(), gb.Minute) Div 60) & "hr " & Str(DateDiff(app_time!begin, Now(), gb.Minute) Mod 60) & "min"
+   
    With lblBehindTime
-      .text = "started " & Str(DateDiff(app_time!begin, Now(), gb.Minute) Div 60) & "hr " & Str(DateDiff(app_time!begin, Now(), gb.Minute) Mod 60) & "min \n\nbehind time" 
+      .text = "started this consultation "  ' & Str(DateDiff(app_time!begin, Now(), gb.Minute) Div 60) & "hr " & Str(DateDiff(app_time!begin, Now(), gb.Minute) Mod 60) & "min \n\nbehind time" 
+      If Comment_on_time = "0hr 0min" Then 
+         .text &= "on time"
+      Else
+         comment_on_time = Replace(comment_on_time, "0hr", "")
+         .text &= Comment_on_time & " behind time"
+      End If   
       .foreground = Color.Red
+      
    End With
    
 End
@@ -2189,6 +2213,7 @@ Public Sub Post_item_to_Billing()
    tenotes.SetFocus
 Catch
    Return
+   
 End
 
 Public Sub cmbDefaultBillingItems_Click()
@@ -2231,5 +2256,5 @@ Public Sub tbFeeSchedule_Click()
    Vbox_ConsultNotes.Visible = Not tbFeeSchedule.Value
    VBox_Reason_For_Encounter.Visible = Not tbFeeSchedule.Value
    form_fee_browser.Visible = tbFeeSchedule.Value
-
+   
 End

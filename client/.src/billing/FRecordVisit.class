@@ -50,7 +50,7 @@
 Private cell_text As String
 Private currentconsult As CConsult
 Private last_Fee_type As String
-Private bexit As Boolean
+Public bexit As Boolean
 Private bHSplit_Resized As Boolean        'true if user has re-sized the main horizontal split
 Private $hEditor_gvwItems As Object
 Private $hEditor_gvwPayments As Object
@@ -219,8 +219,10 @@ Static Private Form_Billing As FRecordVisit
 
 Static Public Sub Enable_BOKBIllingSaveButton(bFlag As Boolean)
    
+   If Form_Billing.bexit = True Then Return
    Try Form_Billing.tbSaveBillingNextOfKin.enabled = True 'the form may not exist
-   
+   Catch
+      Return
 End
 
 Static Public Sub Fee_Schedule_Reload_Static()
@@ -1669,6 +1671,7 @@ Public Sub cmbFeeType_Click()
    bexit = True    
    gvwItemsBIlled_Calculate_Fees
    bexit = False
+   
 End
 
 Public Sub gvwItemsBIlled_Set_Fee_Level(level As String)
@@ -1695,7 +1698,7 @@ Public Sub gvwItemsBIlled_Set_Fee_Level(level As String)
       Case Else
          gvwItemsBIlled[row, cGridColumnItem_FeeType].text = level
    End Select
-
+   
 End
 
 Public Sub cmbFeeType_Click_old()
@@ -1901,29 +1904,83 @@ Public Sub Settings_Save()
 End
 
 Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True)
-   ' Public Sub Make_Invoice(pk_patient As Variant, items As Collection[], fk_lu_billing_type As Integer, date_printed As Date Default Null, fk_staff As Variant = 0, Optional notes As String = "") As Variant
+   '--------------------------------------------------------------------------------------
+   ' Saves a new or edited invoice (if the invoice is unpaid)
+   ' Note the Invoice collection Is global to this billing module, so that if an invoice
+   ' has been displayed by clicking on an invoice under the editing area, and edited then
+   ' all the collection is filled. Only the date_invoiced and staff invoiced is kept when
+   ' editing, the rest is added back in
+   '
+   ' Saves record of payment
+   '--------------------------------------------------------------------------------------
    ' CREATE TABLE billing.invoices
    ' (
-   '  pk serial NOT NULL,
+   '   pk serial NOT NULL,
    '   fk_staff_invoicing integer NOT NULL, -- the staff member raising the invoice
    '   date_printed timestamp without time zone,
-   '   notes text,
-   '   reference text,
+   '   notes text, -- Any additional comments pertaining to the invoice or any of it's...
    '   fk_staff_provided_service integer NOT NULL, -- the staff member who provider the service on which the invoice is based
    '   fk_patient integer,
    '   date_invoiced timestamp without time zone NOT NULL DEFAULT now(),
    '   paid boolean NOT NULL DEFAULT false,
    '   fk_payer_person integer, -- if not null then the key to the person who pays the bill
    '   fk_payer_branch integer, -- if not null then payer is an organisation/branch
-   '   latex text NOT NULL, -- the LaTeX definition of the invoice generated
+   '   latex text, -- the LaTeX definition of the invoice generated
    '   fk_branch integer NOT NULL, -- The branch at which the patient was provided with the service
    '   visit_date date, -- The date time of the patient visit - may be null because the invoice could be raised not in relation to a visit
+   '   reference text, -- text of any insurance or bill reference eg 'CLAIM NO:1234'
+   '   fk_lu_bulk_billing_type integer, -- if not null then the type of bulk-bill 1=medicare 2=veteran
+   '   fk_appointment integer,
+   '   total_bill money NOT NULL DEFAULT '$0.00'::money,
+   '   total_gst money NOT NULL DEFAULT '$0.00'::money,
+   '   total_paid money NOT NULL DEFAULT '$0.00'::money,
+   '   online boolean NOT NULL DEFAULT false, -- true if the invoice is to be uploaded via Medicare Online
+   '   result_code integer DEFAULT (-1), -- text returned by medicare Online driver, only significant if result_code > 0
+   '   result_text text,
+   '   fk_claim integer,
+   '   voucher_id character varying(2),
+   '   referrer_provider_number character varying(8),
+   '   referral_date date,
+   '   referral_duration integer,
+   '   pms_claim_id text, -- Medicare Online returns a claim transaction ID, which their documentaiton misleadingly calls the PMS Claim ID
+   '   error_level character(1), -- Medicare Online's one-char error level code, A=acceptable, U=aunacceptable, not very useful compared to the error numeric code
+   '   claimant_address_upload boolean NOT NULL DEFAULT false, -- true if claimant's address is to be uploaded using Medicare Online
+   '   bank_details_upload boolean NOT NULL DEFAULT false, -- true if claimant's bank details are to be uploaded using Medicare Online
+   '   CONSTRAINT invoices_pkey PRIMARY KEY (pk),
+   '   CONSTRAINT invoices_fk_appointment_fkey FOREIGN KEY (fk_appointment)
+   '       REFERENCES clerical.bookings (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT invoices_fk_branch_fkey FOREIGN KEY (fk_branch)
+   '       REFERENCES contacts.data_branches (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT invoices_fk_claim_fkey FOREIGN KEY (fk_claim)
+   '       REFERENCES billing.claims (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT invoices_fk_doctor_raising_fkey FOREIGN KEY (fk_staff_provided_service)
+   '       REFERENCES admin.staff (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT invoices_fk_lu_bulk_billing_type_fkey FOREIGN KEY (fk_lu_bulk_billing_type)
+   '       REFERENCES billing.lu_bulk_billing_type (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT invoices_fk_patient_fkey FOREIGN KEY (fk_patient)
+   '       REFERENCES clerical.data_patients (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT invoices_fk_payer_branch_fkey FOREIGN KEY (fk_payer_branch)
+   '       REFERENCES contacts.data_branches (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT invoices_fk_payer_person_fkey FOREIGN KEY (fk_payer_person)
+   '       REFERENCES contacts.data_persons (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT invoices_fk_staff_invoicing_fkey FOREIGN KEY (fk_staff_invoicing)
+   '       REFERENCES admin.staff (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT flags_online CHECK (NOT (NOT online AND (bank_details_upload OR claimant_address_upload))),
+   '   CONSTRAINT has_claimant CHECK (NOT (claimant_address_upload AND fk_payer_person IS NULL))
    ' )
    ' WITH (
    '   OIDS=FALSE
-   ' );
-   ' CREATE TABLE billing.items_billed
-   
+   '--------------------------------------------------------------------------------------------------------
+
    Dim item As CRow
    Dim payment As CRow
    Dim payment_method As Collection
@@ -1977,7 +2034,6 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True)
    '------------------------------------------------------------
    invoice_total = CFloat(Val(Right(lblInvoiceOwing.text, Len(lblInvoiceOwing.text) - InStr(lblInvoiceOwing.text, " $") - 1)))
    If total_paid <> 0 Then
-      
       If total_paid > invoice_total Then
          Message.Info("The amount being paid is greater than the invoice total.")
          Return
@@ -1989,42 +2045,43 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True)
    'If editing (e.g paying) then user will not have been able to change
    'any of the core invoice details, ie date originally invoiced, who invoiced it
    '-----------------------------------------------------------------------------
-   If Not IsNull(fk_invoice) Then                                                   'existing invoice
-      invoice.put_unchanged(fk_invoice, "fk_invoice")                   'edit the record
-   Else
+   If Not IsNull(fk_invoice) Then                                       ' existing invoice
+      invoice.put_unchanged(fk_invoice, "fk_invoice")                   ' edit the record
+   Else                                                                 ' an edited invoice
       invoice!fk_staff_invoicing = modDBConnect.currentUser!fk_staff    'new - then current user is doing the invoicing
-      invoice!date_invoiced = Now() 'was "now()"
-      invoice!notes = cmbInvoiceComments.Text
-      invoice!reference = Trim(txtReferenceDetails.text)
+      invoice!date_invoiced = Now() 'was "now()"                        'today 
+   End If     
+   invoice!notes = cmbInvoiceComments.Text
+   invoice!reference = Trim(txtReferenceDetails.text)
+   If bBulkBill Then
+      If rbInvoiceToMedicare.value = True Then invoice!fk_lu_bulk_billing_type = const.BulkBilling_Type_Medicare
+      If rbInvoiceToVeterans.value = True Then invoice!fk_lu_bulk_billing_type = const.BulkBilling_Type_Veteran
+   Endif
+   If rbOnline_Yes.Value Then
+      invoice!online = True
       If bBulkBill Then
-         If rbInvoiceToMedicare.value = True Then invoice!fk_lu_bulk_billing_type = const.BulkBilling_Type_Medicare
-         If rbInvoiceToVeterans.value = True Then invoice!fk_lu_bulk_billing_type = const.BulkBilling_Type_Veteran
-      Endif
-      If rbOnline_Yes.Value Then
-         invoice!online = True
-         If bBulkBill Then
-            invoice!result_code = 4003
-         Else
-            invoice!result_code = 4005
-         Endif
+         invoice!result_code = 4003
       Else
-         invoice!online = False
-         If bBulkBill Then
-            invoice!result_code = 4002
-         Else
-            invoice!result_code = 4001
-         Endif
+         invoice!result_code = 4005
       Endif
-      If cmbSeenBy.Index <> -1 Then
-         invoice!fk_staff_provided_service = staff[cmbSeenBy.index]!fk_staff
-      End If
-      If Not IsNull(fk_patient) Then invoice!fk_patient = fk_patient     'may not be for a patient
-      If Not IsNull(fk_appointment) Then invoice!fk_appointment = fk_appointment
-      invoice!fk_branch = clinics[cmbLocation.Index]!fk_branch   'branch at which service was provided
-      If Not IsNull(fk_payer_branch) Then invoice!fk_payer_branch = fk_payer_branch
-      If Not IsNull(fk_payer_person) Then invoice!fk_payer_person = fk_payer_person
-      invoice!visit_date = Val(txtDate.text)
+   Else
+      invoice!online = False
+      If bBulkBill Then
+         invoice!result_code = 4002
+      Else
+         invoice!result_code = 4001
+      Endif
+   Endif
+   If cmbSeenBy.Index <> -1 Then
+      invoice!fk_staff_provided_service = staff[cmbSeenBy.index]!fk_staff
    End If
+   If Not IsNull(fk_patient) Then invoice!fk_patient = fk_patient     'may not be for a patient
+   If Not IsNull(fk_appointment) Then invoice!fk_appointment = fk_appointment
+   invoice!fk_branch = clinics[cmbLocation.Index]!fk_branch   'branch at which service was provided
+   If Not IsNull(fk_payer_branch) Then invoice!fk_payer_branch = fk_payer_branch
+   If Not IsNull(fk_payer_person) Then invoice!fk_payer_person = fk_payer_person
+   invoice!visit_date = Val(txtDate.text)
+   
    '----------------------------------
    'has the invoice been paid in full?- fix this code
    '----------------------------------
@@ -2071,8 +2128,303 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True)
    'FIXME - will later keep the underlying grid data in an array of some sort
    'and dispose of some of these backend calls
    '------------------------------------
+   Print GridData
    If IsNull(fk_invoice) Then  'FIXME MAY HAVE TO ALLOW EDITING OF THIS
       For grid_row = 0 To gvwItemsBIlled.Rows.count - 1  'fixme check all necessary data is in grids cells
+         Print GridData[grid_row]
+         If gvwItemsBIlled[grid_row, cGridColumnItem_ItemNumber].Text <> "" Then
+            item = New CRow
+            item!fk_fee_schedule = modBillingDBI.fk_fee_shedule_Get_For_Item_Number(gvwItemsBIlled[grid_row, cGridColumnItem_ItemNumber].Text) 'could be compound eg 35/1
+            item!amount = gvwItemsBIlled[grid_row, cGridColumnItem_Fee].Text
+            item!fk_invoice = invoice!fk_invoice
+            item!fk_lu_billing_type = Billing_Type_Get_Pk(gvwItemsBIlled[grid_row, cGridColumnItem_FeeType].Text)
+            item!amount_gst = gvwItemsBIlled[grid_row, cGridColumnItem_gst_amount].Text
+            item.Save("billing.items_billed", "fk_item_billed")
+         End If
+      Next
+   End If
+   '----------------------------------------------------
+   'Now, is this invoice being paid? in part or in full?
+   '----------------------------------------------------
+   If total_paid > 0 Then
+      For grid_row = 0 To gvwPayments.Rows.count - 1
+         If gvwPayments[grid_row, cGridColumnPayments_Amount].Text <> "" Then
+            payment = New CRow
+            payment!fk_invoice = invoice!fk_invoice
+            payment!amount = gvwPayments[grid_row, cGridColumnPayments_Amount].Text
+            For Each payment_method In Payment_Methods
+               If payment_method!method = gvwPayments[grid_row, cGridColumnPayments_PaymentMethod].text Then
+                  payment!fk_lu_payment_method = payment_method!pk
+                  Break
+               Endif
+            Next
+            'this simple way screwed by ians smart changes.
+            '   payment!fk_lu_payment_method = Payment_Methods[gvwPayments[x, cGridColumnPayments_PaymentMethod].text]!fk_lu_payment_method
+            sMsg = gvwPayments[grid_row, cGridColumnPayments_Date].Text
+            Debug "the date paid string is "; sMsg
+            date_paid = modUtil.Make_Date_From_String(smsg)
+            Debug "the parsed date is"; date_paid
+            payment!date_paid = date_paid
+            payment!referent = gvwPayments[grid_row, cGridColumnPayments_Comment].Text
+            payment!fk_staff_receipted = modDBConnect.currentUser!fk_staff
+            payment.Save("billing.payments_received", "fk_payment")
+         End If
+      Next
+   Endif
+   '------------------------------------------
+   'finally mark this appointment as invoiced
+   'fixme only update  this on first pass
+   'fime  misnomer invoice or reciept
+   '-----------------------------------------
+   If fk_appointment Then
+      modDBConnect.update("clerical.bookings", Null, ["pk": fk_appointment, "invoiced": True])
+   Endif
+   'fixme won't always be printed, but need to always save latex
+   invoice!latex = modBillingDBI.Print_Invoice(invoice!fk_invoice, bPrint, bBulkBill, Null, referrer)
+   If Not IsNull(invoice!latex) Then
+      modDBConnect.update("billing.invoices", Null, ["pk": invoice!fk_invoice, "latex": invoice!latex, "date_printed": "now()"])
+   Endif
+   fk_invoice = Null
+   EditArea_Notify_Data_Change(False)
+   If Not bSearchingAccounts Then 
+      tbQuickView_Click
+   End If
+   If Not IsNull(patient) Then
+      cvwInvoices_Refresh()
+   Endif
+   cvwSearchAccounts.UnselectAll
+   Invoice_New()
+   modDBConnect.CommitTrans() ' do this last to prevent new transaction from forming
+   
+End
+
+Public Sub Save_orig(bBulkBill As Boolean, Optional bPrint As Boolean = True)
+   '--------------------------------------------------------------------------------------
+   ' Saves a new or edited invoice (if the invoice is unpaid)
+   ' Note the Invoice collection Is global to this billing module, so that if an invoice
+   ' has been displayed by clicking on an invoice under the editing area, and edited then
+   ' all the collection is filled. Only the date_invoiced and staff invoiced is kept when
+   ' editing, the rest is added back in
+   '--------------------------------------------------------------------------------------
+   ' CREATE TABLE billing.invoices
+   ' (
+   '   pk serial NOT NULL,
+   '   fk_staff_invoicing integer NOT NULL, -- the staff member raising the invoice
+   '   date_printed timestamp without time zone,
+   '   notes text, -- Any additional comments pertaining to the invoice or any of it's...
+   '   fk_staff_provided_service integer NOT NULL, -- the staff member who provider the service on which the invoice is based
+   '   fk_patient integer,
+   '   date_invoiced timestamp without time zone NOT NULL DEFAULT now(),
+   '   paid boolean NOT NULL DEFAULT false,
+   '   fk_payer_person integer, -- if not null then the key to the person who pays the bill
+   '   fk_payer_branch integer, -- if not null then payer is an organisation/branch
+   '   latex text, -- the LaTeX definition of the invoice generated
+   '   fk_branch integer NOT NULL, -- The branch at which the patient was provided with the service
+   '   visit_date date, -- The date time of the patient visit - may be null because the invoice could be raised not in relation to a visit
+   '   reference text, -- text of any insurance or bill reference eg 'CLAIM NO:1234'
+   '   fk_lu_bulk_billing_type integer, -- if not null then the type of bulk-bill 1=medicare 2=veteran
+   '   fk_appointment integer,
+   '   total_bill money NOT NULL DEFAULT '$0.00'::money,
+   '   total_gst money NOT NULL DEFAULT '$0.00'::money,
+   '   total_paid money NOT NULL DEFAULT '$0.00'::money,
+   '   online boolean NOT NULL DEFAULT false, -- true if the invoice is to be uploaded via Medicare Online
+   '   result_code integer DEFAULT (-1), -- text returned by medicare Online driver, only significant if result_code > 0
+   '   result_text text,
+   '   fk_claim integer,
+   '   voucher_id character varying(2),
+   '   referrer_provider_number character varying(8),
+   '   referral_date date,
+   '   referral_duration integer,
+   '   pms_claim_id text, -- Medicare Online returns a claim transaction ID, which their documentaiton misleadingly calls the PMS Claim ID
+   '   error_level character(1), -- Medicare Online's one-char error level code, A=acceptable, U=aunacceptable, not very useful compared to the error numeric code
+   '   claimant_address_upload boolean NOT NULL DEFAULT false, -- true if claimant's address is to be uploaded using Medicare Online
+   '   bank_details_upload boolean NOT NULL DEFAULT false, -- true if claimant's bank details are to be uploaded using Medicare Online
+   '   CONSTRAINT invoices_pkey PRIMARY KEY (pk),
+   '   CONSTRAINT invoices_fk_appointment_fkey FOREIGN KEY (fk_appointment)
+   '       REFERENCES clerical.bookings (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT invoices_fk_branch_fkey FOREIGN KEY (fk_branch)
+   '       REFERENCES contacts.data_branches (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT invoices_fk_claim_fkey FOREIGN KEY (fk_claim)
+   '       REFERENCES billing.claims (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT invoices_fk_doctor_raising_fkey FOREIGN KEY (fk_staff_provided_service)
+   '       REFERENCES admin.staff (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT invoices_fk_lu_bulk_billing_type_fkey FOREIGN KEY (fk_lu_bulk_billing_type)
+   '       REFERENCES billing.lu_bulk_billing_type (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT invoices_fk_patient_fkey FOREIGN KEY (fk_patient)
+   '       REFERENCES clerical.data_patients (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT invoices_fk_payer_branch_fkey FOREIGN KEY (fk_payer_branch)
+   '       REFERENCES contacts.data_branches (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT invoices_fk_payer_person_fkey FOREIGN KEY (fk_payer_person)
+   '       REFERENCES contacts.data_persons (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT invoices_fk_staff_invoicing_fkey FOREIGN KEY (fk_staff_invoicing)
+   '       REFERENCES admin.staff (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT flags_online CHECK (NOT (NOT online AND (bank_details_upload OR claimant_address_upload))),
+   '   CONSTRAINT has_claimant CHECK (NOT (claimant_address_upload AND fk_payer_person IS NULL))
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   '--------------------------------------------------------------------------------------------------------
+
+   Dim item As CRow
+   Dim payment As CRow
+   Dim payment_method As Collection
+   Dim bPaid As Boolean = False
+   Dim grid_row As Integer
+   Dim total_paid As Float
+   Dim invoice_total As Float
+   Dim sMsg As String
+   Dim referrer As Collection
+   Dim date_paid As Date
+   Dim latex As String
+   
+   If VBox_EditArea_Outer.Padding = 0 Then
+      If IsNull(invoice) Then Return
+      If Not bPrint Then Return
+      If IsNull(invoice!latex) And If invoice!online Then
+         latex = modBillingDBI.Generate_Online_Latex(invoice!fk_invoice)
+      Else
+         latex = invoice!latex
+      Endif
+      If Not IsNull(latex) Then modPrinting.Print_latex(latex)
+      Return           'no data change no save
+   Endif
+   If Not Valid_Invoice_Items() Then Return                 'items invalid no save
+   '-----------------------------------------------------
+   'Now, work out if being paid, if so ?all, is it valid?
+   '-----------------------------------------------------
+   If lblPaymentTotal.text <> "" Then
+      Message.Title = "Payment of Invoice"
+      For grid_row = 0 To gvwPayments.Rows.Max
+         If gvwPayments[grid_row, cGridColumnPayments_Amount].Text <> "" Then            'if have an amount
+            If gvwPayments[grid_row, cGridColumnPayments_PaymentMethod].text = "" Then
+               gvwPayments.Row = grid_row
+               gvwPayments.Column = cGridColumnPayments_PaymentMethod
+               Message.Info("Please enter type of payment.\n\n")
+               Return
+            Endif
+            total_paid = total_paid + CFloat(Val(Replace(gvwPayments[grid_row, cGridColumnPayments_Amount].text, "$", "")))
+         Else
+            If grid_row = 0 Then
+               gvwPayments.Row = 0
+               gvwPayments.Column = 0
+               Message.Info("Please enter amount of payment.\n\n")
+               Return
+            End If
+         End If
+      Next
+   End If
+   '------------------------------------------------------------
+   'finally if being paid, does the paid amount match the total?
+   '------------------------------------------------------------
+   invoice_total = CFloat(Val(Right(lblInvoiceOwing.text, Len(lblInvoiceOwing.text) - InStr(lblInvoiceOwing.text, " $") - 1)))
+   If total_paid <> 0 Then
+      If total_paid > invoice_total Then
+         Message.Info("The amount being paid is greater than the invoice total.")
+         Return
+      Endif
+   End If
+   '-----------------------------------------------------------------------------
+   'At this point validation finished total_paid 0 or amount <= invoice total
+   'Create or edit the invoice
+   'If editing (e.g paying) then user will not have been able to change
+   'any of the core invoice details, ie date originally invoiced, who invoiced it
+   '-----------------------------------------------------------------------------
+   If Not IsNull(fk_invoice) Then                                       ' existing invoice
+      invoice.put_unchanged(fk_invoice, "fk_invoice")                   ' edit the record
+   Else                                                                 ' an edited invoice
+      invoice!fk_staff_invoicing = modDBConnect.currentUser!fk_staff    'new - then current user is doing the invoicing
+      invoice!date_invoiced = Now() 'was "now()"                        'today 
+   End If     
+   invoice!notes = cmbInvoiceComments.Text
+   invoice!reference = Trim(txtReferenceDetails.text)
+   If bBulkBill Then
+      If rbInvoiceToMedicare.value = True Then invoice!fk_lu_bulk_billing_type = const.BulkBilling_Type_Medicare
+      If rbInvoiceToVeterans.value = True Then invoice!fk_lu_bulk_billing_type = const.BulkBilling_Type_Veteran
+   Endif
+   If rbOnline_Yes.Value Then
+      invoice!online = True
+      If bBulkBill Then
+         invoice!result_code = 4003
+      Else
+         invoice!result_code = 4005
+      Endif
+   Else
+      invoice!online = False
+      If bBulkBill Then
+         invoice!result_code = 4002
+      Else
+         invoice!result_code = 4001
+      Endif
+   Endif
+   If cmbSeenBy.Index <> -1 Then
+      invoice!fk_staff_provided_service = staff[cmbSeenBy.index]!fk_staff
+   End If
+   If Not IsNull(fk_patient) Then invoice!fk_patient = fk_patient     'may not be for a patient
+   If Not IsNull(fk_appointment) Then invoice!fk_appointment = fk_appointment
+   invoice!fk_branch = clinics[cmbLocation.Index]!fk_branch   'branch at which service was provided
+   If Not IsNull(fk_payer_branch) Then invoice!fk_payer_branch = fk_payer_branch
+   If Not IsNull(fk_payer_person) Then invoice!fk_payer_person = fk_payer_person
+   invoice!visit_date = Val(txtDate.text)
+   
+   '----------------------------------
+   'has the invoice been paid in full?- fix this code
+   '----------------------------------
+   If invoice_total = total_paid Then
+      invoice!paid = True
+      bpaid = True
+   Else
+      bpaid = False
+   End If
+   If invoice.Exist("fk_patient") Then
+      fk_patient = invoice!fk_patient
+   Endif
+   If IsNull(fk_patient) Or If fk_patient < 1 Then 'fix me ?<1 kosha
+      ' referrer has no PN, so leave it all blank
+   Else
+      referrer = modBillingDBI.Find_Referrer(fk_patient, invoice!visit_date)
+      If Not IsNull(referrer) Then
+         invoice!referrer_provider_number = referrer!provider_number
+         invoice!referral_date = referrer!date_created
+         If referrer!indefinite Then
+            invoice!referral_duration = 13
+         Else
+            invoice!referral_duration = referrer!months
+         Endif
+      Endif
+   Endif
+   If invoice!online And If Not IsNull(fk_payer_person) And If cbSendClaimantAddress.Value = True Then
+      invoice!claimant_address_upload = True
+   Endif
+   If invoice!online And If Not IsNull(FBankDetails.account_number) And If Not Len(FBankDetails.account_number) < 4 Then
+      invoice!bank_details_upload = True
+   Endif
+   invoice.Save("billing.invoices", "fk_invoice")
+   fk_invoice_for_printing = invoice!fk_invoice
+   If Not IsNull(invoice!online) And If Not IsNull(FBankDetails.account_number) And If Not Len(FBankDetails.account_number) < 4 Then
+      modBillingDBI.Save_Bank_Details(invoice!fk_invoice, FBankDetails.account_name, FBankDetails.bsb, FBankDetails.account_number)
+   Endif
+   ' never 'remember' bank details across invoices or patients
+   FBankDetails.account_name = Null
+   FBankDetails.account_number = Null
+   FBankDetails.bsb = Null
+   '------------------------------------
+   'Get the items from the grid and save
+   'FIXME - will later keep the underlying grid data in an array of some sort
+   'and dispose of some of these backend calls
+   '------------------------------------
+   Print GridData
+   If IsNull(fk_invoice) Then  'FIXME MAY HAVE TO ALLOW EDITING OF THIS
+      For grid_row = 0 To gvwItemsBIlled.Rows.count - 1  'fixme check all necessary data is in grids cells
+         Print GridData[grid_row]
          If gvwItemsBIlled[grid_row, cGridColumnItem_ItemNumber].Text <> "" Then
             item = New CRow
             item!fk_fee_schedule = modBillingDBI.fk_fee_shedule_Get_For_Item_Number(gvwItemsBIlled[grid_row, cGridColumnItem_ItemNumber].Text) 'could be compound eg 35/1
@@ -2137,7 +2489,6 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True)
    modDBConnect.CommitTrans() ' do this last to prevent new transaction from forming
    
 End
-
 Public Sub Billing_Type_Get_Pk(txt As String) As Variant
    
    Dim type As Collection
@@ -2928,6 +3279,9 @@ Public Sub mnuInvoices_Click()
    cvwInvoices.MoveCurrent()
    Item_Billed = Items_Billed[cvwInvoices.Item.key]
    Select Case Last.tag
+      Case "edit"
+         lblEditAreaHeading.text = "EDIT INVOICE"
+         VBox_EditArea_Inner.Enabled = True
       Case "invoice delete"
          modBillingDBI.Delete_Invoice(Item_Billed!fk_invoice)
          If item_billed!online And If Day(item_billed!date_invoiced) = Day(Now()) And If Month(item_billed!date_invoiced) = Month(Now()) And If Year(item_billed!date_invoiced) = Year(Now()) Then
@@ -3266,7 +3620,7 @@ Public Sub gvwItemsBIlled_Calculate_Fees()
    For row = 0 To gvwItemsBIlled.Rows.Max                                                        ' for each row in the fees grid, we start with 4 by default
       gvwItemsBIlled.row = row
       If gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_ItemNumber].text <> "" Then          ' if there is text in the grid item number column
-        item_number = gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_ItemNumber].text       ' for readability this is the item number
+         item_number = gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_ItemNumber].text       ' for readability this is the item number
          fee_type = gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_FeeType].Text             ' for readability this is the fee type
          fk_lu_billing_type = Billing_Type_Get_Pk(fee_type)                                      ' for readability this is the key to lu_billing_type
          If GridData.Exist(row) Then                                                             ' won't exist for area of need rows
@@ -3561,6 +3915,7 @@ Public Sub Billing_Defaults_Save()
    patient_billing_data.Save("clerical.data_patients", "fk_patient")
    form_billingcards.Contacts_Save()
    modDBConnect.CommitTrans()
+ '  Return
    '-----------------------------------------------------------------------------------
    'Update the current patient collection by re-loading it from the backend
    'Insert it back into the appropriate spot in its collection
@@ -3572,36 +3927,33 @@ Public Sub Billing_Defaults_Save()
          patients[cvwSearchAccounts.Item.key] = modContactsDBI.Patient_Get_Using_PK(patients[cvwSearchAccounts.Item.Key]!fk_patient)
          patient = patients[cvwSearchAccounts.Item.Key]
       Else
-         '  cvwQuickView.MoveCurrent
-         '  Unbilled_Consultations[cvwQuickView.Item.Key] = modBillingDBI.Consultation_Ubilled_Get(cvwQuickView.Item.Key)
-         ' patient = Unbilled_Consultations[cvwQuickView.Item.Key]
          Print fk_appointment
          Unbilled_Consultations[sPatient_Collection_Key] = modBillingDBI.Consultation_Ubilled_Get(fk_appointment)   
          patient = Unbilled_Consultations[sPatient_Collection_Key]
-         
       Endif
    Endif
    '------------------------------------------------------------------------------
    'finally update any billing data already in the edit area, this may only update
    'the radiobuttons, but if items in the grid will update these
+   'CAUTION: DON'T PUT THIS BACK IN - IT OVER-RIDES ANY EXISTING BILLING DATA
+   'WHICH IS BEING CHARGED IN THE INVOICE
    '------------------------------------------------------------------------------
-   
-   With form_billingcards
-      If .cmbBIllingLevel.text = "Bulk Bill" Then
-         If .txtVeteranNumber.text <> "" Then
-            rbInvoiceToVeterans.value = True
-         Else
-            rbInvoiceToMedicare.Value = True
-         Endif
-         gvwPayments_Clear
-      Else
-         If textlabelPayer.text = "" Then
-            rbInvoiceToPatient.value = True 'fixme what if payer=person
-         Endif
-      Endif
-      .VBox_Notify_Data_Changed.Padding = 0
-   End With
-   
+   ' With form_billingcards
+   '    If .cmbBIllingLevel.text = "Bulk Bill" Then
+   '       If .txtVeteranNumber.text <> "" Then
+   '          rbInvoiceToVeterans.value = True
+   '       Else
+   '          rbInvoiceToMedicare.Value = True
+   '       Endif
+   '       gvwPayments_Clear
+   '    Else
+   '       If textlabelPayer.text = "" Then
+   '          rbInvoiceToPatient.value = True 'fixme what if payer=person
+   '       Endif
+   '    Endif
+   '    .VBox_Notify_Data_Changed.Padding = 0
+   ' End With
+   ' 
 End
 
 Public Function Billing_Defaults_Valid() As Boolean
@@ -3698,6 +4050,7 @@ Public Sub Invoice_New()
    rbOnline_Yes.Visible = True
    rbOnline_No.Visible = True
    lblOnlineStatus.text = ""
+   gvwItemsBIlled.Rows.count = 4 'reset row count
    bExit = False
    
 End
@@ -3862,6 +4215,7 @@ Private Sub Reload_Invoice_Data()
    cmbSeenBy.index = cmbSeenBy.Find(invoice!staff_provided_service_wholename)
    cmbLocation.index = cmbLocation.Find(invoice!branch)
    rbInvoiceToPatient.Value = True ' cheating a little bit: medicare/DVA invoices won't get printed again
+   textlabelPayer.text = ""
    If Not IsNull(invoice!fk_payer_branch) Then
       fk_payer_branch = invoice!fk_payer_branch
       rbInvoiceOrganisation.Value = True
@@ -4394,6 +4748,7 @@ Public Sub rbAccounts_Click()
    'const.Billing_Accounts_All = 2
    '-------------------------------------------------------------------------
    
+   Return 
    If bExit Then
       Return
    End If
@@ -5095,14 +5450,7 @@ Public Sub cvwQuickView_Select()
    cvwQuickView.MoveCurrent
    sPatient_Collection_Key = cvwQuickView.Item.Key
    Account_Patient_Display()
-   'LblEditAreaHeading.text = "ACCOUNT DETAILS FOR"  '& patient!Wholename
    lblPatient_Show_Details(patient)
-   ' If Not IsNull(Unbilled_Consultations) Then
-   '   Invoice_New()
-   ' Endif
-   '    cmbInvoices.index = 0
-   ' Endif
-   'End Select
    If InStr(patient!comment_for_billing, "BB") Then 
       dr_says_bulk_bill = True  
       patient!comment_for_billing = Replace(patient!comment_for_billing, "BB", "")
@@ -5122,13 +5470,10 @@ Public Sub cvwQuickView_Select()
    Next
    For Each item In Real_Items
       textbox1.text = item
-      '  gvwItemsBIlled.row = gwItemsBilled_Row
-      
       If dr_says_bulk_bill Then
          rbInvoiceToMedicare.Value = True
       Endif
       textbox1_Activate()
-      ' Inc gwItemsBilled_Row
    Next
    Dec Application.Busy
    
@@ -5341,4 +5686,10 @@ End
 
 Public Sub txtFilter_KeyPress()
    
+End
+
+Public Sub tbWipePayer_Click()
+
+   txtFindPayer.SetFocus
+
 End

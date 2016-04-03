@@ -330,6 +330,22 @@ Public Sub Init()
       .Columns[11].text = "Owing  "
       .Columns[12].text = "Comment"
    End With
+      With cvwAccountHistory
+      .Columns.count = 13
+      .Columns[0].text = "Patient   "
+      .Columns[1].text = "Seen By   "
+      .Columns[2].text = "Location  "
+      .Columns[3].text = "Visit Date  "
+      .Columns[4].text = "Item  "
+      .Columns[5].text = "Descriptor   "
+      .Columns[6].text = "Invoice To   "
+      .Columns[7].text = "Fee  "
+      .Columns[8].text = "GST  "
+      .Columns[9].text = "Invoice Total"
+      .Columns[10].text = "Paid  "
+      .Columns[11].text = "Owing  "
+      .Columns[12].text = "Comment"
+   End With
    cmbQuickView.Clear
    cmbQuickView.Add("All Unbilled Consultations", 0)
    cmbQuickView.Add("Unbilled  Consultations Today", 1)
@@ -771,7 +787,7 @@ Public Sub Patient_Unbilled_Consultation_Display()
    End With
    VBox_EditArea_Outer.Enabled = True
    gvwItemsBIlled.Enabled = True
-   cvwInvoices_Refresh()
+   cvwInvoices_Refresh(cvwInvoices)
    EditArea_Notify_Data_Change(False)
    VBox_EditArea_Inner.Enabled = True
    VBox5.Enabled = True
@@ -2190,7 +2206,7 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True)
       tbQuickView_Click
    End If
    If Not IsNull(patient) Then
-      cvwInvoices_Refresh()
+      cvwInvoices_Refresh(cvwInvoices)
    Endif
    cvwSearchAccounts.UnselectAll
    Invoice_New()
@@ -3289,13 +3305,13 @@ Public Sub mnuInvoices_Click()
             form_sdd.SetInvoicePK(item_billed!fk_invoice)
             form_sdd.Show()
          Endif
-         cvwInvoices_Refresh()
+         cvwInvoices_Refresh(cvwInvoices)
          Invoice_New()
       Case "invoice mark unpaid"
          If Message.Question("Mark this invoice as unpaid?", "Yes", "No") = 2 Then Return
          modDBConnect.update("billing.invoices", Null, ["pk": Item_Billed!fk_invoice, "paid": False])
          modDBConnect.CommitTrans()
-         cvwInvoices_Refresh()
+         cvwInvoices_Refresh(cvwInvoices)
          If cvwInvoices.count Then
             cvwInvoices.MoveFirst
             cvwInvoices.Item.Selected = True  'should trigger loading the edit area
@@ -4055,7 +4071,76 @@ Public Sub Invoice_New()
    
 End
 
-Public Sub cvwInvoices_Refresh()
+Public Sub cvwInvoices_Refresh(cvw As Columnview)
+   '----------------------------------------------------------------
+   ' Refresh all previous items billed for the patient
+   ' E.g a single row could be Item 23 standard consult etc
+   ' if more than 1 item per invoice, only display name/dr/date once
+   '----------------------------------------------------------------
+   
+   Dim item As String
+   Dim fk_last_invoice As Variant
+   Dim total_due As Float
+   Dim amount_owing As Float
+   Dim monies As Variant[]
+   Dim items_on_invoice As Integer
+   Dim invoice_total As Float
+   Dim invoice_amount_paid As Float
+   Dim x As Integer
+   Dim item_billed As Collection
+   
+   cvw.Clear
+   Items_Billed = modUtil.Copy_Collection_Keyed_Sequentially(modBillingDBI.Items_Invoices_Get(fk_patient, iAccountDisplayMode)) 'was items_Billed_get
+   For Each Item_Billed In Items_Billed
+      cvw.Add(x, 0)
+      If fk_last_invoice <> Item_Billed!fk_invoice Then
+         items_on_invoice = 1
+         cvw[x][0] = Split(Item_Billed!patient_firstname, " ")[0] & "  "
+         cvw[x][1] = Item_Billed!staff_provided_service_wholename & "  "
+         cvw[x][2] = Item_Billed!branch & "  "
+         cvw[x][3] = Format(Item_Billed!visit_date, "dd/mm/yyyy") & "  "
+         cvw[x][9] = modUtil.Money_Format(Item_Billed!total_bill) & "  "
+         cvw[x][10] = modUtil.Money_Format(Item_Billed!total_paid) & "  "
+         cvw[x][11] = modUtil.Money_Format(Item_Billed!due) & "  "
+         cvw[x][12] = Item_Billed!notes
+      Else
+         cvw[x][0] = ""
+         Inc items_on_invoice
+      End If
+      If Not IsNull(Item_Billed!mbs_item) Then item = Item_Billed!mbs_item
+      If Not IsNull(Item_Billed!ama_item) Then item = Item_Billed!ama_item
+      If Not IsNull(Item_Billed!user_item) Then item = Item_Billed!user_item
+      cvw[x][4] = item & "      "
+      cvw[x][5] = Item_Billed!descriptor_brief & "  "
+      '------------------------------
+      'work out who the invoice is to
+      '------------------------------
+      If Not IsNull(Item_Billed!fk_lu_bulk_billing_type) Then
+         If Item_Billed!fk_lu_bulk_billing_type = const.BulkBilling_Type_Medicare Then
+            cvw[x][6] = "Medicare    "
+         Else
+            cvw[x][6] = "Veterans    "
+         Endif
+      Endif
+      If Not IsNull(Item_Billed!account_to_name) Then
+         cvw[x][6] = Item_Billed!account_to_name & "  "
+      Endif
+      cvw[x][7] = Item_Billed!amount & "  "
+      If IsNull(Item_Billed!amount_gst) Then
+         cvw[x][8] = "          "
+      Else
+         cvw[x][8] = Item_Billed!amount_gst & "  "
+      Endif
+      
+      fk_last_invoice = Item_Billed!fk_invoice
+      Inc x
+   Next
+   lblmeasure.font = cvw.Font
+   modUtilGUI.Columnview_Columns_Set_Size(cvw, lblmeasure)
+   
+End
+
+Public Sub cvwInvoices_Refresh_old()
    '----------------------------------------------------------------
    ' Refresh all previous items billed for the patient
    ' E.g a single row could be Item 23 standard consult etc
@@ -4123,7 +4208,6 @@ Public Sub cvwInvoices_Refresh()
    modUtilGUI.Columnview_Columns_Set_Size(cvwInvoices, lblmeasure)
    
 End
-
 Public Sub cvwInvoices_Select()
    '-------------------------------------------------------------------------------------------
    'cvwItemsBilled:This is the list of items on invoices which have been billed to the
@@ -4529,7 +4613,7 @@ Public Sub Account_Patient_Display(Optional bFromSearchingAccounts As Boolean = 
    VBox_EditArea_Outer.Enabled = True
    gvwItemsBIlled.Enabled = True
    iAccountDisplayMode = const.Billing_Accounts_Paid_Today_And_Unpaid_All
-   cvwInvoices_Refresh()                                                         'show this patients unbilled consultations
+   cvwInvoices_Refresh(cvwInvoices)                                                         'show this patients unbilled consultations
    Invoice_New()
    Try txtDate.text = Format(patient!begin, "dd/mm/yyyy")
    bExit = False
@@ -4748,12 +4832,12 @@ Public Sub rbAccounts_Click()
    'const.Billing_Accounts_All = 2
    '-------------------------------------------------------------------------
    
-   Return 
+   
    If bExit Then
       Return
    End If
    iAccountDisplayMode = Last.tag
-   cvwInvoices_Refresh()
+   cvwInvoices_Refresh(cvwAccountHistory)
    
 End
 

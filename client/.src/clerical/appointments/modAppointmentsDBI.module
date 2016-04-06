@@ -376,17 +376,33 @@ End
 Public Function Appointment_Save(row As CRow, Optional bCheckSlotTaken As Boolean = True) As Boolean
    
    Dim r As Result
-   
+   Dim bUserAlreadyOverride As Boolean
+
    If bCheckSlotTaken Then
-      modDBConnect.exec_query("LOCK TABLE clerical.bookings IN SHARE ROW EXCLUSIVE MODE")
       r = modDBConnect.exec_query("select * from clerical.bookings where (timestamp &1,&2::interval) overlaps (begin,duration) and deleted is not true and fk_staff = &3", [row!begin, row!duration, row!fk_staff])
       If r.Count > 0 Then
-         If Message.Question("Existing appointment at this time", "Proceed", "Cancel") = 2 Then
-            Return False
+          If Message.Question("Existing appointment at this time", "Proceed", "Cancel") = 2 Then
+             Return False
+         Else
+            bUserAlreadyOverride = True ' so we don't ask the user twice, pointlessly, about double-booking
          Endif
+      Else
+         bUserAlreadyOverride = False
       Endif
    End If
    row.Save("clerical.bookings", "pk")
+   modDBConnect.CommitTrans()
+   If bCheckSlotTaken And If Not bUserAlreadyOverride Then
+      r = modDBConnect.exec_query("select * from clerical.bookings where (timestamp &1,&2::interval) overlaps (begin,duration) and deleted is not true and fk_staff = &3 and pk <> &4", [row!begin, row!duration, row!fk_staff, row!pk])
+      If r.Count > 0 Then
+          If Message.Question("Existing appointment at this time", "Proceed", "Cancel") = 2 Then
+             modDBConnect.exec_query("delete from clerical.bookings where pk = &1", [row!pk])
+             modDBConnect.CommitTrans()
+             row.Remove("pk")
+             Return False
+          Endif
+       Endif
+   End If
    Return True
    
 End

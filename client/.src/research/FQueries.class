@@ -18,42 +18,29 @@
 '-------------------------------------------------------------------
 Private query As CRow
 Private queries As Collection
-Private loaded As String = "sql"
 
 Private picture_file As String
-
-Public Sub rbText_Click()
-   
-   If IsNull(query) Then Return
-   
-   query[loaded] = taText.Text
-   If Last.Tag = "SQL" Then
-      loaded = "sql"
-      taText.Text = query!sql
-   Endif
-   If Last.tag = "Gnuplot" Then
-      loaded = "gnuplot"
-      taText.Text = query!gnuplot
-   Endif
-   
-End
 
 Public Sub Form_Open()
    
    Settings_Load()
    
-   queries = modUtil.Copy_Collection_Keyed_Sequentially(modResearchDBI.Load_Queries())
-   rbSQL.Value = True
-   Refresh() 
-   query = New CRow
-   query!sql = Null
-   query!gnuplot = Null
+  Refresh() 
+  query = New CRow
+  query!sql = Null
+  
    
 End
 
 Private Sub Refresh()
    
-   Dim i As CRow
+  Dim i As CRow
+  
+  queries = modUtil.Copy_Collection_Keyed_Sequentially(modResearchDBI.Load_Queries())
+  lbQueries.Clear()
+  For Each i In queries
+     lbQueries.Add(i!title)
+  Next
    
    lbQueries.Clear()
    For Each i In queries
@@ -65,7 +52,6 @@ End
 Public Sub bNew_Click()
    
    query = New CRow
-   query!gnuplot = Null
    query!sql = Null
    taText.Clear()
    taText.SetFocus
@@ -73,41 +59,67 @@ Public Sub bNew_Click()
    
 End
 
-Public Sub tbRunQuery_Click()
+Private Sub Parse_Sql(sql As String, ByRef actual_sql As String, ByRef gnuplot As String, ByRef embedded_title As String)
+
+  Dim lines As String[]
+  Dim l As String
+
+   lines = Split(sql, "\n")
+   actual_sql = ""
+   gnuplot = ""
+   For Each l In lines
+      If l Begins "title:" Then
+         embedded_title = Trim$(Right$(l, -6))
+      Else
+         If l Begins "gnuplot:" Then
+            gnuplot &= Right$(l, -8)
+         Else
+            actual_sql &= l 
+         Endif
+      Endif
+   Next
+
+End
+
+
+Public Sub bSave_Click()
+
+   Dim title_changed As Boolean = False
+   Dim actual_sql As String
+   Dim embedded_title As String
+   Dim embedded_gnuplot As String
    
    If IsNull(query) Then Return
-   If Trim(taText.Text) = "" Then Return
-   ' If Trim(txtTitle.text) = "" Then 
-   '    Message.Info("Please enter a title for this query")
-   '    txtTitle.SetFocus
-   '    Return
-   ' End If     
-   query[loaded] = taText.Text
-   query!title = txtTitle.Text
-   ' query.Save("research.queries", "pk")
-   ' modDBConnect.CommitTrans()
-   Run_Query()
+   query!sql = taText.Text
+   Parse_Sql(query!sql, ByRef actual_sql, ByRef embedded_gnuplot, ByRef embedded_title)
+   If Not IsNull(embedded_title) And tbTitle.Text = "" Then
+      tbTitle.Text = embedded_title
+   Endif
+   If query!title <> tbTitle.Text Then
+      title_changed = True
+      query!title = tbTitle.Text
+   Endif
+   query.Save("research.queries", "pk")
+   modDBConnect.CommitTrans()
+   If title_changed Then 
+      Refresh()
+   Endif
+   Run_Query(actual_sql, embedded_gnuplot)
    
 End
 
-Private Sub Run_Query()
+Private Sub Run_Query(sql As String, gnuplot As String)
    
    Dim pic As Picture
    Dim res As Result
-   Dim gnuplot As String
+   Dim gnuplot2 As String
    Dim i As Integer
    Dim j As Integer
    
    If Not IsNull(picture_file) Then Try Kill picture_file
-   res = modDBConnect.exec_query(query!sql)
-   Print res
-   If IsNull(query!gnuplot) Then
-      gnuplot = ""
-   Else
-      gnuplot = query!gnuplot
-      gnuplot = "box"
-   Endif
-   If gnuplot = "" Or Lower$(gnuplot) = "grid" Or Lower$(gnuplot) = "data" Then
+   res = modDBConnect.exec_query(sql)
+   gnuplot2 = Lower$(Trim$(gnuplot))
+   If IsNull(gnuplot) Or If gnuplot = "" Or If gnuplot2 = "grid" Or If gnuplot2 = "data" Then
       PictureBox1.Visible = False
       picture_file = Null
       tbSaveImage.Text = "Save Data"
@@ -125,38 +137,39 @@ Private Sub Run_Query()
          Inc i
       Next
    Else
-      Grid.visible = False
-      PictureBox1.Visible = True
-      tbSaveImage.Text = "Save Image"
-      If Lower$(gnuplot) = "guess" Then
-         ' try some default gnuplots
-         If res.Fields.Count = 2 Then
-            If res.Fields[0].Type = db.String Then
-               If res.Count < 10 Then
-                  ' pie chart time!
-                  gnuplot = modPlot.PieChart(res)
-               Else 
-                  ' bar chart
-                  gnuplot = modPlot.Gnuplot_BoxGraph(res)
-               Endif
-            Else
-               gnuplot = modPlot.ScatterPlot(res)
-            Endif
+     Grid.visible = False
+     PictureBox1.Visible = True
+     tbSaveImage.Text = "Save Image"
+     If gnuplot2 = "guess" Then
+       ' try some default gnuplots
+       If res.Fields.Count = 2 Then
+         If res.Fields[0].Type = db.String Then
+           If res.Count < 10 Then
+             ' pie chart time!
+             gnuplot = modPlot.PieChart(res)
+           Else 
+             ' bar chart
+             gnuplot = modPlot.Gnuplot_BoxGraph(res)
+           Endif
          Else
             If res.Fields[0].Type = db.String Then
                gnuplot = modPlot.Gnuplot_BoxGraph(res)
             Endif
          Endif
-      Endif
-      If Lower$(gnuplot) = "scatter" Then gnuplot = modPlot.ScatterPlot(res)
-      If Lower$(gnuplot) = "pie" Then gnuplot = modPlot.PieChart(res)
-      If Lower$(gnuplot) = "box" Then gnuplot = modPlot.Gnuplot_Boxgraph(res)
-      If Lower(gnuplot) = "line" Then gnuplot = modPlot.Gnuplot_LineGraph(res)
-      Debug gnuplot
-      picture_file = modPlot.Gnuplot_Run(PictureBox1.Width, PictureBox1.Height, gnuplot, res)
-      pic = Picture.Load(picture_file)
-      PictureBox1.Background = Color.White
-      PictureBox1.Picture = pic
+       Else
+         If res.Fields[0].Type = db.String Then
+            gnuplot = modPlot.Gnuplot_BoxGraph(res)
+         Endif
+       Endif
+     Endif
+     If gnuplot2 Begins "scatter" Then gnuplot = modPlot.ScatterPlot(res)
+     If gnuplot2 Begins "pie" Then gnuplot = modPlot.PieChart(res)
+     If gnuplot2 Begins "box" Or If gnuplot2 Begins "bar" Then gnuplot = modPlot.Gnuplot_Boxgraph(res)
+     Debug gnuplot
+     picture_file = modPlot.Gnuplot_Run(PictureBox1.Width, PictureBox1.Height, gnuplot, res)
+     pic = Picture.Load(picture_file)
+     PictureBox1.Background = Color.White
+     PictureBox1.Picture = pic
    Endif
    
 Catch
@@ -173,9 +186,7 @@ Public Sub lbQueries_Click()
          query = i
       Endif
    Next
-   loaded = "sql"
    taText.Text = query!sql
-   rbSQL.Value = True
    txtTitle.Text = query!title
    
 End

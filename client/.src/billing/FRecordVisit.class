@@ -71,6 +71,7 @@
 '-----------------------------------------------------------------------------------------------
 Private cell_text As String
 Private currentconsult As CConsult
+Private payment_methods As Collection
 Private last_Fee_type As String
 Public bexit As Boolean
 Private bHSplit_Resized As Boolean        'true if user has re-sized the main horizontal split
@@ -158,7 +159,6 @@ Private cMBS_ItemNumbers As Integer = 2
 Private cAMA_ItemNumbers As Integer = 3
 Private cUser_Defined_ItemNumbers As Integer = 4
 Private Item_Number_Categories As String[]
-Private Payment_Methods As Collection
 Private InvoiceComments As Collection
 Private InvoiceComment As Collection
 Private Invoice_total As Float
@@ -241,6 +241,7 @@ Public Sub _new()
    Area_of_Need_Fees = modBillingDBI.Area_Of_Need_Fees("10991")  'area of need supplement keyed by billing.lu_biling_type key
    cvwSearchAccounts.Columns.count = 3
    Print modDBConnect.currentUser
+   
 End
 
 Static Private Form_Billing As FRecordVisit
@@ -415,6 +416,7 @@ Public Sub Init()
       cmbQuickView.Index = cInvoiceDisplayMode_UnbilledAll
       bExit = False  
    Endif
+   payment_methods = modBillingDBI.Payment_Methods_Get()
    Accounts_Reload()
    modDBConnect.Register_Listener("invoice_print", Me)
    
@@ -663,16 +665,24 @@ End
 
 Public Sub Reports_Available_Refresh()
    
+   Dim x As Integer
+   
    With columnview99
       .Clear
       .Columns.count = 1
       .Header = True
       .Columns[0].Text = "Report Name"
    End With
-   For Each Report_title In Report_Titles
-      columnview99.Add(Report_title!pk, 0)
-      columnview99[Report_title!pk][0] = Report_title!report_title
-   Next
+   ' columnview99.Add(x, 0)
+   ' columnview99[x][0] = "Days Takings"
+   ' Inc x
+   columnview99.Add(x, 0)
+   columnview99[x][0] = "Day List Patients Seen"
+   
+   ' For Each Report_title In Report_Titles
+   '    columnview99.Add(Report_title!pk, 0)
+   '    columnview99[Report_title!pk][0] = Report_title!report_title
+   ' Next
    
 End
 
@@ -924,6 +934,7 @@ Public Sub columnview99_Select()
       Case cTab_Batching
          form_batching.Claim_Display(Bulk_Billed_Claims[columnview99.Item.key])
       Case cTab_Reports
+         'just experimenting for the moment
          ' If rbMonth.Value Then period = 1
          ' If rbQuarter.Value Then period = 2
          ' If combobox1.Text = "All Staff" Then
@@ -932,6 +943,13 @@ Public Sub columnview99_Select()
          '    fk_staff = staff[combobox1.index]!fk_staff
          ' Endif
          ' form_reports.Report_Show(Report_Titles[columnview99.Item.key], DateChooserAccountDate.value, fk_staff, period)
+         Select Case columnview99[columnview99.Item.key][0]
+            Case "Days Takings"
+               Report_Show_HTML(Days_Takings_Create_HTML())
+               
+            Case "Day List"
+               Report_Show_HTML(Day_List_Create_HTML())
+         End Select
    End Select
    
 End
@@ -2257,12 +2275,15 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True)
    fk_invoice = Null
    EditArea_Notify_Data_Change(False)
    If Not bSearchingAccounts Then 
-      tbQuickView_Click                              'freshes the unbilled patients
+      tbQuickView_Click                              'refreshes the unbilled patients
+   Else
+      Items_Today_Or_Unpaid_Reload                   'refresh the invoices under the edit area
    End If
    If Not IsNull(patient) Then
       ' Items_Today_Or_Unpaid = Reload_Billed_Items(cvwItemsTodayOrUnpaid, Items_Today_Or_Unpaid)
       '  Items_Today_Or_Unpaid_Reload()      'reload the collection and fill the columnview
    Endif
+   Print bSearchingAccounts
    cvwSearchAccounts.UnselectAll
    ' Invoice_New()
    modDBConnect.CommitTrans() ' do this last to prevent new transaction from forming
@@ -4086,8 +4107,10 @@ Public Sub MainToolbar_Click()
          Save(bBulkBill_Yes, bPrint_Yes)
       Case "print receipt"
          Save(bBulkBill_No, bPrint_Yes)
+         
       Case "receipt no print"
          Save(bBulkBill_No, bPrint_No)
+         
       Case "print account"
          Save(bBulkBill_No, bPrint_Yes)
    End Select
@@ -5444,24 +5467,16 @@ Public Sub TabStrip1_Click()
          BulkBilling_ShowClaims()
       Case cTab_Reports
          Hbox_Filter.Visible = False
-         'VBox_Invoices.Visible = False
          VBox_Accounts.Visible = False  
          VBox_ForOtherTabs.Visible = True
          gvwFeeScheduleItems.Visible = False
          columnview99.Visible = True          'generic columnview
          DateChooser1.visible = True
          Hbox_Period.visible = True
-         'VBox_Invoices.Visible = False
          VBox_Accounts.Visible = False     
          VBox_ForOtherTabs.Visible = True
-         If IsNull(form_reports) Then
-            ' With form_reports = New FBillingReports(Vbox_Reports)
-            '    .Init()
-            ' End With
-            With form_reports = New FHtmlViewer(Vbox_Reports)
-               .WebView1.HTML = Days_Takings_Create_HTML()
-            End With
-         Endif
+         'Report_Show_HTML(Days_Takings_Create_HTML())
+         Report_Show_HTML(Day_List_Create_HTML())
          combobox1.Visible = True
          HBox_Search.Visible = False
          modEditAreaHelpers.Resize_labels(VBox_ForOtherTabs, lblmeasure)
@@ -5510,7 +5525,295 @@ Public Sub TabStrip1_Click()
    
 End
 
+Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
+   
+   Dim patient_visits As Collection
+   Dim visit As Collection
+   Dim sHtml As String
+   Dim Last_fk_invoice As Variant
+   Dim ipatientCount As Integer
+   Dim running_total As Float
+   Dim payment_totals As New Float[7] 'use 1>6 = billing.lu_payment_method keys
+   Dim running_total_gst As Float
+   Dim payment_method As Collection
+   Dim x As Integer
+   Dim running_total_medicare As Float
+   Dim running_total_veterans As Float
+   Dim running_total_workcover As Float
+   Dim total_consults_billed_to_Medicare As Integer
+   Dim total_consults_billed_to_repat As Integer
+   Dim total_consults_billed_to_workcover As Integer
+   Dim invoices_others As New Collection
+   
+   sHtml = "<HTML><BODY><B><H3><p align='center'> Visits by Visit Date for " & Format(for_date, "dd/mm/yyyy") & " - " 
+   sHtml &= " Patients Billed </B>%ipatientcount%</P>"
+   sHtml &= "<TABLE WIDTH=100% CELLPADDING=0 CELLSPACING=0>"
+   "<COL WIDTH=3%>"
+   "<COL WIDTH=8%>"
+   "<COL WIDTH=7>"
+   "<COL WIDTH=2%>"
+   "<COL WIDTH=5%>"
+   "<COL WIDTH=5%>"
+   "<COL WIDTH=2%>"
+   "<COL WIDTH=3%>"
+   "<COL WIDTH=3%>"
+   sHtml &= "<TR VALIGN=TOP>" & day_list_html_row_template() & "</TR>"
+   shtml = Replace(shtml, "%time%", "<B>Time</B>")
+   shtml = Replace(shtml, "%patient%", "<B>Patient</B>")
+   shtml = Replace(shtml, "%invoiceto%", "<B>Invoice To</B>")
+   shtml = Replace(shtml, "%item%", "<B>Item</B>")
+   shtml = Replace(shtml, "%item%", "<B>Notes</B>")
+   shtml = Replace(shtml, "%amount%", "<B>Amount</B>")
+   shtml = Replace(shtml, "%tax%", "<B>Tax</B>")
+   shtml = Replace(shtml, "%paid%", "<B>Paid</B>") 
+   shtml = Replace(shtml, "%paymentmethod%", "") 
+   patient_visits = modBillingDBI.Day_List_Get(DateChooser1.value, modDBConnect.currentUser!fk_branch, modDBConnect.currentUser!fk_staff)
+   For Each visit In patient_visits
+      sHtml &= "<TR VALIGN=TOP>" & day_list_html_row_template() & "</TR>"
+      If Last_fk_invoice <> visit!fk_invoice Then
+         shtml = Replace(shtml, "%time%", Format(Time(visit!appointment_date), "hh:nn"))
+         shtml = Replace(shtml, "%patient%", visit!wholename)
+         If Not IsNull(visit!notes) Then
+            shtml = Replace(shtml, "%notes%", visit!notes)
+         Else
+            shtml = Replace(shtml, "%notes%", "")
+         End If   
+         If Not IsNull(visit!account_to_name) Then
+            invoices_others.Add(visit, invoices_others.count)  
+         Endif
+         Inc ipatientCount
+         Last_fk_invoice = visit!fk_invoice
+     Else
+         shtml = Replace(shtml, "%time%", "")
+         shtml = Replace(shtml, "%patient%", "") 
+         shtml = Replace(shtml, "%notes%", "") 
+      End If   
+      If Not IsNull(visit!bulk_billing_type) Then
+         shtml = Replace(shtml, "%invoiceto%", visit!bulk_billing_type)
+         Select Case visit!fk_lu_bulk_billing_type
+            Case const.BulkBilling_Type_Medicare
+               running_total_medicare += modUtil.MoneyToFloat(visit!amount)
+               If Last_fk_invoice <> visit!fk_invoice Then Inc total_consults_billed_to_Medicare
+            Case const.BulkBilling_Type_Veteran
+               running_total_veterans += modUtil.MoneyToFloat(visit!amount)
+               If Last_fk_invoice <> visit!fk_invoice Then Inc total_consults_billed_to_repat
+         End Select
+         
+      Else
+         If Not IsNull(visit!account_to_name) Then
+            If InStr(Lower(visit!descriptor_brief), "workcover") Then
+               shtml = Replace(shtml, "%invoiceto%", visit!account_to_name & " (Workcover)")
+            Else
+               shtml = Replace(shtml, "%invoiceto%", visit!account_to_name)
+            Endif
+         Else
+            shtml = Replace(shtml, "%invoiceto%", visit!billing_type) 
+         Endif
+         
+      Endif
+      shtml = Replace(shtml, "%item%", visit!item)
+      shtml = Replace(shtml, "%amount%", visit!amount)
+      running_total += modUtil.MoneyToFloat(visit!amount)
+      
+      If visit!paid = False Then
+         shtml = Replace(shtml, "%paid%", "$0.00") 
+         shtml = Replace(shtml, "%paymentmethod%", "") 
+      Else
+         shtml = Replace(shtml, "%paid%", visit!payment_amount)
+         shtml = Replace(shtml, "%paymentmethod%", visit!payment_method)
+         payment_totals[visit!fk_lu_payment_method] = payment_totals[visit!fk_lu_payment_method] + CFloat(Replace(visit!amount, "$", ""))
+         
+      End If  
+      If IsNull(visit!amount_gst) Then  
+         running_total_gst += modUtil.MoneyToFloat(visit!amount_gst)
+         shtml = Replace(shtml, "%tax%", visit!amount_gst)
+      Else
+         shtml = Replace(sHtml, "%tax%", "")
+      End If   
+   Next
+   shtml &= "</TABLE>"
+   
+   '---------------------------------------------------------------------------------------
+   'Now add a table which summarizes amounts for Cash, Cheques, EFPos or EFT (direct debit)
+   '---------------------------------------------------------------------------------------
+   sHtml &= "<P><B>Total Money Taken</B></P>"
+   sHtml &= "<TABLE WIDTH=441 CELLPADDING=0 CELLSPACING=1 >"
+   "<COL WIDTH=212>"
+   "<COL WIDTH=208>"
+   For Each payment_method In payment_methods
+      Inc x                                  'billing.lu_payment_method keys 1>6
+      shtml &= "<TR VALIGN=TOP>"
+      shtml &= totals_html_row_template()
+      shtml = Replace(shtml, "%payment_method%", payment_method!method)
+      shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(payment_totals[x]))
+      sHtml &= "</TR>"
+   Next
+   sHtml &= "</TABLE>"
+   sHtml = Replace(sHtml, "%ipatientcount%", Str(ipatientcount))
+   '------------------------------------------------------------------
+   'Now add a table which summarizes amounts medicare and repatriation
+   '------------------------------------------------------------------
+   sHtml &= "<P><B>Consultations Invoiced (unpaid) </B></P>"
+   sHtml &= "<TABLE WIDTH=441 CELLPADDING=0 CELLSPACING=1 >"
+   "<COL WIDTH=212>"
+   "<COL WIDTH=208>"
+   
+   sHtml &= "<TR VALIGN=TOP>" & totals_html_row_template()
+   shtml = Replace(shtml, "%payment_method%", "Medicare")
+   shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(running_total_medicare))
+   sHtml &= "</TR>"
+   shtml &= totals_html_row_template()
+   shtml = Replace(shtml, "%payment_method%", "Veterans")
+   shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(running_total_veterans))
+   sHtml &= "</TR>"
+   For Each visit In invoices_others
+      sHtml &= "<TR VALIGN=TOP>" & totals_html_row_template()
+      shtml = Replace(shtml, "%payment_method%", visit!account_to_name)
+      shtml = Replace(shtml, "%total_amount%", visit!total_bill)
+      sHtml &= "</TR>"
+   Next
+   shtml &= "</TABLE></BODY></HTML>"
+   Return sHtml
+   
+End
+
+Public Function day_list_html_row_template() As String
+   
+   Return ""
+   "<TD WIDTH=3%>"
+   "   <P>%time%</P>"
+   "</TD>"
+   "<TD WIDTH=8%>"
+   "   <P>%patient%</P>"
+   "</TD>"
+   "<TD WIDTH=7%>"
+   "   <P>%invoiceto%</P>"
+   "</TD>"
+   "<TD WIDTH=2%>"
+   "   <P>%item%</P>"
+   "</TD>"
+   "<TD WIDTH=3%>"
+   "   <P>%notes%</P>"
+   "</TD>"
+   "<TD WIDTH=5%>"
+   "   <P>%amount%</P>"
+   "</TD>"
+   "<TD WIDTH=2%>"
+   "   <P>%tax%</P>"
+   "</TD>"
+   "<TD WIDTH=3%>"
+   "   <P>%paid%</P>"
+   "</TD>"
+   "<TD WIDTH=3%>"
+   "   <P>%paymentmethod%</P>"
+   "</TD>"
+   
+End
+
 Public Sub Days_Takings_Create_HTML(Optional for_date As Date = Now()) As String
+   'creates html table of a days takings
+   
+   Dim monies_received As Collection
+   Dim sHtml As String
+   Dim sRow As String
+   Dim amount As Collection
+   Dim payment_method As Collection
+   Dim payment_totals As New Float[7] 'use 1>6 = billing.lu_payment_method keys
+   Dim running_total_gst As Float
+   Dim running_total As Float
+   Dim x As Integer
+   
+   monies_received = modBillingDBI.Receipts_Get_For_Day(for_date)
+   sHtml = "<HTML><BODY><P><B>Summary of Receipts Taken on " & Format(for_date, "dd/mm/yyyy") & "</B></P>"
+   If monies_received.count = 0 Then
+      sHtml &= "No takings recorded for" & Format(for_date, "dd/mm/yyyy") & "</BODY></sHTML>"
+      Return sHtml 
+   Endif
+   sHtml &= "<TABLE WIDTH=100% CELLPADDING=0 CELLSPACING=0>"
+   "<COL WIDTH=43*>"
+   "<COL WIDTH=43*>"
+   "<COL WIDTH=43*>"
+   "<COL WIDTH=43*>"
+   "<COL WIDTH=43*>"
+   "<COL WIDTH=43*>"
+   '------------------------------------------------------
+   'now add a row for each money recieved
+   'receipt no|Payer|payment type|Cheque Drawer|Amount|Tax
+   '------------------------------------------------------
+   sHtml &= "<TR VALIGN=TOP>" & takings_html_row_template() & "</TR>"
+   shtml = Replace(shtml, "%receipt_no%", "<B>Receipt</B>")
+   shtml = Replace(shtml, "%payer%", "<B>Payer</B>")
+   shtml = Replace(shtml, "%item%", "<B>Item</B>")
+   shtml = Replace(shtml, "%payment type%", "<B>Type</B>")
+   shtml = Replace(shtml, "%drawer%", "<B>Cheque Drawer</B>")
+   shtml = Replace(shtml, "%amount%", "<B>Amount</B>")
+   shtml = Replace(shtml, "%tax%", "<B>Tax</B>")
+   For Each amount In monies_received
+      sHtml &= "<TR VALIGN=TOP>" & takings_html_row_template()
+      sHtml = Replace(sHtml, "%receipt_no%", Str$(amount!fk_payments_received))
+      If Not IsNull(amount!payer_details) Then
+         If Not IsNull(amount!fk_payer_branch) Then
+            sHtml = Replace(sHtml, "%payer%", amount!payer_organisation & " " & amount!payer_branch)
+         End If
+         If Not IsNull(amount!fk_payer_person) Then
+            sHtml = Replace(sHtml, "%payer%", amount!payer_person_wholename)
+         End If
+      Else
+         sHtml = Replace(sHtml, "%payer%", amount!patient_wholename)
+      End If
+      sHtml = Replace(sHtml, "%item%", amount!item)
+      sHtml = Replace(sHtml, "%payment type%", amount!payment_method)
+      sHtml = Replace(sHtml, "%drawer%", " ") 'FIXME
+      sHtml = Replace(sHtml, "%amount%", modUtil.Money_Format(amount!amount))
+      sHtml = Replace(sHtml, "%tax%", " ") 'FIXME put in gst
+      sHtml &= "</TR>"
+      payment_totals[amount!fk_lu_payment_method] = payment_totals[amount!fk_lu_payment_method] + CFloat(Replace(amount!amount, "$", ""))
+      running_total += modUtil.MoneyToFloat(amount!amount)
+      If amount!invoice_paid = True Then
+         If Not IsNull(amount!item_billed_amount_gst) Then
+            running_total_gst += modUtil.MoneyToFloat(amount!item_billed_amount_gst)
+         Endif
+      Endif
+   Next
+   shtml &= "</TABLE>"
+   '---------------------------------------------------------------------------------------
+   'Now add a table which summarizes amounts for Cash, Cheques, EFPos or EFT (direct debit)
+   '---------------------------------------------------------------------------------------
+   sHtml &= "<P><B>Totals</B></P>"
+   sHtml &= "<TABLE WIDTH=441 CELLPADDING=0 CELLSPACING=1 >"
+   "<COL WIDTH=212>"
+   "<COL WIDTH=208>"
+   
+   For Each payment_method In payment_methods
+      Inc x                                  'billing.lu_payment_method keys 1>6
+      shtml &= "<TR VALIGN=TOP>"
+      shtml &= totals_html_row_template()
+      shtml = Replace(shtml, "%payment_method%", payment_method!method)
+      shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(payment_totals[x]))
+      sHtml &= "</TR>"
+   Next
+   sHtml &= "</TABLE>"
+   '------------------------------------
+   'Now show the totals for GST and Cash
+   '------------------------------------
+   sHtml &= "<BR>"
+   sHtml &= "<TABLE WIDTH=441 CELLPADDING=0 CELLSPACING=1 >"
+   "<COL WIDTH=212>"
+   "<COL WIDTH=208>"
+   sHtml &= "<TR VALIGN=TOP>" & totals_html_row_template()
+   shtml = Replace(shtml, "%payment_method%", "TOTAL GST")
+   shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(running_total_gst) & "<BR><BR>")
+   sHtml &= "</TR>"
+   sHtml &= "<TR VALIGN=TOP>" & totals_html_row_template()
+   shtml = Replace(shtml, "%payment_method%", "<B>TOTAL (Including GST)</B>")
+   shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(running_total))
+   sHtml &= "</TR>"
+   sHtml &= "</TABLE></BODY></HTML>"
+   Return shtml
+   
+End
+
+Public Sub Days_Takings_Create_HTML_old(Optional for_date As Date = Now()) As String
    'creates html table of a days takings
    
    Dim monies_received As Collection
@@ -5526,11 +5829,11 @@ Public Sub Days_Takings_Create_HTML(Optional for_date As Date = Now()) As String
    
    payment_methods = modBillingDBI.Payment_Methods_Get()
    monies_received = modBillingDBI.Receipts_Get_For_Day(for_date)
-   If IsNull(monies_received) Then
-      Message.Info("No takings recorded for" & Format(for_date, "dd/mm/yyyy"))
-      Return
-   Endif
    sHtml = "<HTML><BODY><P><B>Summary of Receipts Taken on " & Format(for_date, "dd/mm/yyyy") & "</B></P>"
+   If monies_received.count = 0 Then
+      sHtml &= "No takings recorded for" & Format(for_date, "dd/mm/yyyy") & "</BODY></sHTML>"
+      Return sHtml 
+   Endif
    sHtml &= "<TABLE WIDTH=100% CELLPADDING=0 CELLSPACING=0>"
    "<COL WIDTH=43*>"
    "<COL WIDTH=43*>"
@@ -5615,6 +5918,33 @@ Public Sub Days_Takings_Create_HTML(Optional for_date As Date = Now()) As String
 End
 
 Public Function takings_html_row_template() As String
+   
+   Return ""
+   "<TD WIDTH=8%>"
+   "   <P>%receipt_no%</P>"
+   "</TD>"
+   "<TD WIDTH=25%>"
+   "   <P>%payer%</P>"
+   "</TD>"
+   "<TD WIDTH=5%>"
+   "   <P>%item%</P>"
+   "</TD>"
+   "<TD WIDTH=15%>"
+   "   <P>%payment type%</P>"
+   "</TD>"
+   "<TD WIDTH=20%>"
+   "   <P>%drawer%</P>"
+   "</TD>"
+   "<TD WIDTH=10%>"
+   "   <P>%amount%</P>"
+   "</TD>"
+   "<TD WIDTH=10%>"
+   "   <P>%tax%</P>"
+   "</TD>"
+   
+End
+
+Public Function takings_html_row_templat_old() As String
    
    Return ""
    "<TD WIDTH=8%>"
@@ -6124,7 +6454,7 @@ End
 Public Sub mnuAcountHistory_Click()
    'User has clicked over the columview containing all the invoices
    'ever raised for the patient, or filtered by paid/unpaid/text or payer
-
+   
    Dim pdf_path As String
    
    Select Case Last.tag
@@ -6211,5 +6541,28 @@ Public Sub cvwWorkcoverClaims_Select()
    
    cvwWorkcoverClaims.MoveCurrent
    txtReferenceDetails.text = workcover_claims[cvwWorkcoverClaims.Item.Key]!claim_number  
+   
+End
+
+Public Sub DateChooser1_Activate()
+   
+   Report_Show_HTML(Days_Takings_Create_HTML(DateChooser1.Value))
+   
+End
+
+Public Sub Report_Show_HTML(sHtml As String)
+   
+   If IsNull(form_reports) Then 
+      With form_reports = New FHtmlViewer(Vbox_Reports)
+         .WebView1.Zoom = 1.0
+         .tbWebBrowserPrint.Visible = True   
+         .tbWebBrowserZoomIn.Visible = True  
+         .tbWebBrowserZoomOut.Visible = True 
+      End With
+   End If   
+   With form_reports
+      .WebView1.HTML = sHtml
+      .WebView1.Zoom = 1.0
+   End With
    
 End

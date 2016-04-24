@@ -1,4 +1,5 @@
-﻿--drop view billing.vwDaysInvoicesAndPayments;
+﻿-- drop view billing.vwDaysInvoicesAndPayments;
+
 Create or replace View billing.vwDaysInvoicesAndPayments as
 select
   bookings.begin AS appointment_date,
@@ -26,12 +27,16 @@ select
   billing.invoices.total_gst,
   billing.invoices.total_paid,
   payments_received.fk_lu_payment_method,
-  lu_payment_method.method as payment_method
+  payments_received.date_paid,
+  lu_payment_method.method as payment_method,
+  admin.vwstaff.firstname as  staff_firstname,
+  admin.vwStaff.surname as staff_surname
 FROM
   billing.invoices
   LEFT JOIN clerical.data_patients on data_patients.pk = billing.invoices.fk_patient
   LEFT JOIN contacts.data_persons on data_patients.fk_person = data_persons.pk
   LEFT JOIN clerical.bookings on bookings.pk = invoices.fk_appointment
+  JOIN admin.vwstaff on invoices.fk_staff_provided_service = vwstaff.fk_staff
   JOIN billing.items_billed on items_billed.fk_invoice = invoices.pk
   LEFT JOIN billing.lu_bulk_billing_type ON invoices.fk_lu_bulk_billing_type = lu_bulk_billing_type.pk
   LEFT JOIN contacts.data_branches on data_branches.pk = invoices.fk_payer_branch

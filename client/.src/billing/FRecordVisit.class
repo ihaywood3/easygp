@@ -69,16 +69,20 @@
 ' age(date_paid) < '1 week'::interval ;
 
 '-----------------------------------------------------------------------------------------------
+Private running_total As Float
+Private running_total_gst As Float
 Private running_total_medicare As Float
 Private running_total_veterans As Float
 Private running_total_workcover As Float
-Private total_consults_billed_to_Medicare As Integer
-Private total_consults_billed_to_repat As Integer
-Private total_consults_billed_to_workcover As Integer
-Private running_total As Float
+Private running_total_old_invoices As Float
+Private running_total_private As Float
 Private payment_totals As New Float[7] 'use 1>6 = billing.lu_payment_method keys
-Private running_total_gst As Float
-
+Private day_list_patients_billed_count As Integer
+Private day_list_patients_billed_medicare_count As Integer
+Private day_list_patients_billed_veterans_count As Integer
+Private day_list_patients_billed_private_count As Integer
+Private day_list_patients_billed_workcover_count As Integer
+Private day_list_patients_old_invoices_count As Integer
 Private income_generated As Float
 Private cell_text As String
 Private currentconsult As CConsult
@@ -5542,393 +5546,14 @@ Public Sub day_list_html_row_template()
    
 End
 
-Public Sub Day_List_Create_HTML_old(Optional for_date As Date = Now()) As String
-   
-   Dim patient_visits As Collection
-   Dim visit As Collection
-   Dim sHtml As String
-   Dim Last_fk_invoice As Variant
-   Dim ipatientCount As Integer
-   Dim running_total As Float
-   Dim payment_totals As New Float[7] 'use 1>6 = billing.lu_payment_method keys
-   Dim running_total_gst As Float
-   Dim payment_method As Collection
-   Dim x As Integer
-   Dim running_total_medicare As Float
-   Dim running_total_veterans As Float
-   Dim running_total_workcover As Float
-   Dim total_consults_billed_to_Medicare As Integer
-   Dim total_consults_billed_to_repat As Integer
-   Dim total_consults_billed_to_workcover As Integer
-   Dim invoices_others As New Collection
-   
-   Print staff
-   Print combobox1.Index   
-   
-   sHtml = "<HTML><BODY><B><H3><p align='center'> Visits by Visit Date for " & staff[combobox1.index]!wholename & "  " & Format(for_date, "dd/mm/yyyy") & " - " 
-   sHtml &= " Patients Billed </B>%ipatientcount%</P>"
-   sHtml &= "<TABLE WIDTH=100% CELLPADDING=0 CELLSPACING=0>"
-   "<COL WIDTH=3%>"
-   "<COL WIDTH=8%>"
-   "<COL WIDTH=7>"
-   "<COL WIDTH=2%>"
-   "<COL WIDTH=5%>"
-   "<COL WIDTH=5%>"
-   "<COL WIDTH=2%>"
-   "<COL WIDTH=3%>"
-   "<COL WIDTH=3%>"
-   sHtml &= "<TR VALIGN=TOP>" & day_list_html_row_template() & "</TR>"
-   shtml = Replace(shtml, "%time%", "<B>Time</B>")
-   shtml = Replace(shtml, "%patient%", "<B>Patient</B>")
-   shtml = Replace(shtml, "%invoiceto%", "<B>Invoice To</B>")
-   shtml = Replace(shtml, "%item%", "<B>Item</B>")
-   shtml = Replace(shtml, "%item%", "<B>Notes</B>")
-   shtml = Replace(shtml, "%amount%", "<B>Amount</B>")
-   shtml = Replace(shtml, "%tax%", "<B>Tax</B>")
-   shtml = Replace(shtml, "%paid%", "<B>Paid</B>") 
-   shtml = Replace(shtml, "%paymentmethod%", "") 
-   
-   patient_visits = modBillingDBI.Day_List_Get(DateChooser1.value, modDBConnect.currentUser!fk_branch, staff[combobox1.index]!fk_staff)
-   For Each visit In patient_visits
-      sHtml &= "<TR VALIGN=TOP>" & day_list_html_row_template() & "</TR>"
-      If Last_fk_invoice <> visit!fk_invoice Then
-         shtml = Replace(shtml, "%time%", Format(Time(visit!appointment_date), "hh:nn"))
-         shtml = Replace(shtml, "%patient%", visit!wholename)
-         If Not IsNull(visit!notes) Then
-            shtml = Replace(shtml, "%notes%", visit!notes)
-         Else
-            shtml = Replace(shtml, "%notes%", "")
-         End If   
-         If Not IsNull(visit!account_to_name) Then
-            invoices_others.Add(visit, invoices_others.count)  
-         Endif
-         Inc ipatientCount
-         Last_fk_invoice = visit!fk_invoice
-      Else
-         shtml = Replace(shtml, "%time%", "")
-         shtml = Replace(shtml, "%patient%", "") 
-         shtml = Replace(shtml, "%notes%", "") 
-      End If   
-      If Not IsNull(visit!bulk_billing_type) Then
-         shtml = Replace(shtml, "%invoiceto%", visit!bulk_billing_type)
-         Select Case visit!fk_lu_bulk_billing_type
-            Case const.BulkBilling_Type_Medicare
-               running_total_medicare += modUtil.MoneyToFloat(visit!amount)
-               If Last_fk_invoice <> visit!fk_invoice Then Inc total_consults_billed_to_Medicare
-            Case const.BulkBilling_Type_Veteran
-               running_total_veterans += modUtil.MoneyToFloat(visit!amount)
-               If Last_fk_invoice <> visit!fk_invoice Then Inc total_consults_billed_to_repat
-         End Select
-         
-      Else
-         If Not IsNull(visit!account_to_name) Then
-            If InStr(Lower(visit!descriptor_brief), "workcover") Then
-               shtml = Replace(shtml, "%invoiceto%", visit!account_to_name & " (Workcover)")
-            Else
-               shtml = Replace(shtml, "%invoiceto%", visit!account_to_name)
-            Endif
-         Else
-            shtml = Replace(shtml, "%invoiceto%", visit!billing_type) 
-         Endif
-         
-      Endif
-      shtml = Replace(shtml, "%item%", visit!item)
-      shtml = Replace(shtml, "%amount%", visit!amount)
-      Print modUtil.MoneyToFloat(visit!amount)
-      
-      If visit!paid = False Then
-         shtml = Replace(shtml, "%paid%", "$0.00") 
-         shtml = Replace(shtml, "%paymentmethod%", "") 
-      Else
-         shtml = Replace(shtml, "%paid%", visit!payment_amount)
-         shtml = Replace(shtml, "%paymentmethod%", visit!payment_method)
-         payment_totals[visit!fk_lu_payment_method] = payment_totals[visit!fk_lu_payment_method] + CFloat(Replace(visit!amount, "$", ""))
-         running_total += modUtil.MoneyToFloat(visit!amount)     
-      End If  
-      If IsNull(visit!amount_gst) Then  
-         running_total_gst += modUtil.MoneyToFloat(visit!amount_gst)
-         shtml = Replace(shtml, "%tax%", visit!amount_gst)
-      Else
-         shtml = Replace(sHtml, "%tax%", "")
-      End If   
-   Next
-   shtml &= "</TABLE>"
-   
-   '---------------------------------------------------------------------------------------
-   'Now add a table which summarizes amounts for Cash, Cheques, EFPos or EFT (direct debit)
-   '---------------------------------------------------------------------------------------
-   sHtml &= "<P><B>Money Taken</B></P>"
-   sHtml &= "<TABLE WIDTH=441 CELLPADDING=0 CELLSPACING=1 >"
-   "<COL WIDTH=212>"
-   "<COL WIDTH=208>"
-   For Each payment_method In payment_methods
-      Inc x                                  'billing.lu_payment_method keys 1>6
-      shtml &= "<TR VALIGN=TOP>"
-      shtml &= totals_html_row_template()
-      shtml = Replace(shtml, "%payment_method%", payment_method!method)
-      shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(payment_totals[x]))
-      sHtml &= "</TR>"
-   Next
-   shtml &= totals_html_row_template()
-   shtml = Replace(shtml, "%payment_method%", "")
-   shtml = Replace(shtml, "%total_amount%", "")
-   sHtml &= "</TR>"
-   
-   shtml &= totals_html_row_template()
-   shtml = Replace(shtml, "%payment_method%", "Total (Including GST)")
-   shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(running_total))
-   sHtml &= "</TR>"
-   shtml &= totals_html_row_template()
-   shtml = Replace(shtml, "%payment_method%", "Total GST")
-   shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(running_total_gst))
-   sHtml &= "</TR>"
-   sHtml &= "</TABLE>"
-   sHtml = Replace(sHtml, "%ipatientcount%", Str(ipatientcount))
-   '------------------------------------------------------------------
-   'Now add a table which summarizes amounts medicare and repatriation
-   '------------------------------------------------------------------
-   sHtml &= "<P><B>Consultations Invoiced (unpaid) </B></P>"
-   sHtml &= "<TABLE WIDTH=441 CELLPADDING=0 CELLSPACING=1 >"
-   "<COL WIDTH=212>"
-   "<COL WIDTH=208>"
-   
-   sHtml &= "<TR VALIGN=TOP>" & totals_html_row_template()
-   shtml = Replace(shtml, "%payment_method%", "Medicare")
-   shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(running_total_medicare))
-   sHtml &= "</TR>"
-   shtml &= totals_html_row_template()
-   shtml = Replace(shtml, "%payment_method%", "Veterans")
-   shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(running_total_veterans))
-   sHtml &= "</TR>"
-   For Each visit In invoices_others
-      sHtml &= "<TR VALIGN=TOP>" & totals_html_row_template()
-      shtml = Replace(shtml, "%payment_method%", visit!account_to_name)
-      shtml = Replace(shtml, "%total_amount%", visit!total_bill)
-      sHtml &= "</TR>"
-   Next
-   shtml &= "</TABLE></BODY></HTML>"
-   Return sHtml
-   
-End
-
-Public Sub Day_List_Create_HTML_second_oldest(Optional for_date As Date = Now()) As String
-   
-   Dim patient_visits As Collection
-   Dim visit As Collection
-   Dim sHtml As String
-   Dim Last_fk_invoice As Variant
-   Dim ipatientCount As Integer
-   Dim running_total As Float
-   Dim payment_totals As New Float[7] 'use 1>6 = billing.lu_payment_method keys
-   Dim running_total_gst As Float
-   Dim payment_method As Collection
-   Dim x As Integer
-   Dim running_total_medicare As Float
-   Dim running_total_veterans As Float
-   Dim running_total_workcover As Float
-   Dim total_consults_billed_to_Medicare As Integer
-   Dim total_consults_billed_to_repat As Integer
-   Dim total_consults_billed_to_workcover As Integer
-   Dim invoices_others As New Collection
-   Dim bSameInvoice As Boolean
-   Dim last_fk_patient As Variant
-   
-   Print staff
-   Print combobox1.Index   
-   
-   sHtml = "<HTML><BODY><B><H3><p align='center'> Visits by Visit Date for " & staff[combobox1.index]!wholename & "  " & Format(for_date, "dd/mm/yyyy") & " - " 
-   sHtml &= " Patients Billed </B>%ipatientcount%</P>"
-   sHtml &= "<TABLE WIDTH=100% CELLPADDING=0 CELLSPACING=0>"
-   "<COL WIDTH=3%>"
-   "<COL WIDTH=8%>"
-   "<COL WIDTH=7>"
-   "<COL WIDTH=2%>"
-   "<COL WIDTH=5%>"
-   "<COL WIDTH=5%>"
-   "<COL WIDTH=2%>"
-   "<COL WIDTH=3%>"
-   "<COL WIDTH=3%>"
-   sHtml &= "<TR VALIGN=TOP>" & day_list_html_row_template() & "</TR>"
-   shtml = Replace(shtml, "%time%", "<B>Time</B>")
-   shtml = Replace(shtml, "%patient%", "<B>Patient</B>")
-   shtml = Replace(shtml, "%invoiceto%", "<B>Invoice To</B>")
-   shtml = Replace(shtml, "%item%", "<B>Item</B>")
-   shtml = Replace(shtml, "%item%", "<B>Notes</B>")
-   shtml = Replace(shtml, "%amount%", "<B>Amount</B>")
-   shtml = Replace(shtml, "%tax%", "<B>Tax</B>")
-   shtml = Replace(shtml, "%paid%", "<B>Paid</B>") 
-   shtml = Replace(shtml, "%paymentmethod%", "") 
-   
-   patient_visits = modBillingDBI.Day_List_Get(DateChooser1.value, modDBConnect.currentUser!fk_branch, staff[combobox1.index]!fk_staff)
-   For Each visit In patient_visits
-      sHtml &= "<TR VALIGN=TOP>" & day_list_html_row_template() & "</TR>"
-      If Last_fk_invoice <> visit!fk_invoice Then
-         If Not IsNull(visit!appointment_time) Then   
-            shtml = Replace(shtml, "%time%", Format(Time(visit!appointment_time), "hh:nn"))
-         Else
-            shtml = Replace(shtml, "%time%", "")
-         End If   
-         If last_fk_patient <> visit!fk_patient Then                     'the previous invoice could have been to same patient
-            shtml = Replace(shtml, "%patient%", visit!patient_wholename) 'if not, print name
-         Else                                                            'otherwise
-            shtml = Replace(shtml, "%patient%", "")                      'suppress it
-         End If
-         If Not IsNull(visit!notes) Then
-            shtml = Replace(shtml, "%notes%", visit!notes)
-         Else
-            shtml = Replace(shtml, "%notes%", "")
-         End If   
-         If Not IsNull(visit!account_to_name) Then
-            invoices_others.Add(visit, invoices_others.count)  
-         Endif
-         Inc ipatientCount
-         Last_fk_invoice = visit!fk_invoice
-         last_fk_patient = visit!fk_patient
-         bSameInvoice = False 
-      Else
-         shtml = Replace(shtml, "%time%", "")
-         shtml = Replace(shtml, "%patient%", "") 
-         shtml = Replace(shtml, "%notes%", "") 
-         bSameInvoice = True
-      End If   
-      If Not IsNull(visit!fk_lu_bulk_billing_type) Then
-         Select Case visit!fk_lu_bulk_billing_type
-            Case const.BulkBilling_Type_Medicare
-               If Not bSameInvoice Then    
-                  shtml = Replace(shtml, "%invoiceto%", "Medicare")
-               Else
-                  shtml = Replace(shtml, "%invoiceto%", "")
-               End If   
-               running_total_medicare += modUtil.MoneyToFloat(visit!amount)
-               If Last_fk_invoice <> visit!fk_invoice Then Inc total_consults_billed_to_Medicare
-            Case const.BulkBilling_Type_Veteran
-               shtml = Replace(shtml, "%invoiceto%", "Veterans")
-               running_total_veterans += modUtil.MoneyToFloat(visit!amount)
-               If Last_fk_invoice <> visit!fk_invoice Then Inc total_consults_billed_to_repat
-            Case Else
-               shtml = Replace(shtml, "%invoiceto%", "Private")
-         End Select
-         
-      Else
-         If Not IsNull(visit!account_to_name) Then
-            If InStr(Lower(visit!descriptor_brief), "workcover") Then
-               shtml = Replace(shtml, "%invoiceto%", visit!account_to_name & " (Workcover)")
-            Else
-               '   shtml = Replace(shtml, "%invoiceto%", visit!account_to_name)
-            Endif
-         Else
-            If Last_fk_invoice <> visit!fk_invoice Then 
-               shtml = Replace(shtml, "%invoiceto%", visit!billing_type) 
-            End If   
-         Endif
-         
-      Endif
-      If Not IsNull(visit!mbs_item) Then
-         shtml = Replace(shtml, "%item%", visit!mbs_item)
-      End If
-      If Not IsNull(visit!ama_item) Then
-         shtml = Replace(shtml, "%item%", visit!ama_item)
-      End If
-      If Not IsNull(visit!user_item) Then
-         shtml = Replace(shtml, "%item%", visit!user_item)
-      End If
-      shtml = Replace(shtml, "%amount%", visit!amount)
-      Print modUtil.MoneyToFloat(visit!amount)
-      
-      If visit!paid = False Then
-         shtml = Replace(shtml, "%paid%", "$0.00") 
-         shtml = Replace(shtml, "%paymentmethod%", "") 
-      Else
-         shtml = Replace(shtml, "%paid%", visit!payment_amount)
-         shtml = Replace(shtml, "%paymentmethod%", visit!payment_method)
-         ' payment_totals[visit!fk_lu_payment_method] = payment_totals[visit!fk_lu_payment_method] + CFloat(Replace(visit!amount, "$", ""))
-         running_total += modUtil.MoneyToFloat(visit!amount)     
-      End If  
-      If IsNull(visit!amount_gst) Then  
-         running_total_gst += modUtil.MoneyToFloat(visit!amount_gst)
-         shtml = Replace(shtml, "%tax%", visit!amount_gst)
-      Else
-         shtml = Replace(sHtml, "%tax%", "")
-      End If   
-   Next
-   shtml &= "</TABLE>"
-   shtml &= "</TABLE></BODY></HTML>"
-   Return sHtml
-   '---------------------------------------------------------------------------------------
-   'Now add a table which summarizes amounts for Cash, Cheques, EFPos or EFT (direct debit)
-   '---------------------------------------------------------------------------------------
-   sHtml &= "<P><B>Money Taken</B></P>"
-   sHtml &= "<TABLE WIDTH=441 CELLPADDING=0 CELLSPACING=1 >"
-   "<COL WIDTH=212>"
-   "<COL WIDTH=208>"
-   For Each payment_method In payment_methods
-      Inc x                                  'billing.lu_payment_method keys 1>6
-      shtml &= "<TR VALIGN=TOP>"
-      shtml &= totals_html_row_template()
-      shtml = Replace(shtml, "%payment_method%", payment_method!method)
-      shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(payment_totals[x]))
-      sHtml &= "</TR>"
-   Next
-   shtml &= totals_html_row_template()
-   shtml = Replace(shtml, "%payment_method%", "")
-   shtml = Replace(shtml, "%total_amount%", "")
-   sHtml &= "</TR>"
-   
-   shtml &= totals_html_row_template()
-   shtml = Replace(shtml, "%payment_method%", "Total (Including GST)")
-   shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(running_total))
-   sHtml &= "</TR>"
-   shtml &= totals_html_row_template()
-   shtml = Replace(shtml, "%payment_method%", "Total GST")
-   shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(running_total_gst))
-   sHtml &= "</TR>"
-   sHtml &= "</TABLE>"
-   sHtml = Replace(sHtml, "%ipatientcount%", Str(ipatientcount))
-   '------------------------------------------------------------------
-   'Now add a table which summarizes amounts medicare and repatriation
-   '------------------------------------------------------------------
-   sHtml &= "<P><B>Consultations Invoiced (unpaid) </B></P>"
-   sHtml &= "<TABLE WIDTH=441 CELLPADDING=0 CELLSPACING=1 >"
-   "<COL WIDTH=212>"
-   "<COL WIDTH=208>"
-   
-   sHtml &= "<TR VALIGN=TOP>" & totals_html_row_template()
-   shtml = Replace(shtml, "%payment_method%", "Medicare")
-   shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(running_total_medicare))
-   sHtml &= "</TR>"
-   shtml &= totals_html_row_template()
-   shtml = Replace(shtml, "%payment_method%", "Veterans")
-   shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(running_total_veterans))
-   sHtml &= "</TR>"
-   For Each visit In invoices_others
-      sHtml &= "<TR VALIGN=TOP>" & totals_html_row_template()
-      shtml = Replace(shtml, "%payment_method%", visit!account_to_name)
-      shtml = Replace(shtml, "%total_amount%", visit!total_bill)
-      sHtml &= "</TR>"
-   Next
-   shtml &= "</TABLE></BODY></HTML>"
-   Return sHtml
-   
-End
-
 Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
    
    Dim patient_visits As Collection
    Dim visit As Collection
    Dim sHtml As String
    Dim Last_fk_invoice As Variant
-   Dim ipatientCount As Integer
-   ' Dim running_total As Float
-   ' Dim payment_totals As New Float[7] 'use 1>6 = billing.lu_payment_method keys
-   ' Dim running_total_gst As Float
-    Dim payment_method As Collection
+   Dim payment_method As Collection
    Dim x As Integer
-   ' Dim running_total_medicare As Float
-   ' Dim running_total_veterans As Float
-   ' Dim running_total_workcover As Float
-   ' Dim total_consults_billed_to_Medicare As Integer
-   ' Dim total_consults_billed_to_repat As Integer
-   ' Dim total_consults_billed_to_workcover As Integer
    Dim invoices_others As New Collection
    Dim bSameInvoice As Boolean
    Dim last_fk_patient As Variant
@@ -5944,12 +5569,37 @@ Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
    Dim visits_private_today As New Collection
    Dim group_name As String
    Dim visit_subset As Collection
-
-   payment_totals = New Float[7] 
-   sHtml = "<HTML><BODY><H4><B><p align='center'<UL>Billings and Payments for Services on " & Format(for_date, "dd mmmm yyyy") & "</H4></P>"
-   patient_visits = modBillingDBI.Day_List_Get(DateChooser1.value, modDBConnect.currentUser!fk_branch, staff[combobox1.index]!fk_staff)
+   Dim Income_Summary_Warning_Table As String
+   Dim Income_summary_html As String
+   Dim warning_html As String
+   Dim income_consults_today As Float  'just for consults, not for paid bills
+   Dim bIsWorkcoverInvoice As Boolean
    
+   day_list_patients_billed_count = 0
+   day_list_patients_billed_medicare_count = 0
+   day_list_patients_billed_veterans_count = 0
+   day_list_patients_billed_private_count = 0
+   day_list_patients_billed_workcover_count = 0
+   day_list_patients_old_invoices_count = 0
+   
+   running_total = 0
+   running_total_gst = 0
+   running_total_medicare = 0
+   running_total_veterans = 0
+   running_total_workcover = 0
+   running_total_old_invoices = 0
+   running_total_private = 0
+   payment_totals = New Float[7] 
+   
+   sHtml = "<HTML><BODY><H3><B><p align='center'<UL>Billings and Payments for " & Format(for_date, "dd mmmm yyyy") & "</H3></P>"
+   sHtml &= "%income_summary_and_warning_table%"
+   
+   patient_visits = modBillingDBI.Day_List_Get(DateChooser1.value, modDBConnect.currentUser!fk_branch, staff[combobox1.index]!fk_staff)
    For Each visit In patient_visits
+      If Last_fk_invoice <> visit!fk_invoice Then
+         Last_fk_invoice = visit!fk_invoice
+         bIsWorkcoverInvoice = False   
+      Endif
       If Not IsNull(visit!fk_lu_bulk_billing_type) Then
          Select Case visit!fk_lu_bulk_billing_type
             Case const.BulkBilling_Type_Medicare
@@ -5959,9 +5609,10 @@ Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
          End Select
       Else   
          If Not IsNull(visit!account_to_name) Then
-            If InStr(Lower(visit!descriptor_brief), "workcover") Then
+            If InStr(Lower(visit!descriptor_brief), "workcover") Or bIsWorkcoverInvoice = True Then
                If modUtil.IsSameDay(DateChooser1.value, visit!appointment_date) Then   
                   visits_workcover.Add(visit, visits_workcover.count)
+                  bIsWorkcoverInvoice = True 
                Else
                   visits_private_other.Add(visit, visits_private_other.count)
                End If
@@ -5980,27 +5631,26 @@ Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
       End If   
    Next
    If visits_medicare.count Then
-      sHtml &= "<HR><p align='left'<H4><B>Billed to Medicare </B></H4></P>"
+      sHtml &= "<HR><p align='left'<H3><B>Billed to Medicare </B></H3></P>"
       shtml &= visit_type_create_html(visits_medicare, "Medicare") 
    Endif
    If visits_veterans.count Then 
-      sHtml &= "<HR><p align='left'<H4><B>Billed to Veterans Affairs </B></H4></P>"
+      sHtml &= "<HR><p align='left'<H3><B>Billed to Veterans Affairs </B></H3></P>"
       shtml &= visit_type_create_html(visits_veterans, "Veterans") 
    Endif
    If visits_private_today.count Then
-      sHtml &= "<HR><p align='left'<H4><B>Private Patients Who Paid Today</B></H4></P>"
+      sHtml &= "<HR><p align='left'<H3><B>Private Patients Who Paid Today</B></H3></P>"
       shtml &= visit_type_create_html(visits_private_today, "Private") 
    Endif
-   If visits_private_other.count Then
-      sHtml &= "<HR><p align='left'<H4><B>Accounts Paid</B></H4></P>"
-      shtml &= visit_type_create_html(visits_private_other, "Old Account") 
-   Endif
    If visits_workcover.count Then
-      sHtml &= "<HR><p align='left'<H4><B>Workcover Visits</B></H4></P>"
+      sHtml &= "<HR><p align='left'<H3><B>Workcover Visits</B></H3></P>"
       shtml &= visit_type_create_html(visits_workcover, "Workcover") 
    Endif
-   
-    '---------------------------------------------------------------------------------------
+   If visits_private_other.count Then
+      sHtml &= "<HR><H3><B><p align='center'<UL>Payments for Services Not Done Today - Old Accounts</B></P>"
+      shtml &= visit_type_create_html(visits_private_other, "Old Account") 
+   Endif
+   '---------------------------------------------------------------------------------------
    'Now add a table which summarizes amounts for Cash, Cheques, EFPos or EFT (direct debit)
    '---------------------------------------------------------------------------------------
    sHtml &= "<HR><P><B>Money Taken</B></P>"
@@ -6011,7 +5661,7 @@ Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
       Inc x                                  'billing.lu_payment_method keys 1>6
       shtml &= "<TR VALIGN=TOP>"
       shtml &= totals_html_row_template()
-      shtml = Replace(shtml, "%payment_method%", payment_method!method)
+      shtml = Replace(shtml, "%payment_method%", UCase(payment_method!method))
       shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(payment_totals[x]))
       sHtml &= "</TR>"
    Next
@@ -6019,7 +5669,6 @@ Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
    shtml = Replace(shtml, "%payment_method%", "")
    shtml = Replace(shtml, "%total_amount%", "")
    sHtml &= "</TR>"
-   
    shtml &= totals_html_row_template()
    shtml = Replace(shtml, "%payment_method%", "Total (Including GST)")
    shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(running_total))
@@ -6029,7 +5678,6 @@ Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
    shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(running_total_gst))
    sHtml &= "</TR>"
    sHtml &= "</TABLE>"
-   sHtml = Replace(sHtml, "%ipatientcount%", Str(ipatientcount))
    '------------------------------------------------------------------
    'Now add a table which summarizes amounts medicare and repatriation
    '------------------------------------------------------------------
@@ -6054,13 +5702,106 @@ Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
       sHtml &= "</TR>"
    Next
    shtml &= "</TABLE></BODY></HTML>"
-   shtml = Replace(shtml, "%incomegenerated%", modUtil.Money_Format(income_generated))
-  
+   If day_list_patients_billed_count Then                                                           ' if patient's seen today
+      'First create a two column table the left part holds the income, the right the warning
+      Income_Summary_Warning_Table = "<TABLE  width = 100% CELLPADDING=0 CELLSPACING=0>"         
+      Income_Summary_Warning_Table &= "<COL WIDTH=35%>"
+      Income_Summary_Warning_Table &= "<COL WIDTH=5%>"
+      Income_Summary_Warning_Table &= "<COL WIDTH=60%>"
+      Income_Summary_Warning_Table &= "<TR VALIGN=TOP>"
+      Income_Summary_Warning_Table &= "<TD WIDTH=35%>"
+      Income_Summary_Warning_Table &= "<P>%income_summary_html%</P>"
+      Income_Summary_Warning_Table &= "</TD>"
+      Income_Summary_Warning_Table &= "<TD WIDTH=5%></TD>" 
+      Income_Summary_Warning_Table &= "<TD WIDTH=60%>"
+      Income_Summary_Warning_Table &= "<P>%warning%</P>"
+      Income_Summary_Warning_Table &= "</TD>"
+      Income_Summary_Warning_Table &= "</TR></TABLE>"
+      'Warning table
+      warning_html = "<TABLE  width = 100%  BORDER = 1 CELLPADDING=5 CELLSPACING=0>"    
+      warning_html &= "<COL WIDTH100%>"
+      warning_html &= "<TR VALIGN=TOP>"
+      warning_html &= "<TD WIDTH=100%>"
+      warning_html &= "<P>" & day_list_warning() & "</P>"
+      warning_html &= "</TD></TR></TABLE>"
+      Income_Summary_Warning_Table = Replace(Income_Summary_Warning_Table, "%warning%", warning_html)
+      
+      'Now the html of the table to go in the first cell of the above table
+      Income_summary_html = "<TABLE  width = 100% CELLPADDING=0 CELLSPACING=0>"                                    ' create a stats table 
+      Income_summary_html &= "<COL WIDTH=60%>"
+      Income_summary_html &= "<COL WIDTH=15%>"
+      Income_summary_html &= "<COL WIDTH=10%>"
+      Income_summary_html &= "<COL WIDTH=10%>"
+      Income_summary_html &= "<TR VALIGN=TOP>" & Day_List_Heading_Stats_Row() '"009F9F9F"
+      Income_summary_html = Replace(Income_summary_html, "%rowheader%", "Patients Seen")
+      Income_summary_html = Replace(Income_summary_html, "%data%", Str(day_list_patients_billed_count - day_list_patients_old_invoices_count))
+      income_consults_today = running_total_medicare + running_total_veterans + running_total_private + running_total_workcover
+      Income_summary_html = Replace(Income_summary_html, "%billedamount%", "")
+      If day_list_patients_billed_medicare_count Then                                               ' patients billed to medicare
+         Income_summary_html &= "<TR VALIGN=TOP>" & Day_List_Heading_Stats_Row()
+         Income_summary_html = Replace(Income_summary_html, "%rowheader%", "Billed to Medicare")
+         Income_summary_html = Replace(Income_summary_html, "%data%", Str(day_list_patients_billed_medicare_count))
+         Income_summary_html = Replace(Income_summary_html, "%billedamount%", modUtil.Money_Format(running_total_medicare))
+      End If   
+      If day_list_patients_billed_veterans_count Then    
+         Income_summary_html &= "<TR VALIGN=TOP>" & Day_List_Heading_Stats_Row()                       ' patients billed to repat
+         Income_summary_html = Replace(Income_summary_html, "%rowheader%", "Billed to Veterans")
+         Income_summary_html = Replace(Income_summary_html, "%data%", Str(day_list_patients_billed_veterans_count))
+         Income_summary_html = Replace(Income_summary_html, "%billedamount%", modUtil.Money_Format(running_total_veterans))
+      End If  
+      If day_list_patients_billed_private_count Then
+         Income_summary_html &= "<TR VALIGN=TOP>" & Day_List_Heading_Stats_Row()                       ' patients billed to repat
+         Income_summary_html = Replace(Income_summary_html, "%rowheader%", "Private Patients Paid")
+         Income_summary_html = Replace(Income_summary_html, "%data%", Str(day_list_patients_billed_private_count))
+         Income_summary_html = Replace(Income_summary_html, "%billedamount%", modUtil.Money_Format(running_total_private))      
+      Endif
+      If day_list_patients_billed_workcover_count Then
+         Income_summary_html &= "<TR VALIGN=TOP>" & Day_List_Heading_Stats_Row()                       ' patients billed to repat
+         Income_summary_html = Replace(Income_summary_html, "%rowheader%", "Billed to Workcover")
+         Income_summary_html = Replace(Income_summary_html, "%data%", Str(day_list_patients_billed_workcover_count))
+         Income_summary_html = Replace(Income_summary_html, "%billedamount%", modUtil.Money_Format(running_total_workcover))
+      Endif
+      Income_summary_html &= "<tr><td colspan=9><hr size=1 width=100%></td></tr>"
+      Income_summary_html &= "<TR VALIGN=TOP>" & Day_List_Heading_Stats_Row() 
+      Income_summary_html = Replace(Income_summary_html, "%rowheader%", "Income for:" & Format(DateChooser1.value, "dd/mm/yyyy"))
+      Income_summary_html = Replace(Income_summary_html, "%data%", "")
+      Income_summary_html = Replace(Income_summary_html, "%billedamount%", modUtil.Money_Format(income_consults_today))
+      Income_summary_html &= "<tr><td colspan=9><hr size=1 width=100%></td></tr>"
+      If day_list_patients_old_invoices_count Then
+         Income_summary_html &= "<TR VALIGN=TOP>" & Day_List_Heading_Stats_Row()                       ' patients billed to repat
+         Income_summary_html = Replace(Income_summary_html, "%rowheader%", "Old Invoices Paid")
+         Income_summary_html = Replace(Income_summary_html, "%data%", Str(day_list_patients_old_invoices_count))
+         Income_summary_html = Replace(Income_summary_html, "%billedamount%", modUtil.Money_Format(running_total_old_invoices))
+      Endif
+      Income_summary_html &= "</TABLE>"
+      Income_Summary_Warning_Table = Replace(Income_Summary_Warning_Table, "%income_summary_html%", Income_summary_html)
+      shtml = Replace(shtml, "%income_summary_and_warning_table%", Income_Summary_Warning_Table)
+   Else
+      shtml = Replace(shtml, "%income_summary_and_warning_table%", "")
+   End If
    Return shtml
    
 End
 
+Public Function day_list_warning() As String
+   
+  Dim sMsg As String
+  smsg = "<P><B>Warning: </B>"
+  "Whereas the individual totals in the sub listings will be accurate "
+  "it may be possible that some of the subtotals listed here may not be. "
+  "Workcover consulations may a mixture of workcover specific item numbers "
+  "and normal MBS Item numbers. As these should be grouped on the same invoice "
+  "this should not normally be a problem, if your installation of EasyGP fee schedule "
+  "contains the word 'Workcover' as part of the brief description for core workcover items. For example item AA020 = 'Standard "
+  "level B Consultation' but needs to be listed as 'Standard Level B Workcover Consultation' "
+  "otherwise mbs items used during a workcover consultation could be treated as private billing.</p>"
+   Return sMsg
+End
+
 Public Function visit_type_create_html(visit_subset As Collection, group_name As String) As String
+   'Note the Caveat to bInvoiceIsWorkcover:
+   '  - the workcover item number must contain the text 'workcover' eg AA020 'level BStandard Workcover Consultation'
+   '  - then it is considered all subsequent items on that invoice pertain to workcover, not private billing
    
    Dim patient_visits As Collection
    Dim visit As Collection
@@ -6068,16 +5809,8 @@ Public Function visit_type_create_html(visit_subset As Collection, group_name As
    Dim Last_fk_invoice As Variant
    Dim ipatientCount As Integer
    Dim running_total As Float
-   'Dim payment_totals As New Float[7] 'use 1>6 = billing.lu_payment_method keys
-   ' Dim running_total_gst As Float
    Dim payment_method As Collection
    Dim x As Integer
-   ' Dim running_total_medicare As Float
-   ' Dim running_total_veterans As Float
-   ' Dim running_total_workcover As Float
-   ' Dim total_consults_billed_to_Medicare As Integer
-   ' Dim total_consults_billed_to_repat As Integer
-   ' Dim total_consults_billed_to_workcover As Integer
    Dim invoices_others As New Collection
    Dim bSameInvoice As Boolean
    Dim last_fk_patient As Variant
@@ -6086,6 +5819,7 @@ Public Function visit_type_create_html(visit_subset As Collection, group_name As
    Dim row_template As String
    Dim item_count As Integer
    Dim bOldAccount As Boolean                'If true user is paying an old account
+   Dim bInvoiceIsWorkcover As Boolean         'True if the first item is a workcover item, then applies to all items on invoice
    
    Select Case group_name
       Case "Medicare", "Veterans"
@@ -6140,7 +5874,7 @@ Public Function visit_type_create_html(visit_subset As Collection, group_name As
    
    For Each visit In visit_subset
       If Last_fk_invoice <> visit!fk_invoice Then
-         For x = 1 To 5
+         For x = 1 To 5                     'fixme - guessing won't have more than 5 items a consult, make a variable and keep count of max
             sHtml = Replace(shtml, "%item%" & Str(x), "")
             sHtml = Replace(shtml, "%amount%" & Str(x), "")
          Next
@@ -6168,11 +5902,12 @@ Public Function visit_type_create_html(visit_subset As Collection, group_name As
          If Not IsNull(visit!account_to_name) And IsNull(visit!fk_lu_bulk_billing_type) Then 'a patient eg child with responsible adult has an account to name
             invoices_others.Add(visit, invoices_others.count)                                'but could have been bulk billed
          Endif
-         Inc ipatientCount
+         Inc day_list_patients_billed_count
          Last_fk_invoice = visit!fk_invoice
          last_fk_patient = visit!fk_patient
          item_count = 0
          bSameInvoice = False 
+         bInvoiceIsWorkcover = False   
       Else
          shtml = Replace(shtml, "%time%", "")
          shtml = Replace(shtml, "%patient%", "") 
@@ -6185,22 +5920,43 @@ Public Function visit_type_create_html(visit_subset As Collection, group_name As
          Select Case visit!fk_lu_bulk_billing_type
             Case const.BulkBilling_Type_Medicare
                running_total_medicare += modUtil.MoneyToFloat(visit!amount)
-               If Last_fk_invoice <> visit!fk_invoice Then Inc total_consults_billed_to_Medicare
+               If Not bSameInvoice Then 
+                  If modUtil.IsSameDay(DateChooser1.value, visit!visit_date) Then                   
+                     Inc day_list_patients_billed_medicare_count
+                  End If   
+               End If   
             Case const.BulkBilling_Type_Veteran
                running_total_veterans += modUtil.MoneyToFloat(visit!amount)
-               If Last_fk_invoice <> visit!fk_invoice Then Inc total_consults_billed_to_repat
+               If Not bSameInvoice Then 
+                  If modUtil.IsSameDay(DateChooser1.value, visit!visit_date) Then       
+                     Inc day_list_patients_billed_veterans_count
+                  End If
+               End If   
          End Select
-         
       Else
-         If Not IsNull(visit!account_to_name) Then
-            If InStr(Lower(visit!descriptor_brief), "workcover") Then
+         If Not IsNull(visit!account_to_name) Then   'bug/inaccuracy here, can't differencitate workcover when using eg suture item no's
+            If InStr(Lower(visit!descriptor_brief), "workcover") Then                        'first item is workcover
                shtml = Replace(shtml, "%payee%", visit!account_to_name & " (Workcover)")
+               bInvoiceIsWorkcover = True                                                    'rest of items on invoice now considered workcover
             Else
                shtml = Replace(shtml, "%payee%", visit!account_to_name)
             Endif
+            If bInvoiceIsWorkcover Then 
+               running_total_workcover += modUtil.MoneyToFloat(visit!amount)                 'inc running workcover total
+            End If   
+            If Not bSameInvoice Then 
+               If modUtil.IsSameDay(DateChooser1.value, visit!visit_date) Then       
+                  Inc day_list_patients_billed_workcover_count
+               Endif
+            End If   
          Else
             If Last_fk_invoice = visit!fk_invoice Then 
                shtml = Replace(shtml, "%payee%", "Patient") 
+               If Not bSameInvoice Then 
+                  If modUtil.IsSameDay(DateChooser1.value, visit!visit_date) Then  
+                     Inc day_list_patients_billed_private_count
+                  End If
+               End If   
             End If   
          Endif
          
@@ -6217,11 +5973,20 @@ Public Function visit_type_create_html(visit_subset As Collection, group_name As
       If visit!paid = False Then
          shtml = Replace(shtml, "%paid%", "$0.00") 
          shtml = Replace(shtml, "%paymentmethod%", "") 
-      Else
+      Else                                                                        'invoice paid, either today or old invoice
          shtml = Replace(shtml, "%paid%", visit!total_paid)
          shtml = Replace(shtml, "%paymentmethod%", UCase(visit!payment_method))
          payment_totals[visit!fk_lu_payment_method] = payment_totals[visit!fk_lu_payment_method] + CFloat(Replace(visit!amount, "$", ""))
-         running_total += modUtil.MoneyToFloat(visit!amount)     
+         running_total += modUtil.MoneyToFloat(visit!amount) 
+         running_total_private += modUtil.MoneyToFloat(visit!amount)
+         If Not modUtil.IsSameDay(DateChooser1.Value, visit!appointment_date) Then  
+            running_total_old_invoices += modUtil.MoneyToFloat(visit!amount)
+         Endif
+         If Not bSameInvoice Then
+            If Not modUtil.IsSameDay(DateChooser1.Value, visit!appointment_date) Then  
+               Inc day_list_patients_old_invoices_count
+            Endif
+         End If   
       End If  
       If Not IsNull(visit!amount_gst) Then  
          ' running_total_gst += modUtil.MoneyToFloat(visit!amount_gst)
@@ -6237,254 +6002,32 @@ Public Function visit_type_create_html(visit_subset As Collection, group_name As
    Next
    shtml &= "</TABLE>"
    Return shtml
-   '---------------------------------------------------------------------------------------
-   'Now add a table which summarizes amounts for Cash, Cheques, EFPos or EFT (direct debit)
-   '---------------------------------------------------------------------------------------
-   sHtml &= "<P><B>Money Taken</B></P>"
-   sHtml &= "<TABLE WIDTH=441 CELLPADDING=0 CELLSPACING=1 >"
-   "<COL WIDTH=212>"
-   "<COL WIDTH=208>"
-   For Each payment_method In payment_methods
-      Inc x                                  'billing.lu_payment_method keys 1>6
-      shtml &= "<TR VALIGN=TOP>"
-      shtml &= totals_html_row_template()
-      shtml = Replace(shtml, "%payment_method%", payment_method!method)
-      shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(payment_totals[x]))
-      sHtml &= "</TR>"
-   Next
-   shtml &= totals_html_row_template()
-   shtml = Replace(shtml, "%payment_method%", "")
-   shtml = Replace(shtml, "%total_amount%", "")
-   sHtml &= "</TR>"
-   
-   shtml &= totals_html_row_template()
-   shtml = Replace(shtml, "%payment_method%", "Total (Including GST)")
-   shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(running_total))
-   sHtml &= "</TR>"
-   shtml &= totals_html_row_template()
-   shtml = Replace(shtml, "%payment_method%", "Total GST")
-   shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(running_total_gst))
-   sHtml &= "</TR>"
-   sHtml &= "</TABLE>"
-   sHtml = Replace(sHtml, "%ipatientcount%", Str(ipatientcount))
-   '------------------------------------------------------------------
-   'Now add a table which summarizes amounts medicare and repatriation
-   '------------------------------------------------------------------
-   sHtml &= "<P><B>Consultations Invoiced (unpaid) </B></P>"
-   sHtml &= "<TABLE WIDTH=441 CELLPADDING=0 CELLSPACING=1 >"
-   "<COL WIDTH=212>"
-   "<COL WIDTH=208>"
-   
-   sHtml &= "<TR VALIGN=TOP>" & totals_html_row_template()
-   shtml = Replace(shtml, "%payment_method%", "Medicare")
-   shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(running_total_medicare))
-   sHtml &= "</TR>"
-   shtml &= totals_html_row_template()
-   shtml = Replace(shtml, "%payment_method%", "Veterans")
-   shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(running_total_veterans))
-   sHtml &= "</TR>"
-   For Each visit In invoices_others
-      sHtml &= "<TR VALIGN=TOP>" & totals_html_row_template()
-      shtml = Replace(shtml, "%payment_method%", visit!account_to_name)
-      shtml = Replace(shtml, "%total_amount%", visit!total_bill)
-      running_total += modUtil.MoneyToFloat(visit!total_bill)
-      sHtml &= "</TR>"
-   Next
-   shtml &= "</TABLE></BODY></HTML>"
-   shtml = Replace(shtml, "%incomegenerated%", modUtil.Money_Format(income_generated))
-   Return sHtml
    
 End
 
-Public Sub Day_List_Create_HTML_pre24thapril16(Optional for_date As Date = Now()) As String
+Public Function Day_List_Heading_Stats_Row(Optional bcolour As String) As String
    
-   Dim patient_visits As Collection
-   Dim visit As Collection
-   Dim sHtml As String
-   Dim Last_fk_invoice As Variant
-   Dim ipatientCount As Integer
-   Dim running_total As Float
-   Dim payment_totals As New Float[7] 'use 1>6 = billing.lu_payment_method keys
-   Dim running_total_gst As Float
-   Dim payment_method As Collection
-   Dim x As Integer
-   Dim running_total_medicare As Float
-   Dim running_total_veterans As Float
-   Dim running_total_workcover As Float
-   Dim total_consults_billed_to_Medicare As Integer
-   Dim total_consults_billed_to_repat As Integer
-   Dim total_consults_billed_to_workcover As Integer
-   Dim invoices_others As New Collection
-   Dim bSameInvoice As Boolean
-   Dim last_fk_patient As Variant
-   Dim income_generated As Float
+   Dim shtml As String
    
-   sHtml = "<HTML><BODY><p align='center'><B>Visits by Visit Date for " & staff[combobox1.index]!wholename & " on " & Format(for_date, "dd/mm/yyyy") & "</P>"
-   sHtml &= "<p align='left'<B>Patients Billed </B>%ipatientcount%<BR><B>Income (Paid + Unpaid):</B>%incomegenerated%</P>"
-   sHtml &= "<TABLE WIDTH=100% CELLPADDING=2 CELLSPACING=0>"
-   "<COL WIDTH=3%>"
-   "<COL WIDTH=7%>"
-   "<COL WIDTH=8>"
-   "<COL WIDTH=2%>"
-   "<COL WIDTH=5%>"
-   "<COL WIDTH=5%>"
-   "<COL WIDTH=2%>"
-   "<COL WIDTH=3%>"
-   "<COL WIDTH=3%>"
-   sHtml &= "<TR VALIGN=TOP>" & day_list_html_row_template() & "</TR>"
-   shtml = Replace(shtml, "%time%", "<B>Time</B>")
-   shtml = Replace(shtml, "%patient%", "<B>Patient</B>")
-   shtml = Replace(shtml, "%invoiceto%", "<B>Invoice To</B>")
-   shtml = Replace(shtml, "%item%", "<B>Item</B>")
-   shtml = Replace(shtml, "%item%", "<B>Notes</B>")
-   shtml = Replace(shtml, "%amount%", "<B>Amount</B>")
-   shtml = Replace(shtml, "%tax%", "<B>Tax</B>")
-   shtml = Replace(shtml, "%paid%", "<B>Paid</B>") 
-   shtml = Replace(shtml, "%paymentmethod%", "") 
-   
-   patient_visits = modBillingDBI.Day_List_Get(DateChooser1.value, modDBConnect.currentUser!fk_branch, staff[combobox1.index]!fk_staff)
-   For Each visit In patient_visits
-      sHtml &= "<TR VALIGN=TOP>" & day_list_html_row_template_Bulk_Bill() & "</TR>"
-      If Last_fk_invoice <> visit!fk_invoice Then
-         If Not IsNull(visit!appointment_date) Then   
-            shtml = Replace(shtml, "%time%", Format(visit!appointment_date, "dd/mm/yyyy") & " " & Format(Time(visit!appointment_date), "hh:nn"))
-         Else
-            shtml = Replace(shtml, "%time%", "")
-         End If   
-         If last_fk_patient <> visit!fk_patient Then                     'the previous invoice could have been to same patient
-            shtml = Replace(shtml, "%patient%", visit!patient_wholename) 'if not, print name
-         Else                                                            'otherwise
-            shtml = Replace(shtml, "%patient%", "")                      'suppress it
-         End If
-         If Not IsNull(visit!notes) Then
-            shtml = Replace(shtml, "%notes%", visit!notes)
-         Else
-            shtml = Replace(shtml, "%notes%", "")
-         End If   
-         If Not IsNull(visit!account_to_name) And IsNull(visit!fk_lu_bulk_billing_type) Then 'a patient eg child with responsible adult has an account to name
-            invoices_others.Add(visit, invoices_others.count)                                'but could have been bulk billed
-         Endif
-         Inc ipatientCount
-         Last_fk_invoice = visit!fk_invoice
-         last_fk_patient = visit!fk_patient
-         bSameInvoice = False 
-      Else
-         shtml = Replace(shtml, "%time%", "")
-         shtml = Replace(shtml, "%patient%", "") 
-         shtml = Replace(shtml, "%notes%", "") 
-         bSameInvoice = True
-      End If   
-      If Not IsNull(visit!fk_lu_bulk_billing_type) Then
-         Select Case visit!fk_lu_bulk_billing_type
-            Case const.BulkBilling_Type_Medicare
-               ' If Not bSameInvoice Then    
-               '    shtml = Replace(shtml, "%invoiceto%", "Medicare")
-               ' Else
-               '    shtml = Replace(shtml, "%invoiceto%", "")
-               ' End If   
-               running_total_medicare += modUtil.MoneyToFloat(visit!amount)
-               If Last_fk_invoice <> visit!fk_invoice Then Inc total_consults_billed_to_Medicare
-            Case const.BulkBilling_Type_Veteran
-               shtml = Replace(shtml, "%invoiceto%", "Veterans")
-               running_total_veterans += modUtil.MoneyToFloat(visit!amount)
-               If Last_fk_invoice <> visit!fk_invoice Then Inc total_consults_billed_to_repat
-            Case Else
-               shtml = Replace(shtml, "%invoiceto%", "Private")
-         End Select
-         
-      Else
-         If Not IsNull(visit!account_to_name) Then
-            If InStr(Lower(visit!descriptor_brief), "workcover") Then
-               shtml = Replace(shtml, "%invoiceto%", visit!account_to_name & " (Workcover)")
-            Else
-               shtml = Replace(shtml, "%invoiceto%", visit!account_to_name)
-            Endif
-         Else
-            If Last_fk_invoice = visit!fk_invoice Then 
-               shtml = Replace(shtml, "%invoiceto%", "Patient") 
-            End If   
-         Endif
-         
-      Endif
-      
-      shtml = Replace(shtml, "%item%", visit!item)
-      
-      shtml = Replace(shtml, "%amount%", visit!amount)
-      income_generated += modUtil.MoneyToFloat(visit!amount)
-      If visit!paid = False Then
-         shtml = Replace(shtml, "%paid%", "$0.00") 
-         shtml = Replace(shtml, "%paymentmethod%", "") 
-      Else
-         shtml = Replace(shtml, "%paid%", visit!total_paid)
-         shtml = Replace(shtml, "%paymentmethod%", visit!payment_method)
-         payment_totals[visit!fk_lu_payment_method] = payment_totals[visit!fk_lu_payment_method] + CFloat(Replace(visit!amount, "$", ""))
-         running_total += modUtil.MoneyToFloat(visit!amount)     
-      End If  
-      If Not IsNull(visit!amount_gst) Then  
-         ' running_total_gst += modUtil.MoneyToFloat(visit!amount_gst)
-         shtml = Replace(shtml, "%tax%", visit!amount_gst)
-      Else
-         shtml = Replace(sHtml, "%tax%", "")
-      End If   
-   Next
-   shtml &= "</TABLE>"
-   
-   '---------------------------------------------------------------------------------------
-   'Now add a table which summarizes amounts for Cash, Cheques, EFPos or EFT (direct debit)
-   '---------------------------------------------------------------------------------------
-   sHtml &= "<P><B>Money Taken</B></P>"
-   sHtml &= "<TABLE WIDTH=441 CELLPADDING=0 CELLSPACING=1 >"
-   "<COL WIDTH=212>"
-   "<COL WIDTH=208>"
-   For Each payment_method In payment_methods
-      Inc x                                  'billing.lu_payment_method keys 1>6
-      shtml &= "<TR VALIGN=TOP>"
-      shtml &= totals_html_row_template()
-      shtml = Replace(shtml, "%payment_method%", payment_method!method)
-      shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(payment_totals[x]))
-      sHtml &= "</TR>"
-   Next
-   shtml &= totals_html_row_template()
-   shtml = Replace(shtml, "%payment_method%", "")
-   shtml = Replace(shtml, "%total_amount%", "")
-   sHtml &= "</TR>"
-   
-   shtml &= totals_html_row_template()
-   shtml = Replace(shtml, "%payment_method%", "Total (Including GST)")
-   shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(running_total))
-   sHtml &= "</TR>"
-   shtml &= totals_html_row_template()
-   shtml = Replace(shtml, "%payment_method%", "Total GST")
-   shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(running_total_gst))
-   sHtml &= "</TR>"
-   sHtml &= "</TABLE>"
-   sHtml = Replace(sHtml, "%ipatientcount%", Str(ipatientcount))
-   '------------------------------------------------------------------
-   'Now add a table which summarizes amounts medicare and repatriation
-   '------------------------------------------------------------------
-   sHtml &= "<P><B>Consultations Invoiced (unpaid) </B></P>"
-   sHtml &= "<TABLE WIDTH=441 CELLPADDING=0 CELLSPACING=1 >"
-   "<COL WIDTH=212>"
-   "<COL WIDTH=208>"
-   
-   sHtml &= "<TR VALIGN=TOP>" & totals_html_row_template()
-   shtml = Replace(shtml, "%payment_method%", "Medicare")
-   shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(running_total_medicare))
-   sHtml &= "</TR>"
-   shtml &= totals_html_row_template()
-   shtml = Replace(shtml, "%payment_method%", "Veterans")
-   shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(running_total_veterans))
-   sHtml &= "</TR>"
-   For Each visit In invoices_others
-      sHtml &= "<TR VALIGN=TOP>" & totals_html_row_template()
-      shtml = Replace(shtml, "%payment_method%", visit!account_to_name)
-      shtml = Replace(shtml, "%total_amount%", visit!total_bill)
-      running_total += modUtil.MoneyToFloat(visit!total_bill)
-      sHtml &= "</TR>"
-   Next
-   shtml &= "</TABLE></BODY></HTML>"
-   shtml = Replace(shtml, "%incomegenerated%", modUtil.Money_Format(income_generated))
-   Return sHtml
+   If bcolour <> "" Then  
+      bcolour = "BGCOLOR='#" & bcolour & "'"
+   Endif
+   shtml = ""
+   "<TD  bg WIDTH=60%>"
+   "   <P><B>%rowheader%</B></P>"
+   "</TD>"
+   "<TD bg WIDTH=15%>"
+   "   <P>%data%</P>"
+   "</TD>"
+   "<TD bg WIDTH=10%>"
+   "   <P><B>%billedamount%</B></P>"
+   "</TD>"
+    "<TD WIDTH=10%>"
+   "   <P><B></P>" 
+   "</TD>"
+   sHtml = Replace(shtml, "bg", bcolour)
+   Print shtml
+   Return shtml
    
 End
 

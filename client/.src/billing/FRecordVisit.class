@@ -75,7 +75,8 @@ Private running_total_medicare As Float
 Private running_total_veterans As Float
 Private running_total_workcover As Float
 Private running_total_old_invoices As Float
-Private running_total_private As Float
+Private running_total_private_paid As Float
+Private running_total_private_account As Float
 Private payment_totals As New Float[7] 'use 1>6 = billing.lu_payment_method keys
 Private day_list_patients_billed_count As Integer
 Private day_list_patients_billed_medicare_count As Integer
@@ -83,6 +84,9 @@ Private day_list_patients_billed_veterans_count As Integer
 Private day_list_patients_billed_private_count As Integer
 Private day_list_patients_billed_workcover_count As Integer
 Private day_list_patients_old_invoices_count As Integer
+Private day_list_patients_paid_count As Integer
+Private day_list_doctor As Collection
+Private day_list_doctors As Collection    'of all doctors who had appointments/takings on the day
 Private income_generated As Float
 Private cell_text As String
 Private currentconsult As CConsult
@@ -690,7 +694,7 @@ Public Sub Reports_Available_Refresh()
    ' columnview99[x][0] = "Days Takings"
    ' Inc x
    columnview99.Add(x, 0)
-   columnview99[x][0] = "Day List Patients Seen"
+   columnview99[x][0] = "Day List - Invoices/Payments"
    
    ' For Each Report_title In Report_Titles
    '    columnview99.Add(Report_title!pk, 0)
@@ -957,10 +961,8 @@ Public Sub columnview99_Select()
          ' Endif
          ' form_reports.Report_Show(Report_Titles[columnview99.Item.key], DateChooserAccountDate.value, fk_staff, period)
          Select Case columnview99[columnview99.Item.key][0]
-            Case "Days Takings"
-               Report_Show_HTML(Days_Takings_Create_HTML(DateChooser1.Value))
                
-            Case "Day List Patients Seen"
+            Case "Day List - Invoices/Payments"
                Report_Show_HTML(Day_List_Create_HTML(DateChooser1.Value))
          End Select
    End Select
@@ -3387,6 +3389,7 @@ Public Sub mnuInvoices_Click()
    Dim item_billed As Collection
    Dim latex As String
    Dim form_sdd As FSameDayDelete
+   Dim pdf_path As String
    
    cvwItemsTodayOrUnpaid.MoveCurrent()
    Item_Billed = Items_Today_Or_Unpaid[cvwItemsTodayOrUnpaid.Item.key]
@@ -3394,6 +3397,13 @@ Public Sub mnuInvoices_Click()
       Case "edit"
          lblEditAreaHeading.text = "EDIT INVOICE"
          VBox_EditArea_Inner.Enabled = True
+      Case "view as pdf"
+         If Not IsNull(Item_Billed!latex) Then
+            pdf_path = modPrinting.Latex_To_PDF(Item_Billed!latex)
+            modArchiveDocumentsDBI.Launch_External_PDF_Viewer(pdf_path)
+         Else
+            Message.Info("Sorry, there is  no LaTex definition for this invoice")
+         End If   
       Case "invoice delete"
          modBillingDBI.Delete_Invoice(Item_Billed!fk_invoice)
          If item_billed!online And If Day(item_billed!date_invoiced) = Day(Now()) And If Month(item_billed!date_invoiced) = Month(Now()) And If Year(item_billed!date_invoiced) = Year(Now()) Then
@@ -5581,6 +5591,8 @@ Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
    day_list_patients_billed_private_count = 0
    day_list_patients_billed_workcover_count = 0
    day_list_patients_old_invoices_count = 0
+   day_list_patients_billed_private_count = 0
+   day_list_patients_paid_count = 0
    
    running_total = 0
    running_total_gst = 0
@@ -5588,8 +5600,12 @@ Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
    running_total_veterans = 0
    running_total_workcover = 0
    running_total_old_invoices = 0
-   running_total_private = 0
+   running_total_private_paid = 0
+   running_total_private_account = 0
+   
    payment_totals = New Float[7] 
+   
+   day_list_doctors = New Collection
    
    sHtml = "<HTML><BODY><H3><B><p align='center'<UL>Billings and Payments for " & Format(for_date, "dd mmmm yyyy") & "</H3></P>"
    sHtml &= "%income_summary_and_warning_table%"
@@ -5599,6 +5615,13 @@ Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
       If Last_fk_invoice <> visit!fk_invoice Then
          Last_fk_invoice = visit!fk_invoice
          bIsWorkcoverInvoice = False   
+         If Not day_list_doctors.Exist(visit!fk_staff_provided_service) Then
+            day_list_doctor = New Collection
+            day_list_doctor!fk_staff = visit!fk_staff_provided_service
+            day_list_doctor!wholename = UCase(Left(visit!staff_firstname)) & " " & modUtil.Ucase_Word_First_Letter(visit!staff_surname)
+            day_list_doctor!takings = CFloat(0)
+            day_list_doctors.Add(day_list_doctor, visit!fk_staff_provided_service)
+         Endif
       Endif
       If Not IsNull(visit!fk_lu_bulk_billing_type) Then
          Select Case visit!fk_lu_bulk_billing_type
@@ -5610,7 +5633,7 @@ Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
       Else   
          If Not IsNull(visit!account_to_name) Then
             If InStr(Lower(visit!descriptor_brief), "workcover") Or bIsWorkcoverInvoice = True Then
-               If modUtil.IsSameDay(DateChooser1.value, visit!appointment_date) Then   
+               If modUtil.IsSameDay(DateChooser1.value, visit!appointment_date) Or modUtil.IsSameDay(DateChooser1.value, visit!visit_date) Then   
                   visits_workcover.Add(visit, visits_workcover.count)
                   bIsWorkcoverInvoice = True 
                Else
@@ -5618,7 +5641,7 @@ Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
                End If
             Endif
          Else
-            If modUtil.IsSameDay(DateChooser1.Value, visit!appointment_date) Then  
+            If modUtil.IsSameDay(DateChooser1.Value, visit!appointment_date) Or modUtil.IsSameDay(DateChooser1.Value, visit!visit_date) Then  
                If visit!paid = True Then   
                   visits_private_today.Add(visit, visits_private_today.count)
                Else
@@ -5631,20 +5654,25 @@ Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
       End If   
    Next
    If visits_medicare.count Then
-      sHtml &= "<HR><p align='left'<H3><B>Billed to Medicare </B></H3></P>"
+      sHtml &= "<HR><p align='left'<H3><B>Billed to Medicare</B></H3></P>"
       shtml &= visit_type_create_html(visits_medicare, "Medicare") 
    Endif
    If visits_veterans.count Then 
       sHtml &= "<HR><p align='left'<H3><B>Billed to Veterans Affairs </B></H3></P>"
       shtml &= visit_type_create_html(visits_veterans, "Veterans") 
    Endif
-   If visits_private_today.count Then
-      sHtml &= "<HR><p align='left'<H3><B>Private Patients Who Paid Today</B></H3></P>"
-      shtml &= visit_type_create_html(visits_private_today, "Private") 
-   Endif
    If visits_workcover.count Then
-      sHtml &= "<HR><p align='left'<H3><B>Workcover Visits</B></H3></P>"
+      sHtml &= "<HR><p align='left'<H3><B>Billed to Workcover</B></H3></P>"
       shtml &= visit_type_create_html(visits_workcover, "Workcover") 
+   Endif
+   
+   If visits_private_account.count Then
+      sHtml &= "<HR><p align='left'<H3><B>Billed to Private Patients</B></H3></P>"
+      shtml &= visit_type_create_html(visits_private_account, "Private") 
+   Endif
+   If visits_private_today.count Then
+      sHtml &= "<HR><p align='left'<H3><B>Paid by Private Patients</B></H3></P>"
+      shtml &= visit_type_create_html(visits_private_today, "Private") 
    Endif
    If visits_private_other.count Then
       sHtml &= "<HR><H3><B><p align='center'<UL>Payments for Services Not Done Today - Old Accounts</B></P>"
@@ -5671,7 +5699,7 @@ Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
    sHtml &= "</TR>"
    shtml &= totals_html_row_template()
    shtml = Replace(shtml, "%payment_method%", "Total (Including GST)")
-   shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(running_total))
+   shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(running_total_private_paid + running_total_old_invoices))
    sHtml &= "</TR>"
    shtml &= totals_html_row_template()
    shtml = Replace(shtml, "%payment_method%", "Total GST")
@@ -5680,28 +5708,28 @@ Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
    sHtml &= "</TABLE>"
    '------------------------------------------------------------------
    'Now add a table which summarizes amounts medicare and repatriation
-   '------------------------------------------------------------------
-   sHtml &= "<HR><P><B>Consultations Invoiced (unpaid) </B></P>"
-   sHtml &= "<TABLE WIDTH=441 CELLPADDING=0 CELLSPACING=1 >"
-   "<COL WIDTH=212>"
-   "<COL WIDTH=208>"
-   
-   sHtml &= "<TR VALIGN=TOP>" & totals_html_row_template()
-   shtml = Replace(shtml, "%payment_method%", "Medicare")
-   shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(running_total_medicare))
-   sHtml &= "</TR>"
-   shtml &= totals_html_row_template()
-   shtml = Replace(shtml, "%payment_method%", "Veterans")
-   shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(running_total_veterans))
-   sHtml &= "</TR>"
-   For Each visit In invoices_others
-      sHtml &= "<TR VALIGN=TOP>" & totals_html_row_template()
-      shtml = Replace(shtml, "%payment_method%", visit!account_to_name)
-      shtml = Replace(shtml, "%total_amount%", visit!total_bill)
-      running_total += modUtil.MoneyToFloat(visit!total_bill)
-      sHtml &= "</TR>"
-   Next
-   shtml &= "</TABLE></BODY></HTML>"
+   ' '------------------------------------------------------------------
+   ' sHtml &= "<HR><P><B>Consultations Invoiced (unpaid) </B></P>"
+   ' sHtml &= "<TABLE WIDTH=441 CELLPADDING=0 CELLSPACING=1 >"
+   ' "<COL WIDTH=212>"
+   ' "<COL WIDTH=208>"
+   ' 
+   ' sHtml &= "<TR VALIGN=TOP>" & totals_html_row_template()
+   ' shtml = Replace(shtml, "%payment_method%", "Medicare")
+   ' shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(running_total_medicare))
+   ' sHtml &= "</TR>"
+   ' shtml &= totals_html_row_template()
+   ' shtml = Replace(shtml, "%payment_method%", "Veterans")
+   ' shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(running_total_veterans))
+   ' sHtml &= "</TR>"
+   ' For Each visit In invoices_others
+   '    sHtml &= "<TR VALIGN=TOP>" & totals_html_row_template()
+   '    shtml = Replace(shtml, "%payment_method%", visit!account_to_name)
+   '    shtml = Replace(shtml, "%total_amount%", visit!total_bill)
+   '    running_total += modUtil.MoneyToFloat(visit!total_bill)
+   '    sHtml &= "</TR>"
+   ' Next
+   ' shtml &= "</TABLE></BODY></HTML>"
    If day_list_patients_billed_count Then                                                           ' if patient's seen today
       'First create a two column table the left part holds the income, the right the warning
       Income_Summary_Warning_Table = "<TABLE  width = 100% CELLPADDING=0 CELLSPACING=0>"         
@@ -5735,7 +5763,7 @@ Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
       Income_summary_html &= "<TR VALIGN=TOP>" & Day_List_Heading_Stats_Row() '"009F9F9F"
       Income_summary_html = Replace(Income_summary_html, "%rowheader%", "Patients Seen")
       Income_summary_html = Replace(Income_summary_html, "%data%", Str(day_list_patients_billed_count - day_list_patients_old_invoices_count))
-      income_consults_today = running_total_medicare + running_total_veterans + running_total_private + running_total_workcover
+      income_consults_today = running_total_medicare + running_total_veterans + running_total_private_paid + running_total_workcover
       Income_summary_html = Replace(Income_summary_html, "%billedamount%", "")
       If day_list_patients_billed_medicare_count Then                                               ' patients billed to medicare
          Income_summary_html &= "<TR VALIGN=TOP>" & Day_List_Heading_Stats_Row()
@@ -5749,11 +5777,11 @@ Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
          Income_summary_html = Replace(Income_summary_html, "%data%", Str(day_list_patients_billed_veterans_count))
          Income_summary_html = Replace(Income_summary_html, "%billedamount%", modUtil.Money_Format(running_total_veterans))
       End If  
-      If day_list_patients_billed_private_count Then
+      If day_list_patients_billed_private_count Then     'patient took account didn't pay
          Income_summary_html &= "<TR VALIGN=TOP>" & Day_List_Heading_Stats_Row()                       ' patients billed to repat
-         Income_summary_html = Replace(Income_summary_html, "%rowheader%", "Private Patients Paid")
+         Income_summary_html = Replace(Income_summary_html, "%rowheader%", "Billed to Private Patients")
          Income_summary_html = Replace(Income_summary_html, "%data%", Str(day_list_patients_billed_private_count))
-         Income_summary_html = Replace(Income_summary_html, "%billedamount%", modUtil.Money_Format(running_total_private))      
+         Income_summary_html = Replace(Income_summary_html, "%billedamount%", modUtil.Money_Format(running_total_private_account))
       Endif
       If day_list_patients_billed_workcover_count Then
          Income_summary_html &= "<TR VALIGN=TOP>" & Day_List_Heading_Stats_Row()                       ' patients billed to repat
@@ -5761,9 +5789,22 @@ Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
          Income_summary_html = Replace(Income_summary_html, "%data%", Str(day_list_patients_billed_workcover_count))
          Income_summary_html = Replace(Income_summary_html, "%billedamount%", modUtil.Money_Format(running_total_workcover))
       Endif
+      If day_list_patients_paid_count Then                  
+         Income_summary_html &= "<TR VALIGN=TOP>" & Day_List_Heading_Stats_Row()                       ' patients billed to repat
+         Income_summary_html = Replace(Income_summary_html, "%rowheader%", "Paid by Private Patients")
+         Income_summary_html = Replace(Income_summary_html, "%data%", Str(day_list_patients_paid_count))
+         Income_summary_html = Replace(Income_summary_html, "%billedamount%", modUtil.Money_Format(running_total_private_paid))      
+      Endif
+      
       Income_summary_html &= "<tr><td colspan=9><hr size=1 width=100%></td></tr>"
+      For Each day_list_doctor In day_list_doctors
+         Income_summary_html &= "<TR VALIGN=TOP>" & Day_List_Heading_Stats_Row() 
+         Income_summary_html = Replace(Income_summary_html, "%rowheader%", "Takings Dr " & day_list_doctor!wholename)
+         Income_summary_html = Replace(Income_summary_html, "%data%", "")
+         Income_summary_html = Replace(Income_summary_html, "%billedamount%", modUtil.Money_Format(day_list_doctor!takings))
+      Next
       Income_summary_html &= "<TR VALIGN=TOP>" & Day_List_Heading_Stats_Row() 
-      Income_summary_html = Replace(Income_summary_html, "%rowheader%", "Income for:" & Format(DateChooser1.value, "dd/mm/yyyy"))
+      Income_summary_html = Replace(Income_summary_html, "%rowheader%", "Takings for " & Format(DateChooser1.value, "dd/mm/yyyy"))
       Income_summary_html = Replace(Income_summary_html, "%data%", "")
       Income_summary_html = Replace(Income_summary_html, "%billedamount%", modUtil.Money_Format(income_consults_today))
       Income_summary_html &= "<tr><td colspan=9><hr size=1 width=100%></td></tr>"
@@ -5785,17 +5826,19 @@ End
 
 Public Function day_list_warning() As String
    
-  Dim sMsg As String
-  smsg = "<P><B>Warning: </B>"
-  "Whereas the individual totals in the sub listings will be accurate "
-  "it may be possible that some of the subtotals listed here may not be. "
-  "Workcover consulations may a mixture of workcover specific item numbers "
-  "and normal MBS Item numbers. As these should be grouped on the same invoice "
-  "this should not normally be a problem, if your installation of EasyGP fee schedule "
-  "contains the word 'Workcover' as part of the brief description for core workcover items. For example item AA020 = 'Standard "
-  "level B Consultation' but needs to be listed as 'Standard Level B Workcover Consultation' "
-  "otherwise mbs items used during a workcover consultation could be treated as private billing.</p>"
+   Dim sMsg As String
+   
+   smsg = "<P><B>Warning: </B>"
+   "Whereas the individual totals in the sub listings will be accurate "
+   "it may be possible that some of the subtotals listed here may not be. "
+   "Workcover consulations may a mixture of workcover specific item numbers "
+   "and normal MBS Item numbers. As these should be grouped on the same invoice "
+   "this should not normally be a problem, if your installation of EasyGP fee schedule "
+   "contains the word 'Workcover' as part of the brief description for core workcover items. For example item AA020 = 'Standard "
+   "level B Consultation' but needs to be listed as 'Standard Level B Workcover Consultation' "
+   "otherwise mbs items used during a workcover consultation could be treated as private billing.</p>"
    Return sMsg
+   
 End
 
 Public Function visit_type_create_html(visit_subset As Collection, group_name As String) As String
@@ -5854,6 +5897,7 @@ Public Function visit_type_create_html(visit_subset As Collection, group_name As
          shtml = Replace(shtml, "%notes%", "<B>Notes</B>")
          shtml = Replace(shtml, "%amount%", "<B>Fee(s)</B>")
          shtml = Replace(shtml, "%tax%", "<B>Tax</B>")
+         shtml = Replace(shtml, "%total%", "<B>Total</B>")
          shtml = Replace(shtml, "%paid%", "<B>Paid</B>") 
          shtml = Replace(shtml, "%paymentmethod%", "") 
       Case "Private", "Old Account"
@@ -5867,6 +5911,7 @@ Public Function visit_type_create_html(visit_subset As Collection, group_name As
          shtml = Replace(shtml, "%notes%", "<B>Notes</B>")
          shtml = Replace(shtml, "%amount%", "<B>Fee(s)</B>")
          shtml = Replace(shtml, "%tax%", "<B>Tax</B>")
+         shtml = Replace(shtml, "%total%", "<B>Total</B>")
          shtml = Replace(shtml, "%paid%", "<B>Paid</B>") 
          shtml = Replace(shtml, "%paymentmethod%", "") 
          If group_name = "Old Account" Then bOldAccount = True     
@@ -5954,7 +5999,13 @@ Public Function visit_type_create_html(visit_subset As Collection, group_name As
                shtml = Replace(shtml, "%payee%", "Patient") 
                If Not bSameInvoice Then 
                   If modUtil.IsSameDay(DateChooser1.value, visit!visit_date) Then  
-                     Inc day_list_patients_billed_private_count
+                     If visit!paid = True Then 
+                        Inc day_list_patients_paid_count
+                        running_total_private_paid += modUtil.MoneyToFloat(visit!amount)
+                     Else
+                        Inc day_list_patients_billed_private_count
+                        running_total_private_account += modUtil.MoneyToFloat(visit!amount)
+                     End If   
                   End If
                End If   
             End If   
@@ -5969,6 +6020,7 @@ Public Function visit_type_create_html(visit_subset As Collection, group_name As
          shtml = Replace(shtml, "%amount%" & Str(item_count), ", " & visit!amount & "%amount%" & Str(item_count + 1)) ' ":&nbsp;&nbsp;&nbsp;&nbsp;amount_total")
       End If   
       item_numbers_total += modUtil.MoneyToFloat(visit!amount)
+      day_list_doctors[visit!fk_staff_provided_service]!takings += modUtil.MoneyToFloat(visit!amount)
       income_generated += modUtil.MoneyToFloat(visit!amount)
       If visit!paid = False Then
          shtml = Replace(shtml, "%paid%", "$0.00") 
@@ -5978,7 +6030,7 @@ Public Function visit_type_create_html(visit_subset As Collection, group_name As
          shtml = Replace(shtml, "%paymentmethod%", UCase(visit!payment_method))
          payment_totals[visit!fk_lu_payment_method] = payment_totals[visit!fk_lu_payment_method] + CFloat(Replace(visit!amount, "$", ""))
          running_total += modUtil.MoneyToFloat(visit!amount) 
-         running_total_private += modUtil.MoneyToFloat(visit!amount)
+         
          If Not modUtil.IsSameDay(DateChooser1.Value, visit!appointment_date) Then  
             running_total_old_invoices += modUtil.MoneyToFloat(visit!amount)
          Endif
@@ -6022,7 +6074,7 @@ Public Function Day_List_Heading_Stats_Row(Optional bcolour As String) As String
    "<TD bg WIDTH=10%>"
    "   <P><B>%billedamount%</B></P>"
    "</TD>"
-    "<TD WIDTH=10%>"
+   "<TD WIDTH=10%>"
    "   <P><B></P>" 
    "</TD>"
    sHtml = Replace(shtml, "bg", bcolour)
@@ -6082,6 +6134,9 @@ Public Function day_list_html_row_template_Non_Bulk_Bill() As String
    "<TD WIDTH=2%>"
    "   <P>%tax%</P>"
    "</TD>"
+   "<TD WIDTH=2%>"
+   "   <P>%total%</P>"
+   "</TD>"
    "<TD WIDTH=3%>"
    "   <P>%paid%</P>"
    "</TD>"
@@ -6117,6 +6172,9 @@ Public Function day_list_html_row_template_Workcover_Insurance() As String
    "</TD>"
    "<TD WIDTH=2%>"
    "   <P>%tax%</P>"
+   "</TD>"
+   "<TD WIDTH=2%>"
+   "   <P>%total%</P>"
    "</TD>"
    "<TD WIDTH=3%>"
    "   <P>%paid%</P>"
@@ -6223,7 +6281,8 @@ Public Sub Days_Takings_Create_HTML(Optional for_date As Date = Now()) As String
    sHtml &= "</TR>"
    sHtml &= "<TR VALIGN=TOP>" & totals_html_row_template()
    shtml = Replace(shtml, "%payment_method%", "<B>TOTAL (Including GST)</B>")
-   shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(running_total))
+   Print modUtil.Money_Format(running_total_private_paid + running_total_old_invoices)
+   shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(running_total_private_paid + running_total_old_invoices))
    sHtml &= "</TR>"
    sHtml &= "</TABLE></BODY></HTML>"
    Return shtml
@@ -6961,11 +7020,9 @@ Public Sub cvwWorkcoverClaims_Select()
    
 End
 
-Public Sub DateChooser1_Activate()
+Public Sub DateChooser1_Change()
    
-   ' Report_Show_HTML(Days_Takings_Create_HTML(DateChooser1.Value))
-   columnview99.SetFocus
-   columnview99.Item.Selected = True 
+   Report_Show_HTML(Day_List_Create_HTML(DateChooser1.Value))
    
 End
 
@@ -6977,6 +7034,7 @@ Public Sub Report_Show_HTML(sHtml As String)
          .tbWebBrowserPrint.Visible = True   
          .tbWebBrowserZoomIn.Visible = True  
          .tbWebBrowserZoomOut.Visible = True 
+         .Set_Landscape_Printing(True)
       End With
    End If   
    With form_reports
@@ -6985,46 +7043,3 @@ Public Sub Report_Show_HTML(sHtml As String)
    End With
    
 End
-' drop view billing.vwDaysInvoicesAndPayments;
-' Create or replace View billing.vwDaysInvoicesAndPayments as
-' select
-'   bookings.begin AS appointment_date,
-'   data_persons.firstname || ' ' ::text || data_persons.surname as patient_wholename,
-'   COALESCE(data_organisations.organisation, DP2.firstname || ' '::text || DP2.surname) AS account_to_name,
-'   lu_bulk_billing_type.type as bulk_billing_type,
-'   COALESCE(COALESCE(fee_schedule.ama_item, fee_schedule.mbs_item), fee_schedule.user_item) AS item,
-'   fee_schedule.descriptor_brief,
-'   items_billed.pk as pk_items_billed,
-'   items_billed.amount,
-'   items_billed.amount_gst,
-'   billing.invoices.pk as fk_invoice,
-'   billing.invoices.fk_staff_provided_service,
-'   billing.invoices.fk_patient,
-'   billing.invoices.date_invoiced,
-'   billing.invoices.paid,
-'   billing.invoices.notes,
-'   billing.invoices.fk_payer_person,
-'   billing.invoices.fk_payer_branch,
-'   billing.invoices.fk_branch,
-'   billing.invoices.visit_date,
-'   billing.invoices.fk_lu_bulk_billing_type,
-'   billing.invoices.fk_appointment,
-'   billing.invoices.total_bill,
-'   billing.invoices.total_gst,
-'   billing.invoices.total_paid,
-'   payments_received.fk_lu_payment_method,
-'   lu_payment_method.method as payment_method
-' FROM
-'   billing.invoices
-'   LEFT JOIN clerical.data_patients on data_patients.pk = billing.invoices.fk_patient
-'   LEFT JOIN contacts.data_persons on data_patients.fk_person = data_persons.pk
-'   LEFT JOIN clerical.bookings on bookings.pk = invoices.fk_appointment
-'   JOIN billing.items_billed on items_billed.fk_invoice = invoices.pk
-'   LEFT JOIN billing.lu_bulk_billing_type ON invoices.fk_lu_bulk_billing_type = lu_bulk_billing_type.pk
-'   LEFT JOIN contacts.data_branches on data_branches.pk = invoices.fk_payer_branch
-'   LEFT JOIN contacts.data_organisations on data_organisations.pk = data_branches.fk_organisation
-'   LEFT JOIN contacts.data_persons DP2 ON invoices.fk_payer_person = DP2.pk
-'   left join billing.payments_received ON invoices.pk = payments_received.fk_invoice
-'   Left join billing.lu_payment_method on payments_received.fk_lu_payment_method =  lu_payment_method.pk
-'   JOIN billing.fee_schedule ON fee_schedule.pk = items_billed.fk_fee_schedule
-'   ;

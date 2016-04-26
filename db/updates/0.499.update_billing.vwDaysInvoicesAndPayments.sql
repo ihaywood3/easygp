@@ -1,4 +1,4 @@
-﻿-- drop view billing.vwDaysInvoicesAndPayments;
+﻿--drop view billing.vwDaysInvoicesAndPayments;
 
 Create or replace View billing.vwDaysInvoicesAndPayments as
 select

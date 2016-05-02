@@ -140,6 +140,7 @@ Private fk_lu_default_billing_level As Variant
 Private iBilling_Category As Integer
 Private iAccountDisplayMode As Integer  'const.Billing_Accounts_Paid,  Billing_Accounts_UnPaid, Billing_Accounts_All
 Private form_billingcards As FPatientBillingCards
+Private form_patient_photo As FPatientPhoto 
 'Private form_reports As FBillingReports
 Private form_reports As FHtmlViewer
 Private form_unbilled_comment As FUnbilledComment
@@ -238,7 +239,7 @@ Private Reasons_not_billed As Collection
 Private gvwItemsBIlled_columnWidths As Integer
 Private bAreaOfNeed As Boolean 'see FAdminGlobalPreferences/billing help if true the area attracts 10991 item numbers
 Private bComplainedAboutNoItem As Boolean 'don't complain to the user multiple times about not finding a item/fee code.
-Private form_patient_photo As FPatientPhoto 
+
 Private pic_annual_checkup As Picture = Picture["icons/22/heart.png"]
 Private pic_home_visit As Picture = Picture["icons/22/user-home.png"]
 Private pic_procedure As Picture = Picture["icons/24/glove-scalple_2424.png"]
@@ -256,7 +257,6 @@ Public Sub _new()
    With form_billingcards = New FPatientBillingCards(VBox_PatientBillingCards)
       .Init(VBox_EditArea_Outer, "FRecordVisit")
       .Hbox_LegacyFileNumber.Visible = False
-      .HBox_ResponsiblePayer.Visible = False
    End With
    Area_of_Need_Fees = modBillingDBI.Area_Of_Need_Fees("10991")  'area of need supplement keyed by billing.lu_biling_type key
    cvwSearchAccounts.Columns.count = 3
@@ -500,10 +500,24 @@ End
 Public Sub EditArea_Clear()
    
    bExit = True
-   form_billingcards.TabStrip1.index = 0
-   modEditAreaHelpers.EditArea_Clear(VBox_EditArea_Inner)
+   form_billingcards.TabStrip1.index = 0                                 ' billing/NOK/Pharmacy/Contacts tab set to billing = 0
+   modEditAreaHelpers.EditArea_Clear(VBox_EditArea_Inner)                ' clear edit area text and check boxes in the invoices main screen
    cmbInvoiceComments.Clear
-   form_billingcards.EditArea_Clear()
+   With form_billingcards
+      .EditArea_Clear()
+      .Currentconsult_Set_Null()
+      ' If Not IsNull(.form_patient_pharmacy) Then  
+      '    .form_patient_pharmacy.EditArea_Clear(False)
+      ' End If   
+      ' If Not IsNull(.form_next_of_kin) Then
+      '  .form_next_of_kin.EditArea_Clear
+      ' End If   
+      ' ' Try .form_patient_address.clear
+      ' Try .form_patient_contacts.Form_Clear
+   End With
+   ' If Not IsNull(form_billingcards.form_next_of_kin) Then
+   '    form_billingcards.form_next_of_kin.EditArea_Clear
+   ' Endif
    lblEditAreaHeading.text = ""
    tlPatientDetails.text = ""
    form_patient_photo.Patient_Picture_Clear
@@ -530,6 +544,7 @@ Public Sub EditArea_Clear()
    ' Payer = Null
    ' Patient = Null
    ' Unbilled_consultation = Null
+   columnview1.Visible = False  
    iAccountDisplayMode = const.Billing_Accounts_Unpaid
    rbPayerNotUsed.value = True 'switches off rbInvoiceOrganisation and rbInvoicePerson
    With lblInvoiceOwing
@@ -587,14 +602,14 @@ Public Sub Bulk_Billing_Show_Dates()
    
    Dim a_date As Collection
    Dim x As Integer
-
+   
    columnview99.Clear
    bulk_billed_Distinct_Dates = modBillingDBI.Bulk_Billed_Vouchers_Unpaid_distinct_dates(modDBConnect.currentUser!fk_branch, const.BulkBilling_Type_Medicare)
    
    For Each a_date In bulk_billed_Distinct_Dates
       columnview99.Add(a_date!pk, 0)
       columnview99[a_date!pk][0] = Format(a_date!date_invoiced, "dd mmmm yyyy")
-  Next
+   Next
    
 End
 
@@ -4007,7 +4022,7 @@ Public Sub Billing_Defaults_Save()
    
    If Not form_billingcards.Valid_Data() Then Return
    patient_billing_data.put_unchanged(fk_patient, "fk_patient")
-   If Not IsNull(form_billingcards.Responsible_Payer_Get_fk_Person()) Then
+   If IsNull(form_billingcards.Responsible_Payer_Get_fk_Person()) Then
       patient_billing_data!fk_payer_person = Null
    Else
       patient_billing_data!fk_payer_person = form_billingcards.Responsible_Payer_Get_fk_person()
@@ -5476,7 +5491,7 @@ Public Sub TabStrip1_Click()
       Case cTab_Batching  'User has clicked on the medicare batching tab
          DateChooser1.visible = False
          Hbox_Period.Visible = False
-       ' VBox_Invoices.Visible = False
+         ' VBox_Invoices.Visible = False
          VBox_Accounts.Visible = False  
          VBox_ForOtherTabs.Visible = True
          gvwFeeScheduleItems.Visible = False
@@ -5502,9 +5517,9 @@ Public Sub TabStrip1_Click()
             .Visible = True
             .index = combobox1.Find("Medicare Bulk Billed Claims")
          End With
-        columnview99.MoveLast 
-        columnview99.SetFocus
-        columnview99.Item.Selected = True 
+         columnview99.MoveLast 
+         columnview99.SetFocus
+         columnview99.Item.Selected = True 
       Case cTab_Reports
          
          Hbox_Filter.Visible = False
@@ -5656,7 +5671,14 @@ Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
                Else
                   visits_private_other.Add(visit, visits_private_other.count)
                End If
+            Else
+               If modUtil.IsSameDay(DateChooser1.value, visit!appointment_date) Or modUtil.IsSameDay(DateChooser1.value, visit!visit_date) Then
+                  visits_private_today.Add(visit, visits_private_today.count)
+               Else
+                  visits_private_other.Add(visit, visits_private_other.count)
+               End If   
             Endif
+            
          Else
             If modUtil.IsSameDay(DateChooser1.Value, visit!appointment_date) Or modUtil.IsSameDay(DateChooser1.Value, visit!visit_date) Then  
                If visit!paid = True Then   
@@ -6015,7 +6037,9 @@ Public Function visit_type_create_html(visit_subset As Collection, group_name As
                End If   
             Endif
             If bInvoiceIsWorkcover Then                                                    ' if workcover
-               running_total_workcover += modUtil.MoneyToFloat(visit!amount)               ' inc running workcover total
+               If modUtil.IsSameDay(DateChooser1.value, visit!visit_date) Then 
+                  running_total_workcover += modUtil.MoneyToFloat(visit!amount)               ' inc running workcover total
+               End If   
                If Not bSameInvoice Then
                   If modUtil.IsSameDay(DateChooser1.value, visit!visit_date) Then             ' and its the same date as the date chose
                      Inc day_list_patients_billed_workcover_count                             '
@@ -6068,10 +6092,13 @@ Public Function visit_type_create_html(visit_subset As Collection, group_name As
          shtml = Replace(shtml, "%paid%", visit!total_paid)
          shtml = Replace(shtml, "%paymentmethod%", UCase(visit!payment_method))
          payment_totals[visit!fk_lu_payment_method] = payment_totals[visit!fk_lu_payment_method] + CFloat(Replace(visit!amount, "$", "")) 'EFTPOS, Cheque, Cash etc
-         running_total += modUtil.MoneyToFloat(visit!amount) 
+         If Not IsNull(visit!amount_gst) Then
+            payment_totals[visit!fk_lu_payment_method] = payment_totals[visit!fk_lu_payment_method] + CFloat(Replace(visit!amount_gst, "$", "")) 
+         Endif 
+         running_total += modUtil.MoneyToFloat(visit!amount)   'fixme ?used at all?
          
          If Not modUtil.IsSameDay(DateChooser1.Value, visit!appointment_date) Then  
-            running_total_old_invoices += modUtil.MoneyToFloat(visit!amount)
+            running_total_old_invoices += modUtil.MoneyToFloat(visit!amount) + modUtil.MoneyToFloat(visit!amount_gst)
          Else
             If bInvoiceisPrivate Then running_total_private_paid += modUtil.MoneyToFloat(visit!amount) 
          Endif
@@ -6761,6 +6788,7 @@ Public Sub Reset_Keys_Collections()
 End
 
 Public Sub txtSearchInvoices_GotFocus()
+   'This fixme should be renamed txtSearchAccounts
    
    cvwQuickView.UnselectAll
    cvwSearchAccounts.Clear
@@ -6776,6 +6804,7 @@ Public Sub txtSearchInvoices_GotFocus()
    Last.BackGround = Color.rgb(95, 255, 175)
    iTimer_Search_Mode = cTimer_SearchMode_Patient
    tbNewInvoice.Visible = True
+   cvwItemsTodayOrUnpaid.Clear
    txtSearchInvoices.Clear()
    
 End
@@ -6973,7 +7002,7 @@ Public Sub mnuAcountHistory_Click()
    'User has clicked over the columview containing all the invoices
    'ever raised for the patient, or filtered by paid/unpaid/text or payer
    'acount  used synonymously with invoice
-
+   
    Dim pdf_path As String
    
    Select Case Last.tag

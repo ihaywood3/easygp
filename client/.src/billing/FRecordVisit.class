@@ -4837,7 +4837,7 @@ Public Sub Account_Patient_Display(Optional bFromSearchingAccounts As Boolean = 
    gvwItemsBIlled.Enabled = True
    iAccountDisplayMode = const.Billing_Accounts_Paid_Today_And_Unpaid_All
    Items_Today_Or_Unpaid_Reload
-   Invoice_New()
+   'Invoice_New()
    Try txtDate.text = Format(patient!begin, "dd/mm/yyyy")
    bExit = False
    
@@ -5617,7 +5617,7 @@ Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
    sHtml = "<HTML><BODY><H3><B><p align='center'<UL>Billings and Payments for " & Format(for_date, "dd mmmm yyyy") & "</H3></P>"
    sHtml &= "%income_summary_and_warning_table%"
    
-   patient_visits = modBillingDBI.Day_List_Get(DateChooser1.value, modDBConnect.currentUser!fk_branch, staff[combobox1.index]!fk_staff)
+   patient_visits = modBillingDBI.Day_List_Get(DateChooser1.value, modDBConnect.currentUser!fk_branch) ', staff[combobox1.index]!fk_staff)
    For Each visit In patient_visits
       If Last_fk_invoice <> visit!fk_invoice Then
          Last_fk_invoice = visit!fk_invoice
@@ -5655,15 +5655,18 @@ Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
             Endif
             
          Else
-            '  If modUtil.IsSameDay(DateChooser1.Value, visit!appointment_date) Or modUtil.IsSameDay(DateChooser1.Value, visit!visit_date) Then  
-            If modUtil.IsSameDay(DateChooser1.Value, visit!visit_date) Then  
-               If visit!paid = True Then   
-                  visits_private_today.Add(visit, visits_private_today.count)
-               Else
-                  visits_private_account.Add(visit, visits_private_account.count)
+            If modUtil.IsSameDay(DateChooser1.Value, visit!appointment_date) Or modUtil.IsSameDay(DateChooser1.Value, visit!visit_date) Then  
+               If modUtil.IsSameDay(DateChooser1.Value, visit!visit_date) Then  
+                  If visit!paid = True Then  
+                     If modUtil.IsSameDay(visit!visit_date, visit!date_paid) Then   
+                        visits_private_today.Add(visit, visits_private_today.count)
+                     Else
+                        visits_private_account.Add(visit, visits_private_account.count)
+                     End If  
+                  Else
+                     visits_private_other.Add(visit, visits_private_other.count)
+                  End If   
                End If   
-            Else
-               visits_private_other.Add(visit, visits_private_other.count)
             End If   
          End If
       End If   
@@ -5679,11 +5682,10 @@ Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
    Endif
    
    If visits_private_account.count Then
-      sHtml &= "<HR><p align='left'<H3><B>Billed to Private Patients</B></H3></P>"
-      shtml &= visit_type_create_html(visits_private_account, "Private") 
+       shtml &= visit_type_create_html(visits_private_account, "Private Account") 
    Endif
    If visits_private_today.count Then
-      shtml &= visit_type_create_html(visits_private_today, "Private") 
+      shtml &= visit_type_create_html(visits_private_today, "Private Paid") 
    Endif
    If visits_private_other.count Then
       shtml &= visit_type_create_html(visits_private_other, "Old Account") 
@@ -5916,15 +5918,18 @@ Public Function visit_type_create_html(visit_subset As Collection, group_name As
          shtml = Replace(shtml, "%paymentmethod%", "") 
          '  shtml &= "<TR><td colspan=10><hr size=1 width=100%></td></tr>"
          row_template = day_list_html_row_template_Workcover_Insurance() 
-      Case "Private", "Old Account"
+      Case "Private Paid", "Old Account Paid", "Private Account"
          row_template = day_list_html_row_template_Non_Bulk_Bill(bmergeCols)
          sHtml &= "<BR><TABLE WIDTH=100% CELLPADDING=0 CELLSPACING=0>"
          sHtml &= "<TR VALIGN=TOP style= 'background-color:gainsboro;color:black;'>" & row_template & "</TR>"
-         If group_name = "Private" Then 
-            sHtml = Replace(shtml, "%table_heading%", "<B>PAID PRIVATELY</B>")
-         Else
-            sHtml = Replace(shtml, "%table_heading%", "<B>PAID OLD ACCOUNTS</B>")
-         End If
+         Select Case group_name  
+            Case "Private Paid" 
+               sHtml = Replace(shtml, "%table_heading%", "<B>PAID PRIVATELY</B>")
+            Case "Old Account Paid"
+               sHtml = Replace(shtml, "%table_heading%", "<B>PAID OLD ACCOUNTS</B>")
+            Case "Private Account"
+               sHtml = Replace(shtml, "%table_heading%", "<B>BILLED PRIVATELY</B>")
+         End Select
          shtml = Replace(shtml, "%doctor%", "")
          shtml = Replace(shtml, "%payee%", "<B>Payee</B>")
          shtml = Replace(shtml, "%item%", "<B>Item(s)</B>")
@@ -6040,7 +6045,7 @@ Public Function visit_type_create_html(visit_subset As Collection, group_name As
                   bInvoiceisPrivate = True   
                   If modUtil.IsSameDay(DateChooser1.value, visit!visit_date) Then            ' if its the same date as the date chosen to display 
                      If visit!paid = True Then                                               ' if the visit is paid
-                        If visit!date_paid = visit!date_invoiced Then
+                        If visit!date_paid = visit!appointment_date Then
                            Inc day_list_patients_paid_count                                     ' increase paid count
                         End If   
                         '  running_total_private_paid += modUtil.MoneyToFloat(visit!amount)
@@ -6067,7 +6072,7 @@ Public Function visit_type_create_html(visit_subset As Collection, group_name As
       If Not bOldAccount Then day_list_doctors[visit!fk_staff_provided_service]!takings += modUtil.MoneyToFloat(visit!amount)
       income_generated += modUtil.MoneyToFloat(visit!amount)
       
-      If visit!paid = True And modUtil.IsSameDay(visit!date_paid, visit!date_invoiced) Then
+      If visit!paid = True And modUtil.IsSameDay(visit!date_paid, visit!appointment_date) Then
          shtml = Replace(shtml, "%paid%", visit!total_paid)
          shtml = Replace(shtml, "%paymentmethod%", UCase(visit!payment_method))
          payment_totals[visit!fk_lu_payment_method] = payment_totals[visit!fk_lu_payment_method] + CFloat(Replace(visit!amount, "$", "")) 'EFTPOS, Cheque, Cash etc
@@ -6831,7 +6836,7 @@ Public Sub txtSearchInvoices_GotFocus()
    txtSearchInvoices.Text = ""
    Last.BackGround = Color.rgb(95, 255, 175)
    iTimer_Search_Mode = cTimer_SearchMode_Patient
-   tbNewInvoice.Visible = True
+   'tbNewInvoice.Visible = True
    cvwItemsTodayOrUnpaid.Clear
    txtSearchInvoices.Clear()
    

@@ -4777,7 +4777,7 @@ Public Sub Account_Patient_Display(Optional bFromSearchingAccounts As Boolean = 
    EditArea_Clear
    cvwItemsTodayOrUnpaid.Clear() 
    textlabelPayer.text = ""
-  
+   
    Wait
    columnview1.Visible = False   
    AccountHistory_Clear
@@ -4828,7 +4828,7 @@ Public Sub Account_Patient_Display(Optional bFromSearchingAccounts As Boolean = 
    gvwItemsBIlled.Enabled = True
    iAccountDisplayMode = const.Billing_Accounts_Paid_Today_And_Unpaid_All
    Items_Today_Or_Unpaid_Reload
-   'Invoice_New()
+   Invoice_New()
    Try txtDate.text = Format(patient!begin, "dd/mm/yyyy")
    bExit = False
    
@@ -5582,6 +5582,7 @@ Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
    Dim warning_html As String
    Dim income_consults_today As Float  'just for consults, not for paid bills
    Dim bIsWorkcoverInvoice As Boolean
+   Dim Appointments_Not_Billed As Collection
    
    day_list_patients_billed_count = 0
    day_list_patients_billed_medicare_count = 0
@@ -5605,9 +5606,12 @@ Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
    
    day_list_doctors = New Collection
    
-   sHtml = "<HTML><BODY><H3><B><p align='center'<UL>Billings and Payments for " & Format(for_date, "dd mmmm yyyy") & "</H3></P>"
+   sHtml = "<HTML><BODY><H3><B><p align='center'<UL>Bookings, Billings and Payments for " & Format(for_date, "dd mmmm yyyy") & "</H3></P>"
    sHtml &= "%income_summary_and_warning_table%"
-   
+   Appointments_Not_Billed = modBillingDBI.Days_Appointments_Not_Billed(DateChooser1.value, modDBConnect.currentUser!fk_branch) 
+   If Appointments_Not_Billed.count Then
+      shtml &= Appointments_Not_Billed_HTML(Appointments_Not_Billed) 
+   Endif
    patient_visits = modBillingDBI.Day_List_Get(DateChooser1.value, modDBConnect.currentUser!fk_branch) ', staff[combobox1.index]!fk_staff)
    For Each visit In patient_visits
       If Last_fk_invoice <> visit!fk_invoice Then
@@ -5645,17 +5649,17 @@ Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
                End If   
             Endif
             
-         Else
-            If modUtil.IsSameDay(DateChooser1.Value, visit!appointment_date) Or modUtil.IsSameDay(DateChooser1.Value, visit!visit_date) Then  
-               If modUtil.IsSameDay(DateChooser1.Value, visit!visit_date) Then  
-                  If visit!paid = True Then  
-                     If modUtil.IsSameDay(visit!visit_date, visit!date_paid) Then   
-                        visits_private_today.Add(visit, visits_private_today.count)
+         Else                                                                                             ' there is no account name, is private
+            If modUtil.IsSameDay(DateChooser1.Value, visit!appointment_date) Or modUtil.IsSameDay(DateChooser1.Value, visit!visit_date) Then   'if date is same as date-chooser
+               If modUtil.IsSameDay(DateChooser1.Value, visit!visit_date) Then                            ' if visit is on that date 
+                  If visit!paid = True Then                                                               ' if paid
+                     If modUtil.IsSameDay(visit!visit_date, visit!date_paid) Then                         ' if paid on same day as seen
+                        visits_private_today.Add(visit, visits_private_today.count)                       ' is a private paid today
                      Else
-                        visits_private_account.Add(visit, visits_private_account.count)
+                        visits_private_other.Add(visit, visits_private_other.count)                       ' wasn't paid on same day as visit - hence is payment for old account                '    
                      End If  
-                  Else
-                     visits_private_other.Add(visit, visits_private_other.count)
+                  Else                                                                                    'else wasn't paid today
+                     visits_private_account.Add(visit, visits_private_account.count)                      'must have taken the account
                   End If   
                End If   
             End If   
@@ -5673,7 +5677,7 @@ Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
    Endif
    
    If visits_private_account.count Then
-       shtml &= visit_type_create_html(visits_private_account, "Private Account") 
+      shtml &= visit_type_create_html(visits_private_account, "Private Account") 
    Endif
    If visits_private_today.count Then
       shtml &= visit_type_create_html(visits_private_today, "Private Paid") 
@@ -5841,6 +5845,78 @@ Public Function day_list_warning() As String
    "level B Consultation' but needs to be listed as 'Standard Level B Workcover Consultation' "
    "otherwise mbs items used during a workcover consultation could be treated as private billing.</p>"
    Return sMsg
+   
+End
+
+Public Function row_template_appointments_not_billed(Optional bMergeCols As Boolean = False) As String   
+   
+   Dim row_html As String
+   
+   If bmergeCols = True Then
+      row_html = "<td colspan='2'>%table_heading%</td>"
+   Else
+      row_html =
+         "<TD WIDTH=1%>"
+      "   <P>%time%</P>"
+      "</TD>"
+      "<TD WIDTH=5%>"
+      "   <P>%patient%</P>"
+      "</TD>"
+   End If   
+   row_html &= ""
+   "<TD WIDTH=5%>"
+   "   <P>%doctor%</P>"
+   "</TD>"
+   "<TD WIDTH=20%>"
+   "   <P>%comment_or_reason_not_billed%</P>"
+   "</TD>"
+   
+   Return row_html
+   
+End
+
+Public Function Appointments_Not_Billed_HTML(Appointments_Not_Billed As Collection) As String
+   
+   Dim visit As Collection
+   Dim sHtml As String
+   Dim row_template As String
+   Dim scomment As String
+   
+   row_template = row_template_appointments_not_billed(True)
+   
+   Print row_template
+   sHtml = "<BR><TABLE WIDTH=100% CELLPADDING=3 CELLSPACING=0>"
+   "<COL WIDTH=1%>"
+   "<COL WIDTH=5%>"
+   "<COL WIDTH=5%>"
+   "<COL WIDTH=20%>"
+   sHtml &= "<TR VALIGN=TOP style= 'background-color:gainsboro;color:black;'>" & row_template & "</TR>"
+   sHtml = Replace(shtml, "%table_heading%", "<B>PATIENTS NOT BILLED</B>")
+   shtml = Replace(shtml, "%time%", "")
+   shtml = Replace(shtml, "%patient%", "")
+   shtml = Replace(shtml, "%doctor%", "Booked For")
+   shtml = Replace(shtml, "%comment_or_reason_not_billed%", "Comment")
+   For Each visit In Appointments_Not_Billed
+      scomment = ""
+      row_template = row_template_appointments_not_billed()
+      sHtml &= "<TR VALIGN=TOP>" & row_template & "</TR>"
+      shtml = Replace(shtml, "%time%", Format(Time(visit!appointment_date), "hh:nn"))
+      shtml = Replace(shtml, "%patient%", visit!patient_wholename) 'if not, print name
+      sHtml = Replace(sHtml, "%doctor%", UCase(Left(visit!staff_firstname)) & " " & modUtil.Ucase_Word_First_Letter(visit!staff_surname))
+      If visit!fk_lu_appointment_status = const.Appointment_Status_booked Then
+         sComment = "Booked - appointment not actioned ?status"
+      Else
+         If Not IsNull(visit!comment_for_billing) Then
+            scomment = visit!comment_for_billing
+         Endif
+         If Not IsNull(visit!reason_not_billed) Then
+            scomment &= " " & visit!reason_not_billed
+         End If  
+      End If   
+      shtml = Replace(shtml, "%comment_or_reason_not_billed%", scomment) 
+   Next
+   shtml &= "</TABLE>"
+   Return shtml
    
 End
 

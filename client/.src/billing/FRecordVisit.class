@@ -1000,12 +1000,15 @@ Public Sub mnuUnbilled_Click()
             gvwQuickView[sPatient_Collection_Key, 2].RichText &= "<BR>" & comment_for_billing & "</P>"
             gvwQuickView.Rows[sPatient_Collection_Key].Height = sFontHeight * 2.2  
          Endif
-         
       Case "add free text"
          With form_unbilled_comment = New FUnbilledComment
             .Init(patient!fk_appointment, gvwQuickView, sPatient_Collection_Key, patient)
             .ShowModal  
          End With
+      Case "did not arrive"
+         modDBConnect.update("clerical.bookings", Null, ["pk": patient!fk_appointment, "fk_lu_appointment_status": const.Appointment_Status_Did_Not_Arrive]) 
+         modDBConnect.CommitTrans()
+         Unbilled_Or_Outstanding_Accounts_Reload()
       Case Else   'tag is a number = reason not billed key to billing.lu_reasons_not_billed table
          Message.Title = "Unbilled Appointments - No Invoice?"
          If Message.Question(Patient!wholename & "\n\nMark this patient not to be charged:\n\n" & Last.text, "Yes", "No") = 2 Then Return
@@ -3511,19 +3514,28 @@ Public Sub mnuInvoices_Click()
             form_sdd.SetInvoicePK(item_billed!fk_invoice)
             form_sdd.Show()
          Endif
+         If Not IsNull(Item_Billed!fk_appointment) Then
+            modDBConnect.update("clerical.bookings", Null, ["pk": Item_Billed!fk_appointment, "invoiced": False])
+            modDBConnect.CommitTrans
+            cmbQuickView_Click() 'reload the quickview grid
+         End If   
+         
          '  Items_Today_Or_Unpaid = Reload_Billed_Items(cvwItemsTodayOrUnpaid, Items_Today_Or_Unpaid)
          Items_Today_Or_Unpaid_Reload
          Invoice_New()
       Case "invoice mark unpaid"
-         If Message.Question("Mark this invoice as unpaid?", "Yes", "No") = 2 Then Return
-         modDBConnect.update("billing.invoices", Null, ["pk": Item_Billed!fk_invoice, "paid": False])
-         modDBConnect.CommitTrans()
-         ' Items_Today_Or_Unpaid = Reload_Billed_Items(cvwItemsTodayOrUnpaid, Items_Today_Or_Unpaid)
-         Items_Today_Or_Unpaid_Reload
-         If cvwItemsTodayOrUnpaid.count Then
-            cvwItemsTodayOrUnpaid.MoveFirst
-            cvwItemsTodayOrUnpaid.Item.Selected = True  'should trigger loading the edit area
-         Endif
+         ' If Message.Question("Mark this invoice as unpaid?", "Yes", "No") = 2 Then Return
+         ' modDBConnect.update("billing.invoices", Null, ["pk": Item_Billed!fk_invoice, "paid": False])
+         ' 
+         ' modDBConnect.CommitTrans()
+         ' ' Items_Today_Or_Unpaid = Reload_Billed_Items(cvwItemsTodayOrUnpaid, Items_Today_Or_Unpaid)
+         ' Items_Today_Or_Unpaid_Reload
+         ' lblInvoiceTotalAndPaid.text = ""
+         ' lblInvoiceTotalAndPaid.visible = False   
+         ' If cvwItemsTodayOrUnpaid.count Then
+         '    cvwItemsTodayOrUnpaid.MoveFirst
+         '    cvwItemsTodayOrUnpaid.Item.Selected = True  'should trigger loading the edit area
+         ' Endif
       Case "reprint invoice"
          If IsNull(item_billed!latex) And If item_billed!online Then
             latex = modBillingDBI.Generate_Online_Latex(item_billed!fk_invoice)
@@ -4895,10 +4907,11 @@ Public Sub Account_Patient_Display(Optional bFromSearchingAccounts As Boolean = 
    iAccountDisplayMode = const.Billing_Accounts_Paid_Today_And_Unpaid_All
    Items_Today_Or_Unpaid_Reload
    
-   Try txtDate.text = Format(patient!begin, "dd/mm/yyyy")
+  ' Try txtDate.text = Format(patient!begin, "dd/mm/yyyy")
    If Not bFromSearchingAccounts Then
       VBox_EditArea_Outer.Enabled = True
       Invoice_New()
+      txtDate.text = Format(patient!begin, "dd/mm/yyyy")
    Else
       VBox_EditArea_Inner.Enabled = False 
       HBox_InvoiceGrid.Enabled = False   
@@ -4907,7 +4920,6 @@ Public Sub Account_Patient_Display(Optional bFromSearchingAccounts As Boolean = 
    bExit = False
    
 End
-
 
 Public Sub lblPatient_Show_Details(Patient As Collection)
    
@@ -5809,6 +5821,8 @@ Public Function Appointments_Not_Billed_HTML(Appointments_Not_Billed As Collecti
       sHtml = Replace(sHtml, "%doctor%", UCase(Left(visit!staff_firstname)) & " " & modUtil.Ucase_Word_First_Letter(visit!staff_surname))
       If visit!fk_lu_appointment_status = const.Appointment_Status_booked Then
          sComment = "Booked - appointment not actioned ?status"
+      Else If visit!fk_lu_appointment_status = const.Appointment_Status_Did_Not_Arrive Then
+         sComment = "Patient did not arrive"
       Else
          If Not IsNull(visit!comment_for_billing) Then
             scomment = visit!comment_for_billing
@@ -6368,8 +6382,6 @@ Public Sub Days_Takings_Create_HTML(Optional for_date As Date = Now()) As String
    
 End
 
-
-
 Public Function takings_html_row_template() As String
    
    Return ""
@@ -6486,15 +6498,15 @@ Public Sub Unbilled_Or_Outstanding_Accounts_Reload()
       Case cInvoiceDisplayMode_UnbilledAll
          Unbilled_refresh
       Case cInvoiceDisplayMode_UnbilledToday
-       '  Unbilled_refresh(Now())
+         '  Unbilled_refresh(Now())
       Case cInvoiceDisplayMode_Overdue
-       '  Accounts_Overdue_Display("0 month", "6 month")
+         '  Accounts_Overdue_Display("0 month", "6 month")
       Case cInvoiceDisplayMode_Overdue_1Month
-        ' Accounts_Overdue_Display("1 month", "6 month")
+         ' Accounts_Overdue_Display("1 month", "6 month")
       Case cInvoiceDisplayMode_Overdue_2Month
-        ' Accounts_Overdue_Display("2 month", "6 month")
+         ' Accounts_Overdue_Display("2 month", "6 month")
       Case cInvoiceDisplayMode_Overdue_Over3Months
-        ' Accounts_Overdue_Display("3 month", "12 month")
+         ' Accounts_Overdue_Display("3 month", "12 month")
          'Case cInvoiceDisplayMode_InstitutionalAccounts
    End Select
    If gvwQuickView.Rows.count Then
@@ -6913,7 +6925,13 @@ Public Sub mnuAcountHistory_Click()
             Return 
          End If   
          modBillingDBI.Delete_Invoice(items_billed[cvwAccountHistory_Key]!fk_invoice)
-         Account_History_Show
+         If Not IsNull(items_billed[cvwAccountHistory_Key]!fk_appointment) Then
+            modDBConnect.update("clerical.bookings", Null, ["pk": items_billed[cvwAccountHistory_Key]!fk_appointment, "invoiced": False])
+            modDBConnect.CommitTrans
+            cmbQuickView_Click() 'reload the quickview grid
+         End If   
+         Items_Today_Or_Unpaid_Reload
+           Account_History_Show
       Case "account copy"
          modPrinting.Print_latex(items_billed[cvwAccountHistory_Key]!latex)
       Case "receipt copy"
@@ -7066,21 +7084,21 @@ Public Sub Button1_Click()
 End
 
 Public Sub gvwAccountNames_Menu()
-
+   
    If gvwAccountNames.row = -1 Then Return 'no row selected
    If gvwAccountNames.Rows.count Then
       mnuAccountNames.Popup
    Endif
-
+   
 End
 
 Public Sub mnuAccountNames_Click()
    
-  Select Case Last.tag
-  Case "font"
-     modUtilGUI.Columnview_SetFont(gvwAccountNames, Me.Name)
-  Case "mark deceased'"
-  Case "mark left practice"
-  End Select 
+   Select Case Last.tag
+      Case "font"
+         modUtilGUI.Columnview_SetFont(gvwAccountNames, Me.Name)
+      Case "mark deceased'"
+      Case "mark left practice"
+   End Select 
    
 End

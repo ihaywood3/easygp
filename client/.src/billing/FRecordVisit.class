@@ -2069,6 +2069,7 @@ Private Sub Settings_Load()
    Hsplit_Main.Layout = Settings[Me.Name & "/HSplit_Main.Layout", modUtilGUI.HSplit([362, 1335])]
    Hsplit_EditArea.Layout = Settings[Me.Name & "/HSplit_EditArea.Layout", modUtilGUI.HSplit([653, 658])]
    cvwItemsTodayOrUnpaid.Font = Font[Settings[Me.Name & "/cvwItemsBilled.font", "DejaVu Sans, 9"]]
+   cvwWorkcoverClaims.Font = Font[Settings[Me.Name & "/cvwWorkcoverClaims.font", "DejaVu Sans, 8"]]
    gvwQuickView.Font = Font[Settings[Me.Name & "/gvwQuickView.font", "DejaVu Sans, 9"]]
    gvwAccountNames.Font = Font[Settings[Me.Name & "/gvwAccountNames.font", "DejaVu Sans, 9"]]
    cvwAccountHistory.font = Font[Settings[Me.Name & "/cvwAccountHistory.font", "DejaVu Sans, 9"]]
@@ -5608,12 +5609,12 @@ Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
    sHtml &= "<TABLE WIDTH=441 CELLPADDING=0 CELLSPACING=1 >"
    "<COL WIDTH=212>"
    "<COL WIDTH=208>"
-   For Each payment_method In payment_methods
-      Inc x                                  'billing.lu_payment_method keys 1>6
+   For Each payment_method In payment_methods           'the pk's in this collection are not in order 1>5
+  '    Inc x                                  'billing.lu_payment_method keys 1>6
       shtml &= "<TR VALIGN=TOP>"
       shtml &= totals_html_row_template()
       shtml = Replace(shtml, "%payment_method%", UCase(payment_method!method))
-      shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(payment_totals[x]))
+      shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(payment_totals[payment_method!pk]))
       sHtml &= "</TR>"
    Next
    shtml &= totals_html_row_template()
@@ -5903,14 +5904,14 @@ Public Function visit_type_create_html(visit_subset As Collection, group_name As
          shtml = Replace(shtml, "%paymentmethod%", "") 
          '  shtml &= "<TR><td colspan=10><hr size=1 width=100%></td></tr>"
          row_template = day_list_html_row_template_Workcover_Insurance() 
-      Case "Private Paid", "Old Account Paid", "Private Account"
+      Case "Private Paid", "Old Account", "Private Account"
          row_template = day_list_html_row_template_Non_Bulk_Bill(bmergeCols)
          sHtml &= "<BR><TABLE WIDTH=100% CELLPADDING=0 CELLSPACING=0>"
          sHtml &= "<TR VALIGN=TOP style= 'background-color:gainsboro;color:black;'>" & row_template & "</TR>"
          Select Case group_name  
             Case "Private Paid" 
                sHtml = Replace(shtml, "%table_heading%", "<B>PAID PRIVATELY</B>")
-            Case "Old Account Paid"
+            Case "Old Account"
                sHtml = Replace(shtml, "%table_heading%", "<B>PAID OLD ACCOUNTS</B>")
             Case "Private Account"
                sHtml = Replace(shtml, "%table_heading%", "<B>BILLED PRIVATELY</B>")
@@ -6011,6 +6012,9 @@ Public Function visit_type_create_html(visit_subset As Collection, group_name As
             If bInvoiceIsWorkcover Then                                                    ' if workcover
                If modUtil.IsSameDay(DateChooser1.value, visit!visit_date) Then 
                   running_total_workcover += modUtil.MoneyToFloat(visit!amount)               ' inc running workcover total
+                  If Not IsNull(visit!amount_gst) Then
+                     running_total_workcover += modUtil.MoneyToFloat(visit!amount_gst)
+                  Endif
                End If   
                If Not bSameInvoice Then
                   If modUtil.IsSameDay(DateChooser1.value, visit!visit_date) Then             ' and its the same date as the date chose
@@ -6032,6 +6036,10 @@ Public Function visit_type_create_html(visit_subset As Collection, group_name As
                      If visit!paid = True Then                                               ' if the visit is paid
                         If modUtil.IsSameDay(visit!date_paid, visit!appointment_date) Then
                            Inc day_list_patients_paid_count                                     ' increase paid count
+                        Else
+                          If isnull(visit!appointment_date) And modUtil.IsSameDay(visit!date_paid, visit!visit_date) Then
+                              Inc day_list_patients_paid_count 
+                          Endif
                         End If   
                         '  running_total_private_paid += modUtil.MoneyToFloat(visit!amount)
                      Else
@@ -6054,10 +6062,16 @@ Public Function visit_type_create_html(visit_subset As Collection, group_name As
          shtml = Replace(shtml, "%amount%" & Str(item_count), ", " & visit!amount & "%amount%" & Str(item_count + 1)) ' ":&nbsp;&nbsp;&nbsp;&nbsp;amount_total")
       End If   
       item_numbers_total += modUtil.MoneyToFloat(visit!amount)
-      If Not bOldAccount Then day_list_doctors[visit!fk_staff_provided_service]!takings += modUtil.MoneyToFloat(visit!amount)
+      If Not IsNull(visit!amount_gst) Then item_numbers_total += modUtil.MoneyToFloat(visit!amount_gst)
+      If Not bOldAccount Then 
+         day_list_doctors[visit!fk_staff_provided_service]!takings += modUtil.MoneyToFloat(visit!amount)
+         If Not IsNull(visit!amount_gst) Then
+            day_list_doctors[visit!fk_staff_provided_service]!takings += modUtil.MoneyToFloat(visit!amount_gst)
+         Endif
+      End If   
       income_generated += modUtil.MoneyToFloat(visit!amount)
       
-      If visit!paid = True And modUtil.IsSameDay(visit!date_paid, visit!appointment_date) Then
+      If visit!paid = True And modUtil.IsSameDay(visit!date_paid, visit!appointment_date) Or visit!paid = True And modUtil.IsSameDay(visit!date_paid, visit!date_paid) Then
          shtml = Replace(shtml, "%paid%", visit!total_paid)
          shtml = Replace(shtml, "%paymentmethod%", UCase(visit!payment_method))
          payment_totals[visit!fk_lu_payment_method] = payment_totals[visit!fk_lu_payment_method] + CFloat(Replace(visit!amount, "$", "")) 'EFTPOS, Cheque, Cash etc
@@ -7040,6 +7054,24 @@ Public Sub cvwWorkcoverClaims_Select()
    txtReferenceDetails.text = workcover_claims[cvwWorkcoverClaims.Item.Key]!claim_number  
    
 End 
+
+Public Sub cvwWorkcoverClaims_Menu()
+   
+  If cvwWorkcoverClaims.count Then mnuWorkCoverClaims.Popup 
+   
+End
+
+Public Sub mnuWorkCoverClaims_Click()
+   
+  Select Case Last.tag
+  Case "mark as finalised"
+  Case "font"
+   modUtilGUI.Columnview_SetFont(cvwWorkcoverClaims, Me.Name)
+   End Select
+    
+   
+End
+
 
 Public Sub DateChooser1_Change()
    

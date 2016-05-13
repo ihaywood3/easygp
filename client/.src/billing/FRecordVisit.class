@@ -2310,13 +2310,29 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True)
          End If
       Next
    Else                                                       'the invoice is being edited Items_Billed contains the previously billed item numbers
+      'Firstly, have any items which were billed before editing too place actually been removed?
+      For Each item_Previously_Billed In Items_Billed         'check each previously billed item
+         bEditedItemDeleted = True                            'assume it has been deleted
+         For grid_row = 0 To gvwItemsBIlled.Rows.count - 1    'against every row in the grid
+            If Lower(item_Previously_Billed!common_item) = Trim(Lower(gvwItemsBIlled[grid_row, cGridColumnItem_ItemNumber].Text)) Then
+               bEditedItemDeleted = False                     'if still in the grid 
+               Break                                          'jump out to try the next one
+            End If  
+        Next
+         If bEditedItemDeleted = True Then                    'if that item number now not in the grid             '
+            item = New CRow                                   'mark it deleted
+            item.put_unchanged(item_Previously_Billed!pk_items_billed, "fk_item_billed")
+            item!deleted = True
+            item.Save("billing.items_billed", "fk_item_billed")
+         Endif
+      Next
       For grid_row = 0 To gvwItemsBIlled.Rows.count - 1       'check each row in the grid, could be a new item or an edited old one
          If gvwItemsBIlled[grid_row, cGridColumnItem_ItemNumber].Text <> "" Then        'if there is data in the grid cell
             item = New CRow                                                           
             bEditedItemDeleted = False                                                   
             bItemExists = False 
             For Each item_Previously_Billed In Items_Billed                             'run through all those items attatched to the edited invoice
-                bEditedItemDeleted = True                                                 'assume its been deleted
+               bEditedItemDeleted = True                                                 'assume its been deleted
                If Lower(item_Previously_Billed!common_item) = Trim(Lower(gvwItemsBIlled[grid_row, cGridColumnItem_ItemNumber].Text)) Then
                   bItemExists = True  
                   bEditedItemDeleted = False  
@@ -2326,7 +2342,7 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True)
             If bEditedItemDeleted = True And bItemExists = True Then                                                   
                item.put_unchanged(item_Previously_Billed!pk_item_billed, "fk_item_billed")
                item!deleted = True 
-             Else      
+            Else      
                If bItemExists Then 
                   item.put_unchanged(item_Previously_Billed!pk_items_billed, "fk_item_billed")
                End If   
@@ -2336,10 +2352,10 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True)
                item!fk_lu_billing_type = Billing_Type_Get_Pk(gvwItemsBIlled[grid_row, cGridColumnItem_FeeType].Text)
                item!amount_gst = gvwItemsBIlled[grid_row, cGridColumnItem_gst_amount].Text
             Endif
-             item.Save("billing.items_billed", "fk_item_billed")
+            item.Save("billing.items_billed", "fk_item_billed")
          Endif
-        Next
-     End If   
+      Next
+   End If   
    '----------------------------------------------------
    'Now, is this invoice being paid? in part or in full?
    '----------------------------------------------------
@@ -3404,7 +3420,7 @@ Public Sub Invoice_Edit()
    If Not IsNull(invoice!fk_appointment) Then 'was it linked to an appointment?
       fk_appointment = invoice!fk_appointment 
    Endif
-   If Not IsNull(invoice!k_payer_branch) Then
+   If Not IsNull(invoice!fk_payer_branch) Then
       fk_payer_branch = invoice!k_payer_branch
    Endif
    If Not IsNull(invoice!fk_payer_person) Then
@@ -3420,7 +3436,7 @@ Public Sub Invoice_Edit()
    
 End
 
-Public Sub mnuInvoices_Click()
+Public Sub mnuItemsTodayOrUnpaid_Click()
    '--------------------------------------------------------------------------------------
    'this is the popup menu over the the invoices for the account holder, usually a patient
    '--------------------------------------------------------------------------------------
@@ -3485,8 +3501,8 @@ Public Sub mnuInvoices_Click()
       Case "print account statement"
          Accounts_Print_Statement
    End Select
-Catch
-   Log.ErrorMsg(Error.text & " " & Error.where)
+'Catch
+  '' Log.ErrorMsg(Error.text & " " & Error.where)
    Return
    
 End
@@ -3494,7 +3510,7 @@ End
 Public Sub cvwItemsTodayOrUnpaid_Menu()
    
    If cvwItemsTodayOrUnpaid.count Then
-      mnuInvoices.Popup()
+      mnuItemsTodayOrUnpaid.Popup()
    End If
    
 End
@@ -4853,8 +4869,6 @@ Public Sub Account_Patient_Display(Optional bFromSearchingAccounts As Boolean = 
    gvwItemsBIlled.Enabled = True
    iAccountDisplayMode = const.Billing_Accounts_Paid_Today_And_Unpaid_All
    Items_Today_Or_Unpaid_Reload
-   
-   ' Try txtDate.text = Format(patient!begin, "dd/mm/yyyy")
    If Not bFromSearchingAccounts Then
       VBox_EditArea_Outer.Enabled = True
       Invoice_New()
@@ -6517,7 +6531,7 @@ Public Sub gvwQuickView_Select()
    Dim gwItemsBilled_Row As Integer
    Dim dr_says_bulk_bill As Boolean 'if the comment_on_billing passed from clinical has "BB" in it
    
-   If bexit Or gvwQuickView.row = -1 Then Return  '-1 = no row selected
+   If bexit Or gvwQuickView.row = -1 Or IsNull(Unbilled_Consultations) Then Return  '-1 = no row selected
    gvwAccountNames.UnSelectAll                ' remove the marequee from the top grid of account holders
    bSearchingAccounts = False                 ' we are not searching that list
    EditArea_Clear                             ' clears the input area and associated lists, billing data
@@ -6561,67 +6575,7 @@ Public Sub gvwQuickView_Select()
    
 End
 
-Public Sub cvwQuickView_Select_old()
-   'If the doctor or nurse posted an item number in the patient!comment_for_billing field
-   'the try and auto-bill
-   'cvwItemsTodayOrUnpaid = the columnview under the billing area bottom right screen
-   'cvwAccounts           = the columnview at top left = where user searches for accounts/patients
-   'cvwQuickView          = the columnview at bottom left auto-populated from the appointment list
-   'TabVisitsPaymentsAccountHistory = tab where user generates invoice, pays invoice or views account history
-   
-   ' Dim Possible_Item_Numbers As String[] 
-   ' Dim sPossible_Item_Numbers As String
-   ' Dim item As String
-   ' Dim Real_Items As New String[]
-   ' Dim gwItemsBilled_Row As Integer
-   ' Dim dr_says_bulk_bill As Boolean 'if the comment_on_billing passed from clinical has "BB" in it
-   ' 
-   ' If bexit Then Return
-   ' gvwAccountNames.UnSelectAll
-   ' bSearchingAccounts = False                 ' we are not searching that list
-   ' 'cvwItemsTodayOrUnpaid.Clear()              ' visually clear first as otherwise last patient's accounts visible whilst new ones loaded
-   ' ' AccountHistory_Clear()                     ' clear account history columnview and collection on the Accounts tab
-   ' EditArea_Clear                             ' clears the input area and associated lists, billing data
-   ' Wait
-   ' If TabVisitsPaymentsAccountHistory.index <> cTab_Visits_And_Payments Then 
-   '    bExit = True   
-   '    TabVisitsPaymentsAccountHistory.index = cTab_Visits_And_Payments
-   '    bExit = False  
-   ' End If   
-   ' Inc Application.Busy
-   ' cvwQuickView.MoveCurrent                   ' move to currently seleceted row
-   ' sPatient_Collection_Key = cvwQuickView.Item.Key  ' set the key
-   ' Account_Patient_Display()                        ' display patient details
-   ' If IsNull(patient) Then 
-   '    Dec Application.Busy
-   '    Return
-   ' Endif
-   ' If InStr(patient!comment_for_billing, "BB") Then 
-   '    dr_says_bulk_bill = True  
-   '    patient!comment_for_billing = Replace(patient!comment_for_billing, "BB", "")
-   ' End If   
-   ' patient!comment_for_billing = Replace(patient!comment_for_billing, "+", "")
-   ' sPossible_Item_Numbers = Replace(patient!comment_for_billing, ", ", ",")
-   ' Possible_Item_Numbers = Split(Trim(sPossible_Item_Numbers), ",")
-   ' 'now check any numbers are valid
-   ' gvwItemsBIlled.row = 0
-   ' For Each Item In Possible_Item_Numbers
-   '    If IsInteger(item) Then  
-   '       If modBillingDBI.Item_Exists(Item) Then
-   '          Real_Items.Add(item)
-   '       Endif
-   '    End If   
-   ' Next
-   ' For Each item In Real_Items
-   '    textbox1.text = item
-   '    If dr_says_bulk_bill Then
-   '       rbInvoiceToMedicare.Value = True
-   '    Endif
-   '    textbox1_Activate()
-   ' Next
-   ' Dec Application.Busy
-   
-End
+
 
 Public Sub txtSearchAccountNames_KeyRelease()
    

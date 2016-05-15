@@ -239,13 +239,10 @@ Private Const cTabAccountHistory As Integer = 1
 
 Private fk_lu_billing_type_scheduled_Fee As Variant = 8
 Private form_batching As FBulkBillBatching
-Private cInvoiceDisplayMode_UnbilledAll As Integer = 0
-Private cInvoiceDisplayMode_UnbilledToday As Integer = 1
-Private cInvoiceDisplayMode_Overdue As Integer = 2
-Private cInvoiceDisplayMode_Overdue_1Month As Integer = 3
-Private cInvoiceDisplayMode_Overdue_2Month As Integer = 4
-Private cInvoiceDisplayMode_Overdue_Over3Months As Integer = 5
-'Private cInvoiceDisplayMode_InstitutionalAccounts As Integer = 5
+Private cInvoiceDisplayMode_Overdue_1Month As Integer = 0
+Private cInvoiceDisplayMode_Overdue_2Month As Integer = 1
+Private cInvoiceDisplayMode_Overdue_Over3Months As Integer = 2
+Private cInvoiceDisplayMode_InstitutionalAccounts As Integer = 3
 Private Reasons_not_billed As Collection
 Private gvwItemsBIlled_columnWidths As Integer
 Private bAreaOfNeed As Boolean 'see FAdminGlobalPreferences/billing help if true the area attracts 10991 item numbers
@@ -271,7 +268,7 @@ Public Sub _new()
    End With
    Area_of_Need_Fees = modBillingDBI.Area_Of_Need_Fees("10991")  'area of need supplement keyed by billing.lu_biling_type key
    gvwAccountNames.Columns.Count = 2
-   With gvwQuickView
+   With gvwUnpaidVisits
       .Columns.count = 3
       .Columns[0].Width = 80
    End With
@@ -360,9 +357,11 @@ Public Sub Init()
    modEditAreaHelpers.Resize_label(lblItems, lblmeasure)
    modEditAreaHelpers.Resize_label(lblPayment, lblmeasure)
    modEditAreaHelpers.Resize_label(lblComment, lblmeasure)
-   lblMeasure.text = "   Quick View    "
-   modEditAreaHelpers.Resize_label(lblName, lblMeasure)
-   modEditAreaHelpers.Resize_label(lblQuickview, lblMeasure)
+   lblMeasure.text = "   Show all Overdue by       "
+   modEditAreaHelpers.Resize_label(lblOverDueBy, lblMeasure)
+   lblName.width = lblOverDueBy.Width
+   lblDeceased.width = lblName.Width
+   modEditAreaHelpers.Resize_label(lblFilter, lblMeasure)
    modEditAreaHelpers.Resize_label(lblfilterDate, lblMeasure)
    Vbox_Photo.width = lblmeasure.Width
    Payment_methods = modBillingDBI.Payment_Methods_Get()
@@ -415,21 +414,12 @@ Public Sub Init()
       .Columns[0].Alignment = Align.Center
       .Columns[1].Alignment = Align.Center
    End With
-   cmbQuickView.Clear
-   cmbQuickView.Add("All Unbilled Consultations", 0)
-   cmbQuickView.Add("Unbilled  Consultations Today", 1)
-   cmbQuickView.Add("Accounts Overdue 1 Month", 2)
-   cmbQuickView.Add("Accounts Overdue 2 Month", 3)
-   cmbQuickView.Add("Accounts Overdue > 3 Months", 4)
-   cmbQuickView.Add("Accounts - Institutional Payers", 5)
-   
-   'IAN HAD CHANGED THE CODE TO JUST THESE OPTIONS:
-   ' cmbInvoices.Add("Unpaid Accounts", 0)
-   ' cmbInvoices.Add("Accounts Overdue 1 Month", 1)
-   ' cmbInvoices.Add("Accounts Overdue 2 Month", 2)
-   ' cmbInvoices.Add("Accounts Overdue > 3 Months", 3)
-   'cmbInvoices.Add("Accounts - Institutional Payers", 5)
-   'cmbInvoices.Add("Accounts - Patients", 5)
+   cmbUnpaid.Clear
+   cmbUnpaid.Add("1 Month", 0)
+   cmbUnpaid.Add("2 Month", 1)
+   cmbUnpaid.Add("3 Months", 2)
+   cmbUnpaid.Add("Institutional Payers", 3)
+   cmbUnpaid.index = -1
    bAreaOfNeed = modAdminDBI.Config_Get("area_of_need", False)
    Settings_Load()         'load settings for this form
    GridRows = New Collection
@@ -437,19 +427,17 @@ Public Sub Init()
    cmbInvoiceComments.index = -1
    gvwItemsBIlled_Init()
    gvwPayments_Init()
-   ' txtFilterAccounts.text = Format(Now, "dd/mm/yyyy")
-   ' txtFilterAccounts.text = "19/10/2012"
    bHSplit_Resized = False
    bComplainedAboutNoItem = False
    fk_invoice = Null
    fk_invoice_for_printing = Null
-   If modAdminDBI.Config_Get("display_unbilled_consults_in_billing", False, Null, modDBConnect.currentUser!fk_clinic) Then
-      bexit = True   
-      cmbQuickView.Index = cInvoiceDisplayMode_UnbilledAll
-      bExit = False  
-   Endif
+   ' 'If modAdminDBI.Config_Get("display_unbilled_consults_in_billing", False, Null, modDBConnect.currentUser!fk_clinic) Then
+   '    bexit = True   
+   '    cmbUnpaid.Index = cInvoiceDisplayMode_UnbilledVisits
+   '    bExit = False  
+   ' Endif
    payment_methods = modBillingDBI.Payment_Methods_Get()
-   Unbilled_Or_Outstanding_Accounts_Reload()
+   Unbilled_refresh
    modDBConnect.Register_Listener("invoice_print", Me)
    
 End
@@ -740,16 +728,20 @@ Public Sub Unbilled_refresh(Optional single_day As Date = Null)
    Dim widest_name As String
    Dim name_length As Integer
    Dim x As Integer
-   Dim sFontHeight As Integer = gvwQuickView.Font.Height
+   Dim sFontHeight As Integer = gvwUnpaidVisits.Font.Height
    
-   gvwQuickView.Clear
+   EditArea_Clear
+   With gvwUnpaidVisits
+      .Clear
+      .Columns.count = 3
+   End With
    fk_patient = Null
    If Trim(txtFilterAccountDate.text) <> "" And IsDate(Trim(txtFilterAccountDate.text)) Then
       single_day = Val(txtFilterAccountDate.text)
    Endif
    Unbilled_Consultations = modUtil.Copy_Collection_Keyed_Sequentially(modBillingDBI.Consultations_UnBilled_Get(single_day, fk_patient))
    For Each Unbilled_consultation In Unbilled_Consultations
-      Inc gvwQuickView.Rows.Count
+      Inc gvwUnpaidVisits.Rows.Count
       If Not IsNull(Unbilled_consultation!fk_lu_appointment_icon) Then
          ' "1";"pregnancy"
          ' "2";"blood test"
@@ -775,13 +767,13 @@ Public Sub Unbilled_refresh(Optional single_day As Date = Null)
       Else
          pic = pic_empty
       Endif
-      gvwQuickView[x, 0].Text = Format(Unbilled_consultation!begin, "dd/mm/yyyy") 
-      gvwQuickView[x, 0].Alignment = Align.TopLeft
-      gvwQuickView[x, 1].Picture = pic
-      gvwQuickView[x, 2].RichText = "<P><B>" & Unbilled_consultation!title & " " & Left(Unbilled_consultation!firstname, 1) & " " & Unbilled_consultation!surname & "</B>"
+      gvwUnpaidVisits[x, 0].Text = Format(Unbilled_consultation!begin, "dd/mm/yyyy") 
+      gvwUnpaidVisits[x, 0].Alignment = Align.TopLeft
+      gvwUnpaidVisits[x, 1].Picture = pic
+      gvwUnpaidVisits[x, 2].RichText = "<P><B>" & Unbilled_consultation!title & " " & Left(Unbilled_consultation!firstname, 1) & " " & Unbilled_consultation!surname & "</B>"
       If Not IsNull(Unbilled_consultation!comment_for_billing) Then
-         gvwQuickView[x, 2].RichText &= "<BR>" & Unbilled_consultation!comment_for_billing & "</P>"
-         gvwQuickView.Rows[x].Height = sFontHeight * 2.2  
+         gvwUnpaidVisits[x, 2].RichText &= "<BR>" & Unbilled_consultation!comment_for_billing & "</P>"
+         gvwUnpaidVisits.Rows[x].Height = sFontHeight * 2.2  
       Endif
       If Len(Unbilled_consultation!wholename) > name_length Then
          lblMeasure.text = Unbilled_consultation!wholename
@@ -789,131 +781,12 @@ Public Sub Unbilled_refresh(Optional single_day As Date = Null)
       Endif
       Inc x
    Next
-   
-End
-
-Public Sub Unbilled_refresh_prior_08may16(Optional single_day As Date = Null)
-   
-   ' Dim pic As Picture
-   ' Dim widest_name As String
-   ' Dim name_length As Integer
-   ' Dim x As Integer
-   ' 
-   ' cvwQuickView.Clear()
-   ' fk_patient = Null
-   ' If Trim(txtFilterAccountDate.text) <> "" And IsDate(Trim(txtFilterAccountDate.text)) Then
-   '    single_day = Val(txtFilterAccountDate.text)
-   ' Endif
-   ' Unbilled_Consultations = modUtil.Copy_Collection_Keyed_Sequentially(modBillingDBI.Consultations_UnBilled_Get(single_day, fk_patient))
-   ' For Each Unbilled_consultation In Unbilled_Consultations
-   '    If Not IsNull(Unbilled_consultation!fk_lu_appointment_icon) Then
-   '       ' "1";"pregnancy"
-   '       ' "2";"blood test"
-   '       ' "3";"mental health plan"
-   '       ' "4";"home visit"
-   '       ' "5";"over 75 health assessment"
-   '       ' "6";"procedure"
-   '       ' "7";"immunization"
-   '       ' "8";"workcover"
-   '       ' "9";"annual checkup"
-   '       ' "10";"prescription"
-   '       ' "11";"diabetes cycle of care"
-   '       ' 
-   '       
-   '       Select Case Unbilled_consultation!fk_lu_appointment_icon
-   '          Case 4
-   '             pic = pic_home_visit
-   '          Case 6
-   '             pic = pic_procedure
-   '          Case 9
-   '             pic = pic_annual_checkup
-   '          Case Else
-   '             pic = pic_empty
-   '       End Select
-   '    Else
-   '       pic = pic_empty
-   '    Endif
-   '    cvwQuickView.Add(x, "", pic)
-   '    cvwQuickView[x][0] = Format(Unbilled_consultation!begin, "dd/mm/yyyy")
-   '    ' cvwQuickView[x][1] = Unbilled_consultation!wholename   
-   '    cvwQuickView[x][1] = Unbilled_consultation!title & " " & Left(Unbilled_consultation!firstname, 1) & " " & Unbilled_consultation!surname
-   '    If Not IsNull(Unbilled_consultation!comment_for_billing) Then
-   '       cvwQuickView[x][2] = Unbilled_consultation!comment_for_billing   
-   '    Endif
-   '    If Len(Unbilled_consultation!wholename) > name_length Then
-   '       lblMeasure.text = Unbilled_consultation!wholename
-   '       name_length = Len(Unbilled_consultation!wholename)
-   '    Endif
-   '    Inc x
-   ' Next
-   ' modUtilGUI.Columnview_Columns_Set_Size(cvwQuickView, lblMeasure)
-   ' 
-End
-
-Public Sub Unbilled_refresh_Second_Oldest(Optional single_day As Date = Null)
-   '    
-   '    Dim pic As Picture
-   '    Dim widest_name As String
-   '    Dim name_length As Integer
-   '    
-   '    cvwQuickView.Clear()
-   '    fk_patient = Null
-   '    If Trim(txtFilterAccountDate.text) <> "" And IsDate(Trim(txtFilterAccountDate.text)) Then
-   '       single_day = Val(txtFilterAccountDate.text)
-   '    Endif
-   '    Unbilled_Consultations = modBillingDBI.Consultations_UnBilled_Get(single_day, fk_patient)
-   '    For Each Unbilled_consultation In Unbilled_Consultations
-   '       If Not IsNull(Unbilled_consultation!fk_lu_appointment_icon) Then
-   '          ' "1";"pregnancy"
-   '          ' "2";"blood test"
-   '          ' "3";"mental health plan"
-   '          ' "4";"home visit"
-   '          ' "5";"over 75 health assessment"
-   '          ' "6";"procedure"
-   '          ' "7";"immunization"
-   '          ' "8";"workcover"
-   '          ' "9";"annual checkup"
-   '          ' "10";"prescription"
-   '          ' "11";"diabetes cycle of care"
-   '          ' 
-   '          
-   '          Select Case Unbilled_consultation!fk_lu_appointment_icon
-   '             Case 4
-   '                pic = pic_home_visit
-   '             Case 6
-   '                pic = pic_procedure
-   '             Case 9
-   '                pic = pic_annual_checkup
-   '             Case Else
-   '                pic = pic_empty
-   '          End Select
-   '       Endif
-   '       cvwQuickView.Add(Unbilled_consultation!pk, "", pic)
-   '       cvwQuickView[Unbilled_consultation!pk][0] = Format(Unbilled_consultation!begin, "dd/mm/yyyy")
-   '       cvwQuickView[Unbilled_consultation!pk][1] = Unbilled_consultation!wholename   
-   '       
-   '       If Len(Unbilled_consultation!wholename) > name_length Then
-   '          lblMeasure.text = Unbilled_consultation!wholename
-   '          name_length = Len(Unbilled_consultation!wholename)
-   '       Endif
-   '    Next
-   '    modUtilGUI.Columnview_Columns_Set_Size(cvwQuickView, lblMeasure)
-   '    
-   ' End
-   ' 
-   ' Public Sub Unbilled_refresh_old(Optional single_day As Date = Null)
-   '    
-   '    cvwQuickView.Clear()
-   '    If Trim(txtFilterAccountDate.text) <> "" And IsDate(Trim(txtFilterAccountDate.text)) Then
-   '       single_day = Val(txtFilterAccountDate.text)
-   '    Endif
-   '    Unbilled_Consultations = modBillingDBI.Consultations_UnBilled_Get(single_day, fk_patient)
-   '    For Each Unbilled_consultation In Unbilled_Consultations
-   '       cvwQuickView.Add(Unbilled_consultation!pk, 0)
-   '       cvwQuickView[Unbilled_consultation!pk][0] = Format(Unbilled_consultation!begin, "dd/mm/yyyy")
-   '       cvwQuickView[Unbilled_consultation!pk][1] = Unbilled_consultation!wholename
-   '    Next
-   '    
+   If gvwUnpaidVisits.Rows.count Then
+      With gvwUnpaidVisits
+         .row = 0
+         .SetFocus
+      End With
+   End If   
    
 End
 
@@ -923,13 +796,12 @@ Public Sub Patient_Unbilled_Consultation_Display()
    'Display the patient and consultation details in the editing area
    '----------------------------------------------------------------------------------
    
-   '  cvwQuickView.MoveCurrent()
    EditArea_Clear()                                                                    'clear input area
    tbSaveBillingNextOfKin.Enabled = False
    bPayingInvoice = False
    txtpatient.ReadOnly = True
    txtDate.ReadOnly = True
-   Unbilled_consultation = Unbilled_Consultations[gvwQuickView.Item.key]
+   Unbilled_consultation = Unbilled_Consultations[gvwUnpaidVisits.Item.key]
    Try fk_lu_default_billing_level = Unbilled_consultation!fk_lu_default_billing_level
    If Error Then fk_lu_default_billing_level = const.Billing_Default_Level_Private
    fk_patient = Unbilled_consultation!fk_patient
@@ -957,7 +829,6 @@ Public Sub Patient_Unbilled_Consultation_Display()
    End With
    VBox_EditArea_Outer.Enabled = True
    gvwItemsBIlled.Enabled = True
-   ' Items_Today_Or_Unpaid = Reload_Billed_Items(cvwItemsTodayOrUnpaid, Items_Today_Or_Unpaid)
    Items_Today_Or_Unpaid_Reload
    EditArea_Notify_Data_Change(False)
    VBox_EditArea_Inner.Enabled = True
@@ -993,11 +864,11 @@ End
 Public Sub mnuUnbilled_Click()
    
    Dim comment_for_billing As Variant 'see text, don't want to save a "" empty string as empty string but null
-   Dim sFontHeight As Integer = gvwQuickView.Font.Height
+   Dim sFontHeight As Integer = gvwUnpaidVisits.Font.Height
    
    Select Case Last.tag
       Case "font"
-         modUtilGUI.Columnview_SetFont(gvwQuickView, Me.Name)
+         modUtilGUI.Columnview_SetFont(gvwUnpaidVisits, Me.Name)
       Case "wait for histology", "clarify with doctor", "remove comment" 'tag of remove comment = ""
          If Last.tag = "remove comment" Then
             comment_for_billing = ""
@@ -1006,14 +877,14 @@ Public Sub mnuUnbilled_Click()
          Endif
          modDBConnect.update("clerical.bookings", Null, ["pk": patient!fk_appointment, "comment_for_billing": comment_for_billing]) 
          modDBConnect.CommitTrans
-         gvwQuickView[sPatient_Collection_Key, 2].RichText = "<P><B>" & patient!title & " " & Left(patient!firstname, 1) & " " & patient!surname & "</B>"
+         gvwUnpaidVisits[sPatient_Collection_Key, 2].RichText = "<P><B>" & patient!title & " " & Left(patient!firstname, 1) & " " & patient!surname & "</B>"
          If comment_for_billing <> "" Then
-            gvwQuickView[sPatient_Collection_Key, 2].RichText &= "<BR>" & comment_for_billing & "</P>"
-            gvwQuickView.Rows[sPatient_Collection_Key].Height = sFontHeight * 2.2  
+            gvwUnpaidVisits[sPatient_Collection_Key, 2].RichText &= "<BR>" & comment_for_billing & "</P>"
+            gvwUnpaidVisits.Rows[sPatient_Collection_Key].Height = sFontHeight * 2.2  
          Endif
       Case "add free text"
          With form_unbilled_comment = New FUnbilledComment
-            .Init(patient!fk_appointment, gvwQuickView, sPatient_Collection_Key, patient)
+            .Init(patient!fk_appointment, gvwUnpaidVisits, sPatient_Collection_Key, patient)
             .ShowModal  
          End With
       Case "did not arrive"
@@ -2050,7 +1921,7 @@ Private Sub Settings_Load()
    Hsplit_EditArea.Layout = Settings[Me.Name & "/HSplit_EditArea.Layout", modUtilGUI.HSplit([653, 658])]
    cvwItemsTodayOrUnpaid.Font = Font[Settings[Me.Name & "/cvwItemsBilled.font", "DejaVu Sans, 9"]]
    cvwWorkcoverClaims.Font = Font[Settings[Me.Name & "/cvwWorkcoverClaims.font", "DejaVu Sans, 8"]]
-   gvwQuickView.Font = Font[Settings[Me.Name & "/gvwQuickView.font", "DejaVu Sans, 9"]]
+   gvwUnpaidVisits.Font = Font[Settings[Me.Name & "/gvwUnpaidVisits.font", " DejaVu Sans, 9 "]]
    gvwAccountNames.Font = Font[Settings[Me.Name & "/gvwAccountNames.font", "DejaVu Sans, 9"]]
    cvwAccountHistory.font = Font[Settings[Me.Name & "/cvwAccountHistory.font", "DejaVu Sans, 9"]]
    VSplit_INvoices.Layout = Settings[Me.name & "/VSplit_Invoices.Layout", modUtilGUI.VSplit([1, 2])]
@@ -2318,7 +2189,7 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True)
                bEditedItemDeleted = False                     'if still in the grid 
                Break                                          'jump out to try the next one
             End If  
-        Next
+         Next
          If bEditedItemDeleted = True Then                    'if that item number now not in the grid             '
             item = New CRow                                   'mark it deleted
             item.put_unchanged(item_Previously_Billed!pk_items_billed, "fk_item_billed")
@@ -2400,305 +2271,7 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True)
    fk_invoice = Null
    EditArea_Notify_Data_Change(False)
    If Not bSearchingAccounts Then 
-      tbQuickView_Click                              'refreshes the unbilled patients
-   Else
-      Items_Today_Or_Unpaid_Reload                   'refresh the invoices under the edit area
-   End If
-   If Not IsNull(patient) Then
-      ' Items_Today_Or_Unpaid = Reload_Billed_Items(cvwItemsTodayOrUnpaid, Items_Today_Or_Unpaid)
-      '  Items_Today_Or_Unpaid_Reload()      'reload the collection and fill the columnview
-   Endif
-   Print bSearchingAccounts
-   modDBConnect.CommitTrans() ' do this last to prevent new transaction from forming
-   
-End
-
-Public Sub Save_old(bBulkBill As Boolean, Optional bPrint As Boolean = True)
-   '--------------------------------------------------------------------------------------
-   ' Saves a new or edited invoice (if the invoice is unpaid)
-   ' Note the Invoice collection Is global to this billing module, so that if an invoice
-   ' has been displayed by clicking on an invoice under the editing area, and edited then
-   ' all the collection is filled. Only the date_invoiced and staff invoiced is kept when
-   ' editing, the rest is added back in
-   '
-   ' Saves record of payment
-   '--------------------------------------------------------------------------------------
-   ' CREATE TABLE billing.invoices
-   ' (
-   '   pk serial NOT NULL,
-   '   fk_staff_invoicing integer NOT NULL, -- the staff member raising the invoice
-   '   date_printed timestamp without time zone,
-   '   notes text, -- Any additional comments pertaining to the invoice or any of it's...
-   '   fk_staff_provided_service integer NOT NULL, -- the staff member who provider the service on which the invoice is based
-   '   fk_patient integer,
-   '   date_invoiced timestamp without time zone NOT NULL DEFAULT now(),
-   '   paid boolean NOT NULL DEFAULT false,
-   '   fk_payer_person integer, -- if not null then the key to the person who pays the bill
-   '   fk_payer_branch integer, -- if not null then payer is an organisation/branch
-   '   latex text, -- the LaTeX definition of the invoice generated
-   '   fk_branch integer NOT NULL, -- The branch at which the patient was provided with the service
-   '   visit_date date, -- The date time of the patient visit - may be null because the invoice could be raised not in relation to a visit
-   '   reference text, -- text of any insurance or bill reference eg 'CLAIM NO:1234'
-   '   fk_lu_bulk_billing_type integer, -- if not null then the type of bulk-bill 1=medicare 2=veteran
-   '   fk_appointment integer,
-   '   total_bill money NOT NULL DEFAULT '$0.00'::money,
-   '   total_gst money NOT NULL DEFAULT '$0.00'::money,
-   '   total_paid money NOT NULL DEFAULT '$0.00'::money,
-   '   online boolean NOT NULL DEFAULT false, -- true if the invoice is to be uploaded via Medicare Online
-   '   result_code integer DEFAULT (-1), -- text returned by medicare Online driver, only significant if result_code > 0
-   '   result_text text,
-   '   fk_claim integer,
-   '   voucher_id character varying(2),
-   '   referrer_provider_number character varying(8),
-   '   referral_date date,
-   '   referral_duration integer,
-   '   pms_claim_id text, -- Medicare Online returns a claim transaction ID, which their documentaiton misleadingly calls the PMS Claim ID
-   '   error_level character(1), -- Medicare Online's one-char error level code, A=acceptable, U=aunacceptable, not very useful compared to the error numeric code
-   '   claimant_address_upload boolean NOT NULL DEFAULT false, -- true if claimant's address is to be uploaded using Medicare Online
-   '   bank_details_upload boolean NOT NULL DEFAULT false, -- true if claimant's bank details are to be uploaded using Medicare Online
-   '   CONSTRAINT invoices_pkey PRIMARY KEY (pk),
-   '   CONSTRAINT invoices_fk_appointment_fkey FOREIGN KEY (fk_appointment)
-   '       REFERENCES clerical.bookings (pk) MATCH SIMPLE
-   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
-   '   CONSTRAINT invoices_fk_branch_fkey FOREIGN KEY (fk_branch)
-   '       REFERENCES contacts.data_branches (pk) MATCH SIMPLE
-   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
-   '   CONSTRAINT invoices_fk_claim_fkey FOREIGN KEY (fk_claim)
-   '       REFERENCES billing.claims (pk) MATCH SIMPLE
-   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
-   '   CONSTRAINT invoices_fk_doctor_raising_fkey FOREIGN KEY (fk_staff_provided_service)
-   '       REFERENCES admin.staff (pk) MATCH SIMPLE
-   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
-   '   CONSTRAINT invoices_fk_lu_bulk_billing_type_fkey FOREIGN KEY (fk_lu_bulk_billing_type)
-   '       REFERENCES billing.lu_bulk_billing_type (pk) MATCH SIMPLE
-   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
-   '   CONSTRAINT invoices_fk_patient_fkey FOREIGN KEY (fk_patient)
-   '       REFERENCES clerical.data_patients (pk) MATCH SIMPLE
-   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
-   '   CONSTRAINT invoices_fk_payer_branch_fkey FOREIGN KEY (fk_payer_branch)
-   '       REFERENCES contacts.data_branches (pk) MATCH SIMPLE
-   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
-   '   CONSTRAINT invoices_fk_payer_person_fkey FOREIGN KEY (fk_payer_person)
-   '       REFERENCES contacts.data_persons (pk) MATCH SIMPLE
-   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
-   '   CONSTRAINT invoices_fk_staff_invoicing_fkey FOREIGN KEY (fk_staff_invoicing)
-   '       REFERENCES admin.staff (pk) MATCH SIMPLE
-   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
-   '   CONSTRAINT flags_online CHECK (NOT (NOT online AND (bank_details_upload OR claimant_address_upload))),
-   '   CONSTRAINT has_claimant CHECK (NOT (claimant_address_upload AND fk_payer_person IS NULL))
-   ' )
-   ' WITH (
-   '   OIDS=FALSE
-   '--------------------------------------------------------------------------------------------------------
-   
-   Dim item As CRow
-   Dim payment As CRow
-   Dim payment_method As Collection
-   Dim bPaid As Boolean = False
-   Dim grid_row As Integer
-   Dim total_paid As Float
-   Dim invoice_total As Float
-   Dim sMsg As String
-   Dim referrer As Collection
-   Dim date_paid As Date
-   Dim latex As String
-   
-   If VBox_EditArea_Outer.Padding = 0 Then
-      If IsNull(invoice) Then Return
-      If Not bPrint Then Return
-      If IsNull(invoice!latex) And If invoice!online Then
-         latex = modBillingDBI.Generate_Online_Latex(invoice!fk_invoice)
-      Else
-         latex = invoice!latex
-      Endif
-      If Not IsNull(latex) Then modPrinting.Print_latex(latex)
-      Return           'no data change no save
-   Endif
-   If Not Valid_Invoice_Items() Then Return                 'items invalid no save
-   '-----------------------------------------------------
-   'Now, work out if being paid, if so ?all, is it valid?
-   '-----------------------------------------------------
-   If lblPaymentTotal.text <> "" Then
-      Message.Title = "Payment of Invoice"
-      For grid_row = 0 To gvwPayments.Rows.Max
-         If gvwPayments[grid_row, cGridColumnPayments_Amount].Text <> "" Then            'if have an amount
-            If gvwPayments[grid_row, cGridColumnPayments_PaymentMethod].text = "" Then
-               gvwPayments.Row = grid_row
-               gvwPayments.Column = cGridColumnPayments_PaymentMethod
-               Message.Info("Please enter type of payment.\n\n")
-               Return
-            Endif
-            total_paid = total_paid + CFloat(Val(Replace(gvwPayments[grid_row, cGridColumnPayments_Amount].text, "$", "")))
-         Else
-            If grid_row = 0 Then
-               gvwPayments.Row = 0
-               gvwPayments.Column = 0
-               Message.Info("Please enter amount of payment.\n\n")
-               Return
-            End If
-         End If
-      Next
-   End If
-   '------------------------------------------------------------
-   'finally if being paid, does the paid amount match the total?
-   '------------------------------------------------------------
-   invoice_total = CFloat(Val(Right(lblInvoiceOwing.text, Len(lblInvoiceOwing.text) - InStr(lblInvoiceOwing.text, " $") - 1)))
-   If total_paid <> 0 Then
-      If total_paid > invoice_total Then
-         Message.Info("The amount being paid is greater than the invoice total.")
-         Return
-      Endif
-   End If
-   '-----------------------------------------------------------------------------
-   'At this point validation finished total_paid 0 or amount <= invoice total
-   'Create or edit the invoice
-   'If editing (e.g paying) then user will not have been able to change
-   'any of the core invoice details, ie date originally invoiced, who invoiced it
-   '-----------------------------------------------------------------------------
-   If Not IsNull(fk_invoice) Then                                       ' existing invoice
-      invoice.put_unchanged(fk_invoice, "fk_invoice")                   ' edit the record
-   Else                                                                 ' an edited invoice
-      invoice!fk_staff_invoicing = modDBConnect.currentUser!fk_staff    'new - then current user is doing the invoicing
-      invoice!date_invoiced = Now() 'was "now()"                        'today 
-   End If     
-   invoice!notes = cmbInvoiceComments.Text
-   invoice!reference = Trim(txtReferenceDetails.text)
-   If bBulkBill Then
-      If rbInvoiceToMedicare.value = True Then invoice!fk_lu_bulk_billing_type = const.BulkBilling_Type_Medicare
-      If rbInvoiceToVeterans.value = True Then invoice!fk_lu_bulk_billing_type = const.BulkBilling_Type_Veteran
-   Endif
-   If rbOnline_Yes.Value Then
-      invoice!online = True
-      If bBulkBill Then
-         invoice!result_code = 4003
-      Else
-         invoice!result_code = 4005
-      Endif
-   Else
-      invoice!online = False
-      If bBulkBill Then
-         invoice!result_code = 4002
-      Else
-         invoice!result_code = 4001
-      Endif
-   Endif
-   If cmbSeenBy.Index <> -1 Then
-      invoice!fk_staff_provided_service = staff[cmbSeenBy.index]!fk_staff
-   End If
-   If Not IsNull(fk_patient) Then invoice!fk_patient = fk_patient     'may not be for a patient
-   If Not IsNull(fk_appointment) Then invoice!fk_appointment = fk_appointment
-   invoice!fk_branch = clinics[cmbLocation.Index]!fk_branch   'branch at which service was provided
-   If Not IsNull(fk_payer_branch) Then invoice!fk_payer_branch = fk_payer_branch
-   If Not IsNull(fk_payer_person) Then invoice!fk_payer_person = fk_payer_person
-   invoice!visit_date = Val(txtDate.text)
-   
-   '----------------------------------
-   'has the invoice been paid in full?- fix this code
-   '----------------------------------
-   If invoice_total = total_paid Then
-      invoice!paid = True
-      bpaid = True
-   Else
-      bpaid = False
-   End If
-   If invoice.Exist("fk_patient") Then
-      fk_patient = invoice!fk_patient
-   Endif
-   If IsNull(fk_patient) Or If fk_patient < 1 Then 'fix me ?<1 kosha
-      ' referrer has no PN, so leave it all blank
-   Else
-      referrer = modBillingDBI.Find_Referrer(fk_patient, invoice!visit_date)
-      If Not IsNull(referrer) Then
-         invoice!referrer_provider_number = referrer!provider_number
-         invoice!referral_date = referrer!date_created
-         If referrer!indefinite Then
-            invoice!referral_duration = 13
-         Else
-            invoice!referral_duration = referrer!months
-         Endif
-      Endif
-   Endif
-   If invoice!online And If Not IsNull(fk_payer_person) And If cbSendClaimantAddress.Value = True Then
-      invoice!claimant_address_upload = True
-   Endif
-   If invoice!online And If Not IsNull(FBankDetails.account_number) And If Not Len(FBankDetails.account_number) < 4 Then
-      invoice!bank_details_upload = True
-   Endif
-   invoice.Save("billing.invoices", "fk_invoice")
-   fk_invoice_for_printing = invoice!fk_invoice
-   If Not IsNull(invoice!online) And If Not IsNull(FBankDetails.account_number) And If Not Len(FBankDetails.account_number) < 4 Then
-      modBillingDBI.Save_Bank_Details(invoice!fk_invoice, FBankDetails.account_name, FBankDetails.bsb, FBankDetails.account_number)
-   Endif
-   ' never 'remember' bank details across invoices or patients
-   FBankDetails.account_name = Null
-   FBankDetails.account_number = Null
-   FBankDetails.bsb = Null
-   '------------------------------------
-   'Get the items from the grid and save
-   'FIXME - will later keep the underlying grid data in an array of some sort
-   'and dispose of some of these backend calls
-   '------------------------------------
-   Print GridData
-   Print items_billed    'should be null for a new invoice
-   If IsNull(fk_invoice) Then  'FIXME MAY HAVE TO ALLOW EDITING OF THIS
-      For grid_row = 0 To gvwItemsBIlled.Rows.count - 1  'fixme check all necessary data is in grids cells
-         Print GridData[grid_row]
-         If gvwItemsBIlled[grid_row, cGridColumnItem_ItemNumber].Text <> "" Then
-            item = New CRow
-            item!fk_fee_schedule = modBillingDBI.fk_fee_shedule_Get_For_Item_Number(gvwItemsBIlled[grid_row, cGridColumnItem_ItemNumber].Text) 'could be compound eg 35/1
-            item!amount = gvwItemsBIlled[grid_row, cGridColumnItem_Fee].Text
-            item!fk_invoice = invoice!fk_invoice
-            item!fk_lu_billing_type = Billing_Type_Get_Pk(gvwItemsBIlled[grid_row, cGridColumnItem_FeeType].Text)
-            item!amount_gst = gvwItemsBIlled[grid_row, cGridColumnItem_gst_amount].Text
-            item.Save("billing.items_billed", "fk_item_billed")
-         End If
-      Next
-   End If
-   '----------------------------------------------------
-   'Now, is this invoice being paid? in part or in full?
-   '----------------------------------------------------
-   If total_paid > 0 Then
-      For grid_row = 0 To gvwPayments.Rows.count - 1
-         If gvwPayments[grid_row, cGridColumnPayments_Amount].Text <> "" Then
-            payment = New CRow
-            payment!fk_invoice = invoice!fk_invoice
-            payment!amount = gvwPayments[grid_row, cGridColumnPayments_Amount].Text
-            For Each payment_method In Payment_Methods
-               If payment_method!method = gvwPayments[grid_row, cGridColumnPayments_PaymentMethod].text Then
-                  payment!fk_lu_payment_method = payment_method!pk
-                  Break
-               Endif
-            Next
-            'this simple way screwed by ians smart changes.
-            '   payment!fk_lu_payment_method = Payment_Methods[gvwPayments[x, cGridColumnPayments_PaymentMethod].text]!fk_lu_payment_method
-            sMsg = gvwPayments[grid_row, cGridColumnPayments_Date].Text
-            Debug "the date paid string is "; sMsg
-            date_paid = modUtil.Make_Date_From_String(smsg)
-            Debug "the parsed date is"; date_paid
-            payment!date_paid = date_paid
-            payment!referent = gvwPayments[grid_row, cGridColumnPayments_Comment].Text
-            payment!fk_staff_receipted = modDBConnect.currentUser!fk_staff
-            payment.Save("billing.payments_received", "fk_payment")
-         End If
-      Next
-   Endif
-   '------------------------------------------
-   'finally mark this appointment as invoiced
-   'fixme only update  this on first pass
-   'fime  misnomer invoice or reciept
-   '-----------------------------------------
-   If fk_appointment Then
-      modDBConnect.update("clerical.bookings", Null, ["pk": fk_appointment, "invoiced": True])
-   Endif
-   'fixme won't always be printed, but need to always save latex
-   invoice!latex = modBillingDBI.Print_Invoice(invoice!fk_invoice, bPrint, bBulkBill, Null, referrer)
-   If Not IsNull(invoice!latex) Then
-      modDBConnect.update("billing.invoices", Null, ["pk": invoice!fk_invoice, "latex": invoice!latex, "date_printed": "now()"])
-   Endif
-   fk_invoice = Null
-   EditArea_Notify_Data_Change(False)
-   If Not bSearchingAccounts Then 
-      tbQuickView_Click                              'refreshes the unbilled patients
+      Unbilled_refresh
    Else
       Items_Today_Or_Unpaid_Reload                   'refresh the invoices under the edit area
    End If
@@ -2865,23 +2438,34 @@ Public Sub Patients_Get()
    'keep only one instance of the patient
    '-------------------------------------------------------------------
    
+   timer1.Stop
+   If Trim(txtSearchAccountNames.text) = "" Then Return
+   Inc Application.Busy
+   patients = modContactsDBI.patients_get_firstname_surname(Trim(txtSearchAccountNames.text), chkIncludeDeceased.value) 'exclude decesased but can include a checkbox(could be looking at old accounts)
+   patients.Remove("sql_in_english")
+   patients = modUtil.Copy_Collection_Keyed_Sequentially(patients)
+   Dec Application.Busy
+   Patients_Display
+   
+End
+
+Public Sub Patients_Display()
+   '-------------------------------------------------------------------
+   'Get patients ILIKE txtSearchInvoices
+   'Note as this returns multiple lines if there are multiple addresses
+   'keep only one instance of the patient
+   '-------------------------------------------------------------------
+   
    Dim last_fk_patient As Variant
    Dim x As Integer
    Dim iWidestPatientName As Integer
    Dim sFontHeight As Integer = gvwAccountNames.Font.Height
    Dim sPatientName As String
    
-   timer1.Stop
-   If Trim(txtSearchAccountNames.text) = "" Then Return
-   Inc Application.Busy
-   
    With gvwAccountNames
       .Clear
       .Rows.count = 0
    End With
-   patients = modContactsDBI.patients_get_firstname_surname(Trim(txtSearchAccountNames.text), chkIncludeDeceased.value) 'exclude decesased but can include a checkbox(could be looking at old accounts)
-   patients.Remove("sql_in_english")
-   patients = modUtil.Copy_Collection_Keyed_Sequentially(patients)
    If patients.count Then
       For Each patient In patients
          If last_fk_patient <> patient!fk_patient Then
@@ -2906,13 +2490,18 @@ Public Sub Patients_Get()
          End If
          
       Next
-      If gvwAccountNames.Rows.count Then gvwAccountNames.Columns[0].width = iWidestPatientName
-      If patients.count = 1 Then
-         sPatient_Collection_Key = 0
-         EditArea_Clear()
-         Account_Patient_Display(True)
-         txtSearchAccountNames_LostFocus()
+      If gvwAccountNames.Rows.count Then 
+         gvwAccountNames.Columns[0].width = iWidestPatientName
+         
+         ' If patients.count = 1 Then
+         '    sPatient_Collection_Key = 0
+         '    EditArea_Clear()
+         '    Account_Patient_Display(True)
+         '    txtSearchAccountNames_LostFocus()
+         gvwAccountNames.row = 0
+         gvwAccountNames.SetFocus
       Endif
+      
    Endif
    Dec Application.Busy
    
@@ -3469,7 +3058,7 @@ Public Sub mnuItemsTodayOrUnpaid_Click()
          If Not IsNull(Item_Billed!fk_appointment) Then
             modDBConnect.update("clerical.bookings", Null, ["pk": Item_Billed!fk_appointment, "invoiced": False])
             modDBConnect.CommitTrans
-            cmbQuickView_Click() 'reload the quickview grid
+            cmbUnpaid_Click() 'reload the quickview grid
          End If   
          
          '  Items_Today_Or_Unpaid = Reload_Billed_Items(cvwItemsTodayOrUnpaid, Items_Today_Or_Unpaid)
@@ -3501,8 +3090,8 @@ Public Sub mnuItemsTodayOrUnpaid_Click()
       Case "print account statement"
          Accounts_Print_Statement
    End Select
-'Catch
-  '' Log.ErrorMsg(Error.text & " " & Error.where)
+   'Catch
+   '' Log.ErrorMsg(Error.text & " " & Error.where)
    Return
    
 End
@@ -4828,23 +4417,20 @@ Public Sub Account_Patient_Display(Optional bFromSearchingAccounts As Boolean = 
    '-----------------------------------------------------------------------------------------
    
    If bFromSearchingAccounts Then                                             ' this sub called from cvwAccounts_Select
+      If IsNull(patients) Then Return                                         ' should never be but ?there's a bug
       Patient = Patients[sPatient_Collection_Key]                             ' where user has searched for patients 
    Else                                                                       ' otherwise called from the appointments seen list.
-      If cmbQuickView.index <> -1 Then                                        ' shouldn't ever happen
-         Patient = Unbilled_Consultations[sPatient_Collection_Key]            ' select an unbilled consultation
-         fk_appointment = Unbilled_Consultations[sPatient_Collection_Key]!pk
-         fk_staff = Unbilled_Consultations[sPatient_Collection_Key]!fk_staff
-         For Each Staff_Member In staff                                       ' match the staff member in the combo
-            If Staff_Member!fk_staff = fk_staff Then 
-               cmbSeenBy.index = cmbSeenBy.Find(Staff_Member!wholename)
-               Break
-            Endif
-         Next
-         lblInvoiceDate.text = "Date Seen"
-      Else
-         Patient = Patients[sPatient_Collection_Key]
-         lblInvoiceDate = "Invoice Date"
-      End If   
+      If IsNull(Unbilled_Consultations) Then Return                       ' should never be but ?there's a bug
+      Patient = Unbilled_Consultations[sPatient_Collection_Key]            ' select an unbilled consultation
+      fk_appointment = Unbilled_Consultations[sPatient_Collection_Key]!pk
+      fk_staff = Unbilled_Consultations[sPatient_Collection_Key]!fk_staff
+      For Each Staff_Member In staff                                       ' match the staff member in the combo
+         If Staff_Member!fk_staff = fk_staff Then 
+            cmbSeenBy.index = cmbSeenBy.Find(Staff_Member!wholename)
+            Break
+         Endif
+      Next
+      lblInvoiceDate.text = "Date Seen"
    End If   
    fk_patient = Patient!fk_patient
    Try fk_lu_default_billing_level = patient!fk_lu_default_billing_level            'if no billling level in backend
@@ -4865,7 +4451,6 @@ Public Sub Account_Patient_Display(Optional bFromSearchingAccounts As Boolean = 
    fk_payer_branch = Null
    fk_payer_person = Null
    Try Payer_Get(Patient)                                                           ' show payer if exists eg could be parent
-   
    gvwItemsBIlled.Enabled = True
    iAccountDisplayMode = const.Billing_Accounts_Paid_Today_And_Unpaid_All
    Items_Today_Or_Unpaid_Reload
@@ -5909,7 +5494,7 @@ Public Function visit_type_create_html(visit_subset As Collection, group_name As
             shtml = Replace(shtml, "%time%", "")
          End If   
          ' If last_fk_patient <> visit!fk_patient Then                     'the previous invoice could have been to same patient
-         shtml = Replace(shtml, "%patient%", visit!patient_wholename) 'if not, print name
+         shtml = Replace(shtml, "%patient%", visit!wholename) 'if not, print name
          'Else                                                            'otherwise
          '   shtml = Replace(shtml, "%patient%", "")                      'suppress it
          'End If
@@ -6468,27 +6053,22 @@ Public Sub Unbilled_Or_Outstanding_Accounts_Reload()
    
    EditArea_Clear()
    tbNewInvoice.Visible = False
-   Select Case cmbQuickView.Index
-      Case cInvoiceDisplayMode_UnbilledAll
-         Unbilled_refresh
-      Case cInvoiceDisplayMode_UnbilledToday
-         '  Unbilled_refresh(Now())
-      Case cInvoiceDisplayMode_Overdue
-         '  Accounts_Overdue_Display("0 month", "6 month")
+   Select Case cmbUnpaid.Index
       Case cInvoiceDisplayMode_Overdue_1Month
-         ' Accounts_Overdue_Display("1 month", "6 month")
+         Accounts_Overdue_Display("1 month", "6 month")
       Case cInvoiceDisplayMode_Overdue_2Month
-         ' Accounts_Overdue_Display("2 month", "6 month")
+         Accounts_Overdue_Display("2 month", "6 month")
       Case cInvoiceDisplayMode_Overdue_Over3Months
-         ' Accounts_Overdue_Display("3 month", "12 month")
-         'Case cInvoiceDisplayMode_InstitutionalAccounts
+         Accounts_Overdue_Display("3 month", "12 month")
+      Case cInvoiceDisplayMode_InstitutionalAccounts
+         
    End Select
-   If gvwQuickView.Rows.count Then
-      With gvwQuickView
-         .row = 0
-         .SetFocus
-      End With
-   End If   
+   ' If gvwUnpaidVisits.Rows.count Then
+   '    With gvwUnpaidVisits
+   '       .row = 0
+   '       .SetFocus
+   '    End With
+   ' End If   
    
 End
 
@@ -6496,32 +6076,42 @@ Private Sub Accounts_Overdue_Display(start_duration As String, end_duration As S
    
    Dim p As Collection
    
-   patients = modBillingDBI.Accounts_Overdue_Find(start_duration, end_duration)
-   ' cvwQuickView.Clear()
-   gvwQuickView.Clear
-   Debug start_duration
-   Debug end_duration
-   For Each p In patients
-      ' cvwQuickView.Add(p!pk_view, p!wholename)
-   Next
+   patients = modUtil.Copy_Collection_Keyed_Sequentially(modBillingDBI.Accounts_Overdue_Find_Patients(start_duration))
+   Patients_Display
    
 End
 
-Public Sub cmbQuickView_Click()
+Public Sub cmbUnpaid_Click()
    
    If Bexit Then Return
    lblSearchAccounts.Foreground = Color.LightGray
-   txtFindPayer.text = ""
+   txtSearchAccountNames.text = ""
+   gvwUnpaidVisits.UnselectAll                 ' if a marquee showing on the appointments not billed list remove it
+   gvwAccountNames.Clear                    ' clear the grid
+   bSearchingAccounts = True 
+   If TabStrip1.index <> 0 Then TabStrip1.index = 0
+   If TabVisitsPaymentsAccountHistory.index <> 0 Then 
+      bexit = True   
+      TabVisitsPaymentsAccountHistory.Index = 0
+      bexit = False   
+   End If 
+   Wait
+   EditArea_Clear
+   Reset_Keys_Collections
+   bexit = True                              ' stop triggering code in   txtSearchAccountNames_Change(
+   txtSearchAccountNames.Text = ""
+   bexit = False  
+   
    Unbilled_Or_Outstanding_Accounts_Reload()
    
 End
 
-Public Sub gvwQuickView_Select()
+Public Sub gvwUnpaidVisits_Select()
    'If the doctor or nurse posted an item number in the patient!comment_for_billing field
    'the try and auto-bill
    'cvwItemsTodayOrUnpaid = the columnview under the billing area bottom right screen
    'cvwAccounts           = the columnview at top left = where user searches for accounts/patients
-   'cvwQuickView          = the columnview at bottom left auto-populated from the appointment list
+   'gvwUnpaidVisits      = the columnview at bottom left auto-populated from the appointment list
    'TabVisitsPaymentsAccountHistory = tab where user generates invoice, pays invoice or views account history
    
    Dim Possible_Item_Numbers As String[] 
@@ -6531,7 +6121,7 @@ Public Sub gvwQuickView_Select()
    Dim gwItemsBilled_Row As Integer
    Dim dr_says_bulk_bill As Boolean 'if the comment_on_billing passed from clinical has "BB" in it
    
-   If bexit Or gvwQuickView.row = -1 Or IsNull(Unbilled_Consultations) Then Return  '-1 = no row selected
+   If bexit Or gvwUnpaidVisits.row = -1 Or IsNull(Unbilled_Consultations) Then Return  '-1 = no row selected
    gvwAccountNames.UnSelectAll                ' remove the marequee from the top grid of account holders
    bSearchingAccounts = False                 ' we are not searching that list
    EditArea_Clear                             ' clears the input area and associated lists, billing data
@@ -6542,7 +6132,7 @@ Public Sub gvwQuickView_Select()
       bExit = False  
    End If   
    Inc Application.Busy
-   sPatient_Collection_Key = gvwQuickView.Row
+   sPatient_Collection_Key = gvwUnpaidVisits.Row
    Account_Patient_Display()                        ' display patient details
    If IsNull(patient) Then 
       Dec Application.Busy
@@ -6574,8 +6164,6 @@ Public Sub gvwQuickView_Select()
    Dec Application.Busy
    
 End
-
-
 
 Public Sub txtSearchAccountNames_KeyRelease()
    
@@ -6615,7 +6203,8 @@ End
 Public Sub txtSearchAccountNames_GotFocus()
    'User has clicked on the textbox to find either patient or company's account
    
-   gvwQuickView.UnselectAll                 ' if a marquee showing on the appointments not billed list remove it
+   cmbUnpaid.index = -1
+   gvwUnpaidVisits.UnselectAll                 ' if a marquee showing on the appointments not billed list remove it
    gvwAccountNames.Clear                    ' clear the grid
    bSearchingAccounts = True 
    If TabStrip1.index <> 0 Then TabStrip1.index = 0
@@ -6691,22 +6280,12 @@ Public Sub DateChooserAccountDate_Activate()
    Unbilled_Or_Outstanding_Accounts_Reload()
    HBox_Calander.Visible = False
    DateChooserAccountDate.tag.SetFocus() 'fixme do the rest
-   'form_reports.Report_Show(Report_Titles[columnview99.Item.key], DateChooser1.value, staff[combobox1.index]!fk_staff)
    
 End
 
 Public Sub DateChooserAccountDate_LostFocus()
    
    HBox_Calander.Visible = False
-   
-End
-
-Public Sub tbQuickView_Click()
-   
-   Select Case TabStrip1.Index
-      Case cTab_Invoices_Receipts
-         cmbQuickView_Click()
-   End Select
    
 End
 
@@ -6744,12 +6323,6 @@ Public Sub tbBankDetails_Click()
    
    form_bank = New FBankDetails
    form_bank.ShowModal()
-   
-End
-
-Public Sub Form_Enter()
-   
-   'If IsNull(fk_patient) Then Unbilled_refresh
    
 End
 
@@ -6796,10 +6369,10 @@ Public Sub panGvwItemsBilledEditor_Enter()
    
 End
 
-Public Sub gvwQuickView_Menu()
+Public Sub gvwUnpaidVisits_Menu()
    
-   sPatient_Collection_Key = gvwQuickView.row
-   If gvwQuickView.Rows.count Then mnuUnBIlled.Popup()
+   sPatient_Collection_Key = gvwUnpaidVisits.row
+   If gvwUnpaidVisits.Rows.count Then mnuUnBIlled.Popup()
    
 End
 
@@ -6842,7 +6415,7 @@ Public Sub mnuAcountHistory_Click()
          If Not IsNull(items_billed[cvwAccountHistory_Key]!fk_appointment) Then
             modDBConnect.update("clerical.bookings", Null, ["pk": items_billed[cvwAccountHistory_Key]!fk_appointment, "invoiced": False])
             modDBConnect.CommitTrans
-            cmbQuickView_Click() 'reload the quickview grid
+            cmbUnpaid_Click() 'reload the quickview grid
          End If   
          Items_Today_Or_Unpaid_Reload
          Account_History_Show
@@ -6862,7 +6435,7 @@ End
 Public Sub gvwAccountNames_Select()
    
    If gvwAccountNames.row = -1 Then Return 
-   gvwQuickView.UnselectAll
+   gvwUnpaidVisits.UnselectAll
    bSearchingAccounts = True  
    ' cvwItemsTodayOrUnpaid.Clear()    
    EditArea_Clear                             ' clears the input area and associated lists, billing data
@@ -7030,5 +6603,11 @@ Public Sub mnuAccountNames_Click()
       Case "mark deceased'"
       Case "mark left practice"
    End Select 
+   
+End
+
+Public Sub tbAppointmentsNotBilledReload_Click()
+   
+   Unbilled_refresh
    
 End

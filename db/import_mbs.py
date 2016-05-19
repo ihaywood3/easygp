@@ -103,7 +103,7 @@ def process_benefit_type(item):
             return item['schedule_fee']
 
 def to_money(m):
-    """Accepts an integer as integer cents
+    """Accepts money as a float
     Rounds to the nearest $0.05, and then to 
     a nice string the postgres money type will understand
     """
@@ -134,9 +134,11 @@ def unroll_derived_fee(item,all_items):
             item['number_of_patients'] = j
             s = starting_amount+(to_divide/j)
             item['schedule_fee'] = to_money(s)
+            item['benefit85'] = to_money(s*0.85)
             yield item
         item['number_of_patients'] = 7
         item['schedule_fee'] = to_money(starting_amount+residual)
+        item['benefit85'] = to_money((starting_amount+residual)*0.85)
         yield item
     else:
         item['schedule_fee'] = None

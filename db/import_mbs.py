@@ -94,10 +94,13 @@ def process_benefit_type(item):
     if item['benefit_type'] == 'C': # benefit paid at 75% & 85%
         # FIXME: ignore inpatient items
         return item['benefit85']
-    if item['benefit_type'] == 'D': # benefit paid at 75% & 100%
-        return item['benefit100']
-    if item['benefit_type'] == 'E': # benefit paid at 100%
-        return item['benefit100']
+    if item['benefit_type'] == 'D' or item['benefit_type'] == 'E': 
+        #D= benefit paid at 75% & 100%
+        # E = benefit 100% only
+        if 'benefit100' in item:
+            return item['benefit100']
+        else:
+            return item['schedule_fee']
 
 def to_money(m):
     """Accepts an integer as integer cents
@@ -162,23 +165,25 @@ def load_item(item):
             cur.execute("update billing.prices set price=%s where fk_lu_billing_type=8 and fk_fee_schedule=%s",(fee,pk_schedule))
     cur.close()
 
+def items_dict(etree):
+    all_items = {}
+    for i in xml_mbs_items(etree):
+        all_items[i['item']] = i
+    return all_items
 
-args= process_args()
-etree = get_xml_etree(args)
-connect_db(args)
-all_items = {}
-# create a dictionary of all items
-for i in xml_mbs_items(etree):
-    all_items[i['item']] = i
+if __name__ == '__main__':
+    args= process_args()
+    etree = get_xml_etree(args)
+    connect_db(args)
+    all_items = items_dict(etree)
+    # go through all items
+    for i in all_items.values():
+        if i['fee_type'] == 'D':
+            # it's a derived fee so we need to unpack
+            for j in unroll_derived_fee(i,all_items):
+                load_item(j)
+        else:
+            load_item(i)
 
-# go through all items
-for i in all_items.values():
-    if i['fee_type'] == 'D':
-        # it's a derived fee so we need to unpack
-        for j in unroll_derived_fee(i,all_items):
-            load_item(j)
-    else:
-        load_item(i)
-
-conn.commit()
-conn.close()
+    conn.commit()
+    conn.close()

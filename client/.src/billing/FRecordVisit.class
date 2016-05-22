@@ -94,6 +94,7 @@ Private bPayingInvoice As Boolean
 Private timer_count As Integer
 Private onrow_items As Integer
 Private OnCol_Items As Integer
+Private Bulk_Bill_Batching_type As Integer = const.BulkBilling_Type_Medicare
 ' holds the "special" Medicare flags (not related, not normal aftercare, etc)
 ' keyed on the gvwItemsBilled row.
 Private item_flags As Collection
@@ -292,8 +293,10 @@ Static Public Sub Billing_Save_Defaults()
 End
 
 Static Public Sub Bulk_Billing_Claims_Reload()
+   'currently not using medicare online
+   'show list of distinct dates which have claims in them not paid   
    
-   Form_Billing.BulkBilling_ShowClaims
+   Form_Billing.Bulk_Billing_Show_Dates
    
 End
 
@@ -301,25 +304,26 @@ Public Sub BulkBilling_ShowClaims()
    '-------------------------------
    'show veteran or medicare claims
    '-------------------------------
-   
-   Bulk_Billed_Claims = modBillingDBI.Bulk_Bill_Batching_Get_Claims(combobox1.index)
-   If IsNull(Bulk_Billed_Claims) Then Return
-   columnview99.Clear
-   For Each Bulk_Billed_Claim In Bulk_Billed_Claims
-      columnview99.Add(Bulk_Billed_Claim!pk, 0)
-      columnview99[Bulk_Billed_Claim!pk][0] = Format(Bulk_Billed_Claim!claim_date, "dd/mm/yyyy")
-      columnview99[Bulk_Billed_Claim!pk][1] = Bulk_Billed_Claim!claim_id
-   Next
-   If columnview99.Count Then
-      With columnview99
-         .MoveFirst
-         .SetFocus
-         .Item.Selected = True
-      End With
-   Endif
-   ' If Bulk_Billed_Claims.count Then
-   '    Batching_Show_Vouchers_In_Claim()
+   ' 
+   ' Bulk_Billed_Claims = modBillingDBI.Bulk_Bill_Batching_Get_Claims(combobox1.index)
+   ' If IsNull(Bulk_Billed_Claims) Then Return
+   ' columnview99.Clear
+   ' For Each Bulk_Billed_Claim In Bulk_Billed_Claims
+   '    columnview99.Add(Bulk_Billed_Claim!pk, 0)
+   '    columnview99[Bulk_Billed_Claim!pk][0] = Format(Bulk_Billed_Claim!claim_date, "dd/mm/yyyy")
+   '    columnview99[Bulk_Billed_Claim!pk][1] = Bulk_Billed_Claim!claim_id
+   ' Next
+   ' If columnview99.Count Then
+   '    With columnview99
+   '       .MoveFirst
+   '       .SetFocus
+   '       .Item.Selected = True
+   '    End With
    ' Endif
+   ' ' If Bulk_Billed_Claims.count Then
+   ' '    Batching_Show_Vouchers_In_Claim()
+   ' ' Endif
+   ' 
    
 End
 
@@ -398,7 +402,7 @@ Public Sub Init()
       .Columns[grid_col_amount_gst].text = "GST  "
       .Columns[grid_col_total_bill].text = "Invoice Total"
       .Columns[grid_col_total_paid].text = "Paid  "
-       .Columns[grid_col_payment_type].text = "Paid By  "
+      .Columns[grid_col_payment_type].text = "Paid By  "
       .Columns[grid_col_amount_due].text = "Owing  "
       .Columns[grid_col_notes].text = "Comment"
    End With
@@ -579,13 +583,16 @@ Public Sub columnview99_Refresh()
 End
 
 Public Sub Bulk_Billing_Show_Dates()
+   'Displays all distinct dates where there are unpaid vouchers
+   'type determained by 
+   'rbBulkBilledMedicare.tag = const.BulkBilling_Type_Medicare
+   'rbBulkBillVeterans.tag = const.BulkBilling_Type_Veteran
    
    Dim a_date As Collection
    Dim x As Integer
    
    columnview99.Clear
-   bulk_billed_Distinct_Dates = modBillingDBI.Bulk_Billed_Vouchers_Unpaid_distinct_dates(modDBConnect.currentUser!fk_branch, const.BulkBilling_Type_Medicare)
-   
+   bulk_billed_Distinct_Dates = modBillingDBI.Bulk_Billed_Vouchers_Unpaid_distinct_dates(modDBConnect.currentUser!fk_branch, Bulk_Bill_Batching_type)
    For Each a_date In bulk_billed_Distinct_Dates
       columnview99.Add(a_date!pk, 0)
       columnview99[a_date!pk][0] = Format(a_date!date_invoiced, "dd mmmm yyyy")
@@ -779,6 +786,7 @@ Public Sub UnBilled_Appointments_Reload(Optional single_day As Date = Null)
          .row = 0
          .SetFocus
       End With
+      sPatient_Collection_Key = 0
    End If   
    
 End
@@ -908,7 +916,7 @@ Public Sub columnview99_Select()
    columnview99.MoveCurrent
    Select Case TabStrip1.Index
       Case cTab_Batching
-         form_batching.Days_Vouchers_Display(bulk_billed_Distinct_Dates[columnview99.Item.key]!date_invoiced, combobox1.index)
+         form_batching.Days_Vouchers_Display(bulk_billed_Distinct_Dates[columnview99.Item.key]!date_invoiced, Bulk_Bill_Batching_type)
       Case cTab_Reports
          'just experimenting for the moment
          ' If rbMonth.Value Then period = 1
@@ -3864,7 +3872,7 @@ Public Function Fill_Columnview(CVW As Columnview, coll As Collection, Optional 
             If item_Billed!paid Then
                CVW[x][grid_col_payment_type] = item_Billed!payment_method
             Else
-                CVW[x][grid_col_payment_type] = "            "
+               CVW[x][grid_col_payment_type] = "            "
             Endif
             CVW[x][grid_col_amount_due] = modUtil.Money_Format(Item_Billed!due) & "  "
             CVW[x][grid_col_notes] = Item_Billed!notes
@@ -4411,8 +4419,9 @@ Public Sub Account_Patient_Display(Optional bFromSearchingAccounts As Boolean = 
       gvwItemsBilled.Enabled = False   
    Endif
    bExit = False
-   Catch
-      Return
+Catch
+   Return
+   
 End
 
 Public Sub lblPatient_Show_Details(Patient As Collection)
@@ -4860,40 +4869,40 @@ Public Sub TabStrip1_Click()
          'VBox_Invoices.Visible = True
          VBox_Accounts.Visible = True   
          Hbox_Filter.Visible = True
-         Hbox_Period.Visible = False
+         HBox_Veterans_or_medicare.Visible = False
          bexit = True
          bexit = False
          lblUnpaidBulkBIllingInvoices.Visible = False 
          Return
       Case cTab_Batching                                              'User has clicked on the medicare batching tab
-         DateChooser1.visible = True                                  'calander will allow viewing any date even if paid
-         lblUnpaidBulkBIllingInvoices.Visible = True  
-         Hbox_Period.Visible = False
-         VBox_Accounts.Visible = False  
-         VBox_ForOtherTabs.Visible = True
-         gvwFeeScheduleItems.Visible = False
-         Hbox_Filter.Visible = False
-         HBox_Search.visible = False
-         If IsNull(form_batching) Then
-            With form_batching = New FBulkBillBatching(Vbox_Batching)
+         combobox1.Visible = False                                    'don't need this
+         gvwFeeScheduleItems.Visible = False                          'don't want to see the scheduled fee list
+         Hbox_Filter.Visible = False                                  'or the filtering stuff for scheduled fees
+         HBox_Search.visible = False                                  'or the search stuff for scheduled fees
+         DateChooser1.visible = True                                  'calender will allow viewing any date even if paid
+         lblUnpaidBulkBIllingInvoices.Visible = True                  'the heading 'Claims with unpaid vouchers'
+         HBox_Veterans_or_medicare.Visible = True                     'holds the radio buttons for medicare/veterans
+         VBox_Accounts.Visible = False                                'the VBox holding the lists of unbilled appts or account  holders for visits & Payments
+         VBox_ForOtherTabs.Visible = True                             'the box holding all the gui stuff for batching
+         Wait                                                         'ensure the left hand side of screen is visible now
+         If IsNull(form_batching) Then                                'if the first time accessed this tab
+            With form_batching = New FBulkBillBatching(Vbox_Batching) 'show the form
                .Init(staff, clinics)
             End With
          Endif
          With columnview99
             .clear
-            .Columns.count = 2
+            .Columns.count = 1
             .Header = False
             .Visible = True   
          End With
-         Bulk_Billing_Show_Dates
+         Bulk_Billing_Show_Dates                                      'show all bulk billing dates with unpaid vouchers
          Wait
-         With combobox1
-            .Visible = True
-            .index = combobox1.Find("Medicare Bulk Billed Claims")
+         With columnview99
+            .MoveLast 
+            .SetFocus
+            .Item.Selected = True 
          End With
-         columnview99.MoveLast 
-         columnview99.SetFocus
-         columnview99.Item.Selected = True 
       Case cTab_Reports
          lblUnpaidBulkBIllingInvoices.Visible = False 
          Hbox_Filter.Visible = False
@@ -4902,7 +4911,7 @@ Public Sub TabStrip1_Click()
          gvwFeeScheduleItems.Visible = False
          columnview99.Visible = True          'generic columnview
          DateChooser1.visible = True
-         Hbox_Period.visible = True
+         HBox_Veterans_or_medicare.visible = True
          VBox_Accounts.Visible = False     
          VBox_ForOtherTabs.Visible = True
          'Report_Show_HTML(Days_Takings_Create_HTML())
@@ -4920,7 +4929,7 @@ Public Sub TabStrip1_Click()
          Hbox_Filter.Visible = True
          lblFilter.Text = "Filter"
          HBox_Search.Visible = True 
-         Hbox_Period.Visible = False
+         HBox_Veterans_or_medicare.Visible = False
          VBox_ForOtherTabs.Visible = True
          DateChooser1.visible = False
          gvwFeeScheduleItems.visible = True
@@ -4945,7 +4954,7 @@ Public Sub TabStrip1_Click()
          
       Case cTab_Banking
          DateChooser1.Visible = False
-         Hbox_Period.Visible = False
+         HBox_Veterans_or_medicare.Visible = False
          With columnview99
             .Visible = False
             .header = False
@@ -6708,7 +6717,7 @@ Public Sub mnuAccountHistory_Click()
          If modBillingDBI.Payment_method_Change(Last.tag, items_billed[cvwAccountHistory_Key]!fk_invoice) Then
             If modDBConnect.update("billing.invoices", Null, ["pk": items_billed[cvwAccountHistory_Key]!fk_invoice, "latex": latex]) Then
                modDBConnect.CommitTrans
-                If modUtil.IsSameDay(items_billed[cvwAccountHistory_Key]!visit_date, Now()) Then
+               If modUtil.IsSameDay(items_billed[cvwAccountHistory_Key]!visit_date, Now()) Then
                   Items_Today_Or_Unpaid_Reload
                End If  
                Account_History_Show
@@ -6897,5 +6906,28 @@ End
 Public Sub tbAppointmentsNotBilledReload_Click()
    
    UnBilled_Appointments_Reload
+   
+End
+
+Public Sub rbBulkBillBatching_Click()
+   ' rbBulkBilledMedicare.tag = const.BulkBilling_Type_Medicare
+   ' rbBulkBillVeterans.tag = const.BulkBilling_Type_Veteran
+   ' This determines what is shown by Bulk_Billing_Show_Dates()
+   ' Clear the headings, lists on the batching form
+   ' Get a list of all dates with outstanding vouchers for bulk billing type
+   ' set heading on the bulk bill batching form appropriately
+   
+   If Bexit Then Return
+   Bulk_Bill_Batching_type = Last.tag
+   With form_batching
+      .EditArea_Clear 
+      .lblBulkBIllingInformation.Text = "Bulk Billing Type "
+      If Bulk_Bill_Batching_type = const.BulkBilling_Type_Medicare Then
+         .lblBulkBIllingInformation.Text &= "Medicare"
+      Else
+         .lblBulkBIllingInformation.text &= "Veterans"
+      Endif
+   End With
+   Bulk_Billing_Show_Dates
    
 End

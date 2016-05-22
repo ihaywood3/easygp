@@ -37,8 +37,15 @@ Private bVouchersUnpaid As Boolean = False
 Private Medicare_Error_Codes As Collection
 Private running_total_billed As Float
 Private running_total_paid As Float
+Private total_selected_to_pay_off As Float
 Private invoices_in_claim As Integer
 Private CheckBoxes As CheckBox[]
+
+Public Sub _new()
+   
+   tlInstructions.text = Instructions_Help()
+   
+End
 
 Public Sub init(s As Collection, c As Collection)
    '------------------------------------------------
@@ -52,7 +59,7 @@ Public Sub init(s As Collection, c As Collection)
    ' modUtilGUI.LoadCombo(cmbStaff, staff, "wholename")
    ' clinics = modUtilGUI.LoadCombo(cmbClinic, clinics, "branch")
    lblMeasure.text = "Max Number of Vouchers  "
-    bExit = True
+   bExit = True
    '   cmbClinic.index = -1
    ' cmbStaff.Index = -1
    'rbBulkBillMedicare.value = True 'set fk_lu_bulk_billing_type
@@ -61,15 +68,30 @@ Public Sub init(s As Collection, c As Collection)
    modEditAreaHelpers.Resize_labels(VBox_EditArea, lblMeasure)
    fk_lu_bulk_billing_type = const.BulkBilling_Type_Medicare
    Medicare_Error_Codes = modBillingDBI.Medicare_Error_Codes() 
+   lblBulkBIllingInformation.text = "Bulk BIlling Type Medicare"
    EditArea_Clear()
    bExit = False
    
 End
 
 Public Sub EditArea_Clear()
+   'clear input, zero running totals, clear the scrollview
    
-    modEditAreaHelpers.EditArea_Clear(VBox_EditArea)
+   bExit = True   
+   modEditAreaHelpers.EditArea_Clear(VBox_EditArea)
+   Running_totals_Reset
+   scrollview1.Children.Clear
+   scrollview1.Background = Color.White
+   chkSelectAll.value = False 
+   bexit = False  
+   
+End
 
+Public Sub Running_totals_Reset()
+   
+   running_total_billed = 0
+   running_total_paid = 0
+   invoices_in_claim = 0
    
 End
 
@@ -101,18 +123,21 @@ Public Sub Days_Vouchers_Display(the_date As Date, fk_lu_bulk_billing_type As Va
    
    Dim smsg As String 
    
-   If fk_lu_bulk_billing_type = const.BulkBilling_Type_Medicare Then
-      sMsg = "Medicare "
-   Else
-      smsg = "Veterans "
-   Endif
-   sMsg &= "Bulk Billed Vouchers Lodged on "
-   lblBulkBIllingDate.text = sMsg & " " & Format(the_date, "dd/mmmm/yyyy")
-   Vouchers_Refresh(the_date)
+   ' If fk_lu_bulk_billing_type = const.BulkBilling_Type_Medicare Then
+   '    sMsg = "Medicare "
+   ' Else
+   '    smsg = "Veterans "
+   ' Endif
+   ' sMsg &= "Bulk Billed Vouchers Lodged on "
+   ' lblBulkBIllingInformation.text = sMsg & " " & Format(the_date, "dd/mmmm/yyyy")
+   Vouchers_Refresh(fk_lu_bulk_billing_type, the_date)
    
 End
 
-Public Sub Vouchers_Refresh(Optional the_date As Date)
+Public Sub Vouchers_Refresh(fk_lu_bulk_billing_type As Integer, Optional the_date As Date)
+   ' When user clicks on Tabstrip1 and selects the Batch Bulk Bililng tab
+   ' the columnview is filled with distinct dates where vouchers have not been paid
+   ' this sub displays a list of those unpaid vouchers
    
    Dim grand_total As Variant
    Dim fk_last_invoice As Variant
@@ -140,12 +165,7 @@ Public Sub Vouchers_Refresh(Optional the_date As Date)
    Dim chkbox_spacer As Label
    Dim txtCode As TextBox
    
-   running_total_billed = 0
-   running_total_paid = 0
-   invoices_in_claim = 0
-   EditArea_Clear()
-   scrollview1.Children.Clear
-   scrollview1.Background = Color.White
+   EditArea_Clear   'clear input, zero running totals, clear the scrollview
    If bexit Then Return
    bexit = True   
    claims_vouchers = New Collection
@@ -155,128 +175,135 @@ Public Sub Vouchers_Refresh(Optional the_date As Date)
    For Each voucher In Vouchers
       If fk_last_invoice <> voucher!fk_invoice Then                                 'for each new invoice generate a new row in the scrollivew
          Inc invoices_in_claim
-         With RowBox = New Vbox(scrollview1) As "Invoice_Row"
-            .AutoResize = True   
-            .expand = False   
-            .Height = 28
-            .Width = scrollview1.Width
-            .Background = Color.white
-            If voucher!paid = True Then
-               .Enabled = False  
-            Endif
-         End With
+         If voucher!paid = False Then  
+            With RowBox = New Vbox(scrollview1) As "Invoice_Row"
+               .AutoResize = True   
+               .expand = False   
+               .Height = 28
+               .Width = scrollview1.Width
+               .Background = Color.white
+               If voucher!paid = True Then
+                  .Enabled = False  
+               Endif
+            End With
+         End If
       Endif
-      With HB = New HBox(Rowbox) 
-         .width = ScrollView1.Width
-         .AutoResize = False
-         .Height = 28
-         .Padding = 0
-         .Background = Color.Transparent
-      End With
-      
-      With col1 = New Label(HB)
-         .width = 150
-         .height = HB.height
-         If fk_last_invoice <> voucher!fk_invoice Then
-            .text = voucher!wholename
-         End If  
-      End With
-      
-      With col2 = New Label(HB)
-         .width = 100
-         .height = HB.height
-         .text = Format(voucher!visit_date, "dd/mm/yyyy")
-         .Alignment = Align.Center
-      End With
-      With col3 = New Label(HB)
-         .width = 50
-         .height = HB.height
-         .Alignment = Align.Right
-         .text = voucher!item
-      End With
-      With col4 = New Label(HB)
-         .width = 80
-         .height = HB.height
-         .Alignment = Align.Right
-         .text = modUtil.Money_Format(voucher!amount)
-      End With
-      
-      With col5 = New Label(HB)  'just a spacer
-         .width = 25
-         .height = HB.height
-      End With
-      With col6 = New Label(HB)
-         .width = 225
-         .height = HB.height
-         .Expand = False
-         .text = voucher!descriptor_brief
-      End With
-      With txtCode = New TextBox(HB) As "TxtReturnCode"
-         .width = 50
-         .Height = HB.Height
-         .Expand = False   
-         .Border = True
-         .Background = Color.White
-         .border = False   
-         .text = ""
-         .Visible = False  
-      End With
-      With lblErrorDescription = New Label(HB)
-         .height = HB.Height
-         .Expand = False
-         .width = 270
-         If voucher!paid = True Then
-            .text = "PAID"
-         End If   
-          .Font.size = 8
-      End With
-      With chkbox_Container = New Vbox(HB)
-         .width = 28
-         .height = HB.Height
-         .Expand = False      
-      End With
       If voucher!paid = False Then
-         With chkbox = New CheckBox(chkbox_Container) As "chkSelected"
-            .width = 28
-            .height = 28
-            .Background = Color.White
-            .value = False 
-            .tag = voucher
+         With HB = New HBox(Rowbox) 
+            .width = ScrollView1.Width
+            .AutoResize = False
+            .Height = 28
+            .Padding = 0
+            .Background = Color.Transparent
          End With
-         CheckBoxes.Add(chkbox, CheckBoxes.Count)
-      End If
-      With chkbox_spacer = New Label(chkbox_Container)
-         .width = 25
-         .Height = 25
-         .expand = True 
-         .Background = Color.White
-      End With
-      txtCode.tag = lblErrorDescription               ' so when user types in code > we load the description into this label
-      If x = 0 Then
-         lblPatientHeading.Width = col1.Width 
-         lblCol2.Width = col2.Width
-         lblCol3.Width = col3.Width
-         lblCol4.width = col4.Width
-         lblCol6.Width = col6.width   'col5= just a spacer, col6 = the descriptor
-      Endif
+         
+         With col1 = New Label(HB)
+            .width = 150
+            .height = HB.height
+            If fk_last_invoice <> voucher!fk_invoice Then
+               .text = voucher!wholename
+            End If  
+         End With
+         
+         With col2 = New Label(HB)
+            .width = 100
+            .height = HB.height
+            .text = Format(voucher!visit_date, "dd/mm/yyyy")
+            .Alignment = Align.Center
+         End With
+         With col3 = New Label(HB)
+            .width = 50
+            .height = HB.height
+            .Alignment = Align.Right
+            .text = voucher!item
+         End With
+         With col4 = New Label(HB)
+            .width = 80
+            .height = HB.height
+            .Alignment = Align.Right
+            .text = modUtil.Money_Format(voucher!amount)
+         End With
+         
+         With col5 = New Label(HB)  'just a spacer
+            .width = 25
+            .height = HB.height
+         End With
+         With col6 = New Label(HB)
+            .width = 225
+            .height = HB.height
+            .Expand = False
+            .text = voucher!descriptor_brief
+         End With
+         With txtCode = New TextBox(HB) As "TxtReturnCode"
+            .width = 50
+            .Height = HB.Height
+            .Expand = False   
+            .Border = True
+            .Background = Color.White
+            .border = False   
+            .text = ""
+            .Visible = False  
+         End With
+         With lblErrorDescription = New Label(HB)
+            .height = HB.Height
+            .Expand = False
+            .width = 270
+            If voucher!paid = True Then
+               .text = "PAID"
+            End If   
+            .Font.size = 8
+         End With
+         With chkbox_Container = New Vbox(HB)
+            .width = 28
+            .height = HB.Height
+            .Expand = False      
+         End With
+         If voucher!paid = False Then
+            With chkbox = New CheckBox(chkbox_Container) As "chkSelected"
+               .width = 28
+               .height = 28
+               .Background = Color.White
+               .value = False 
+               .tag = voucher
+            End With
+            CheckBoxes.Add(chkbox, CheckBoxes.Count)
+         End If
+         With chkbox_spacer = New Label(chkbox_Container)
+            .width = 25
+            .Height = 25
+            .expand = True 
+            .Background = Color.White
+         End With
+         txtCode.tag = lblErrorDescription               ' so when user types in code > we load the description into this label
+         If x = 0 Then
+            lblPatientHeading.Width = col1.Width 
+            lblCol2.Width = col2.Width
+            lblCol3.Width = col3.Width
+            lblCol4.width = col4.Width
+            lblCol6.Width = col6.width   'col5= just a spacer, col6 = the descriptor
+         Endif
+      End If   
       fk_last_invoice = voucher!fk_invoice   
       running_total_billed += modUtil.MoneyToFloat(voucher!amount)
       If voucher!paid = True Then
          running_total_paid += modUtil.MoneyToFloat(voucher!amount)
       Endif
    Next
-   lblBottomRowSpacer.width = chkbox_Container.left + 5 '5= 1 pixel spacers
+   Try lblBottomRowSpacer.width = chkbox_Container.left + 5 '5= 1 pixel spacers
    txtclaimDate.text = Format(the_date, "dd/mm/yyyy")
    txtVouchersInClaim.text = Str(invoices_in_claim)
    txtClaimTotal.text = modUtil.Money_Format(running_total_billed)
    txtAlreadyPaid.text = Format(modUtil.MoneyToFloat(running_total_paid), "$####.00")
+   txtTotalPaid.text = "$    .00"
    Dec Application.Busy
    bExit = False  
    
 End
 
-
 Public Sub Mark_Paid()
+   ' updates the back-end for each voucher as paid
+   ' clears the editing area and scollview containing the vouchers list
+   ' updates the columnview on parent form (FRecordVisit) with list of unpaid days vouchers
    
    Dim cb As CheckBox
    Dim invoice As CRow 
@@ -286,7 +313,13 @@ Public Sub Mark_Paid()
    Dim total_bill As Float
    Dim bsaved As Boolean   
    
-   'updates the back-end for each voucher as paid
+   If Trim(txtTotalPaid.text) = "" Or Trim(txtTotalPaid.text) = "$    .00" Then
+      Message.Title = "Paying Off Vouchers"
+      Message.Info("Please select the vouchers you wish to pay off.")
+      Return
+   Else
+      If Message.Warning("Please confirm you wish to mark off all this vouchers.\n\nThis cannot be undone.", "Yes - Pay Off Vouchers", "Cancel") = 2 Then Return
+   End If   
    Inc Application.Busy
    Wait
    For Each cb In CheckBoxes
@@ -316,7 +349,11 @@ Public Sub Mark_Paid()
          payment = New CRow
          payment!fk_invoice = cb.tag!fk_invoice
          payment!amount = cb.tag!amount 
-         payment!fk_lu_payment_method = const.payment_method_medicare
+         If fk_lu_bulk_billing_type = const.BulkBilling_Type_Medicare Then    
+            payment!fk_lu_payment_method = const.payment_method_medicare
+         Else
+            payment!fk_lu_payment_method = const.payment_method_veterans
+         End If   
          payment!date_paid = modUtil.Make_Date_From_String(txtclaimDate.Text)
          payment!fk_staff_receipted = modDBConnect.currentUser!fk_staff
          payment.Save("billing.payments_received", "fk_payment")
@@ -329,8 +366,9 @@ Public Sub Mark_Paid()
    modDBConnect.CommitTrans()
    Dec Application.Busy
    Wait  
-   FRecordVisit.Bulk_Billing_Claims_Reload
-
+   EditArea_Clear                          ' clear input, zero running totals, clear the scrollview
+   FRecordVisit.Bulk_Billing_Claims_Reload ' re-load list of unpaid claims in FRecordVisit
+   
 End
 
 Public Function Bulk_Billing_Summary_Row_Template() As String
@@ -377,113 +415,6 @@ Public Sub TxtReturnCode_KeyRelease()
    
 End
 
-Public Sub cvwVouchers_Refresh_orig(Optional the_date As Date)
-   
-   Dim grand_total As Variant
-   Dim fk_last_invoice As Variant
-   Dim invoice_count As Integer
-   Dim running_total As Float
-   Dim x As Integer
-   Dim HB As HBox                                         'container to hold each days notes
-   Dim RowBox As VBox                                     'the ultimate row, could contain one or more HB rows eg if multiple items
-   Dim tl As TextLabel
-   Dim hline As Separator
-   Dim col1 As Label
-   Dim col2 As Label
-   Dim col3 As Label
-   Dim col4 As Label
-   Dim NotesBox As VBox
-   
-   Dim chkbox As CheckBox
-   Dim chkbox_Container As Vbox
-   Dim chkbox_spacer As Label
-   
-   EditArea_Clear()
-   scrollview1.Children.Clear
-   scrollview1.Background = Color.White
-   If bexit Then Return
-   claims_vouchers = New Collection
-   Inc Application.Busy
-   Vouchers = modBillingDBI.Bulk_BIll_Vouchers_Get_UnPaid(modDBConnect.currentUser!fk_branch, fk_lu_bulk_billing_type, the_date)
-   For Each voucher In Vouchers
-      
-      With HB = New HBox(ScrollView1) As "Invoice_Row"
-         .width = ScrollView1.Width
-         '  .tag = progressnote
-         .AutoResize = False
-         .Height = 28
-         .Padding = 0
-         .Background = Color.White
-      End With
-      ' With Hline = New Separator(scrollview1)
-      '    .Height = 1
-      '    .Foreground = Color.Black
-      ' End With 
-      With chkbox_Container = New Vbox(HB)
-         .width = 28
-         .height = HB.Height
-         .Expand = False      
-      End With
-      With chkbox = New CheckBox(chkbox_Container) As "chkSelectedNote"
-         .width = 28
-         .height = 28
-         '  .tag = progressnote!pk_progressnote 
-         ' .expand = True 
-         .Background = Color.White
-      End With
-      With chkbox_spacer = New Label(chkbox_Container)
-         .width = 25
-         .Height = 25
-         .expand = True 
-         .Background = Color.White
-      End With
-      With col1 = New Label(HB)
-         .width = 150
-         .height = HB.height
-         If fk_last_invoice <> voucher!fk_invoice Then
-            .text = voucher!patient_wholename
-         End If  
-      End With
-      With col2 = New Label(HB)
-         .width = 50
-         .height = HB.height
-         .text = voucher!item
-      End With
-      With col3 = New Label(HB)
-         .width = 50
-         .height = HB.height
-         .text = modUtil.Money_Format(voucher!amount)
-      End With
-      
-      '  If invoice_count = 50 Then Break             'have our 50 max vouchers
-      ' cvwVouchers.Add(voucher!pk_items_billed, 0)
-      ' If fk_last_invoice <> voucher!fk_invoice Then
-      '    claims_vouchers.add(voucher, claims_vouchers.count)
-      '    Inc invoice_count
-      '    fk_last_invoice = voucher!fk_invoice
-      '    cvwVouchers[voucher!pk_items_billed][0] = Str(voucher!fk_invoice)
-      '    cvwVouchers[voucher!pk_items_billed][1] = voucher!patient_wholename
-      '    cvwVouchers[voucher!pk_items_billed][2] = Format(voucher!visit_date, "dd/mm/yyyy")
-      '    
-      ' Else
-      '    cvwVouchers[voucher!pk_items_billed][0] = ""
-      '    cvwVouchers[voucher!pk_items_billed][1] = ""
-      '    cvwVouchers[voucher!pk_items_billed][2] = ""
-      ' Endif
-      ' cvwVouchers[voucher!pk_items_billed][3] = voucher!mbs_item
-      ' cvwVouchers[voucher!pk_items_billed][4] = modUtil.Money_Format(voucher!amount)
-      ' running_total += modUtil.MoneyToFloat(voucher!amount)
-      Inc x
-   Next
-   ' If invoice_count Then
-   '    txtClaimTotal.text = modUtil.Money_Format(running_total)
-   '    txtActualVouchers.Text = Str(invoice_count) & " vouchers"
-   '    VBox_EditArea_Outer.Padding = 1
-   ' Endif
-   Dec Application.Busy
-   
-End
-
 Public Sub invoice_row_Enter()
    
    Dim sep As Separator
@@ -493,6 +424,8 @@ Public Sub invoice_row_Enter()
       Last.Background = color.RGB(215, 232, 240) 'Color.LightBackground 
       Last.Children[0].Children[7].Background = color.RGB(215, 232, 240) 
    End If   
+Catch
+   Return
    
 End
 
@@ -503,6 +436,8 @@ Public Sub invoice_Row_Leave()
    
    Last.Children[0].Children[7].Background = Color.White 'the code text box
    Last.Background = Color.white
+Catch
+   Return
    
 End
 
@@ -511,86 +446,6 @@ Public Sub lblNotes_mousedown()
    ' Try Last_Row_Clicked.Background = Color.RGB(255, 255, 220)
    ' Last.Parent.background = Color.RGB(215, 232, 240) 'Color.LightBackground
    ' Last_Row_Clicked = Last.Parent 
-   
-End
-
-Public Sub cvwVouchers_Refresh_old()
-   '---------------------------------------------
-   'Refresh the list of vouchers in current claim
-   '---------------------------------------------
-   
-   ' Dim grand_total As Variant
-   ' Dim fk_last_invoice As Variant
-   ' Dim invoice_count As Integer
-   ' Dim running_total As Float
-   ' 
-   ' EditArea_Clear()
-   ' If bexit Then Return
-   ' claims_vouchers = New Collection
-   ' Inc Application.Busy
-   ' Vouchers = modBillingDBI.Bulk_Bill_Batching_Get_Vouchers(fk_staff, fk_branch, bVouchersUnpaid, fk_lu_bulk_billing_type, fk_claim)
-   ' For Each voucher In Vouchers
-   '    If invoice_count = 50 Then Break             'have our 50 max vouchers
-   '    cvwVouchers.Add(voucher!pk_items_billed, 0)
-   '    If fk_last_invoice <> voucher!fk_invoice Then
-   '       claims_vouchers.add(voucher, claims_vouchers.count)
-   '       Inc invoice_count
-   '       fk_last_invoice = voucher!fk_invoice
-   '       cvwVouchers[voucher!pk_items_billed][0] = Str(voucher!fk_invoice)
-   '       cvwVouchers[voucher!pk_items_billed][1] = voucher!patient_wholename
-   '       cvwVouchers[voucher!pk_items_billed][2] = Format(voucher!visit_date, "dd/mm/yyyy")
-   '    Else
-   '       cvwVouchers[voucher!pk_items_billed][0] = ""
-   '       cvwVouchers[voucher!pk_items_billed][1] = ""
-   '       cvwVouchers[voucher!pk_items_billed][2] = ""
-   '    Endif
-   '    cvwVouchers[voucher!pk_items_billed][3] = voucher!mbs_item
-   '    cvwVouchers[voucher!pk_items_billed][4] = modUtil.Money_Format(voucher!amount)
-   '    running_total += modUtil.MoneyToFloat(voucher!amount)
-   ' Next
-   ' If invoice_count Then
-   '    txtClaimTotal.text = modUtil.Money_Format(running_total)
-   '    txtActualVouchers.Text = Str(invoice_count) & " vouchers"
-   '    VBox_EditArea_Outer.Padding = 1
-   ' Endif
-   ' Dec Application.Busy
-   
-End
-
-Public Sub cmbEditArea_Click()
-   
-   '    If bexit Then Return
-   '    Select Case Last.tag
-   '       Case "staff"
-   ' '         fk_staff = staff[cmbStaff.index]!fk_staff
-   '       Case "clinic"
-   '        '  fk_branch = clinics[cmbClinic.Index]!fk_branch
-   '    End Select
-   '    If cmbStaff.index <> -1 Then
-   '       If cmbClinic.Index <> -1 Then claim_new()
-   '       Return
-   '    Else
-   '       cmbClinic.SetFocus()
-   '       Return
-   '    End If
-   '    
-   '    If cmbClinic.index <> -1 Then
-   '       If cmbStaff.Index <> -1 Then claim_New()
-   '       Return
-   '    Else
-   '       cmbClinic.SetFocus()
-   '       Return
-   '    End If
-   
-End
-
-Public Sub rbBulkBillType_Click()
-   
-   ' fk_lu_bulk_billing_type = Last.tag 'const.BulkBilling_Type_Medicare Or const.BulkBilling_Type_Veteran 1,2
-   ' If Trim(txtNumberOfVouchers.Text) = "" Then
-   '    txtNumberOfVouchers.text = 50
-   ' Endif
-   ' Vouchers_Refresh()
    
 End
 
@@ -613,19 +468,6 @@ Public Sub EditArea_TextBox_KeyPress()
       Stop Event
       Return
    End If
-   
-End
-
-Public Sub MainToolbar_Click()
-   
-   Select Case Last.tag
-      Case "new claim"
-         claim_New()
-      Case "print"
-         claim_print()
-      Case "process"
-         claim_lodge()
-   End Select
    
 End
 
@@ -662,316 +504,45 @@ Public Sub claim_New()
    
 End
 
-Public Sub claim_print()
-   '----------------------------------------------------------------------------------
-   'prints html of the claim if staff so desire to cross reference to vouchers (paper)
-   '----------------------------------------------------------------------------------
-   ' 
-   ' If Not Claim_Valid() Then Return
-   ' modPrinting.PrintHtml(Claim_HTML())
-   ' 
-   
-End
-
-Public Sub Claim_Display(claim As Collection)
-   '--------------------------------------------------
-   'display processed claim - loaded from FRecordVisit
-   '--------------------------------------------------
-   ' 
-   ' Dim invoice As Collection
-   ' Dim fk_last_invoice As Variant
-   ' Dim vouchers As Collection
-   ' Dim staff_processed As Collection
-   ' Dim x As Integer
-   ' 
-   ' bexit = True
-   ' lblHeading.text = "Reconcile Existing Claim"
-   ' cvwVouchers.Clear()  'fixme this view and code below is wrong just temporary
-   ' vouchers = modUtil.Copy_Collection_Keyed_Sequentially(modBillingDBI.Bulk_Bill_Batching_Get_Claim_vouchers(claim!pk))
-   ' For Each voucher In vouchers
-   '    cvwVouchers.Add(x, 0)
-   '    If fk_last_invoice <> voucher!fk_invoice Then
-   '       fk_last_invoice = voucher!fk_invoice
-   '       cvwVouchers[x][0] = Str(voucher!fk_invoice)
-   '       cvwVouchers[x][1] = voucher!patient_wholename & "   "
-   '       cvwVouchers[x][2] = Format(voucher!visit_date, "dd/mm/yyyy") & " "
-   '    Else
-   '       cvwVouchers[x][0] = ""
-   '       cvwVouchers[x][1] = ""
-   '       cvwVouchers[x][2] = ""
-   '    Endif
-   '    cvwVouchers[x][3] = voucher!mbs_item & "   "
-   '    cvwVouchers[x][4] = modUtil.Money_Format(voucher!amount_paid)
-   '    Inc x
-   ' Next
-   ' cmbStaff.index = cmbStaff.Find(Staff_Member(claim!fk_staff_provided_service)!wholename)
-   ' cmbClinic.index = cmbClinic.Find(Branch_Get_Name(claim!fk_branch))
-   ' staff_processed = Staff_Member(claim!fk_staff_processed)
-   ' txtStaffLodged.text = staff_processed!title & " " & staff_processed!wholename
-   ' txtClaimIDNumber.text = claim!claim_id
-   ' txtClaimTotal.text = claim!claim_amount
-   ' txtActualVouchers.text = claim!voucher_count
-   ' If Not IsNull(voucher) And If voucher!fk_lu_bulk_billing_type = const.BulkBilling_Type_Medicare Then
-   '    rbBulkBillMedicare.value = True
-   ' Else
-   '    rbBulkBillVeteran.Value = True
-   ' Endif
-   ' Dec Application.Busy
-   ' lblMeasure.Font = cvwVouchers.Font
-   ' modUtilGUI.Columnview_Columns_Set_Size(cvwVouchers, lblMeasure)
-   ' bExit = False
-   
-End
-
-Public Sub claim_lodge()
-   ' Save the claim to be lodged
-   ' create table billing.link_invoice_bulk_bill_claim
-   ' (pk serial primary key,
-   ' fk_claim integer not null,
-   ' fk_invoice integer not null,
-   ' CONSTRAINT link_invoice_bulk_bill_claim_fk_invoice_fkey FOREIGN KEY (fk_invoice)
-   '       REFERENCES billing.invoices (pk) MATCH SIMPLE
-   '       ON UPDATE NO ACTION ON DELETE NO ACTION
-   ' );
-   '
-   '
-   ' create table billing.bulk_billing_claims
-   ' (pk serial primary key,
-   '  claim_id text not null,
-   '  claim_date date,
-   '  claim_amount money not null,
-   '  voucher_count integer not null,
-   '  finalised boolean default false,
-   '  fk_branch integer not null,
-   '  fk_medclaim integer default null,
-   '  fk_lu_bulk_billing_type integer not null,
-   '  fk_staff_provided_service integer not null,
-   '  fk_staff_processed integer NOT NULL,
-   '  html text NOT null,
-   '  CONSTRAINT bulk_billing_claims_fk_branch_fkey FOREIGN KEY (fk_branch)
-   '       REFERENCES contacts.data_branches (pk) MATCH SIMPLE
-   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
-   ' CONSTRAINT bulk_billing_claims_fk_lu_bulk_billing_type_fkey FOREIGN KEY (fk_lu_bulk_billing_type)
-   '       REFERENCES billing.lu_bulk_billing_type (pk) MATCH SIMPLE
-   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
-   ' CONSTRAINT bulk_billing_claims_fk_staff_processed_fkey FOREIGN KEY (fk_staff_processed)
-   '       REFERENCES admin.staff (pk) MATCH SIMPLE
-   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
-   ' CONSTRAINT bulk_billing_claims_fk_link_invoice_bulk_bill_claim_fkey FOREIGN KEY (fk_link_invoice_bulk_bill_claim)
-   '       REFERENCES billing.link_invoice_bulk_bill_claim (pk) MATCH SIMPLE
-   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
-   ' CONSTRAINT bulk_billing_claims_fk_doctor_provided_service_fkey FOREIGN KEY (fk_staff_provided_service)
-   '       REFERENCES admin.staff (pk) MATCH SIMPLE
-   '       ON UPDATE NO ACTION ON DELETE NO ACTION
-   
-   ' Dim claim As New CRow
-   ' Dim link_invoice_claim As CRow
-   ' Dim fk_last_invoice As Variant
-   ' 
-   ' If VBox_EditArea_Inner.Padding = 0 Then Return ' no changes no claim
-   ' If Not Claim_Valid() Then Return
-   ' tbProcessClaim.enabled = False
-   ' If Not IsNull(fk_claim) Then
-   '    claim.put_unchanged(fk_claim, "fk_claim") 'currently cannot edit a claim
-   ' Else
-   '    claim!claim_date = Now()
-   '    claim!claim_amount = txtClaimTotal.Text
-   '    claim!claim_id = Trim(txtClaimIDNumber.text)
-   '    claim!voucher_count = Val(txtActualVouchers.text)
-   '    claim!fk_branch = modDBConnect.currentUser!fk_branch
-   '    If rbBulkBillMedicare.value = True Then
-   '       claim!fk_lu_bulk_billing_type = const.BulkBilling_Type_Medicare
-   '    Else
-   '       claim!fk_lu_bulk_billing_type = const.BulkBilling_Type_Veteran
-   '    Endif
-   '    claim!fk_staff_provided_service = staff[cmbStaff.Index]!fk_staff
-   '    claim!fk_staff_processed = modDBConnect.currentUser!fk_staff
-   '    claim!html = Claim_HTML()
-   ' Endif
-   ' claim.Save("billing.bulk_billing_claims", "fk_claim")
-   ' For Each voucher In claims_vouchers
-   '    If fk_last_invoice <> voucher!fk_invoice Then
-   '       fk_last_invoice = voucher!fk_invoice
-   '       link_invoice_claim = New CRow
-   '       link_invoice_claim!fk_invoice = voucher!fk_invoice
-   '       link_invoice_claim!fk_claim = claim!fk_claim
-   '       link_invoice_claim.Save("billing.link_invoice_bulk_bill_claim", "fk_link_invoice_bulk_bill_claim")
-   '    End If
-   ' Next
-   ' modDBConnect.CommitTrans()
-   ' EditArea_Clear
-   ' FRecordVisit.Bulk_Billing_Claims_Reload
-   
-End
-
-Public Function Claim_Valid() As Boolean
-   '----------------------------------------------------------
-   'returns true if enough information to claim these vouchers
-   '----------------------------------------------------------
-   ' 
-   ' If vouchers.count Then
-   '    If Trim(txtClaimIDNumber.text) = "" Then
-   '       txtClaimIDNumber.BackGround = Color.rgb(95, 255, 175)
-   '       txtClaimIDNumber.SetFocus()
-   '       Return
-   '    End If
-   ' Endif
-   ' Return cvwVouchers.Count
-   
-End
-
-Public Function Claim_HTML() As String
-   '------------------------------------------------------------
-   'creates html table of a invoices(aka vouchers) being claimed
-   '------------------------------------------------------------
-   
-   ' Dim sHtml As String
-   ' Dim sRow As String
-   ' Dim x As Integer
-   ' Dim sBulkBillType As String
-   ' Dim fk_last_invoice As Variant
-   ' 
-   ' If rbBulkBillMedicare.value = True Then
-   '    sBulkBillType = "Medicare"
-   ' Else
-   '    sBulkBillType = "Veterans"
-   ' Endif
-   ' 
-   ' ' sHtml = "<HTML><BODY>"
-   ' ' shtml &= "<P><B>" & modDBConnect.currentUser!organisation & " " & modDBConnect.currentUser!branch & " Bulk Bill Claim</B></P>"
-   ' ' shtml &= "<P><B>Claim Type:</B>" & sBulkbillType & "<BR>"
-   ' ' shtml &= "<B>Claim No.:</B>" & Trim(txtClaimIDNumber.text) & "<BR>"
-   ' ' sHtml &= "<B>Staff Member:</B>" & cmbStaff.Text & "<BR>"
-   ' ' sHtml &= "<B>Location:</B>" & cmbClinic.Text & "<BR>"
-   ' ' sHtml &= "<B>Process Date:</B>" & Format(Now, "dd/mm/yyyy") & "<BR>"
-   ' ' sHtml &= "<B>Processed By:</B>" & modDBConnect.currentUser!wholename & "<BR>"
-   ' ' sHtml &= "<B>Vouchers:</B>" & Replace(txtActualVouchers.text, "vouchers", "") & "<BR>"
-   ' ' sHtml &= "<B>Claim Total:</B>" & txtClaimTotal.text & "<BR></P><HR>"
-   ' 
-   ' sHtml = "<HTML><BODY>"
-   ' shtml &= "<P><B>" & modDBConnect.currentUser!organisation & " " & modDBConnect.currentUser!branch & " Bulk Bill Claim</B></P>"
-   ' sHtml &= "<TABLE WIDTH=100% CELLPADDING=1 CELLSPACING=0>"
-   ' "<COL WIDTH=20%>"
-   ' "<COL WIDTH=80%>"
-   ' sHtml &= Bulk_Bill_Html_heading_Row_Template()
-   ' shtml = Replace(shtml, "%heading%", "Claim Type")
-   ' shtml = Replace(shtml, "%value%", sBulkbillType)
-   ' sHtml &= Bulk_Bill_Html_heading_Row_Template()
-   ' shtml = Replace(shtml, "%heading%", "Claim Number")
-   ' shtml = Replace(shtml, "%value%", Trim(txtClaimIDNumber.text))
-   ' sHtml &= Bulk_Bill_Html_heading_Row_Template()
-   ' shtml = Replace(shtml, "%heading%", "Staff Member")
-   ' shtml = Replace(shtml, "%value%", cmbStaff.Text)
-   ' sHtml &= Bulk_Bill_Html_heading_Row_Template()
-   ' shtml = Replace(shtml, "%heading%", "Location")
-   ' shtml = Replace(shtml, "%value%", cmbClinic.Text)
-   ' sHtml &= Bulk_Bill_Html_heading_Row_Template()
-   ' shtml = Replace(shtml, "%heading%", "Process Date")
-   ' shtml = Replace(shtml, "%value%", Format(Now, "dd/mm/yyyy"))
-   ' sHtml &= Bulk_Bill_Html_heading_Row_Template()
-   ' shtml = Replace(shtml, "%heading%", "Processed By")
-   ' shtml = Replace(shtml, "%value%", modDBConnect.currentUser!wholename)
-   ' sHtml &= Bulk_Bill_Html_heading_Row_Template()
-   ' shtml = Replace(shtml, "%heading%", "Total Vouchers")
-   ' shtml = Replace(shtml, "%value%", Replace(txtActualVouchers.text, "vouchers", ""))
-   ' sHtml &= Bulk_Bill_Html_Heading_Row_Template()
-   ' shtml = Replace(shtml, "%heading%", "Claim Total")
-   ' shtml = Replace(shtml, "%value%", txtClaimTotal.text)
-   ' sHtml &= "</TABLE><HR>"
-   ' sHtml &= "<TABLE WIDTH=100% CELLPADDING=1 CELLSPACING=0>"
-   ' "<COL WIDTH=43*>"
-   ' "<COL WIDTH=43*>"
-   ' "<COL WIDTH=43*>"
-   ' "<COL WIDTH=43*>"
-   ' "<COL WIDTH=43*>"
-   ' '------------------------------------------------------
-   ' 'now add a row for each money recieved
-   ' 'receipt no|Payer|payment type|Cheque Drawer|Amount|Tax
-   ' '------------------------------------------------------
-   ' sHtml &= "<TR VALIGN=TOP>" & Bulk_Bill_Html_Row_Template() & "</TR>"
-   ' shtml = Replace(shtml, "%invoice_no%", "<B>Invoice</B>")
-   ' shtml = Replace(shtml, "%patient%", "<B>Patient</B>")
-   ' shtml = Replace(shtml, "%date_visit%", "<B>Visit Date</B>")
-   ' shtml = Replace(shtml, "%item%", "<B>Item</B>")
-   ' shtml = Replace(shtml, "%amount%", "<B>Amount</B>")
-   ' For Each voucher In Vouchers
-   '    sHtml &= "<TR VALIGN=TOP>" & Bulk_Bill_Html_Row_Template()
-   '    If fk_last_invoice <> voucher!fk_invoice Then
-   '       fk_last_invoice = voucher!fk_invoice
-   '       sHtml = Replace(sHtml, "%invoice_no%", Str$(voucher!fk_invoice))
-   '       sHtml = Replace(sHtml, "%patient%", voucher!patient_wholename)
-   '       sHtml = Replace(sHtml, "%date_visit%", Format(voucher!visit_date, "dd/mm/yyyy"))
-   '    Else
-   '       sHtml = Replace(sHtml, "%invoice_no%", "")
-   '       sHtml = Replace(sHtml, "%patient%", "")
-   '       sHtml = Replace(sHtml, "%date_visit%", "")
-   '    End If
-   '    sHtml = Replace(sHtml, "%item%", voucher!mbs_item)
-   '    sHtml = Replace(sHtml, "%amount%", modUtil.Money_Format(voucher!amount))
-   '    sHtml &= "</TR>"
-   ' Next
-   ' sHtml &= "</TABLE></BODY></HTML>"
-   ' Print shtml
-   ' Return shtml
-   
-End
-
-Public Function Bulk_Bill_Html_Row_Template() As String
-   
-   Return ""
-   "<TD WIDTH=8%>"
-   "   <P>%invoice_no%</P>"
-   "</TD>"
-   "<TD WIDTH=30%>"
-   "   <P>%patient%</P>"
-   "</TD>"
-   "<TD WIDTH=15%>"
-   "   <P>%date_visit%</P>"
-   "</TD>"
-   "<TD WIDTH=20%>"
-   "   <P>%item%</P>"
-   "</TD>"
-   "<TD WIDTH=10%>"
-   "   <P>%amount%</P>"
-   "</TD>"
-   
-End
-
-Public Function Bulk_Bill_Html_Heading_Row_Template() As String
-   
-   Return ""
-   "<TR VALIGN=TOP>"
-   "<TD WIDTH=20%>"
-   "   <P<B>%heading%</B></P>"
-   "</TD>"
-   "<TD WIDTH=80%>"
-   "   <P>%value%</P>"
-   "</TD>"
-   "</TR>"
-   
-End
-
-Public Sub pnlToolButtons_Enter()
-   
-   '   tbPrintClaim.Enabled = cvwVouchers.count
-   
-End
-
-Public Sub EditArea_TextBox_GotFocus()
-   
-   '  Last.BackGround = Color.rgb(95, 255, 175)
-   
-End
+' 
+' Public Function Bulk_Bill_Html_Row_Template() As String
+'    
+'    Return ""
+'    "<TD WIDTH=8%>"
+'    "   <P>%invoice_no%</P>"
+'    "</TD>"
+'    "<TD WIDTH=30%>"
+'    "   <P>%patient%</P>"
+'    "</TD>"
+'    "<TD WIDTH=15%>"
+'    "   <P>%date_visit%</P>"
+'    "</TD>"
+'    "<TD WIDTH=20%>"
+'    "   <P>%item%</P>"
+'    "</TD>"
+'    "<TD WIDTH=10%>"
+'    "   <P>%amount%</P>"
+'    "</TD>"
+'    
+' End
+' 
+' Public Function Bulk_Bill_Html_Heading_Row_Template() As String
+'    
+'    Return ""
+'    "<TR VALIGN=TOP>"
+'    "<TD WIDTH=20%>"
+'    "   <P<B>%heading%</B></P>"
+'    "</TD>"
+'    "<TD WIDTH=80%>"
+'    "   <P>%value%</P>"
+'    "</TD>"
+'    "</TR>"
+'    
+' End
 
 Public Sub EditArea_TextBox_Lost_Focus()
    
    Last.BackGround = Color.White
-   
-End
-
-Public Sub rbMedicare_Click()
-   
-   Vouchers_Refresh
    
 End
 
@@ -983,13 +554,15 @@ End
 
 Public Sub chkSelected_Click()
    
+   If bexit Then Return
    If Last.value = False Then
-      running_total_billed -= modUtil.MoneyToFloat(Last.tag!amount)
-      txtTotalPaid.text = "$" & Format(running_total_billed, "####.00")
+      total_selected_to_pay_off -= modUtil.MoneyToFloat(Last.tag!amount)
+      txtTotalPaid.text = "$" & Format(total_selected_to_pay_off, "####.00")
    Else
-      running_total_billed += modUtil.MoneyToFloat(Last.tag!amount)
-      txtTotalPaid.text = "$" & Format(running_total_billed, "####.00")
+      total_selected_to_pay_off += modUtil.MoneyToFloat(Last.tag!amount)
+      txtTotalPaid.text = "$" & Format(total_selected_to_pay_off, "####.00")
    End If   
+   Print total_selected_to_pay_off
    
 End
 
@@ -997,9 +570,12 @@ Public Sub chkSelectAll_Click()
    
    Dim cb As Checkbox
    
-   
    If bexit Then Return 
-   running_total_billed = 0
+   If chkSelectAll.value = False Then
+      bexit = True                   'stop chkSelected_Click executing - it adds up the amounts
+   End If   
+   total_selected_to_pay_off = 0
+   txtTotalPaid.text = "$    .00"
    For Each cb In CheckBoxes
       cb.value = Last.value
    Next
@@ -1008,5 +584,23 @@ Public Sub chkSelectAll_Click()
    Else
       chkSelectAll.text = "Select All"
    Endif
+   bExit = False  
+   
+End
+
+Public Function Instructions_Help() As String
+   
+   Dim smsg As String
+   
+   Return ""
+   "Compare the on-line list for the date you have selected with this list"
+   "<UL>"
+   "<LI>Select a date from the left hand list and vouchers will be displayed </LI>"
+   "<LI>Click the 'select all' checkbox at the bottom of the list</LI>"
+   "<LI>Uncheck any item numbers which have not been paid </LI>"
+   "<LI>Note that if a consult was invoiced after 6pm it will appear in the next days payments "
+   "do you may have to go to that day to pay off some items </LI>"
+   "<LI>When happy click on the 'Mark Paid' button'</LI>"
+   "</UL>"
    
 End

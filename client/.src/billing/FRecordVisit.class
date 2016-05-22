@@ -138,7 +138,7 @@ Private sPatient_Collection_Key As Variant
 Private staff As Collection
 Private Staff_Member As Collection
 Private fk_staff As Variant                  'whichever staff saw the patient
-Private fk_patient As Variant
+Public fk_patient As Variant                 'must be public. If not null = patient whose account/appointment currently being used
 Private fk_payer_branch As Variant  'if non zero the invoice is to an organisation at branch level
 Private fk_payer_person As Variant                 'if non zero the invoice is to a person
 Private fk_appointment As Variant
@@ -246,29 +246,6 @@ Private Const grid_col_total_paid As Integer = 10
 Private Const grid_col_payment_type As Integer = 11
 Private Const grid_col_amount_due As Integer = 12
 Private Const grid_col_notes As Integer = 13
-
-Public Sub _new()
-   
-   tlPatientDetails.Background = lblEditAreaHeading.Background 
-   Appointment_Icons = Appointment_icons_Get_Picture(modAppointmentsDBI.Appointment_icons_get())  
-   With form_patient_photo = New FPatientPhoto(Vbox_Photo)
-      .lblID.Visible = False 
-      .lblLeft.Visible = True 
-      .lblRight.Visible = True 'spacers just for this module
-   End With
-   With form_billingcards = New FPatientBillingCards(VBox_PatientBillingCards)
-      .Init(VBox_EditArea_Outer, "FRecordVisit")
-      .Hbox_LegacyFileNumber.Visible = False
-   End With
-   Area_of_Need_Fees = modBillingDBI.Area_Of_Need_Fees("10991")  'area of need supplement keyed by billing.lu_biling_type key
-   gvwAccountNames.Columns.Count = 2
-   With gvwUnpaidVisits
-      .Columns.count = 3
-      .Columns[0].Width = 80
-   End With
-   
-End
-
 Static Private Form_Billing As FRecordVisit
 
 Static Public Sub Enable_BOKBIllingSaveButton(bFlag As Boolean)
@@ -277,6 +254,34 @@ Static Public Sub Enable_BOKBIllingSaveButton(bFlag As Boolean)
    Try Form_Billing.tbSaveBillingNextOfKin.enabled = True 'the form may not exist
 Catch
    Return
+   
+End
+
+Static Public Function fk_patient_Key() As Variant
+   ' Used in bulk bill batching to see if this patient needs to have
+   ' their past history accounts lists updated after payments made
+   
+   Return Form_Billing.fk_patient 
+   
+End
+
+Static Public Function Is_Same_Patient(fkp As Variant) As Boolean
+   
+   If Not IsNull(Form_Billing.fk_patient) Then
+      If Form_Billing.fk_patient = fkp Then
+         Return True
+      Endif
+   Endif
+   
+End
+
+Static Public Sub Patient_Invoices_Update_External(fk_patient As Variant)
+   ' Called from bulk billing batching FBulkBillBatching
+   ' after vouchers are marked as paid off, when the patient in the billing
+   ' section is one of the ones in the vouchers which were just paid off
+   
+   Form_Billing.Account_History_Show
+   Form_Billing.Items_Today_Or_Unpaid_Reload
    
 End
 
@@ -300,33 +305,6 @@ Static Public Sub Bulk_Billing_Claims_Reload()
    
 End
 
-Public Sub BulkBilling_ShowClaims()
-   '-------------------------------
-   'show veteran or medicare claims
-   '-------------------------------
-   ' 
-   ' Bulk_Billed_Claims = modBillingDBI.Bulk_Bill_Batching_Get_Claims(combobox1.index)
-   ' If IsNull(Bulk_Billed_Claims) Then Return
-   ' columnview99.Clear
-   ' For Each Bulk_Billed_Claim In Bulk_Billed_Claims
-   '    columnview99.Add(Bulk_Billed_Claim!pk, 0)
-   '    columnview99[Bulk_Billed_Claim!pk][0] = Format(Bulk_Billed_Claim!claim_date, "dd/mm/yyyy")
-   '    columnview99[Bulk_Billed_Claim!pk][1] = Bulk_Billed_Claim!claim_id
-   ' Next
-   ' If columnview99.Count Then
-   '    With columnview99
-   '       .MoveFirst
-   '       .SetFocus
-   '       .Item.Selected = True
-   '    End With
-   ' Endif
-   ' ' If Bulk_Billed_Claims.count Then
-   ' '    Batching_Show_Vouchers_In_Claim()
-   ' ' Endif
-   ' 
-   
-End
-
 Public Sub Init()
    '---------------------------------------------------------
    'Do all the form initialisation stuff like adding stuff to
@@ -336,10 +314,27 @@ Public Sub Init()
    
    Dim hCtrl As Control
    Dim HB As HBox
-   
-   lblSearchAccounts.Foreground = Color.LightGray
-   ' comboBox1_Load()
+
    Form_Billing = Me
+   tlPatientDetails.Background = lblEditAreaHeading.Background 
+   Appointment_Icons = Appointment_icons_Get_Picture(modAppointmentsDBI.Appointment_icons_get())  
+   With form_patient_photo = New FPatientPhoto(Vbox_Photo)
+      .lblID.Visible = False 
+      .lblLeft.Visible = True 
+      .lblRight.Visible = True 'spacers just for this module
+   End With
+   With form_billingcards = New FPatientBillingCards(VBox_PatientBillingCards)
+      .Init(VBox_EditArea_Outer, "FRecordVisit")
+      .Hbox_LegacyFileNumber.Visible = False
+   End With
+   Area_of_Need_Fees = modBillingDBI.Area_Of_Need_Fees("10991")  'area of need supplement keyed by billing.lu_biling_type key
+   gvwAccountNames.Columns.Count = 2
+   With gvwUnpaidVisits
+      .Columns.count = 3
+      .Columns[0].Width = 80
+   End With
+   Form_Billing = Me
+   lblSearchAccounts.Foreground = Color.LightGray
    lblmeasure.text = "  Medicare Voucher  "
    tbUniversal.width = lblmeasure.Width
    Item_Number_Categories = New String[]
@@ -492,7 +487,6 @@ Public Sub AccountHistory_Clear()
    cmbInvoiceToFilter.Clear 
    rbAccountHistoryNotUsed.Value = True   'not visible but turns off all the others
    bExit = False   
-   '  modUtilGUI.Columnview_Clear_Properly(cvwAccountHistory)
    cvwAccountHistory.Clear
    Print "just cleared ", cvwAccountHistory.Count
    
@@ -1416,43 +1410,6 @@ Public Sub gwItemsBilled_Cell_Overlay_Remove(char As String)
    
 End
 
-Public Sub gvwItemsBilled_lblOverLay_Menu()
-   '---------------------------------------------------------------
-   'The user has right mouse clicked on a grid row, but over a cell
-   'this means they clicked on the transparent menu
-   '---------------------------------------------------------------
-   ' 
-   ' Dim row As Integer
-   ' Dim col As Integer
-   ' Dim bHaveText As Boolean
-   ' 
-   ' bexit = True
-   ' If bPayingInvoice Then Return
-   ' For row = 0 To gvwItemsBIlled.Rows.count - 1
-   '    For col = 0 To 4
-   '       If gvwItemsBIlled[row, col].Text <> "" Then
-   '          mnuItemsBilled.Popup
-   '          bHaveText = True
-   '          Break
-   '       Endif
-   '    Next
-   '    If bHaveText Then Break
-   ' Next
-   ' bexit = False
-   
-End
-
-Public Sub gvwItemsBilled_lblOverLay_DblClick()
-   '-------------------------------------------------------------
-   'Looks to use like double clicking on a grid row
-   'actually clicking on the transparent label over the grid cell
-   'remove this transparent label and enter 'edit mode'
-   '-------------------------------------------------------------
-   
-   'gwItemsBilled_Cell_Overlay_Remove("")
-   
-End
-
 Public Sub gvwItemsBIlled_Init()
    '----------------------------------------------------------
    'Contruct the grid which will hold the items on the invoice
@@ -1718,12 +1675,6 @@ Private Sub gvwItemsBilled_MoveProperty()
    
 End
 
-Public Sub cmbEditArea_Enter()
-   
-   ' If Last.tag = "fee type" Then last_Fee_Type = cmbFeeType.text
-   
-End
-
 Public Sub cmbEditArea_LostFocus()
    
    Select Case Last.tag
@@ -1731,22 +1682,6 @@ Public Sub cmbEditArea_LostFocus()
          Last.visible = False
    End Select
    
-End
-
-Public Sub Reset_Last_Billing_Type()
-   
-   ' bexit = True   
-   ' Select Case iLast_Invoice_Type
-   '    Case cLast_Invoice_Type_Private
-   '       rbInvoiceToPatient.value = True
-   '    Case cLast_Invoice_Type_Medicare
-   '        rbInvoiceToMedicare.Value = True
-   '    Case cLast_Invoice_Type_Veteran
-   '       rbInvoiceToVeterans.value = True 
-   '    Case cLast_Invoice_Type_Other
-   '       rbInvoiceToOther.Value = True 
-   ' End Select
-   ' bExit = False  
 End
 
 Public Sub cmbPaymentMethods_Menu()
@@ -1794,13 +1729,6 @@ Public Sub gvwItemsBIlled_Set_Fee_Level(level As String)
    End Select
    
 End
-
-' 
-' Public Sub cmbPaymentMethods_Menu()
-'    
-'    gvwPayments_lblOverLay_Menu()
-'    
-' End
 
 Public Sub cmbPaymentMethods_Click()
    
@@ -2275,7 +2203,6 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True)
       ' Items_Today_Or_Unpaid = Reload_Billed_Items(cvwItemsTodayOrUnpaid, Items_Today_Or_Unpaid)
       '  Items_Today_Or_Unpaid_Reload()      'reload the collection and fill the columnview
    Endif
-   Print bSearchingAccounts
    modDBConnect.CommitTrans() ' do this last to prevent new transaction from forming
    
 End
@@ -2484,7 +2411,6 @@ Public Sub Patients_Display()
             iWidestPatientName = Max(lblMeasure.Width, iWidestPatientName)
             Inc x
          End If
-         
       Next
       If gvwAccountNames.Rows.count Then 
          gvwAccountNames.Columns[0].width = iWidestPatientName
@@ -2496,7 +2422,6 @@ Public Sub Patients_Display()
          Account_Patient_Display(True)
          txtSearchAccountNames_LostFocus()
       End If   
-      
    Endif
    Dec Application.Busy
    
@@ -2678,169 +2603,6 @@ Public Sub Item_Number_Get_Fee_Levels_Fill_Invoice_Row(txt As String)
    bExit = False
    ' Catch
    ' Message.Info(An Error occurred trying To set the fee level ")"
-   
-End
-
-Public Sub Get_Items_old(txt As String)
-   
-   '11may I renamed this as it is really ambiguous
-   'developmental prototype only doesn't just get items.
-   'A patient may have a default 'billing_level' eg. private or health care concession
-   ' "1";"Bulk Bill"
-   ' "2";"Private"
-   ' "3";"Health Care Card Concession"
-   ' "4";"Pensioner Concession"
-   ' "5";"Medico-Legal"
-   'however these billing_levels are not the same as the concept of billing_types in the backend
-   ' "1";"AMA Fee"
-   ' "2";"DVA (Non LMO rate)"
-   ' "3";"DVA (LMO rate)"
-   ' "4";"Health Care Card Concession"
-   ' "5";"Pensioner Concession"
-   ' "6";"Private Fee"
-   ' "7";"TAC (Transport Accident Commission)"
-   ' "8";"Schedule Fee"
-   ' For example a patient may be bulk billed as either medicare or veteran (for some things) or both
-   ' or a practice may bill privately at the AMA rate, or pripatientsvately at a concession rate
-   
-   Dim fk_lu_billing_type As Variant
-   Dim bMissingBriefDescriptor As Boolean
-   Dim billing_type As String
-   Dim price As Variant
-   Dim AreaOfNeed_Item As Collection
-   Dim patient_age_in_years As Integer
-   Dim sMsg As String
-   Dim bEntitledVeteran As Boolean
-   
-   If txtFindItemNumber.text = "" Then Return 'no item number to search for
-   txtDescriptor.text = ""
-   bExit = True
-   If Not IsNull(form_billingcards.Veteran_Card_Type()) Then     'they must be an entitled veteran in some capacity
-      bEntitledVeteran = True
-      If form_billingcards.Veteran_Card_Type() = const.Veteran_Entitlement_Specific Then
-         sMsg = "The Veteran is listed for specific entitlements only.\n\n"
-         "Was the consultation for one of their listed entitlements?"
-         If Message.Question(sMsg, "Yes", "No") = 2 Then
-            bEntitledVeteran = False
-            rbInvoiceToPatient.Value = True
-            fk_lu_default_billing_level = const.Billing_Default_Level_Private
-         End If
-      Endif
-   Endif
-   If rbInvoiceToMedicare.Value = True Or rbInvoiceToVeterans.value = True Then
-      fk_lu_default_billing_level = const.Billing_Default_Level_BulkBill
-   Endif
-   Select Case fk_lu_default_billing_level
-      Case const.Billing_Default_Level_BulkBill
-         If rbInvoiceToVeterans.Value = True Then
-            fk_lu_billing_type = const.Billingtype_DVA_LM0    'fixme in config file put in dvo lmo or non lmo rate
-            billing_type = "DVA (LMO rate)"
-         Else
-            fk_lu_billing_type = const.Billingtype_Scheduled_Fee
-            billing_type = "Schedule Fee"
-         End If
-      Case const.Billing_Default_Level_PensionerConcession
-         fk_lu_billing_type = const.Billingtype_Pensioner_Concession
-         billing_type = "Pensioner Concession"
-      Case const.Billing_Default_Level_HealthCareCardConcession
-         fk_lu_billing_type = const.Billingtype_Health_Care_Card_Concession
-         billing_type = "Health Care Card Concession"
-      Case const.Billing_Default_Level_Private
-         fk_lu_billing_type = const.Billingtype_Private
-         billing_type = "Private Fee"
-      Case const.Billing_Default_Level_MedicoLegal
-         fk_lu_billing_type = const.Billingtype_AMA
-         billing_type = "AMA"
-      Case Else 'is null
-         fk_lu_billing_type = const.Billingtype_Private                         'default to private billing
-         billing_type = "Private Fee"
-   End Select
-   txt = Trim(txt)
-   Scheduled_Fee = modBillingDBI.Fee_Get_For_Item_And_Billing_Type(txt, const.Billingtype_Scheduled_Fee)
-   Items = modBillingDBI.Fees_Get_All_Levels_For_Item(txt) ', fk_lu_billing_type)
-   If items.count = 0 Then
-      ' if fail and we have a non-patient payer - try workcover
-      If textlabelPayer.text <> "" Then
-         Items = modBillingDBI.Items_Get(txt, const.Billingtype_Workcover)
-      Else
-         items = modBillingDBI.Items_Get(txt, const.Billingtype_Scheduled_Fee) ' try schedule fee
-         If items.count = 0 Then
-            items = modBillingDBI.Items_Get(txt, const.Billingtype_Private) ' try private
-            If items.count = 0 Then
-               items = modBillingDBI.Items_Get(txt, -1, 1) ' if all else fails, look for any billing level
-            Endif
-         Endif
-      Endif
-   End If
-   If items.count = 0 Then
-      Message.title = "Fee Search"
-      sMsg = "Item:" & txt & "\n\n"
-      sMsg &= "The item number could not be found.\n\n"
-      sMsg &= "Please check this in the Fee Schedule and try again"
-      Message.Info(sMsg)
-      ' gvwItemsBilled_Delete_Row()
-      gvwItemsBIlled[gvwItemsBIlled.row, 0].text = ""
-      cell_text = ""
-      bExit = False
-      item = Null
-      Return
-   Endif
-   GridData.Add(items, gvwItemsBIlled.row) 'keep all feel levels for the item on this row
-   ' For Each item In items 'get the first item returned, don't care about others
-   item = items[fk_lu_billing_type]
-   If IsNull(item) Then Try item = items[6]  'private workcover
-   If IsNull(item!descriptor_brief) Then 
-      bMissingBriefDescriptor = True
-   Endif
-   price = Replace(item!price, "$", "")
-   gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_BriefDescriptor].Text = item!descriptor_brief
-   gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_Fee].Text = item!price
-   If fk_lu_billing_type <> const.Billingtype_DVA_LM0 Or fk_lu_billing_type <> const.Billingtype_Scheduled_Fee Then    
-      Try gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_Gap].Text = modUtil.Money_Format(Str(CFloat(Val(Replace(item!price, "$", ""))) - CFloat(Val(Replace(Scheduled_Fee!price, "$", "")))))
-   Else 
-      gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_Gap].Text = "$0.00"
-   End If   
-   gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_FeeType].text = item!fee_type
-   last_Fee_type = item!fee_type
-   If Not IsNull(item!gst_rate) And item!gst_rate <> 0 Then 'FIX ME ?CONVERT BACKEND TO NULL IN THIS FIELD NOT ZERO.
-      gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_gst_amount].Text = modUtil.Money_Format(modUtil.MoneyToFloat(price) / item!gst_rate)
-   Endif
-   
-   ' Break
-   ' Next
-   bExit = False
-   '-------------------------------------------------------------------------------------------------------
-   'If the practice is in an area of need it attracts the 10091 item number
-   'Need to work out if patient is a veteran and entitled
-   'Also a child <16yrs could be being bulk billed whose parents are not covered by health cards or pension
-   '-------------------------------------------------------------------------------------------------------
-   If bAreaOfNeed Then
-      If fk_lu_default_billing_level = const.Billing_Default_Level_BulkBill And item!mbs_item <> "10991" Then
-         'if child <12 months eg e.g 4m20d hence defaults to patient_age_in_years = 0
-         If txtAge.text <> "" And InStr(txtAge.text, "y") Then patient_age_in_years = Val(Split(txtAge.text, "y")[0])
-         If bEntitledVeteran Or patient_age_in_years < 16 Or form_billingcards.Centrelink_Card_Type() = const.Centrelink_Concession_Card_Health_Care_Card Or form_billingcards.Centrelink_Card_Type() = const.Centrelink_Concession_Card_Pensioner_concession_card Then
-            AreaOfNeed_Item = Area_of_Need_Fees[fk_lu_billing_type]
-            If Not IsNull(AreaOfNeed_Item) Then
-               onrow_items = Min(gvwItemsBIlled.row + 1, 3)
-               price = Replace(AreaOfNeed_Item!price, "$", "")
-               gvwItemsBIlled.row = onrow_items
-               gvwItemsBIlled_FillRow(price, AreaOfNeed_Item)
-            Endif
-         End If
-      Endif
-   Endif
-   Invoice_Calculate_Total("Total Owing")
-   EditArea_Notify_Data_Change(True)
-   OnCol_Items = 0
-   onrow_items = Min(onrow_items + 1, 3)
-   With gvwItemsBIlled
-      .Column = OnCol_Items
-      .Row = onrow_items
-      .SetFocus()
-   End With
-   current_gvwItemsBilled_Row = onrow_items
-   HBox_InvoiceGrid.height = (gvwItemsBIlled.rows.count + 3) * gvwItemsBIlled.rows[0].height
-   bExit = False
    
 End
 
@@ -3231,110 +2993,6 @@ Public Sub rbInvoiceTo_Click()
    
 End
 
-Public Sub gvwItemsBIlled_Calculate_Fees_30march16_933pm() 'this version doesn't take into account area of need rows
-   '--------------------------------------------------------------------------------------------------
-   'This event is raised by either user clicking on the combo in the billing grid
-   ' Or medicare, private or veterans option buttons next to the Invoice To label.
-   'Change the fee type re-calculate the columns
-   're - calculate the gap payment or set to zero If this is veterans or medicare patyment patient
-   '
-   'Each row in the grid has a corresponding collection of feel levels in gridData[gvwItemsBIlled.row]
-   ' loaded in the Get_Items() sub which is a collection of collections for each fee level,
-   ' usually eg 5 or 6 which correspond to the backend table billing.lu_billing_type contents:
-   '
-   ' 1;"AMA Fee"
-   ' 2;"DVA (Non LMO rate)"
-   ' 3;"DVA (LMO rate)"
-   ' 4;"Health Care Card Concession"
-   ' 5;"Pensioner Concession"
-   ' 6;"Private Fee"
-   ' 7;"TAC (Transport Accident Commission)"
-   ' 8;"Schedule Fee"
-   ' 
-   ' This is a sample of gridData[0][5], this is for pensioner concession rate at my surgery
-   ' and in the gui would correspond to the first row in a grid already populated with data.
-   ' The keys and info will be different at your site:
-   '
-   ' Key                          Value
-   ' pk                           5
-   ' mbs_item                     23
-   ' user_item                    null
-   ' ama_item                     null   
-   ' descriptor                   professional attendance at......
-   ' descriptor_brief             level B consult at Surgery
-   ' gst_rate                     0
-   ' number_of_patients           0
-   ' fk_fee_schedule              4070
-   ' fk_price                     6105
-   ' price                        $52.05
-   ' fk_lu_billing_type           5
-   ' notes
-   ' fee_type                     Pensioner Conscession
-   ' 
-   '--------------------------------------------------------------------------------------------------
-   
-   Dim gap_payment As Float
-   Dim row As Integer
-   Dim item_number As String                           ' for readability the item number
-   Dim fee_type As String                              ' for readability the type of fee.g private or schedule fee
-   Dim fk_lu_billing_type As Variant                   ' for readability the key to lu_billing_type
-   Dim the_fees As Collection
-   Dim item As Collection 
-   Dim scheduled_fee As String
-   ' If bexit Then Return
-   '  If gvwItemsBIlled.row = -1 Then Return                                                    ' no row selected
-   ' If InStr(cmbFeeType.text, "DVA") Then                                                     ' warn if no vet number if DVA
-   '    If IsNull(currentconsult!patient!veteran_number) Then
-   '       Message.Info("You have selected a Veterans fee level, the patient has no veterans card number.\n\n"
-   '       "If they have this entitlement, please add the appropriate details in the Cards tab above.")
-   '       Reset_Last_Billing_Type
-   '       Return
-   '    Endif
-   ' Endif
-   
-   For row = 0 To gvwItemsBIlled.Rows.Max                                                        ' for each row in the fees grid, we start with 4 by default
-      If gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_ItemNumber].text <> "" Then          ' if there is text in the grid item number column
-         item_number = gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_ItemNumber].text       ' for readability this is the item number
-         fee_type = gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_FeeType].Text             ' for readability this is the fee type
-         fk_lu_billing_type = Billing_Type_Get_Pk(fee_type)                                      ' for readability this is the key to lu_billing_type
-         If GridData[gvwItemsBIlled.Row].Exist(fk_lu_billing_type) Then                          ' if the GridData[row][fk_lu_billing_type] collection exists
-            gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_Fee].text = GridData[gvwItemsBIlled.row][fk_lu_billing_type]!price  'set the price in the item fee col
-            scheduled_fee = GridData[gvwItemsBIlled.row][fk_lu_billing_type_scheduled_Fee]!price ' and work out the medicare scheduled fee 
-            If gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_Fee].text = "$0.00" Then       ' delete the row if no fee
-               gvwItemsBIlled_Delete_Row()
-            Else                                                                                 'otherwise work out the gap payment = current price - the scheduled fee
-               gap_payment = modUtil.MoneyToFloat(gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_Fee].text) - modUtil.MoneyToFloat(scheduled_fee)
-               If gap_payment = 0 Or rbInvoiceToVeterans.value = True Or rbInvoiceToMedicare.value = True Then     ' If this is nothing  $0.00 then 
-                  gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_Gap].text = "$0.0"                            ' set the gap to $0.00
-               Else                                                                                                ' otherwise
-                  gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_Gap].text = modUtil.Money_Format(gap_payment) ' display the gap $
-               End If
-            End If
-         Else                                                                                    ' if we don't have collection data for this fee level
-            Message.info("No fees exist for the billing level you selected")                     ' e.g user's site may not have put it in
-            gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_FeeType].Text = last_Fee_type     ' return the grid type to the last one used
-            Return
-         End If   
-         
-         ' If InStr(fee_type, "Private") Or InStr(fee_type, "AMA") Or InStr(fee_type, "Concession") Or InStr(fee_type, "TAC") Then
-         '    If bAreaOfNeed = True Then 
-         '       gvwItemsBIlled_Area_Of_Need_Remove          
-         '    End If   
-         '    rbInvoiceToPatient.value = True   
-         ' Endif
-         ' If fee_type = "Schedule Fee" And last_Fee_type <> "Schedule Fee" Then
-         '    If bAreaOfNeed = True Then 
-         '       gvwItemsBIlled_Area_Of_Need_Add  
-         '    End If   
-         ' Endif
-         '   ' last_Fee_Type = fee_type
-         ' Endif 
-      End If
-      
-   Next                            
-   
-End
-
 Public Sub gvwItemsBIlled_Calculate_Fees() 
    '--------------------------------------------------------------------------------------------------
    'This event is raised by either user clicking on the combo in the billing grid
@@ -3432,148 +3090,6 @@ Public Sub gvwItemsBIlled_Calculate_Fees()
    
 End
 
-Public Sub gvwItemsBIlled_Calculate_Fees_old()
-   '-------------------------------------------------------------------------------------------
-   'Change the fee type re-calculate the columns
-   'This event is raised by either user clicking on the combo or medicare/veteran radio buttons
-   're-calculate the gap payment or set to zero if this is veterans patient.
-   '-------------------------------------------------------------------------------------------
-   
-   Dim gap_payment As Float
-   Dim row As Integer
-   Dim item_number As String           'for readability
-   Dim fee_type As String              'e.g private or schedule fee
-   Dim fk_lu_billing_type As Variant
-   Dim the_fees As Collection
-   Dim item As Collection 
-   ' If bexit Then Return
-   '  If gvwItemsBIlled.row = -1 Then Return                                                    ' no row selected
-   ' If InStr(cmbFeeType.text, "DVA") Then                                                     ' warn if no vet number if DVA
-   '    If IsNull(currentconsult!patient!veteran_number) Then
-   '       Message.Info("You have selected a Veterans fee level, the patient has no veterans card number.\n\n"
-   '       "If they have this entitlement, please add the appropriate details in the Cards tab above.")
-   '       Reset_Last_Billing_Type
-   '       Return
-   '    Endif
-   ' Endif
-   Print gvwItemsBIlled[0, cGridColumnItem_FeeType].Text
-   Print gvwItemsBIlled[1, cGridColumnItem_FeeType].Text
-   
-   For row = 0 To gvwItemsBIlled.Rows.Max
-      gvwItemsBIlled.row = row
-      Print "on grid row:", gvwItemsBIlled.row, " but the row is:", row
-      Print cmbFeeType.Text
-      Print gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_FeeType].Text
-      Print gvwItemsBIlled[0, cGridColumnItem_FeeType].Text
-      Print gvwItemsBIlled[1, cGridColumnItem_FeeType].Text
-      
-      If gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_ItemNumber].text <> "" Then  
-         item_number = gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_ItemNumber].text
-         fee_type = gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_FeeType].Text
-         fk_lu_billing_type = Billing_Type_Get_Pk(fee_type)
-         'cmbFeeType.index = cmbFeeType.Find(fee_type)
-         the_fees = modBillingDBI.Fee_Get_For_Item_And_Billing_Type(item_number, fk_lu_billing_type)
-         Try gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_Fee].text = modBillingDBI.Fee_Get_For_Item_And_Billing_Type(item_number, fk_lu_billing_type)!price
-         If Error Then                                                                         ' not found a fee? then whinge
-            If Not bComplainedAboutNoItem Then
-               Message.info("No fees exist for the billing level you selected")
-               bComplainedAboutNoItem = True
-            Endif
-            'cmbFeeType.index = cmbFeeType.Find(last_Fee_type)                                  ' reset the combo to the last used fee level 
-            gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_FeeType].Text = last_Fee_type
-         Else
-            '-------------------------------------
-            'User has selected a new billing level
-            '-------------------------------------
-            bComplainedAboutNoItem = False
-            If gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_Fee].text = "$0.00" Then
-               gvwItemsBIlled_Delete_Row()
-            Else
-               gap_payment = modUtil.MoneyToFloat(gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_Fee].text) - modUtil.MoneyToFloat(the_fees!price)
-               If gap_payment = 0 Or rbInvoiceToVeterans.value = True Or rbInvoiceToMedicare.value = True Then
-                  gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_Gap].text = "$0.0"
-               Else
-                  gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_Gap].text = modUtil.Money_Format(gap_payment)
-               End If
-            End If
-            ' If InStr(fee_type, "Private") Or InStr(fee_type, "AMA") Or InStr(fee_type, "Concession") Or InStr(fee_type, "TAC") Then
-            '    If bAreaOfNeed = True Then 
-            '       gvwItemsBIlled_Area_Of_Need_Remove          
-            '    End If   
-            '    rbInvoiceToPatient.value = True   
-            ' Endif
-            ' If fee_type = "Schedule Fee" And last_Fee_type <> "Schedule Fee" Then
-            '    If bAreaOfNeed = True Then 
-            '       gvwItemsBIlled_Area_Of_Need_Add  
-            '    End If   
-            ' Endif
-            ' last_Fee_Type = fee_type
-         Endif 
-      End If
-      
-   Next                            
-   
-End
-
-Public Sub rbInvoiceTo_Click_old()
-   '-------------------------------------------------------------------
-   'If user changes billing level, change data in grid appropriately
-   ' loop variable must be local but set gvwItemsBIlled = row
-   ' so that when cmbFeeType.index = cmbFeeType.Find(Last.tag) triggers
-   ' cmbFeeType_Click we are on the correct row in cmbFeeType_Click()
-   '-------------------------------------------------------------------
-   
-   Dim row As Integer
-   
-   If bExit Then Return
-   textlabelPayer.text = ""
-   
-   Select Case Lower(Last.tag)
-      Case "private fee"
-         iLast_Invoice_Type = cLast_Invoice_Type_Private
-      Case "shedule fee"
-         iLast_Invoice_Type = cLast_Invoice_Type_Medicare
-      Case "veteran"
-         iLast_Invoice_Type = cLast_Invoice_Type_Veteran
-      Case "other"
-         iLast_Invoice_Type = cLast_Invoice_Type_Other
-   End Select
-   cbSendClaimantAddress.Visible = False
-   If rbInvoiceToPatient.value = True Then
-      If form_billingcards.Billing_Level_Get() <> const.Billingtype_Health_Care_Card_Concession Or form_billingcards.Billing_Level_Get() <> const.Billingtype_Pensioner_Concession Then
-         fk_lu_default_billing_level = const.Billing_Default_Level_Private
-         tbUniversal.text = "Print Account"
-      Endif
-   Endif
-   If rbInvoiceToOther.value = True Then
-      fk_lu_default_billing_level = const.Billing_Default_Level_Private
-      tbUniversal.text = "Print Account"
-      txtFindPayer.SetFocus()
-      If rbOnline_Yes.Value = True Then
-         cbSendClaimantAddress.Visible = True
-      Endif
-   Endif
-   If rbInvoiceToMedicare.Value = True Then
-      tbUniversal.text = "Medicare Voucher"
-   Endif
-   If rbInvoiceToVeterans.Value = True Then
-      tbUniversal.text = "Veterans Voucher"
-   Endif
-   
-   gvwItemsBIlled.row = 0
-   gvwItemsBIlled.Select
-   For row = 0 To gvwItemsBIlled.Rows.Max
-      onrow_items = row
-      If gvwItemsBIlled[row, cGridColumnItem_ItemNumber].Text <> "" Then
-         If gvwItemsBIlled[row, cGridColumnItem_FeeType].text <> Last.tag Then
-            gvwItemsBIlled.row = row
-            cmbFeeType.index = cmbFeeType.Find(Last.tag) 'triggers cmbFeeType_Click
-         End If
-      End If
-   Next
-   
-End
-
 Public Sub timer1_Timer()
    '-----------------------------------------------------------------------
    ' How this works for example
@@ -3604,12 +3120,6 @@ Public Sub timer1_Timer()
             Scheduled_Fees_Search
       End Select
    Endif
-   
-End
-
-Public Sub VBox_InvoiceGrid_Leave()
-   
-   ' gvwItemsBilled_HideProperty() '?flag
    
 End
 
@@ -3923,105 +3433,6 @@ Public Function Fill_Columnview(CVW As Columnview, coll As Collection, Optional 
    
 End
 
-Public Function Fill_Columnview_oldest(CVW As Columnview, coll As Collection, Optional bFirstLoad As Boolean = False) As Collection
-   '------------------------------------------------------------------------------------------------------
-   ' A generic routine used to display all previous items billed for the patient
-   ' E.g a single row could be Item 23 standard consult etc
-   ' if more than 1 item per invoice, only display name/dr/date once
-   ' coll = items_Billed_or_unpaid if user details loaded into the 
-   '        edit area
-   ' coll = items_Billed if viewing the account_history
-   ' If this is the first time the columnview is filled on the Accounts History Tab
-   ' then fill the payer combo with unique names
-   ' sub is called by  
-   ' txtFilterDescriptor_Change   - this textbox is on the Accounts tab showing patients account history
-   ' Account_History_Show         - on the Accounts tab to show the patients account history
-   ' Items_Today_Or_Unpaid_Reload - on the main billing screen - shows everything invoiced
-   '                                today + those which are unpaid
-   '-------------------------------------------------------------------------------------------------------
-   
-   Dim item As String
-   Dim fk_last_invoice As Variant
-   Dim total_due As Float
-   Dim amount_owing As Float
-   Dim monies As Variant[]
-   Dim items_on_invoice As Integer
-   Dim invoice_total As Float
-   Dim invoice_amount_paid As Float
-   Dim x As Integer
-   Dim item_billed As Collection
-   Dim bSkipRow As Boolean
-   
-   CVW.Clear
-   For Each Item_Billed In coll
-      If Trim(txtFilterDescriptor.text) <> "" And CVW.Name = "cvwAccountHistory" Then              ' ?user trying to filter collection on brief descriptor in account history tab
-         If InStr(Lower(Item_Billed!descriptor_brief), Lower(Trim(txtFilterDescriptor.text))) Then ' next brief descriptor matches text
-            bSkipRow = False                                                                          ' display in the columnview
-         Else                                                                                      ' otherwise
-            bSkipRow = True                                                                           ' don't
-         Endif
-      Else                                                                                         ' no filtering?   
-         bSkipRow = False                                                                             ' don't skip
-      End If   
-      If bSkipRow = False Then   
-         CVW.Add(x, 0)
-         If fk_last_invoice <> Item_Billed!fk_invoice Then
-            items_on_invoice = 1
-            
-            CVW[x][0] = Split(Item_Billed!patient_firstname, " ")[0] & "  "
-            CVW[x][1] = Item_Billed!staff_provided_service_wholename & "  "
-            CVW[x][2] = Item_Billed!branch & "  "
-            CVW[x][3] = Format(Item_Billed!visit_date, "dd/mm/yyyy") & "  "
-            CVW[x][9] = modUtil.Money_Format(Item_Billed!total_bill) & "  "
-            CVW[x][10] = modUtil.Money_Format(Item_Billed!total_paid) & "  "
-            CVW[x][11] = modUtil.Money_Format(Item_Billed!due) & "  "
-            CVW[x][12] = Item_Billed!notes
-         Else
-            CVW[x][0] = ""
-            Inc items_on_invoice
-         End If
-         If Not IsNull(Item_Billed!mbs_item) Then item = Item_Billed!mbs_item
-         If Not IsNull(Item_Billed!ama_item) Then item = Item_Billed!ama_item
-         If Not IsNull(Item_Billed!user_item) Then item = Item_Billed!user_item
-         CVW[x][4] = item & "  "
-         CVW[x][5] = Item_Billed!descriptor_brief & "  "
-         '------------------------------
-         'work out who the invoice is to
-         '------------------------------
-         If Not IsNull(Item_Billed!fk_lu_bulk_billing_type) Then
-            If Item_Billed!fk_lu_bulk_billing_type = const.BulkBilling_Type_Medicare Then
-               CVW[x][6] = "Medicare    "
-            Else
-               CVW[x][6] = "Veterans    "
-            Endif
-         Endif
-         If Not IsNull(Item_Billed!account_to_name) Then
-            CVW[x][6] = Item_Billed!account_to_name & "  "
-         End If   
-         If CVW[x][6] = "" Then 
-            CVW[x][6] = "Patient"
-         Endif
-         CVW[x][7] = Item_Billed!amount & "  "
-         If IsNull(Item_Billed!amount_gst) Then
-            CVW[x][8] = "          "
-         Else
-            CVW[x][8] = Item_Billed!amount_gst & "  "
-         Endif
-         fk_last_invoice = Item_Billed!fk_invoice
-         If bFirstLoad Then
-            If cmbInvoiceToFilter.Find(CVW[x][6]) = -1 Then 
-               cmbInvoiceToFilter.Add(CVW[x][6])
-            Endif
-         Endif
-         Inc x
-      End If   
-   Next
-   lblmeasure.font = CVW.Font
-   modUtilGUI.Columnview_Columns_Set_Size(CVW, lblmeasure)
-   Return coll
-   
-End
-
 Public Sub cvwItemsTodayOrUnpaid_Select()
    '-------------------------------------------------------------------------------------------
    'cvwItemsBilled:This is the list of items on invoices which have been billed to the
@@ -4192,7 +3603,6 @@ End
 
 Public Sub txtSearch_GotFocus()
    
-   Debug "got focus"
    txtSearch.Text = ""
    Last.BackGround = Color.rgb(95, 255, 175)
    lblSearchAccounts.Foreground = Color.Black
@@ -4222,7 +3632,6 @@ End
 
 Public Sub txtSearch_LostFocus()
    
-   Debug "lost focus"
    Last.BackGround = Color.White
    timer1.stop
    
@@ -4807,8 +4216,6 @@ Public Sub combobox1_Click()
          lblSearchAccounts.Foreground = Color.LightGray
          Reload()
       Case cTab_Banking
-      Case cTab_Batching
-         BulkBilling_ShowClaims
       Case cTab_ScheduleFees
          txtSearch.text = ""
          txtFilter.text = ""
@@ -4914,8 +4321,6 @@ Public Sub TabStrip1_Click()
          HBox_Veterans_or_medicare.visible = True
          VBox_Accounts.Visible = False     
          VBox_ForOtherTabs.Visible = True
-         'Report_Show_HTML(Days_Takings_Create_HTML())
-         
          combobox1.Visible = True
          HBox_Search.Visible = False
          modEditAreaHelpers.Resize_labels(VBox_ForOtherTabs, lblmeasure)
@@ -5140,30 +4545,6 @@ Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
    shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(running_total_gst))
    sHtml &= "</TR>"
    sHtml &= "</TABLE>"
-   '------------------------------------------------------------------
-   'Now add a table which summarizes amounts medicare and repatriation
-   ' '------------------------------------------------------------------
-   ' sHtml &= "<HR><P><B>Consultations Invoiced (unpaid) </B></P>"
-   ' sHtml &= "<TABLE WIDTH=441 CELLPADDING=0 CELLSPACING=1 >"
-   ' "<COL WIDTH=212>"
-   ' "<COL WIDTH=208>"
-   ' 
-   ' sHtml &= "<TR VALIGN=TOP>" & totals_html_row_template()
-   ' shtml = Replace(shtml, "%payment_method%", "Medicare")
-   ' shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(running_total_medicare))
-   ' sHtml &= "</TR>"
-   ' shtml &= totals_html_row_template()
-   ' shtml = Replace(shtml, "%payment_method%", "Veterans")
-   ' shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(running_total_veterans))
-   ' sHtml &= "</TR>"
-   ' For Each visit In invoices_others
-   '    sHtml &= "<TR VALIGN=TOP>" & totals_html_row_template()
-   '    shtml = Replace(shtml, "%payment_method%", visit!account_to_name)
-   '    shtml = Replace(shtml, "%total_amount%", visit!total_bill)
-   '    running_total += modUtil.MoneyToFloat(visit!total_bill)
-   '    sHtml &= "</TR>"
-   ' Next
-   ' shtml &= "</TABLE></BODY></HTML>"
    If day_list_patients_billed_count Then                                                           ' if patient's seen today
       'First create a two column table the left part holds the income, the right the warning
       Income_Summary_Warning_Table = "<TABLE  width = 100% CELLPADDING=0 CELLSPACING=0>"         
@@ -5187,7 +4568,6 @@ Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
       warning_html &= "<P>" & day_list_warning() & "</P>"
       warning_html &= "</TD></TR></TABLE>"
       Income_Summary_Warning_Table = Replace(Income_Summary_Warning_Table, "%warning%", warning_html)
-      
       'Now the html of the table to go in the first cell of the above table
       Income_summary_html = "<TABLE  width = 100% CELLPADDING=0 CELLSPACING=0>"                                    ' create a stats table 
       Income_summary_html &= "<COL WIDTH=60%>"
@@ -5432,30 +4812,6 @@ Public Sub Day_List_Create_HTMl_New(Optional for_date As Date = Now()) As String
    shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(running_total_gst))
    sHtml &= "</TR>"
    sHtml &= "</TABLE>"
-   '------------------------------------------------------------------
-   'Now add a table which summarizes amounts medicare and repatriation
-   ' '------------------------------------------------------------------
-   ' sHtml &= "<HR><P><B>Consultations Invoiced (unpaid) </B></P>"
-   ' sHtml &= "<TABLE WIDTH=441 CELLPADDING=0 CELLSPACING=1 >"
-   ' "<COL WIDTH=212>"
-   ' "<COL WIDTH=208>"
-   ' 
-   ' sHtml &= "<TR VALIGN=TOP>" & totals_html_row_template()
-   ' shtml = Replace(shtml, "%payment_method%", "Medicare")
-   ' shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(running_total_medicare))
-   ' sHtml &= "</TR>"
-   ' shtml &= totals_html_row_template()
-   ' shtml = Replace(shtml, "%payment_method%", "Veterans")
-   ' shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(running_total_veterans))
-   ' sHtml &= "</TR>"
-   ' For Each visit In invoices_others
-   '    sHtml &= "<TR VALIGN=TOP>" & totals_html_row_template()
-   '    shtml = Replace(shtml, "%payment_method%", visit!account_to_name)
-   '    shtml = Replace(shtml, "%total_amount%", visit!total_bill)
-   '    running_total += modUtil.MoneyToFloat(visit!total_bill)
-   '    sHtml &= "</TR>"
-   ' Next
-   ' shtml &= "</TABLE></BODY></HTML>"
    If day_list_patients_billed_count Then                                                           ' if patient's seen today
       'First create a two column table the left part holds the income, the right the warning
       Income_Summary_Warning_Table = "<TABLE  width = 100% CELLPADDING=0 CELLSPACING=0>"         
@@ -5896,13 +5252,6 @@ Public Function visit_type_create_html(visit_subset As Collection, group_name As
                If bInvoiceisPrivate Then running_total_private_paid += modUtil.MoneyToFloat(visit!amount) 
             Endif
          End If   
-         
-         ' If Not modUtil.IsSameDay(DateChooser1.Value, visit!appointment_date) Or Not modUtil.IsSameDay(DateChooser1.Value, visit!visit_date) Then  
-         '    running_total_old_invoices += modUtil.MoneyToFloat(visit!amount) + modUtil.MoneyToFloat(visit!amount_gst)
-         ' Else
-         '    If bInvoiceisPrivate Then running_total_private_paid += modUtil.MoneyToFloat(visit!amount) 
-         ' Endif
-         ' 
          If Not bSameInvoice Then
             If Not modUtil.IsSameDay(DateChooser1.Value, visit!appointment_date) Then  
                Inc day_list_patients_old_invoices_count
@@ -6095,110 +5444,6 @@ Public Function day_list_html_row_template_Workcover_Insurance(Optional bmergeCo
    
 End
 
-Public Sub Days_Takings_Create_HTML(Optional for_date As Date = Now()) As String
-   'creates html table of a days takings
-   
-   Dim monies_received As Collection
-   Dim sHtml As String
-   Dim sRow As String
-   Dim amount As Collection
-   Dim payment_method As Collection
-   Dim payment_totals As New Float[7] 'use 1>6 = billing.lu_payment_method keys
-   Dim running_total_gst As Float
-   Dim running_total As Float
-   Dim x As Integer
-   
-   monies_received = modBillingDBI.Receipts_Get_For_Day(for_date)
-   sHtml = "<HTML><BODY><P><B>Summary of Receipts Taken on " & Format(for_date, "dd/mm/yyyy") & "</B></P>"
-   If monies_received.count = 0 Then
-      sHtml &= "No takings recorded for" & Format(for_date, "dd/mm/yyyy") & "</BODY></sHTML>"
-      Return sHtml 
-   Endif
-   sHtml &= "<TABLE WIDTH=100% CELLPADDING=0 CELLSPACING=0>"
-   "<COL WIDTH=43*>"
-   "<COL WIDTH=43*>"
-   "<COL WIDTH=43*>"
-   "<COL WIDTH=43*>"
-   "<COL WIDTH=43*>"
-   "<COL WIDTH=43*>"
-   '------------------------------------------------------
-   'now add a row for each money recieved
-   'receipt no|Payer|payment type|Cheque Drawer|Amount|Tax
-   '------------------------------------------------------
-   sHtml &= "<TR VALIGN=TOP>" & takings_html_row_template() & "</TR>"
-   shtml = Replace(shtml, "%receipt_no%", "<B>Receipt</B>")
-   shtml = Replace(shtml, "%payer%", "<B>Payer</B>")
-   shtml = Replace(shtml, "%item%", "<B>Item</B>")
-   shtml = Replace(shtml, "%payment type%", "<B>Type</B>")
-   shtml = Replace(shtml, "%drawer%", "<B>Cheque Drawer</B>")
-   shtml = Replace(shtml, "%amount%", "<B>Amount</B>")
-   shtml = Replace(shtml, "%tax%", "<B>Tax</B>")
-   For Each amount In monies_received
-      sHtml &= "<TR VALIGN=TOP>" & takings_html_row_template()
-      sHtml = Replace(sHtml, "%receipt_no%", Str$(amount!fk_payments_received))
-      If Not IsNull(amount!payer_details) Then
-         If Not IsNull(amount!fk_payer_branch) Then
-            sHtml = Replace(sHtml, "%payer%", amount!payer_organisation & " " & amount!payer_branch)
-         End If
-         If Not IsNull(amount!fk_payer_person) Then
-            sHtml = Replace(sHtml, "%payer%", amount!payer_person_wholename)
-         End If
-      Else
-         sHtml = Replace(sHtml, "%payer%", amount!patient_wholename)
-      End If
-      sHtml = Replace(sHtml, "%item%", amount!item)
-      sHtml = Replace(sHtml, "%payment type%", amount!payment_method)
-      sHtml = Replace(sHtml, "%drawer%", " ") 'FIXME
-      sHtml = Replace(sHtml, "%amount%", modUtil.Money_Format(amount!amount))
-      sHtml = Replace(sHtml, "%tax%", " ") 'FIXME put in gst
-      sHtml &= "</TR>"
-      payment_totals[amount!fk_lu_payment_method] = payment_totals[amount!fk_lu_payment_method] + CFloat(Replace(amount!amount, "$", ""))
-      running_total += modUtil.MoneyToFloat(amount!amount)
-      If amount!invoice_paid = True Then
-         If Not IsNull(amount!item_billed_amount_gst) Then
-            running_total_gst += modUtil.MoneyToFloat(amount!item_billed_amount_gst)
-         Endif
-      Endif
-   Next
-   shtml &= "</TABLE>"
-   '---------------------------------------------------------------------------------------
-   'Now add a table which summarizes amounts for Cash, Cheques, EFPos or EFT (direct debit)
-   '---------------------------------------------------------------------------------------
-   sHtml &= "<P><B>Totals</B></P>"
-   sHtml &= "<TABLE WIDTH=441 CELLPADDING=0 CELLSPACING=1 >"
-   "<COL WIDTH=212>"
-   "<COL WIDTH=208>"
-   
-   For Each payment_method In payment_methods
-      Inc x                                  'billing.lu_payment_method keys 1>6
-      shtml &= "<TR VALIGN=TOP>"
-      shtml &= totals_html_row_template()
-      shtml = Replace(shtml, "%payment_method%", payment_method!method)
-      shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(payment_totals[x]))
-      sHtml &= "</TR>"
-   Next
-   sHtml &= "</TABLE>"
-   '------------------------------------
-   'Now show the totals for GST and Cash
-   '------------------------------------
-   sHtml &= "<BR>"
-   sHtml &= "<TABLE WIDTH=441 CELLPADDING=0 CELLSPACING=1 >"
-   "<COL WIDTH=212>"
-   "<COL WIDTH=208>"
-   sHtml &= "<TR VALIGN=TOP>" & totals_html_row_template()
-   shtml = Replace(shtml, "%payment_method%", "TOTAL GST")
-   shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(running_total_gst) & "<BR><BR>")
-   sHtml &= "</TR>"
-   sHtml &= "<TR VALIGN=TOP>" & totals_html_row_template()
-   shtml = Replace(shtml, "%payment_method%", "<B>TOTAL (Including GST)</B>")
-   Print modUtil.Money_Format(running_total_private_paid + running_total_old_invoices)
-   shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(running_total_private_paid + running_total_old_invoices))
-   sHtml &= "</TR>"
-   sHtml &= "</TABLE></BODY></HTML>"
-   Return shtml
-   
-End
-
 Public Function takings_html_row_template() As String
    
    Return ""
@@ -6210,30 +5455,6 @@ Public Function takings_html_row_template() As String
    "</TD>"
    "<TD WIDTH=5%>"
    "   <P>%item%</P>"
-   "</TD>"
-   "<TD WIDTH=15%>"
-   "   <P>%payment type%</P>"
-   "</TD>"
-   "<TD WIDTH=20%>"
-   "   <P>%drawer%</P>"
-   "</TD>"
-   "<TD WIDTH=10%>"
-   "   <P>%amount%</P>"
-   "</TD>"
-   "<TD WIDTH=10%>"
-   "   <P>%tax%</P>"
-   "</TD>"
-   
-End
-
-Public Function takings_html_row_templat_old() As String
-   
-   Return ""
-   "<TD WIDTH=8%>"
-   "   <P>%receipt_no%</P>"
-   "</TD>"
-   "<TD WIDTH=30%>"
-   "   <P>%payer%</P>"
    "</TD>"
    "<TD WIDTH=15%>"
    "   <P>%payment type%</P>"
@@ -6321,12 +5542,6 @@ Public Sub UnPaid_Invoices_Reload()
       Case cInvoiceDisplayMode_InstitutionalAccounts
          
    End Select
-   ' If gvwUnpaidVisits.Rows.count Then
-   '    With gvwUnpaidVisits
-   '       .row = 0
-   '       .SetFocus
-   '    End With
-   ' End If   
    
 End
 
@@ -6877,11 +6092,6 @@ Public Sub chkIncludeDeceased_Click()
    
 End
 
-Public Sub Button1_Click()
-   
-   Print gvwItemsBIlled.Enabled
-   
-End
 
 Public Sub gvwAccountNames_Menu()
    
@@ -6924,8 +6134,10 @@ Public Sub rbBulkBillBatching_Click()
       .lblBulkBIllingInformation.Text = "Bulk Billing Type "
       If Bulk_Bill_Batching_type = const.BulkBilling_Type_Medicare Then
          .lblBulkBIllingInformation.Text &= "Medicare"
+         .fk_lu_bulk_billing_type = const.BulkBilling_Type_Medicare
       Else
          .lblBulkBIllingInformation.text &= "Veterans"
+         .fk_lu_bulk_billing_type = const.BulkBilling_Type_Veteran
       Endif
    End With
    Bulk_Billing_Show_Dates

@@ -27,7 +27,7 @@ Private fk_branch As Variant                             'the current branch
 Private vouchers As Collection                           'available vouchers for the claim.
 Private voucher As Collection
 Private claims_vouchers As Collection                    'the vouchers in the claim
-Private fk_lu_bulk_billing_type As Variant               'const.BulkBilling_Type_Medicare/Veteran
+Public fk_lu_bulk_billing_type As Variant                'const.BulkBilling_Type_Medicare/Veteran do not make private
 Private bExit As Boolean
 Private bKeyValid As Boolean
 Private fk_claim As Variant                              'key to billing.bulk_billing_claims
@@ -82,7 +82,10 @@ Public Sub EditArea_Clear()
    Running_totals_Reset
    scrollview1.Children.Clear
    scrollview1.Background = Color.White
-   chkSelectAll.value = False 
+   With chkSelectAll
+      .value = False 
+      .text = "Select All"
+   End With
    bexit = False  
    
 End
@@ -91,6 +94,7 @@ Public Sub Running_totals_Reset()
    
    running_total_billed = 0
    running_total_paid = 0
+   total_selected_to_pay_off = 0
    invoices_in_claim = 0
    
 End
@@ -123,13 +127,7 @@ Public Sub Days_Vouchers_Display(the_date As Date, fk_lu_bulk_billing_type As Va
    
    Dim smsg As String 
    
-   ' If fk_lu_bulk_billing_type = const.BulkBilling_Type_Medicare Then
-   '    sMsg = "Medicare "
-   ' Else
-   '    smsg = "Veterans "
-   ' Endif
-   ' sMsg &= "Bulk Billed Vouchers Lodged on "
-   ' lblBulkBIllingInformation.text = sMsg & " " & Format(the_date, "dd/mmmm/yyyy")
+   fk_lu_bulk_billing_type = fk_lu_bulk_billing_type
    Vouchers_Refresh(fk_lu_bulk_billing_type, the_date)
    
 End
@@ -304,6 +302,8 @@ Public Sub Mark_Paid()
    ' updates the back-end for each voucher as paid
    ' clears the editing area and scollview containing the vouchers list
    ' updates the columnview on parent form (FRecordVisit) with list of unpaid days vouchers
+   ' if the same patient is currently the selected one in FRecordVisit (the create/pay invoices)
+   ' then updates the lists under the edit area or on the account history tabs
    
    Dim cb As CheckBox
    Dim invoice As CRow 
@@ -312,6 +312,9 @@ Public Sub Mark_Paid()
    Dim total_paid As Float
    Dim total_bill As Float
    Dim bsaved As Boolean   
+   Dim fk_patient_in_billing As Variant   'the key if the patient currently being viewed/used in FRecordVisit, can be null
+   Dim fk_patient_in_billing_keys As New Collection
+   Dim patient_key As Variant
    
    If Trim(txtTotalPaid.text) = "" Or Trim(txtTotalPaid.text) = "$    .00" Then
       Message.Title = "Paying Off Vouchers"
@@ -357,18 +360,26 @@ Public Sub Mark_Paid()
          payment!date_paid = modUtil.Make_Date_From_String(txtclaimDate.Text)
          payment!fk_staff_receipted = modDBConnect.currentUser!fk_staff
          payment.Save("billing.payments_received", "fk_payment")
+         If Not fk_patient_in_billing_keys.Exist(cb.tag!fk_patient) Then
+            fk_patient_in_billing_keys.Add(cb.tag!fk_patient, cb.tag!fk_patient)
+         Endif
       End If   
-      
    Next
    If Not bsaved And Not IsNull(invoice) Then
       invoice.Save("billing.invoices", "fk_invoice")
    Endif
    modDBConnect.CommitTrans()
-   Dec Application.Busy
-   Wait  
+   Wait
+   For Each patient_key In fk_patient_in_billing_keys
+      If patient_key = FRecordVisit.fk_patient_Key() Then
+         FRecordVisit.Patient_Invoices_Update_External(patient_key)
+      Endif
+   Next
    EditArea_Clear                          ' clear input, zero running totals, clear the scrollview
    FRecordVisit.Bulk_Billing_Claims_Reload ' re-load list of unpaid claims in FRecordVisit
-   
+   Dec Application.Busy
+   Wait  
+
 End
 
 Public Function Bulk_Billing_Summary_Row_Template() As String
@@ -595,12 +606,18 @@ Public Function Instructions_Help() As String
    Return ""
    "Compare the on-line list for the date you have selected with this list"
    "<UL>"
-   "<LI>Select a date from the left hand list and vouchers will be displayed </LI>"
+   "<LI>Select a date from the 'Claims with Unpaid Invoices' list located on the left hand side of this screen and a list and vouchers will be displayed </LI>"
    "<LI>Click the 'select all' checkbox at the bottom of the list</LI>"
    "<LI>Uncheck any item numbers which have not been paid </LI>"
    "<LI>Note that if a consult was invoiced after 6pm it will appear in the next days payments "
    "do you may have to go to that day to pay off some items </LI>"
    "<LI>When happy click on the 'Mark Paid' button'</LI>"
    "</UL>"
+   
+End
+
+Public Sub Form_Resize()
+   
+   VBox_EditArea.Height = tlInstructions.height
    
 End

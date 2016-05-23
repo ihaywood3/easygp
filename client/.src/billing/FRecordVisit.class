@@ -60,7 +60,9 @@ Private running_total_private_account As Float
 Private payment_totals As New Float[7] 'use 1>6 = billing.lu_payment_method keys
 Private day_list_patients_billed_count As Integer
 Private day_list_patients_billed_medicare_count As Integer
+Private day_list_patients_billed_medicare_not_today_count As Integer 
 Private day_list_patients_billed_veterans_count As Integer
+Private day_list_patients_billed_veterans_not_today_count As Integer
 Private day_list_patients_billed_private_count As Integer
 Private day_list_patients_billed_workcover_count As Integer
 Private day_list_patients_old_invoices_count As Integer
@@ -314,7 +316,7 @@ Public Sub Init()
    
    Dim hCtrl As Control
    Dim HB As HBox
-
+   
    Form_Billing = Me
    tlPatientDetails.Background = lblEditAreaHeading.Background 
    Appointment_Icons = Appointment_icons_Get_Picture(modAppointmentsDBI.Appointment_icons_get())  
@@ -4311,6 +4313,7 @@ Public Sub TabStrip1_Click()
             .Item.Selected = True 
          End With
       Case cTab_Reports
+         HBox_Veterans_or_medicare.Visible = False 
          lblUnpaidBulkBIllingInvoices.Visible = False 
          Hbox_Filter.Visible = False
          VBox_Accounts.Visible = False  
@@ -4318,7 +4321,6 @@ Public Sub TabStrip1_Click()
          gvwFeeScheduleItems.Visible = False
          columnview99.Visible = True          'generic columnview
          DateChooser1.visible = True
-         HBox_Veterans_or_medicare.visible = True
          VBox_Accounts.Visible = False     
          VBox_ForOtherTabs.Visible = True
          combobox1.Visible = True
@@ -4392,8 +4394,10 @@ Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
    Dim row_template As String
    Dim item_count As Integer
    Dim bOldAccount As Boolean     
-   Dim visits_medicare As New Collection
+   Dim visits_medicare As New Collection                  'all medicare visits seen today and invoiced today
+   Dim visits_medicare_not_today As New Collection       'medicare visits invoiced today but not seen today
    Dim visits_veterans As New Collection
+   Dim visits_veterans_not_today As New Collection
    Dim visits_workcover As New Collection
    Dim visits_private_account As New Collection
    Dim visits_private_other As New Collection
@@ -4406,6 +4410,7 @@ Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
    Dim income_consults_today As Float  'just for consults, not for paid bills
    Dim bIsWorkcoverInvoice As Boolean
    Dim Appointments_Not_Billed As Collection
+   Dim bulk_bill_percentage As Integer
    
    day_list_patients_billed_count = 0
    day_list_patients_billed_medicare_count = 0
@@ -4451,9 +4456,17 @@ Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
       If Not IsNull(visit!fk_lu_bulk_billing_type) Then
          Select Case visit!fk_lu_bulk_billing_type
             Case const.BulkBilling_Type_Medicare
-               visits_medicare.Add(visit, visits_medicare.count)
+               If modUtil.IsSameDay(visit!visit_date, DateChooser1.value) Then
+                  visits_medicare.Add(visit, visits_medicare.count)
+               Else
+                  visits_medicare_not_today.Add(visit, visits_medicare_not_today.count)
+               End If   
             Case const.BulkBilling_Type_Veteran
-               visits_veterans.Add(visit, visits_veterans.count)
+               If modUtil.IsSameDay(visit!visit_date, DateChooser1.value) Then
+                  visits_veterans.Add(visit, visits_veterans.count)
+               Else
+                  visits_veterans_not_today.Add(visit, visits_veterans_not_today.count)
+               End If   
          End Select
       Else   
          If Not IsNull(visit!account_to_name) Then                                                         ' there is an account to name (could be private or workcover)
@@ -4500,6 +4513,9 @@ Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
    Next
    If visits_medicare.count Then
       shtml &= visit_type_create_html(visits_medicare, "Medicare") 
+   Endif
+   If visits_medicare_not_today.count Then
+      shtml &= visit_type_create_html(visits_medicare_not_today, "Medicare Not Seen Today")
    Endif
    If visits_veterans.count Then 
       shtml &= visit_type_create_html(visits_veterans, "Veterans") 
@@ -4628,6 +4644,16 @@ Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
          Income_summary_html = Replace(Income_summary_html, "%data%", Str(day_list_patients_old_invoices_count))
          Income_summary_html = Replace(Income_summary_html, "%billedamount%", modUtil.Money_Format(running_total_old_invoices))
       Endif
+      Print day_list_patients_billed_veterans_count, "veterans"
+      Print day_list_patients_billed_medicare_count, "medicare"
+      Print day_list_patients_billed_private_count, "took account"
+      Print day_list_patients_billed_workcover_count, "workcover"
+      Print day_list_patients_paid_count, "private, paid on the day"   
+      '  bulk_bill_percentage = (day_list_patients_billed_veterans_count + day_list_patients_billed_medicare_count) * 100 / (day_list_patients_billed_medicare_count + day_list_patients_billed_veterans_count + day_list_patients_billed_private_count + day_list_patients_billed_workcover_count + day_list_patients_paid_count)
+      Income_summary_html &= "<TR VALIGN=TOP>" & Day_List_Heading_Stats_Row()                       ' patients billed to repat
+      Income_summary_html = Replace(Income_summary_html, "%rowheader%", "Approx Bulk Billing Percentage")
+      Income_summary_html = Replace(Income_summary_html, "%data%", Str(bulk_bill_percentage) & "%")
+      Income_summary_html = Replace(Income_summary_html, "%billedamount%", "")
       Income_summary_html &= "</TABLE>"
       Income_Summary_Warning_Table = Replace(Income_Summary_Warning_Table, "%income_summary_html%", Income_summary_html)
       shtml = Replace(shtml, "%income_summary_and_warning_table%", Income_Summary_Warning_Table)
@@ -5023,7 +5049,7 @@ Public Function visit_type_create_html(visit_subset As Collection, group_name As
    Dim bmergeCols As Boolean = True 
    
    Select Case group_name
-      Case "Medicare", "Veterans"
+      Case "Medicare", "Veterans", "Medicare Not Seen Today"
          row_template = day_list_html_row_template_Bulk_Bill(bmergeCols)
          sHtml = "<BR><TABLE WIDTH=100% CELLPADDING=3 CELLSPACING=0>"
          "<COL WIDTH=1%>"
@@ -5112,9 +5138,17 @@ Public Function visit_type_create_html(visit_subset As Collection, group_name As
          '   shtml = Replace(shtml, "%patient%", "")                      'suppress it
          'End If
          If Not IsNull(visit!notes) Then
-            shtml = Replace(shtml, "%notes%", visit!notes)
+            If group_name <> "Medicare Not Seen Today" Then
+               shtml = Replace(shtml, "%notes%", visit!notes)
+            Else
+               shtml = Replace(shtml, "%notes%", "seen on " & Format(visit!visit_date, "dd/mm/yyyy"))
+            End If   
          Else
-            shtml = Replace(shtml, "%notes%", "")
+            If group_name <> "Medicare Not Seen Today" Then
+               shtml = Replace(shtml, "%notes%", "")
+            Else
+               shtml = Replace(shtml, "%notes%", "seen on " & Format(visit!visit_date, "dd/mm/yyyy"))
+            End If   
          End If   
          If Not IsNull(visit!account_to_name) And IsNull(visit!fk_lu_bulk_billing_type) Then 'a patient eg child with responsible adult has an account to name
             invoices_others.Add(visit, invoices_others.count)                                'but could have been bulk billed
@@ -5142,6 +5176,8 @@ Public Function visit_type_create_html(visit_subset As Collection, group_name As
                If Not bSameInvoice Then                                                    ' if a new invoice 
                   If modUtil.IsSameDay(DateChooser1.value, visit!visit_date) Then          ' if its the same date as the datechooser
                      Inc day_list_patients_billed_medicare_count                           ' increment the count of medicare patients billed
+                  Else
+                     Inc day_list_patients_billed_medicare_not_today_count
                   End If   
                End If   
             Case const.BulkBilling_Type_Veteran                                            ' ditto for veterans
@@ -5149,6 +5185,8 @@ Public Function visit_type_create_html(visit_subset As Collection, group_name As
                If Not bSameInvoice Then 
                   If modUtil.IsSameDay(DateChooser1.value, visit!visit_date) Then       
                      Inc day_list_patients_billed_veterans_count
+                  Else
+                     Inc day_list_patients_billed_veterans_not_today_count
                   End If
                End If   
          End Select
@@ -6091,7 +6129,6 @@ Public Sub chkIncludeDeceased_Click()
    Patients_Get
    
 End
-
 
 Public Sub gvwAccountNames_Menu()
    

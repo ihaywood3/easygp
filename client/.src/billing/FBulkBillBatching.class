@@ -40,6 +40,8 @@ Private running_total_paid As Float
 Private total_selected_to_pay_off As Float
 Private invoices_in_claim As Integer
 Private CheckBoxes As CheckBox[]
+Private on_invoice_row As Integer                       'the invoice row we are on
+Private current_return_code_textbox As Textbox
 
 Public Sub _new()
    
@@ -132,6 +134,211 @@ Public Sub Days_Vouchers_Display(the_date As Date, fk_lu_bulk_billing_type As Va
    
 End
 
+Public Sub Vouchers_Refresh_screwed_up(fk_lu_bulk_billing_type As Integer, Optional the_date As Date)
+   ' When user clicks on Tabstrip1 and selects the Batch Bulk Bililng tab
+   ' the columnview is filled with distinct dates where vouchers have not been paid
+   ' this sub displays a list of those unpaid vouchers
+   
+   Dim grand_total As Variant
+   Dim fk_last_invoice As Variant
+   Dim invoice_count As Integer
+   Dim running_total As Float
+   Dim x As Integer
+   Dim HB As HBox                                         'container to hold each days notes
+   Dim RowBox As VBox                                     'the ultimate row, could contain one or more HB rows eg if multiple items
+   Dim tl As TextLabel
+   Dim hlinetop As Separator
+   Dim hlinebottom As Separator
+   Dim col1 As Label
+   Dim col2 As Label
+   Dim col3 As Label
+   Dim col4 As Label
+   Dim col5 As Label
+   Dim col6 As Label
+   Dim col7 As Label
+   Dim lblErrorDescription As TextLabel
+   Dim last_label_for_total As Label
+   Dim last_total_bill As String
+   Dim NotesBox As VBox
+   Dim chkbox As CheckBox
+   Dim chkbox_Container As Vbox
+   Dim chkbox_spacer As Label
+   Dim txtCode As TextBox
+   Dim Outer_Box As Hbox 
+   
+   EditArea_Clear   'clear input, zero running totals, clear the scrollview
+   If bexit Then Return
+   bexit = True   
+   claims_vouchers = New Collection
+   CheckBoxes = New CheckBox[]
+   Inc Application.Busy
+   Vouchers = modBillingDBI.Bulk_BIll_Vouchers_Get_UnPaid(modDBConnect.currentUser!fk_branch, fk_lu_bulk_billing_type, the_date)
+   For Each voucher In Vouchers
+      If fk_last_invoice <> voucher!fk_invoice Then                                 'for each new invoice generate a new row in the scrollivew
+         If last_total_bill <> "" Then
+            last_label_for_total.text = last_total_bill
+         Endif
+         Inc invoices_in_claim
+         If voucher!paid = False Then  
+            
+           With Outer_Box = New HBox(scrollview1) As "Invoice_Row"
+               .AutoResize = True   
+               .expand = False         
+               .Padding = 2
+               .Background = Color.Green
+               .Height = 32
+               .Width = scrollview1.Width
+               .Background = Color.white
+               If voucher!paid = True Then
+                  .Enabled = False  
+               Endif
+               .tag = Null
+               .Visible = True   
+           End With
+            With RowBox = New Vbox(Outer_Box) As "Invoice_Row"
+               .AutoResize = True   
+               .expand = True   
+               .Height = 28
+              ' .Width = scrollview1.Width
+               .Background = Color.white
+               If voucher!paid = True Then
+                  .Enabled = False  
+               Endif
+               .tag = Null
+               ' .tag = voucher 'of the one or more vouchers in this row
+            End With
+         End If
+      Endif
+      If voucher!paid = False Then
+         With HB = New HBox(Rowbox) 
+            .width = ScrollView1.Width
+            .Expand = False     
+            .AutoResize = False
+            .Height = 28
+            .Padding = 0
+            .Background = Color.Transparent
+         End With
+         
+         With col1 = New Label(HB)
+            .width = 150
+            .height = HB.height
+            If fk_last_invoice <> voucher!fk_invoice Then
+               .text = voucher!wholename
+            End If  
+         End With
+         
+         With col2 = New Label(HB)
+            .width = 100
+            .height = HB.height
+            .text = Format(voucher!visit_date, "dd/mm/yyyy")
+            .Alignment = Align.Center
+         End With
+         With col3 = New Label(HB)
+            .width = 50
+            .height = HB.height
+            .Alignment = Align.Right
+            .text = voucher!item
+         End With
+         With col4 = New Label(HB)
+            .width = 80
+            .height = HB.height
+            .Alignment = Align.Right
+            .text = modUtil.Money_Format(voucher!amount)
+         End With
+         
+         With col6 = New Label(HB)
+            .width = 80
+            .height = HB.height
+            .Alignment = Align.Right
+         End With
+         last_label_for_total = Col6 
+         last_total_bill = modUtil.Money_Format(voucher!total_bill)
+         With col5 = New Label(HB)  'just a spacer
+            .width = 25
+            .height = HB.height
+         End With
+         With col7 = New Label(HB)
+            .width = 225
+            .height = HB.height
+            .Expand = False
+            .text = voucher!descriptor_brief
+         End With
+         With txtCode = New TextBox(HB) As "TxtReturnCode"
+            .width = 50
+            .Height = HB.Height
+            .Expand = False  
+            .Background = Color.White
+            .border = False 
+            .text = ""
+            .Enabled = False  
+            .Visible = True  
+         End With
+         If IsNull(Rowbox.tag) Then
+            Rowbox.tag = txtCode
+            txtCode.Border = True   
+         Else
+            txtCode.border = False  
+         Endif
+         With lblErrorDescription = New TextLabel(Outer_Box)
+            .height = RowBox.Height
+            .Expand = False   
+            .Background = Color.LightBackground
+            .width = 400
+            If voucher!paid = True Then
+               .text = "PAID"
+            End If   
+            .Font.size = 8
+         End With
+         With chkbox_Container = New Vbox(HB)
+            .width = 28
+            .height = HB.Height
+            .Expand = False      
+         End With
+         If voucher!paid = False Then
+            With chkbox = New CheckBox(chkbox_Container) As "chkSelected"
+               .width = 28
+               .height = 28
+               .Background = Color.White
+               .value = False 
+               .tag = voucher
+            End With
+            CheckBoxes.Add(chkbox, CheckBoxes.Count)
+         End If
+         With chkbox_spacer = New Label(chkbox_Container)
+            .width = 25
+            .Height = 25
+            .expand = True 
+            .Background = Color.White
+         End With
+         txtCode.tag = lblErrorDescription               ' so when user types in code > we load the description into this label
+         If x = 0 Then
+            lblPatientHeading.Width = col1.Width 
+            lblCol2.Width = col2.Width
+            lblCol3.Width = col3.Width
+            lblCol4.width = col4.Width
+            lblItemDescriptor.Width = col7.width + 15 'col5= just a spacer, col6 = the descriptor
+         Endif
+      End If   
+      fk_last_invoice = voucher!fk_invoice   
+      running_total_billed += modUtil.MoneyToFloat(voucher!amount)
+      If voucher!paid = True Then
+         running_total_paid += modUtil.MoneyToFloat(voucher!amount)
+      Endif
+   Next
+   If last_total_bill <> "" Then
+      last_label_for_total.text = last_total_bill
+   Endif
+   Try lblBottomRowSpacer.width = chkbox_Container.left + 5 '5= 1 pixel spacers
+   txtclaimDate.text = Format(the_date, "dd/mm/yyyy")
+   txtVouchersInClaim.text = Str(invoices_in_claim)
+   txtClaimTotal.text = modUtil.Money_Format(running_total_billed)
+   txtAlreadyPaid.text = Format(modUtil.MoneyToFloat(running_total_paid), "$####.00")
+   txtTotalPaid.text = "$    .00"
+   Dec Application.Busy
+   bExit = False  
+   
+End
+
 Public Sub Vouchers_Refresh(fk_lu_bulk_billing_type As Integer, Optional the_date As Date)
    ' When user clicks on Tabstrip1 and selects the Batch Bulk Bililng tab
    ' the columnview is filled with distinct dates where vouchers have not been paid
@@ -157,9 +364,7 @@ Public Sub Vouchers_Refresh(fk_lu_bulk_billing_type As Integer, Optional the_dat
    Dim lblErrorDescription As Label
    Dim last_label_for_total As Label
    Dim last_total_bill As String
-   
    Dim NotesBox As VBox
-   
    Dim chkbox As CheckBox
    Dim chkbox_Container As Vbox
    Dim chkbox_spacer As Label
@@ -188,6 +393,8 @@ Public Sub Vouchers_Refresh(fk_lu_bulk_billing_type As Integer, Optional the_dat
                If voucher!paid = True Then
                   .Enabled = False  
                Endif
+               .tag = Null
+               ' .tag = voucher 'of the one or more vouchers in this row
             End With
          End If
       Endif
@@ -247,17 +454,23 @@ Public Sub Vouchers_Refresh(fk_lu_bulk_billing_type As Integer, Optional the_dat
          With txtCode = New TextBox(HB) As "TxtReturnCode"
             .width = 50
             .Height = HB.Height
-            .Expand = False   
-            .Border = True
+            .Expand = False  
             .Background = Color.White
-            .border = False   
+            .border = False 
             .text = ""
-            .Visible = False  
+            .Enabled = False  
+            .Visible = True  
          End With
+         If IsNull(Rowbox.tag) Then
+            Rowbox.tag = txtCode
+            txtCode.Border = True   
+         Else
+            txtCode.border = False  
+         Endif
          With lblErrorDescription = New Label(HB)
             .height = HB.Height
             .Expand = False
-            .width = 270
+            .width = 400
             If voucher!paid = True Then
                .text = "PAID"
             End If   
@@ -290,7 +503,7 @@ Public Sub Vouchers_Refresh(fk_lu_bulk_billing_type As Integer, Optional the_dat
             lblCol2.Width = col2.Width
             lblCol3.Width = col3.Width
             lblCol4.width = col4.Width
-            lblCol7.Width = col7.width   'col5= just a spacer, col6 = the descriptor
+            lblItemDescriptor.Width = col7.width + 15 'col5= just a spacer, col6 = the descriptor
          Endif
       End If   
       fk_last_invoice = voucher!fk_invoice   
@@ -411,8 +624,18 @@ End
 
 Public Sub txtReturnCode_LostFocus()
    
-   Last.Background = Color.White
+   With Last
+      ' .Background = Color.White
+      '  .visible = False  
+   End With
    
+End
+
+Public Sub TxtReturnCode_DblClick()
+
+   Last.enabled = True
+   Last.setfocus
+
 End
 
 Public Sub txtReturnCode_GotFocus()
@@ -434,9 +657,9 @@ End
 Public Sub TxtReturnCode_KeyRelease()
    
    If Medicare_Error_Codes.Exist(Trim(Last.text)) Then
-      Last.tag.text = Medicare_Error_Codes[Trim(Last.text)]!description
+      Last.tag.text = " " & Medicare_Error_Codes[Trim(Last.text)]!description
    Else
-      Last.tag.text = "Code not recognised"
+      Last.tag.text = " Code not recognised"
    End If   
    
 End
@@ -446,9 +669,11 @@ Public Sub invoice_row_Enter()
    Dim sep As Separator
    Dim Hctrl As Control
    
+   current_return_code_textbox = Last.tag
    If Last.Enabled = True Then   
       Last.Background = color.RGB(215, 232, 240) 'Color.LightBackground 
       Last.Children[0].Children[7].Background = color.RGB(215, 232, 240) 
+      Last.Children[1].Children[7].Background = color.RGB(215, 232, 240) 
    End If   
 Catch
    Return
@@ -460,7 +685,11 @@ Public Sub invoice_Row_Leave()
    Dim sep As Separator
    Dim Hctrl As Control
    
-   Last.Children[0].Children[7].Background = Color.White 'the code text box
+   With Last.Children[0].Children[7]
+      .Background = Color.White 'the code text box
+      .enabled = False  
+   End With   
+   Last.Children[1].Children[7].Background = color.White
    Last.Background = Color.white
 Catch
    Return
@@ -633,5 +862,27 @@ End
 Public Sub Form_Resize()
    
    VBox_EditArea.Height = tlInstructions.height
+   
+End
+
+Public Sub ScrollView1_Menu()
+   
+   If Vouchers.count Then mnuBulkBillBatching.Popup
+   
+End
+
+Public Sub mnuBulkBillBatching_Click()
+   
+   Select Case Last.tag
+      Case "font"
+      Case "enter error code"
+         With current_return_code_textbox
+            .enabled = True
+            .Visible = True
+            .Border = True 
+            .Background = Color.White
+            .setfocus
+         End With
+   End Select 
    
 End

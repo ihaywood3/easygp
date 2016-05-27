@@ -2919,31 +2919,32 @@ Public Sub Item_Number_Get_Fee_Levels_Fill_Invoice_Row(txt As String)
       selected_item_num_and_billing_level = Null
       Return
    Endif
-   If IsNull(Scheduled_Fee!descriptor_brief) Then
-      Message.Title = "Missing Brief Descriptor"
-      sMsg = "This item number has no brief descriptor and cannot be billed.\n\nYou should go to the Fee Schedule tab "
-      "and correct the problem, also ensuring you have at least one other fee level e.g the private fee"
-      Goto Invalid_Item_Number
-      Return 
-   End If  
-   'check not a multiple fee rule
-   If Scheduled_Fee!number_of_patients Then
-      Message.Title = "Missing Item Number Data"
-      sMsg = "This item number applies to one or more patients being seen at the same time, hence you will need to modify your item number.\n\n"
-      sMsg &= "For example if you mean to apply this to one patient, you should type " & Str(txt) & "/1"
-      
-      If InStr(txt, "/") Then
-         If Split(txt, "/", "", True).Count = 1 Then
-            Message.Warning(sMsg)
+   If Not IsNull(scheduled_fee) Then   
+      If IsNull(Scheduled_Fee!descriptor_brief) Then
+         Message.Title = "Missing Brief Descriptor"
+         sMsg = "This item number has no brief descriptor and cannot be billed.\n\nYou should go to the Fee Schedule tab "
+         "and correct the problem, also ensuring you have at least one other fee level e.g the private fee"
+         Goto Invalid_Item_Number
+         Return 
+      End If  
+      'check not a multiple fee rule
+      If Scheduled_Fee!number_of_patients Then
+         Message.Title = "Missing Item Number Data"
+         sMsg = "This item number applies to one or more patients being seen at the same time, hence you will need to modify your item number.\n\n"
+         sMsg &= "For example if you mean to apply this to one patient, you should type " & Str(txt) & "/1"
+         
+         If InStr(txt, "/") Then
+            If Split(txt, "/", "", True).Count = 1 Then
+               Message.Warning(sMsg)
+               Goto Invalid_Item_Number
+               Return
+            End If 
+         Else
             Goto Invalid_Item_Number
             Return
-         End If 
-      Else
-         Goto Invalid_Item_Number
-         Return
-      End If   
-   Endif
-   
+         End If   
+      Endif
+   End If   
    GridData.Add(fees_for_an_item_numbers_billing_levels, gvwItemsBIlled.row) 'keep all feel levels for the item on this row
    ' For Each item In items 'get the first item returned, don't care about others
    selected_item_num_and_billing_level = fees_for_an_item_numbers_billing_levels[fk_lu_billing_type]
@@ -4791,17 +4792,33 @@ Public Function Banking_Create_Banking_Slip_HTML() As String
    Dim sHtml As String
    Dim sRow_Template As String
    Dim banking_total As Float
+   Dim surgery_name As String
+   Dim cheque_details_html As String
+   Dim bFirstCheque As Boolean
    
    Unbanked_Payments = modBillingDBI.Payments_Unbanked_Get() 
    For Each unbanked_payment In Unbanked_Payments
       If unbanked_payment!fk_lu_payment_method = const.payment_method_cash Then
          total_cash += modUtil.MoneyToFloat(unbanked_payment!total_paid)
       Else
+         If Not bFirstCheque Then
+            bFirstCheque = True 
+            cheque_details_html &= "<TABLE WIDTH=441 CELLPADDING=0 CELLSPACING=1 >"
+            "<COL WIDTH=80%>"
+            "<COL WIDTH=20%>" 
+         End If  
+         cheque_details_html &= "<TR VALIGN=TOP>"
+         cheque_details_html &= totals_html_row_template()   
+         cheque_details_html = Replace(cheque_details_html, "%payment_method%", unbanked_payment!referent)
+         cheque_details_html = Replace(cheque_details_html, "%total_amount%", unbanked_payment!total_paid) 
          total_cheques += modUtil.MoneyToFloat(unbanked_payment!total_paid)
+         cheque_details_html &= "</TR>"
       Endif
    Next
+   surgery_name = modDBConnect.currentUser!organisation 
    banking_total = modUtil.MoneyToFloat(total_cheques) + modUtil.MoneyToFloat(total_cash)
-   sHtml = "<HTML><BODY><H3><B><p align='center'<UL>Banking Summary for period from x to " & Format(Now(), "dd/mm/yyyy") & "</H3></P>"
+   sHtml = "<HTML><BODY><H3><B><p align='center'>" & modDBConnect.currentUser!organisation & "</H3></P>"
+   sHtml &= "<HTML><BODY><H3><B><p align='center'>Banking Summary for period from x to " & Format(Now(), "dd/mm/yyyy") & "</H3></P>"
    sHtml &= "<TABLE WIDTH=441 CELLPADDING=0 CELLSPACING=1 >"
    "<COL WIDTH=50%>"
    "<COL WIDTH=50%>"
@@ -4829,9 +4846,13 @@ Public Function Banking_Create_Banking_Slip_HTML() As String
    shtml = Replace(shtml, "%payment_method%", "Total Amount for Banking")
    shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(banking_total))
    sHtml &= "</TR>"
-   sHtml &= "</TABLE></HTML>"
+   sHtml &= "</TABLE>"
+   If total_cheques <> 0 Then
+      sHtml &= "<P><B>Cheque Details</B></P>" & cheque_details_html & "</TABLE>"
+   Endif
+   sHtml &= "</HTML>"
    Return shtml
-
+   
 End
 
 Public Sub day_list_html_row_template()

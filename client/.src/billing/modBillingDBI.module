@@ -293,13 +293,28 @@ Public Function Payment_method_Change(fk_lu_payment_method As Integer, fk_invoic
    
    Dim sql As String
    Dim R As Result
-
+   
    Sql = "Update billing.payments_received set fk_lu_payment_method = " & fk_lu_payment_method
    sql &= " WHERE fk_invoice = " & fk_invoice
    R = modDBConnect.exec_query(sql)
    ' If R.count Then 
    Return True
    ' End If   
+   
+End
+
+Public Sub invoice_Mark_Unpaid(fk_invoice As Variant) As Boolean
+   '------------------------------------------------ 
+   'Marks an invoice as unpaid, deletes any payments
+   '------------------------------------------------ 
+
+ 
+   modDBConnect.exec_query("Delete from billing.payments_received WHERE fk_invoice =" & fk_invoice)
+   
+   If modDBConnect.update("billing.invoices", Null, ["pk": fk_invoice, "paid": False]) Then
+      Return True 
+   Endif
+  
    
 End
 
@@ -732,8 +747,9 @@ Public Function Bulk_Billed_Vouchers_Unpaid_distinct_dates(fk_branch As Variant,
    
    sql = "Select distinct date_invoiced, date_invoiced as pk From billing.vwdaysinvoicesandpayments "   
    sql &= " WHERE paid is false and item_deleted is false "
-   sql &= " AND fk_branch = &1" ' & fk_branch 
-   sql &= " AND fk_lu_bulk_billing_type = &2" ' & fk_lu_bulk_billing_type
+   'sql &= " AND payment_deleted is false " 'richard added this 30may16
+   sql &= " AND fk_branch = &1" 
+   sql &= " AND fk_lu_bulk_billing_type = &2" 
    sql &= " ORDER BY date_invoiced"
    Print sql
    Return modDBConnect.exec_query_collection(sql, [fk_branch, fk_lu_bulk_billing_type])
@@ -747,6 +763,7 @@ Public Function Bulk_BIll_Vouchers_Get_UnPaid(fk_branch As Variant, fk_lu_bulk_b
    sql = "Select * from billing.vwdaysinvoicesandpayments"
    sql &= " WHERE fk_lu_bulk_billing_type = " & fk_lu_bulk_billing_type 
    sql &= " AND item_deleted is false "
+   'sql &= " AND payment_deleted is false " 'richard added this 30may16
    sql &= " AND fk_branch = " & fk_branch 
    If Not IsNull(date_invoiced) Then
       SQL &= " AND  date_trunc( 'day', date_invoiced) ='" & Format(date_invoiced, "dd/mm/yyyy") & "' "
@@ -819,16 +836,19 @@ Public Function Day_List_Get(date_seen As Date, fk_branch As Variant) As Collect
    sql = "Select * from billing.vwDaysInvoicesAndPayments  "
    sql &= " WHERE date_trunc('day', visit_date) ='" & Format(date_seen, "dd/mm/yyyy") & "' "
    sql &= " AND item_deleted is False "
+   ' sql &= " AND payment_deleted is false " 'richard added this 30may16
    sql &= " AND fk_branch = " & fk_branch 
    sql &= " UNION "
    sql &= " Select * from billing.vwDaysInvoicesAndPayments  "
    sql &= " WHERE date_trunc('day', date_paid) ='" & Format(date_seen, "dd/mm/yyyy") & "' " 
    SQL &= " AND  date_trunc( 'day', visit_date) <>'" & Format(date_seen, "dd/mm/yyyy") & "' "
    sql &= " AND item_deleted is false "
+   ' sql &= " AND payment_deleted is false " 'richard added this 30may16
    sql &= " AND fk_branch = " & fk_branch 
    sql &= " UNION  Select * from billing.vwDaysInvoicesAndPayments   "                                'union everything invoiced that date but seen previous dates
    sql &= " WHERE date_trunc('day', date_invoiced) ='" & Format(date_seen, "dd/mm/yyyy") & "' " 
    sql &= " AND  date_trunc( 'day', visit_date) <>'" & Format(date_seen, "dd/mm/yyyy") & "' " 
+   ' sql &= " AND payment_deleted is false " 'richard added this 30may16
    sql &= " AND item_deleted is false  AND fk_branch = 1 "
    sql &= " ORDER BY fk_lu_bulk_billing_type, appointment_date,fk_invoice, pk_items_billed  ASC"
    Return modDBConnect.exec_query_collection(sql)
@@ -836,9 +856,11 @@ Public Function Day_List_Get(date_seen As Date, fk_branch As Variant) As Collect
 End
 
 Public Function Payments_Unbanked_Get() As Collection
+
    Dim sql As String
    
    sql = "select  * from billing.vwdaysinvoicesandpayments  where paid Is True And date_banked Is Null "
+   'sql &= " AND payment_deleted is false " 'richard added this 30may16
    sql &= " AND fk_lu_payment_method =" & const.payment_method_cash & " OR fk_lu_payment_method = " & const.payment_method_cheque
    Return modDBConnect.exec_query_collection(sql)
    
@@ -858,7 +880,6 @@ Public Function Items_Invoices_Get(fk_patient As Variant, iAccount_Display_Mode 
       Return
    Endif
    sql_stem = "select * from billing.vwitemsandinvoices where fk_patient = " & fk_patient   
-   'sql_stem = "select * from  billing.vwdaysinvoicesandpayments  where fk_patient = " & fk_patient 
    Select Case iAccount_Display_Mode
       Case const.Billing_Accounts_Unpaid
          sql = sql_stem & " AND paid = false "
@@ -883,7 +904,7 @@ Public Function Items_Invoices_Get(fk_patient As Variant, iAccount_Display_Mode 
       Endif
    Next
    Return items_billed
-
+   
 End
 
 Public Function Items_Billed_Get(fk_patient As Variant, iAccount_Display_Mode As Integer, Optional limit As Integer = 100) As Collection

@@ -263,7 +263,7 @@ Public Sub Expose_SideBar_Buttons(initial_startup As Boolean)
          Else
             btnSection_Admin.Visible = False
          End If
-        ' VBox_StopWatch.Visible = True
+         ' VBox_StopWatch.Visible = True
          If initial_startup Then btnSection_Clinical_Click()
       Case "secretary", "practice manager"
          btnSection_Library.Visible = True
@@ -689,7 +689,7 @@ Public Sub Form_Close()
    End If   
    Wait
    Settings_Save()                       'save this form and all child forms settings
- 
+   
    modDBConnect.Close_Listener()
    modDBConnect.Shutdown()
    form_main = Null
@@ -913,7 +913,139 @@ Public Sub Fix_Unlinked_Recalls()
    Dim sql As String
    
    sql = ""
-    
+   
+End
+
+Public Sub Fix_Billed_Items()
+   
+   Dim items_billed As Collection
+   Dim item_billed As Collection
+   Dim payments_made As Collection
+   Dim payment_made As Collection
+   Dim last_fk_invoice As Variant
+   Dim distinct_invoice As Collection
+   Dim distinct_invoices As Collection
+   Dim invoices_items As Collection
+   Dim invoice_item As Collection
+   
+   Dim Payment As CRow  
+   
+   Dim sql As String
+   
+   sql = "select distinct fk_invoice, fk_invoice as pk_invoice, wholename, item, amount, amount_gst, pk_items_billed "
+   sql &= "from billing.vwdaysinvoicesandpayments where item_deleted is false and paid is TRUE "
+   sql &= " AND fk_item_billed is null"
+   
+   ' sql = "Select * from billing.vwdaysinvoicesandpayments where item_deleted is false and paid is TRUE "  'get all items already paid
+   ' sql &= " AND fk_invoice  = 1494 "
+   ' sql &= "ORDER BY fk_lu_bulk_billing_type, appointment_date,fk_invoice, pk_items_billed  ASC"
+   distinct_invoices = modDBConnect.exec_query_collection(sql)
+   For Each distinct_invoice In distinct_invoices                                                'all distinct invoices
+      Print item_billed
+      sql = "select * from billing.items_billed where fk_invoice = " & distinct_invoice!fk_invoice  'check how many items per invoice
+      invoices_items = modDBConnect.exec_query_collection(sql)
+      sql = "Select * from billing.payments_received where fk_invoice = " & distinct_invoice!fk_invoice 
+      payments_made = modDBConnect.exec_query_collection(sql)
+      If invoices_items.count = payments_made.count Then                                          'if each item has a payment
+         For Each payment_made In payments_made
+            ' Print payment_made
+            If modUtil.MoneyToFloat(payment_made!amount) = modUtil.MoneyToFloat(distinct_invoice!amount) + modUtil.MoneyToFloat(distinct_invoice!amount_gst) Then
+               sql = "update billing.payments_received set fk_item_billed = " & distinct_invoice!pk_items_billed  
+               sql &= " WHERE pk=" & payment_made!pk
+               modDBConnect.exec_query(sql)
+               modDBConnect.CommitTrans
+               Break
+            Endif
+         Next
+      Else                                                     'not an equal number and payments
+        ' If payments_made.count = 1 Then                       'multiple items paid of with one payment
+            For Each payment_made In payments_made             'will only loop once
+               For Each invoice_item In invoices_items
+                  '---------------------------------------------
+                  ' CREATE TABLE billing.payments_received
+                  ' (
+                  '   pk serial NOT NULL,
+                  '   fk_invoice integer NOT NULL,
+                  '   referent text,
+                  '   amount money NOT NULL,
+                  '   fk_lu_payment_method integer NOT NULL,
+                  '   date_paid timestamp without time zone NOT NULL DEFAULT now(),
+                  '   fk_staff_receipted integer NOT NULL,
+                  '   date_banked timestamp without time zone, -- if not null, is the date this payment was banked - only applies to cash/cheques as by default all others are banked on date_paid...
+                  '   fk_item_billed integer
+                  '----------------------------------------------------
+                  Payment = New CRow   
+                  Payment!fk_invoice = invoice_item!fk_invoice 
+                  Payment!referent = payment_made!referent
+                  Payment!amount = invoice_item!amount
+                  Payment!fk_lu_payment_method = payment_made!fk_lu_payment_method
+                  Payment!date_paid = payment_made!date_paid
+                  Payment!fk_staff_receipted = payment_made!fk_staff_receipted
+                  Payment!fk_item_billed = invoice_item!pk
+                  Payment.Save("billing.payments_received", "fk_payment_received")
+                  sql = "Delete from billing.payments_received where  pk=" & payment_made!pk
+                   modDBConnect.exec_query(sql)
+               Next
+            Next  
+            modDBConnect.CommitTrans
+         'Endif
+      End If   
+   Next
+   ' For Each payment_made In payments_made
+   '    Print payment_made
+   '    If payment_made!amount = item_billed!amount Then
+   '       sql = "update billing.payments_received set fk_item_billed = " & item_billed!pk_items_billed  
+   '       'sql &= " where fk_invoice = " & item_billed!fk_invoice 
+   '       sql &= " WHERE pk=" & payment_made!pk
+   '       Print sql
+   '       
+   '       modDBConnect.exec_query(sql)
+   '       modDBConnect.CommitTrans
+   '       Break
+   '    Endif
+   ' Next
+   
+End 
+
+Public Sub Fix_Billed_Items_old()
+   
+   Dim items_billed As Collection
+   Dim item_billed As Collection
+   Dim payments_made As Collection
+   Dim payment_made As Collection
+   Dim last_fk_invoice As Variant
+   
+   Dim sql As String
+   
+   sql = "Select * from billing.vwdaysinvoicesandpayments where item_deleted is false and paid is TRUE "  'get all items already paid
+   sql &= " AND fk_invoice  = 1494 "
+   sql &= "ORDER BY fk_lu_bulk_billing_type, appointment_date,fk_invoice, pk_items_billed  ASC"
+   items_billed = modDBConnect.exec_query_collection(sql)
+   For Each item_billed In items_billed
+      sql = "Select * from billing.payments_received where fk_invoice = " & item_billed!fk_invoice 
+      Print item_billed
+      If last_fk_invoice <> item_billed!fk_invoice Then
+         last_fk_invoice = item_billed!fk_invoice
+         payments_made = modDBConnect.exec_query_collection(sql)
+      End If  
+      If items_billed.count = payments_made.Count Then                                       'if number of items billed = number of payments
+         For Each payment_made In payments_made
+            Print payment_made
+            If payment_made!amount = item_billed!amount Then
+               sql = "update billing.payments_received set fk_item_billed = " & item_billed!pk_items_billed  
+               'sql &= " where fk_invoice = " & item_billed!fk_invoice 
+               sql &= " WHERE pk=" & payment_made!pk
+               Print sql
+               
+               modDBConnect.exec_query(sql)
+               modDBConnect.CommitTrans
+               Break
+            Endif
+         Next
+      Else
+         
+      End If   
+   Next
    
 End
 
@@ -926,16 +1058,8 @@ Public Sub Button1_Click()
    Dim P As Picture
    Dim all_blobs As New Collection
    
-   
-   Fix_Unlinked_Recalls
-   
-   
-   
-   
-   
-   
-   
-   
+   Return 
+   Fix_Billed_Items  
    
    Return
    ' DO NOT NEED TO RUN rt_check_link_persons_comms
@@ -960,14 +1084,14 @@ Public Sub Button1_Click()
    
    rt_fix_past_history_imports                                'HORST RUN THIS BUT WON'T HAVE ANY I THINK
    rt_fix_occupational_history_no_progress_note_Key              'HORST RUN THIS 
-  ' RT_Fix_imported_habits                                      'DONT NEED TO RUN THIS HORST
-  Dec Application.Busy
-  Message.info("Conversion complete. I really Hope your are Horst and non-one else, if not your db is fucked.")
+   ' RT_Fix_imported_habits                                      'DONT NEED TO RUN THIS HORST
+   Dec Application.Busy
+   Message.info("Conversion complete. I really Hope your are Horst and non-one else, if not your db is fucked.")
    Return
    '-------------------------------------------
    'HORST DO NOT RUN ANYTHING UNDER THIS RETURN
    '-------------------------------------------
-  
+   
    ' Blob_Data = modDBConnect.exec_query_first("Select * from blobs.images where fk_consult = 1797 LIMIT 1")
    '
    ' File.Save(tempFile, Blob_Data!image.data)
@@ -2378,5 +2502,3 @@ Public Sub RT_Fix_imported_habits()
    modDBConnect.CommitTrans()
    
 End
-
-

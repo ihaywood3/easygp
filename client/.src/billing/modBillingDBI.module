@@ -832,6 +832,10 @@ Public Function Day_List_Get(date_seen As Date, fk_branch As Variant) As Collect
    '---------------------------------------------------------------------------------
    
    Dim sql As String
+   Dim Day_List As Collection
+   Dim Invoice_Item As Collection
+   Dim payment As Collection
+   Dim payments As Collection
    
    sql = "Select * from billing.vwDaysInvoicesAndPayments  "
    sql &= " WHERE date_trunc('day', visit_date) ='" & Format(date_seen, "dd/mm/yyyy") & "' "
@@ -851,10 +855,48 @@ Public Function Day_List_Get(date_seen As Date, fk_branch As Variant) As Collect
    ' sql &= " AND payment_deleted is false " 'richard added this 30may16
    sql &= " AND item_deleted is false  AND fk_branch = 1 "
    sql &= " ORDER BY fk_lu_bulk_billing_type, appointment_date,fk_invoice, pk_items_billed  ASC"
+   Day_List = modDBConnect.exec_query_collection(sql)
+   For Each Invoice_Item In Day_list 
+      Payments = modDBConnect.exec_query_collection("select * from billing.vwPaymentsReceived where fk_invoice = " & Invoice_Item!fk_invoice)
+      Invoice_Item!payments = payments
+   Next
+   Print Day_List
+   Return Day_List
    Return modDBConnect.exec_query_collection(sql)
    
 End
-
+Public Function Day_List_Get_to_01june16(date_seen As Date, fk_branch As Variant) As Collection ' fk_staff As Variant) As Collection
+   '---------------------------------------------------------------------------------
+   'Returns a collection of patients seen for the Day for a doctor at a clinic branch
+   'This will include patient's seen and not billed
+   'It will include everything invoiced on that day but not seen on that day
+   'Really this is a 'day activity' statement
+   '---------------------------------------------------------------------------------
+   
+   Dim sql As String
+   
+   sql = "Select * from billing.vwDaysInvoicesAndPayments  "
+   sql &= " WHERE date_trunc('day', visit_date) ='" & Format(date_seen, "dd/mm/yyyy") & "' "
+   sql &= " AND item_deleted is False "
+   ' sql &= " AND payment_deleted is false " 'richard added this 30may16
+   sql &= " AND fk_branch = " & fk_branch 
+   sql &= " UNION "
+   sql &= " Select * from billing.vwDaysInvoicesAndPayments  "
+   sql &= " WHERE date_trunc('day', date_paid) ='" & Format(date_seen, "dd/mm/yyyy") & "' " 
+   SQL &= " AND  date_trunc( 'day', visit_date) <>'" & Format(date_seen, "dd/mm/yyyy") & "' "
+   sql &= " AND item_deleted is false "
+   ' sql &= " AND payment_deleted is false " 'richard added this 30may16
+   sql &= " AND fk_branch = " & fk_branch 
+   sql &= " UNION  Select * from billing.vwDaysInvoicesAndPayments   "                                'union everything invoiced that date but seen previous dates
+   sql &= " WHERE date_trunc('day', date_invoiced) ='" & Format(date_seen, "dd/mm/yyyy") & "' " 
+   sql &= " AND  date_trunc( 'day', visit_date) <>'" & Format(date_seen, "dd/mm/yyyy") & "' " 
+   ' sql &= " AND payment_deleted is false " 'richard added this 30may16
+   sql &= " AND item_deleted is false  AND fk_branch = 1 "
+   sql &= " ORDER BY fk_lu_bulk_billing_type, appointment_date,fk_invoice, pk_items_billed  ASC"
+   
+   Return modDBConnect.exec_query_collection(sql)
+   
+End
 Public Function Payments_Unbanked_Get() As Collection
 
    Dim sql As String
@@ -866,7 +908,7 @@ Public Function Payments_Unbanked_Get() As Collection
    
 End
 
-Public Function Items_Invoices_Get(fk_patient As Variant, iAccount_Display_Mode As Integer, Optional limit As Integer = 100) As Collection
+Public Function Items_Invoices_Get_prior_01june16(fk_patient As Variant, iAccount_Display_Mode As Integer, Optional limit As Integer = 100) As Collection
    
    Dim sql As String
    Dim sql_stem As String
@@ -906,7 +948,49 @@ Public Function Items_Invoices_Get(fk_patient As Variant, iAccount_Display_Mode 
    Return items_billed
    
 End
-
+Public Function Items_Invoices_Get(fk_patient As Variant, iAccount_Display_Mode As Integer, Optional limit As Integer = 100) As Collection
+   
+   Dim sql As String
+   Dim sql_stem As String
+   Dim item As Collection
+   Dim items_billed As Collection
+   Dim payments As Collection
+   Dim R As Result
+   
+   If IsNull(fk_patient) Then
+      Message.Warning("Richard..bug... can't have a null fk_patient")
+      Return
+   Endif
+   sql_stem = "select * from billing.vwitemsandinvoices where fk_patient = " & fk_patient   
+   Select Case iAccount_Display_Mode
+      Case const.Billing_Accounts_Unpaid
+         sql = sql_stem & " AND paid = false "
+      Case const.Billing_Accounts_Paid
+         sql = sql_stem & " AND paid = true "
+      Case const.Billing_Accounts_All
+         sql = sql_stem  
+      Case const.Billing_Accounts_Paid_Today_And_Unpaid_All
+         sql = sql_stem & " AND visit_date = $$" & Format(Now(), "dd/mm/yyyy") & "$$ and paid is true UNION "
+         sql &= sql_stem & " AND paid = false " 
+   End Select
+   sql &= " AND item_deleted is false ORDER BY visit_date,pk_items_billed  "
+   Print sql
+   items_billed = modDBConnect.exec_query_collection(sql)
+   For Each item In items_billed
+      payments = modDBConnect.exec_query_collection("Select * from billing.vwPaymentsReceived where fk_invoice = " & item!fk_invoice)   'can be > 1 paymemnt method per item
+      If payments.count Then
+         item!payments = payments
+      End If   
+      ' If R.count Then
+      '    For Each R
+      '       item!payment_method = R!payment_method
+      '       item!fk_lu_payment_method = R!fk_lu_payment_method
+      '    Next
+     ' Endif
+   Next
+   Return items_billed
+   
+End
 Public Function Items_Billed_Get(fk_patient As Variant, iAccount_Display_Mode As Integer, Optional limit As Integer = 100) As Collection
    '-----------------------------------------------------------------------------------------------------------------------------------------
    ' returns a Collection of all invoices for this patient, most recent first, ordered by display mode (see const.Billing_Accounts constants)
@@ -976,7 +1060,11 @@ End
 
 Public Function Get_Payments(invoice As Crow) As Collection
    
-   Return modDBConnect.exec_query_collection("select p.*, m.method from billing.payments_received p, billing.lu_payment_method m where p.fk_invoice = &1 and m.pk = p.fk_lu_payment_method", [invoice!fk_invoice])
+   Dim sql As String
+   
+   'sql = "select p.*, m.method from billing.vwPaymentsReceived p, billing.lu_payment_method m where p.fk_invoice = &1 and m.pk = p.fk_lu_payment_method"
+   sql = "select p.*, m.method from billing.payments_received p, billing.lu_payment_method m where p.fk_invoice = &1 and m.pk = p.fk_lu_payment_method"
+   Return modDBConnect.exec_query_collection(sql, [invoice!fk_invoice])
    
 End
 

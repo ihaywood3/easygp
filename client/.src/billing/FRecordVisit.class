@@ -58,7 +58,7 @@ Private running_total_workcover As Float
 Private running_total_old_invoices As Float
 Private running_total_private_paid As Float
 Private running_total_private_account As Float
-Private payment_totals As New Float[7] 'use 1>6 = billing.lu_payment_method keys
+Private payment_totals As New Float[8] 'use 1>7 = billing.lu_payment_method keys
 Private day_list_patients_billed_count As Integer
 Private day_list_patients_billed_medicare_count As Integer
 Private day_list_patients_billed_medicare_not_today_count As Integer 
@@ -369,8 +369,8 @@ Public Sub Init()
    InvoiceComments = modUtilGUI.LoadCombo(cmbInvoiceComments, modBillingDBI.Invoice_Comments_Get(), "comment")
    FeeTypes = modUtilGUI.LoadCombo(cmbFeeType, modUtil.Copy_Collection_Keyed_Sequentially(modBillingDBI.Billing_Types_Get()), "type") 'fixme
    Reasons_not_billed = modBillingDBI.Reasons_not_billed_Get()
-   Payment_Refusal_Reasons = modBillingDBI.Payment_Refusal_Reasons()
-   modUtilGUI.LoadCombo(cmbReasonNotPaid, Payment_Refusal_Reasons, "description") 'discard ordered collection, keep the orginal
+   Payment_Refusal_Reasons = modBillingDBI.Payment_Refusal_Reasons()    'key is the description, easier to use in Save()
+   modUtilGUI.LoadCombo(cmbReasonNotPaid, Payment_Refusal_Reasons, "description") 'discard ordered collection returned which is zero based, keep the original
    staff = modUtilGUI.LoadCombo(cmbStaff, modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.Staff_Get("", Null, False)), "wholename")
    ' modUtilGUI.LoadCombo(cmbstaff_Takings, staff, "wholename")
    seenBy = modUtilGUI.LoadCombo(cmbSeenBy, modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.Staff_Get("", Null, False)), "wholename")
@@ -541,6 +541,7 @@ Public Sub EditArea_Clear()
    Hbox_InvoiceGrid.Enabled = True
    HBox_InvoiceComments.Enabled = True
    gvwPayments_Clear
+   bPayingInvoice = False  
    bComplainedAboutNoItem = False
    EditArea_Notify_Data_Change(False)
    FBankDetails.account_name = Null
@@ -956,6 +957,7 @@ Public Sub Payer_Get(patient As Collection) 'fix me to fk_patient
    'fixme put in code for responsible party as a branch (must be put in contacts first)
    'fixme put in fk_payer_branch code
    
+   Payer = Null
    bExit = True
    If Not IsNull(patient!fk_payer_person) Then
       payer = modContactsDBI.Person_Including_Patients_Get_Using_Pk(patient!fk_payer_person)
@@ -1503,7 +1505,7 @@ Public Sub gvwItemsBilled_ShowProperty()
             hEditor = cmbFeeType
             oncol_items = cGridColumnItem_FeeType
          Case Else
-            hEditor = cmbReasonNotPaid
+            hEditor = txtFindItemNumber
       End Select
    Else
       If gvwItemsBIlled.Column <> cGridColumnItem_Reason_Not_Paid Then Return
@@ -2597,8 +2599,10 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True)
    '------------------------------------------------------------
    'finally if being paid, does the paid amount match the total?
    '------------------------------------------------------------
-   invoice_total = modUtil.MoneyToFloat(invoice!total_bill)
-   ' invoice_total = CFloat(Val(Right(lblInvoiceOwing.text, Len(lblInvoiceOwing.text) - InStr(lblInvoiceOwing.text, " $") - 1)))
+   Try invoice_total = modUtil.MoneyToFloat(invoice!total_bill)
+   If Error Then 
+       invoice_total = CFloat(Val(Right(lblInvoiceOwing.text, Len(lblInvoiceOwing.text) - InStr(lblInvoiceOwing.text, " $") - 1)))
+   End If   
    If total_paid <> 0 Then
       If total_paid > invoice_total Then
          Message.Info("The amount being paid is greater than the invoice total.")
@@ -3762,7 +3766,7 @@ Public Sub Invoice_Edit()
       fk_appointment = invoice!fk_appointment 
    Endif
    If Not IsNull(invoice!fk_payer_branch) Then
-      fk_payer_branch = invoice!k_payer_branch
+      fk_payer_branch = invoice!fk_payer_branch
    Endif
    If Not IsNull(invoice!fk_payer_person) Then
       fk_payer_person = invoice!fk_payer_person
@@ -4395,6 +4399,10 @@ Public Function Fill_Columnview(CVW As Columnview, coll As Collection, Optional 
          Else
             CVW[x][grid_col_firstname] = ""
             CVW[x][grid_col_visit_date] = ""
+            If Not IsNull(item_Billed!reason_code_description) Then
+               CVW[x][grid_col_payment_type] = item_Billed!reason_code_description
+            Endif
+            
             Inc items_on_invoice
          End If
          If Not IsNull(Item_Billed!mbs_item) Then item = Item_Billed!mbs_item
@@ -4586,10 +4594,7 @@ Public Sub cvwItemsTodayOrUnpaid_Select()
    lblInvoiceItems.text = " Items to Pay"
    Reload_Invoice_Data()
    bExit = False
-   'HBox_InvoiceGrid.Visible = False 
-   'HBox_Allocation_Grid.Visible = True 
    gvwPayments.row = 0
-   'gvwPayments_MouseDown
    
 End
 
@@ -4730,7 +4735,7 @@ Private Sub Reload_Invoice_Data()
    EditArea_Notify_Data_Change(True)
    Hbox_InvoiceGrid.Enabled = True
    gvwPayments.Enabled = True
-   
+   gvwItemsBIlled.Enabled = True
 End
 
 Public Sub Batching_Show_Vouchers_In_Claim()
@@ -5668,7 +5673,7 @@ Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
    running_total_private_paid = 0
    running_total_private_account = 0
    
-   payment_totals = New Float[7] 
+   payment_totals = New Float[8] 
    
    day_list_doctors = New Collection
    
@@ -5951,7 +5956,7 @@ Public Sub Day_List_Create_HTMl_New(Optional for_date As Date = Now()) As String
    running_total_private_paid = 0
    running_total_private_account = 0
    
-   payment_totals = New Float[7] 
+   payment_totals = New Float[8] 
    
    day_list_doctors = New Collection
    
@@ -7245,7 +7250,6 @@ Public Sub gvwAccountNames_Select()
    If gvwAccountNames.row = -1 Then Return 
    gvwUnpaidVisits.UnselectAll
    bSearchingAccounts = True  
-   ' cvwItemsTodayOrUnpaid.Clear()    
    EditArea_Clear                             ' clears the input area and associated lists, billing data
    Wait
    If TabVisitsPaymentsAccountHistory.index <> cTab_Visits_And_Payments Then 

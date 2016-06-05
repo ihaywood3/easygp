@@ -49,6 +49,7 @@
 
 '-----------------------------------------------------------------------------------------------
 Private bulk_billed_Distinct_Dates As Collection
+Private Payment_Refusal_Reasons As Collection 'of non-medical easygp-user codes where payment refused e.g 'Insurance won't pay'
 Private running_total As Float
 Private running_total_gst As Float
 Private running_total_medicare As Float
@@ -162,6 +163,7 @@ Private cGridColumnItem_Gap As Integer = 3
 Private cGridColumnItem_AmountPaid As Integer = 3
 Private cGridColumnItem_FeeType As Integer = 4
 Private cGridColumnItem_gst_amount As Integer = 5
+Private cGridColumnItem_Reason_Not_Paid As Integer = 6
 Private oncol_payments As Integer
 Private onrow_payments As Integer
 Private cGridColumnPayments_Amount As Integer = 0
@@ -347,10 +349,9 @@ Public Sub Init()
    Item_Number_Categories.Add("ama item")
    Item_Number_Categories.Add("user item")
    Report_Titles = modBillingDBI.Report_Get()
-   Reasons_not_billed = modBillingDBI.Reasons_not_billed_Get()
    lblmeasure.text = "  Invoiced Items "
    modEditAreaHelpers.Resize_labels(VBox_EditArea_Inner, lblmeasure)
-   modEditAreaHelpers.Resize_label(lblItems, lblmeasure)
+   modEditAreaHelpers.Resize_label(lblInvoiceItems, lblmeasure)
    modEditAreaHelpers.Resize_label(lblPayment, lblmeasure)
    modEditAreaHelpers.Resize_label(lblComment, lblmeasure)
    modEditAreaHelpers.Resize_label(lblAllocation, lblmeasure)
@@ -361,11 +362,15 @@ Public Sub Init()
    modEditAreaHelpers.Resize_label(lblFilter, lblMeasure)
    modEditAreaHelpers.Resize_label(lblfilterDate, lblMeasure)
    Vbox_Photo.width = lblmeasure.Width
+   
    Payment_methods = modBillingDBI.Payment_Methods_Get()
    'fix this duplication but check save to see why I did it.
    modUtilGUI.LoadCombo(cmbPaymentMethods, modUtil.Copy_Collection_Keyed_Sequentially(modBillingDBI.Payment_Methods_Get()), "method") 'show on top 3 methods
    InvoiceComments = modUtilGUI.LoadCombo(cmbInvoiceComments, modBillingDBI.Invoice_Comments_Get(), "comment")
    FeeTypes = modUtilGUI.LoadCombo(cmbFeeType, modUtil.Copy_Collection_Keyed_Sequentially(modBillingDBI.Billing_Types_Get()), "type") 'fixme
+   Reasons_not_billed = modBillingDBI.Reasons_not_billed_Get()
+   Payment_Refusal_Reasons = modBillingDBI.Payment_Refusal_Reasons()
+   modUtilGUI.LoadCombo(cmbReasonNotPaid, Payment_Refusal_Reasons, "description") 'discard ordered collection, keep the orginal
    staff = modUtilGUI.LoadCombo(cmbStaff, modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.Staff_Get("", Null, False)), "wholename")
    ' modUtilGUI.LoadCombo(cmbstaff_Takings, staff, "wholename")
    seenBy = modUtilGUI.LoadCombo(cmbSeenBy, modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.Staff_Get("", Null, False)), "wholename")
@@ -1489,16 +1494,21 @@ Public Sub gvwItemsBilled_ShowProperty()
    txtFindItemNumber.text = ""
    If cell_text <> "" Then txtFindItemNumber.text = cell_text
    cmbFeeType.Hide
+   cmbReasonNotPaid.Hide   
    panGvwItemsBilledEditor.Hide
-   
-   Select Case gvwItemsBIlled.column
-      Case cGridColumnItem_FeeType
-         'cmbFeeType.Index = cmbFeeType.Find(gvwItemsBIlled[gvwItemsBIlled.Row, cGridColumnItem_FeeType].Text)
-         hEditor = cmbFeeType
-         oncol_items = cGridColumnItem_FeeType
-      Case Else
-         hEditor = txtFindItemNumber
-   End Select
+   If Not bPayingInvoice Then
+      Select Case gvwItemsBIlled.column
+         Case cGridColumnItem_FeeType
+            'cmbFeeType.Index = cmbFeeType.Find(gvwItemsBIlled[gvwItemsBIlled.Row, cGridColumnItem_FeeType].Text)
+            hEditor = cmbFeeType
+            oncol_items = cGridColumnItem_FeeType
+         Case Else
+            hEditor = cmbReasonNotPaid
+      End Select
+   Else
+      If gvwItemsBIlled.Column <> cGridColumnItem_Reason_Not_Paid Then Return
+      hEditor = cmbReasonNotPaid
+   End If   
    $hEditor_gvwItems = hEditor
    Print "Grid contents show property before move", gvwItemsBIlled.row, " column: ", gvwItemsBilled.column 
    gvwItemsBilled_MoveProperty        ' Move the Hbox panGvwItemsBilledEditor into position over the cell
@@ -1568,19 +1578,26 @@ Public Sub gvwItemsBIlled_Init()
    '----------------------------------------------------------
    'Contruct the grid which will hold the items on the invoice
    '----------------------------------------------------------
+   ' 
    
    With gvwItemsBIlled
       .Rows.H = 20
-      .Columns.Count = 6
+      .Columns.Count = 7
       .Rows.count = 4
-      .Columns[0].text = "Item"
-      .Columns[1].text = "Description"
-      .Columns[2].text = "Fee"
-      .Columns[3].text = "Gap"
-      .Columns[4].text = "Rate"
-      .Columns[5].text = "GST"
-      .Enabled = False
    End With
+   '    .Columns[0].text = "Item"
+   '    .Columns[1].text = "Description"
+   '    .Columns[2].text = "Fee"
+   '    .Columns[3].text = "Gap"
+   '    .Columns[4].text = "Rate"
+   '    .Columns[5].text = "GST"
+   '    If Trim(lblInvoiceItems.text) = "Invoice Items" Then
+   '       .Columns[6].text = ""
+   '    Else
+   '        .Columns[6].text = "Reason Not Paid"
+   '    Endif
+   '    .Enabled = False
+   'End With
    
 End
 
@@ -1647,6 +1664,38 @@ Catch
 End
 
 Public Sub gvwItemsBIlled_MouseUp()
+   '---------------------------------------------------------------------
+   ' User has clicked on one of the cells in the grid
+   ' By design it seems the grid responds to mouse-up clicks if disabled
+   '---------------------------------------------------------------------
+   
+   Dim onRow As Integer = gvwItemsBIlled.Row
+   
+   If IsNull(patient) Then Return
+   If bexit Or gvwItemsBIlled.Enabled = False Then Return                  'no-go if paying an invoice -can't change existing items
+   If bPayingInvoice Then
+      
+   Else
+      If gvwItemsBIlled.Column = 1 Then Return
+      If gvwItemsBIlled.Column > cGridColumnItem_BriefDescriptor Then
+         If Not Valid_Item_And_Descriptor() Then Return
+      End If  
+      Print "Grid contents mouseup after the valid thingy: row", gvwItemsBIlled.row, " column: ", gvwItemsBilled.column 
+      cell_text = ""
+      oncol_items = gvwItemsBIlled.Column
+      If Last_Billing_Row_Used() + 1 <> gvwItemsBIlled.Row And gvwItemsBIlled.column = 0 Then
+         gvwItemsBIlled.Row = Last_Billing_Row_Used() + 1
+         cell_text = ""
+         onrow_items = gvwItemsBIlled.Row 
+      Endif
+      Print "Grid contents mouseup after the last_billing_row_used thingy: row", gvwItemsBIlled.row, " column: ", gvwItemsBilled.column 
+      If gvwItemsBIlled[gvwItemsBIlled.row, 0].text = "10991" Then Return
+   End If   
+   gvwItemsBilled_ShowProperty                              'bad name but show the control we want to overlay a cell
+   
+End
+
+Public Sub gvwItemsBIlled_MouseUp_up_to_04June16()
    '---------------------------------------------------------------------
    ' User has clicked on one of the cells in the grid
    ' By design it seems the grid responds to mouse-up clicks if disabled
@@ -1815,6 +1864,20 @@ Public Sub cmbPaymentMethods_Menu()
    
 End
 
+Public Sub cmbReasonNotPaid_Click()
+   
+   If bexit Then 
+      Stop Event
+      Return 
+   End If   
+   If cmbReasonNotPaid.text = "Remove Reason" Then    
+      gvwItemsBIlled[gvwItemsBIlled.Row, cGridColumnItem_Reason_Not_Paid].text = ""
+   Else
+      gvwItemsBIlled[gvwItemsBIlled.Row, cGridColumnItem_Reason_Not_Paid].text = cmbReasonNotPaid.Text
+   End If   
+   
+End
+
 Public Sub cmbFeeType_Click()
    
    If bexit Then 
@@ -1858,6 +1921,9 @@ End
 Public Sub cmbPaymentMethods_Click()
    
    gvwPayments[gvwPayments.row, cGridColumnPayments_PaymentMethod].Text = cmbPaymentMethods.Text
+   If cmbPaymentMethods.Text <> "CHEQUE" Then
+      gvwPayments[gvwPayments.row, cGridColumnPayments_Comment].text = ""
+   Endif
    EditArea_Notify_Data_Change(True)
    gvwPayments_HideProperty
    
@@ -2532,7 +2598,7 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True)
    'finally if being paid, does the paid amount match the total?
    '------------------------------------------------------------
    invoice_total = modUtil.MoneyToFloat(invoice!total_bill)
-  ' invoice_total = CFloat(Val(Right(lblInvoiceOwing.text, Len(lblInvoiceOwing.text) - InStr(lblInvoiceOwing.text, " $") - 1)))
+   ' invoice_total = CFloat(Val(Right(lblInvoiceOwing.text, Len(lblInvoiceOwing.text) - InStr(lblInvoiceOwing.text, " $") - 1)))
    If total_paid <> 0 Then
       If total_paid > invoice_total Then
          Message.Info("The amount being paid is greater than the invoice total.")
@@ -2585,7 +2651,7 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True)
    'has the invoice been paid in full?- fix this code
    '----------------------------------
    If invoice_total = total_paid Then
-      invoice!paid = True
+      '  invoice!paid = True      'this is done in the backend via  billing.update_invoice_payment() trigger function
       bpaid = True
    Else
       bpaid = False
@@ -2638,6 +2704,10 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True)
             item!fk_invoice = invoice!fk_invoice
             item!fk_lu_billing_type = Billing_Type_Get_Pk(gvwItemsBIlled[grid_row, cGridColumnItem_FeeType].Text)
             item!amount_gst = gvwItemsBIlled[grid_row, cGridColumnItem_gst_amount].Text
+            If gvwItemsBIlled[grid_row, cGridColumnItem_Reason_Not_Paid].Text <> "" Then
+               item!reason_code = Reasons_not_billed[gvwItemsBIlled[grid_row, cGridColumnItem_Reason_Not_Paid].Text]!reason_code   
+               item!error_level = "U"
+            Endif
             item.Save("billing.items_billed", "fk_item_billed")
          End If
       Next
@@ -2683,6 +2753,11 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True)
                item!fk_invoice = invoice!fk_invoice
                item!fk_lu_billing_type = Billing_Type_Get_Pk(gvwItemsBIlled[grid_row, cGridColumnItem_FeeType].Text)
                item!amount_gst = gvwItemsBIlled[grid_row, cGridColumnItem_gst_amount].Text
+               If gvwItemsBIlled[grid_row, cGridColumnItem_Reason_Not_Paid].Text <> "" Then
+                  item!reason_code = Payment_Refusal_Reasons[gvwItemsBIlled[grid_row, cGridColumnItem_Reason_Not_Paid].Text]!reason_code   
+                  item!error_level = "U"
+               Endif
+               
             Endif
             item.Save("billing.items_billed", "fk_item_billed")
          Endif
@@ -3154,11 +3229,12 @@ Public Sub Resize_Grids()
    
    With gvwItemsBIlled
       .Columns[0].width = 60
-      .Columns[1].width = gvwItemsBIlled.width - 470
+      .Columns[1].width = gvwItemsBIlled.width - 720 '- 470
       .Columns[2].width = 60
       .Columns[3].width = 60
       .Columns[4].width = 200
       .Columns[5].width = 60
+      .Columns[6].width = 150
       lblmeasure.text = "Invoice Total "
       lblPaymentLeft.width = gvwItemsBIlled.Columns[0].width + gvwItemsBIlled.Columns[1].width - lblmeasure.width
       lblPaymentTotal.width = lblmeasure.width + gvwItemsBIlled.Columns[3].width
@@ -3188,6 +3264,14 @@ Public Sub Resize_Grids()
       With lblcol6
          .width = gvwItemsBIlled.Columns[5].Width
          .text = "GST"
+      End With
+      With lblcol7
+         .width = gvwItemsBIlled.Columns[6].Width
+         If Trim(lblInvoiceItems.text) = "Invoice Items" Then
+            .text = ""
+         Else
+            .text = "Reason Not Paid"
+         Endif
       End With
    End With
    
@@ -4205,7 +4289,9 @@ Public Sub Invoice_New()
    
    bexit = True
    Unbilled_consultation = Null                 'the invoice is not being raised from appointment list
-   gvwItemsBIlled.Clear                         'clear the grid the user will type in the item numbers
+   gvwItemsBIlled.Clear                    'clear the grid the user will type in the item numbers
+   lblcol7.text = ""                            'in payment mode this says "Reason Not Paid"
+   lblInvoiceItems.text = " Invoice Items"
    item_flags = New Collection
    tbSaveNoPrint.Enabled = True                 'new invoice can be saved (either paid/unpaid) without printing
    lblEditAreaHeading.text = "NEW INVOICE"
@@ -4296,7 +4382,7 @@ Public Function Fill_Columnview(CVW As Columnview, coll As Collection, Optional 
                         bFirstPaymentMethod = False   
                      Else
                         If Not InStr(CVW[x][grid_col_payment_type], payment!payment_method) Then
-                         CVW[x][grid_col_payment_type] &= "/" & payment!payment_method  
+                           CVW[x][grid_col_payment_type] &= "/" & payment!payment_method  
                         End If   
                      End If   
                   Next
@@ -4491,20 +4577,19 @@ Public Sub cvwItemsTodayOrUnpaid_Select()
    Endif
    cvwItemsTodayOrUnpaid.MoveCurrent()
    fk_invoice = Items_Today_Or_Unpaid[cvwItemsTodayOrUnpaid.Item.key]!fk_invoice                    'gives us the key to billing.invoices table
-   
-   Log.DebugMsg("fk_invoice to reload is " & fk_invoice)
    invoice = modBillingDBI.Get_Invoice_PK(fk_invoice)
    If Not IsNull(invoice!fk_appointment) Then
       fk_appointment = invoice!fk_appointment    'needed for save to ensure correct linkages
    Else
       fk_appointment = Null  
    Endif
+   lblInvoiceItems.text = " Items to Pay"
    Reload_Invoice_Data()
    bExit = False
-   HBox_InvoiceGrid.Visible = False 
-   HBox_Allocation_Grid.Visible = True 
+   'HBox_InvoiceGrid.Visible = False 
+   'HBox_Allocation_Grid.Visible = True 
    gvwPayments.row = 0
-   gvwPayments_MouseDown
+   'gvwPayments_MouseDown
    
 End
 
@@ -4549,8 +4634,10 @@ Private Sub Set_Online_Data(inv As Crow, Optional items As Collection)
 End
 
 Private Sub Reload_Invoice_Data()
-   
+   'User has clicked on an invoice under the edit area
+   'display items to pay  
    '
+   
    Dim item_billed As Collection  
    
    items_billed = modBillingDBI.Get_Billed_Items(invoice) 'get indidual item numbers on an invoice
@@ -4600,7 +4687,8 @@ Private Sub Reload_Invoice_Data()
    'now create an items collection to load back into the grid
    '---------------------------------------------------------
    onrow_items = 0
-   gvwItemsBIlled.Clear()
+   gvwItemsBIlled.Clear
+   lblcol7.text = "Reason Not Paid"
    invoice_total = modUtil.MoneyToFloat(Items_Today_Or_Unpaid[cvwItemsTodayOrUnpaid.Item.key]!total_bill)
    amount_paid = modUtil.MoneyToFloat(items_Today_Or_Unpaid[cvwItemsTodayOrUnpaid.Item.key]!total_paid)
    lblInvoiceTotalAndPaid.text = "  Invoice Total: " & modUtil.Money_Format(items_Today_Or_Unpaid[cvwItemsTodayOrUnpaid.Item.key]!total_bill)
@@ -4634,7 +4722,13 @@ Private Sub Reload_Invoice_Data()
    Next
    gvwPayments.Clear()                                                        'clear the payments grid
    EditArea_Notify_Data_Change(False)                                         'don't allow access to the invoice items grid
-   Hbox_InvoiceGrid.Enabled = False
+   gvwPayments.row = 0
+   gvwPayments[gvwPayments.row, cGridColumnPayments_Amount].text = modUtil.Money_Format(invoice_total - amount_paid)  'put in the amount to complete payment
+   gvwPayments[gvwPayments.row, cGridColumnPayments_PaymentMethod].text = "EFTPOS"                                     'its usually EFTPOS
+   gvwPayments[gvwPayments.Row, cGridColumnPayments_Date].Text = Format$(Now(), "dd/mm/yy")                            'and most likely being paid on the day 
+   Payment_Calculate_Total                                                          'work out amount now paid, and prominantly display total under the grid
+   EditArea_Notify_Data_Change(True)
+   Hbox_InvoiceGrid.Enabled = True
    gvwPayments.Enabled = True
    
 End
@@ -5318,6 +5412,18 @@ Public Sub txtPayment_KeyPress()
    ' If Not (modUtilGUI.AllowKeys(const.allowkeys_money, key.code) Or modUtilGUI.AllowKeys(const.AllowKeys_DateFormat, Key.Code)) Then
    '    Stop Event
    ' End If
+   
+End
+
+Public Sub txtPayment_Change()
+   
+   Select Case gvwPayments.Column
+      Case cGridColumnPayments_Comment 
+         '       If cmbPaymentMethods.text = "CHEQUE" Then
+         '          Key.code = UCase(
+         '       Endif
+         Last.text = UCase(Last.text)
+   End Select
    
 End
 
@@ -6991,7 +7097,9 @@ End
 
 Public Sub gvwItemsBilled_Menu()
    
-   mnuItemsBilled.Popup()
+   If lblEditAreaHeading.text <> "PAY INVOICE" Then
+      mnuItemsBilled.Popup()
+   Endif
    
 End
 

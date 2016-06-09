@@ -257,7 +257,7 @@ Static Private Form_Billing As FRecordVisit
 
 Public Sub _new()
    
-  'form_calc = New FCalculator(Vbox_Calculator) 
+   'form_calc = New FCalculator(Vbox_Calculator) 
    
 End
 
@@ -4746,7 +4746,7 @@ Private Sub Reload_Invoice_Data()
    Hbox_InvoiceGrid.Enabled = True
    gvwPayments.Enabled = True
    gvwItemsBIlled.Enabled = True
-
+   
 End
 
 Public Sub Batching_Show_Vouchers_In_Claim()
@@ -5796,12 +5796,13 @@ Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
    "<COL WIDTH=212>"
    "<COL WIDTH=208>"
    For Each payment_method In payment_methods           'the pk's in this collection are not in order 1>5
-      '    Inc x                                  'billing.lu_payment_method keys 1>6
-      shtml &= "<TR VALIGN=TOP>"
-      shtml &= totals_html_row_template()
-      shtml = Replace(shtml, "%payment_method%", UCase(payment_method!method))
-      shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(payment_totals[payment_method!pk]))
-      sHtml &= "</TR>"
+      If payment_method!pk <> const.payment_method_bad_debt Then   
+         shtml &= "<TR VALIGN=TOP>"
+         shtml &= totals_html_row_template()
+         shtml = Replace(shtml, "%payment_method%", UCase(payment_method!method))
+         shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(payment_totals[payment_method!pk]))
+         sHtml &= "</TR>"
+      End If   
    Next
    shtml &= totals_html_row_template()
    shtml = Replace(shtml, "%payment_method%", "")
@@ -6304,6 +6305,8 @@ Public Function visit_type_create_html(visit_subset As Collection, group_name As
    Dim bmergeCols As Boolean = True 
    Dim total_paid_all_items_on_invoice As Float
    Dim payment As Collection
+   Dim bad_debt As Float
+   Dim part_payment_of_invoice As Float
    
    Select Case group_name
       Case "Medicare", "Veterans", "Medicare Not Seen Today"
@@ -6331,7 +6334,7 @@ Public Function visit_type_create_html(visit_subset As Collection, group_name As
          row_template = day_list_html_row_template_Workcover_Insurance(bmergeCols)
          sHtml &= "<BR><TABLE WIDTH=100% CELLPADDING=0 CELLSPACING=0>"
          sHtml &= "<TR VALIGN=TOP style= 'background-color:gainsboro;color:black;'>" & row_template & "</TR>"
-         sHtml = Replace(shtml, "%table_heading%", "<B>BILLED " & UCase(group_name) & "</B>")
+         sHtml = Replace(shtml, "%table_heading%", "<B>BILLED TO " & UCase(group_name) & "</B>")
          shtml = Replace(shtml, "%time%", "")
          shtml = Replace(shtml, "%patient%", "")
          shtml = Replace(shtml, "%doctor%", "")
@@ -6351,11 +6354,11 @@ Public Function visit_type_create_html(visit_subset As Collection, group_name As
          sHtml &= "<TR VALIGN=TOP style= 'background-color:gainsboro;color:black;'>" & row_template & "</TR>"
          Select Case group_name  
             Case "Private Paid" 
-               sHtml = Replace(shtml, "%table_heading%", "<B>PAID PRIVATELY</B>")
+               sHtml = Replace(shtml, "%table_heading%", "<B>PRIVATE- PAID TODAY </B>")
             Case "Old Account"
                sHtml = Replace(shtml, "%table_heading%", "<B>PAID OLD ACCOUNTS</B>")
             Case "Private Account"
-               sHtml = Replace(shtml, "%table_heading%", "<B>BILLED PRIVATELY</B>")
+               sHtml = Replace(shtml, "%table_heading%", "<B>PRIVATE - TOOK ACCOUNT</B>")
          End Select
          shtml = Replace(shtml, "%doctor%", "")
          shtml = Replace(shtml, "%payee%", "<B>Payee</B>")
@@ -6373,6 +6376,7 @@ Public Function visit_type_create_html(visit_subset As Collection, group_name As
    
    For Each visit In visit_subset
       If Last_fk_invoice <> visit!fk_invoice Then
+         bad_debt = 0
          For x = 1 To 5                     'fixme - guessing won't have more than 5 items a consult, make a variable and keep count of max
             sHtml = Replace(shtml, "%item%" & Str(x), "")
             sHtml = Replace(shtml, "%amount%" & Str(x), "")
@@ -6511,7 +6515,6 @@ Public Function visit_type_create_html(visit_subset As Collection, group_name As
       item_number = visit!item
       If visit!number_of_patients <> 0 And (Not IsNull(visit!number_of_patients)) Then
          item_number &= "/" & Str(visit!number_of_patients)
-         
       Endif
       If Not bSameInvoice Then    
          shtml = Replace(shtml, "%item%", item_number & "%item%" & Str(item_count + 1))
@@ -6531,14 +6534,15 @@ Public Function visit_type_create_html(visit_subset As Collection, group_name As
       income_generated += modUtil.MoneyToFloat(visit!amount)
       
       If visit!paid = True And modUtil.IsSameDay(visit!date_paid, visit!appointment_date) Then  'Or visit!paid = True And modUtil.IsSameDay(visit!date_paid, visit!date_paid) Then
-         ' total_paid_all_items_on_invoice = modUtil.MoneyToFloat(visit!total_paid)
-         ' For Each payment In visit_subset
-         '    If payment!fk_lu_payment_method = const.payment_method_bad_debt Then
-         '       total_paid_all_items_on_invoice -= modUtil.MoneyToFloat(visit!amount)
-         '    Endif
-         ' Next
-         ' Print modUtil.Money_Format(total_paid_all_items_on_invoice)
-         shtml = Replace(shtml, "%paid%", visit!total_paid)
+         total_paid_all_items_on_invoice = modUtil.MoneyToFloat(visit!total_paid)
+         For Each payment In visit!payments
+            If payment!fk_lu_payment_method = const.payment_method_bad_debt Then
+               total_paid_all_items_on_invoice -= modUtil.MoneyToFloat(payment!amount)
+            Endif
+         Next
+         Print modUtil.Money_Format(total_paid_all_items_on_invoice)
+         ' shtml = Replace(shtml, "%paid%", visit!total_paid)
+         shtml = Replace(shtml, "%paid%", modUtil.Money_Format(total_paid_all_items_on_invoice))
          shtml = Replace(shtml, "%paymentmethod%", UCase(visit!payment_method))
          payment_totals[visit!fk_lu_payment_method] = payment_totals[visit!fk_lu_payment_method] + CFloat(Replace(visit!amount, "$", "")) 'EFTPOS, Cheque, Cash etc
          If Not IsNull(visit!amount_gst) Then
@@ -6567,28 +6571,52 @@ Public Function visit_type_create_html(visit_subset As Collection, group_name As
       Else
          If bOldAccount Then 
             total_paid_all_items_on_invoice = modUtil.MoneyToFloat(visit!total_paid)
-           
-            'substract any bad debt and collect payment methods into one string
-           all_payment_methods = ""
             
-            For Each payment In visit!payments
-               If Not InStr(all_payment_methods, payment!payment_method) Then
-                  If payment!fk_lu_payment_method <> const.payment_method_bad_debt Then
-                     all_payment_methods &= payment!payment_method
+            'substract any bad debt and collect payment methods into one string
+             If all_payment_methods = ""
+               For Each payment In visit!payments
+                  If Not InStr(all_payment_methods, payment!payment_method) Then
+                     If payment!fk_lu_payment_method <> const.payment_method_bad_debt Then
+                        all_payment_methods &= payment!payment_method
+                     End If   
+                  Endif
+                  payment_totals[payment!fk_lu_payment_method] = payment_totals[payment!fk_lu_payment_method] + CFloat(Replace(visit!amount, "$", "")) 'EFTPOS, Cheque, Cash etc
+                  If bad_debt = 0 Then                                                        ' each visit has replica of all payments                             
+                     If payment!fk_lu_payment_method = const.payment_method_bad_debt Then
+                        total_paid_all_items_on_invoice -= modUtil.MoneyToFloat(payment!amount)
+                        bad_debt += modUtil.MoneyToFloat(payment!amount)
+                     Endif
                   End If   
-               Endif
-               If payment!fk_lu_payment_method = const.payment_method_bad_debt Then
-                  total_paid_all_items_on_invoice -= modUtil.MoneyToFloat(payment!amount)
-               Endif
-            Next
+               Next
+            End If
             Print modUtil.Money_Format(total_paid_all_items_on_invoice)
-           ' shtml = Replace(shtml, "%paid%", visit!total_paid)
-           ' shtml = Replace(shtml, "%paymentmethod%", UCase(visit!payment_method))
-             shtml = Replace(shtml, "%paymentmethod%", UCase(all_payment_methods))
+            ' shtml = Replace(shtml, "%paid%", visit!total_paid)
+            shtml = Replace(shtml, "%paid%", modUtil.Money_Format(total_paid_all_items_on_invoice))
+            ' shtml = Replace(shtml, "%paymentmethod%", UCase(visit!payment_method))
+            shtml = Replace(shtml, "%paymentmethod%", UCase(all_payment_methods))
             running_total_old_invoices += modUtil.MoneyToFloat(visit!amount) + modUtil.MoneyToFloat(visit!amount_gst)
          Else
-            shtml = Replace(shtml, "%paid%", "$0.00") 
-            shtml = Replace(shtml, "%paymentmethod%", "") 
+            'though not fully paid, it could be part paid
+            If visit!payments.count Then
+                 If part_payment_of_invoice = 0
+                  For Each payment In visit!payments  
+                     If Not InStr(all_payment_methods, payment!payment_method) Then
+                        If payment!fk_lu_payment_method <> const.payment_method_bad_debt Then
+                           all_payment_methods &= payment!payment_method
+                        End If   
+                     Endif
+                     payment_totals[payment!fk_lu_payment_method] = payment_totals[payment!fk_lu_payment_method] + CFloat(Replace(payment!amount, "$", "")) 
+                     part_payment_of_invoice += modUtil.MoneyToFloat(payment!amount)
+                     running_total_private_paid += part_payment_of_invoice
+                     shtml = Replace(shtml, "%paymentmethod%", all_payment_methods)
+                  Next
+                  shtml = Replace(shtml, "%paid%", modUtil.Money_Format(part_payment_of_invoice))
+               End If   
+            Else
+               shtml = Replace(shtml, "%paid%", "$0.00") 
+               shtml = Replace(shtml, "%paymentmethod%", "") 
+            Endif
+            
          End If   
          If modUtil.IsSameDay(DateChooser1.Value, visit!appointment_date) Or modUtil.IsSameDay(DateChooser1.Value, visit!visit_date) Then  
             If bInvoiceisPrivate Then running_total_private_account += modUtil.MoneyToFloat(visit!amount) 
@@ -6608,6 +6636,21 @@ Public Function visit_type_create_html(visit_subset As Collection, group_name As
       sHtml = Replace(shtml, "%item%" & Str(x), "")
       sHtml = Replace(shtml, "%amount%" & Str(x), "")
    Next
+   If bad_debt <> 0 Then
+      sHtml &= "<TR VALIGN=TOP style= 'background-color:gainsboro;color:black;'>" & row_template & "</TR>"
+      shtml = Replace(shtml, "%doctor%", "")
+      shtml = Replace(shtml, "%time%", "")
+      shtml = Replace(shtml, "%patient%", "")
+      shtml = Replace(shtml, "%payment%", "")
+      shtml = Replace(shtml, "%payee%", "")
+      shtml = Replace(shtml, "%item%", "")
+      shtml = Replace(shtml, "%notes%", "")
+      shtml = Replace(shtml, "%amount%", "")
+      shtml = Replace(shtml, "%tax%", "")
+      shtml = Replace(shtml, "%total%", "")
+      shtml = Replace(shtml, "%paid%", " -" & modUtil.Money_Format(bad_debt)) 
+      shtml = Replace(shtml, "%paymentmethod%", "BAD DEBT") 
+   Endif
    shtml &= "</TABLE>"
    Return shtml
    

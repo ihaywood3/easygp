@@ -394,6 +394,43 @@ Public Function Appointment_Save(row As CRow, Optional bCheckSlotTaken As Boolea
 
 End
 
+Public Sub Check_Workplace_Clash(appt As Crow)
+   
+  Dim r As Result
+  Dim sql As String
+  
+  sql = "select 1 from "
+        " clerical.data_patients p1, "
+        " clerical.data_patients p2, "
+        " clerical.bookings b "
+        " where "
+        " p1.pk = &1 and "
+        " p2.pk = b.fk_patient and "
+        " p1.fk_workplace = p2.fk_workplace and "
+        " (b.begin, b.duration) overlaps (&2::timestamp-'10 minutes'::interval,&3::interval+'10 minutes')"
+   r = modDBConnect.exec_query(sql, [appt!fk_patient, appt!begin, appt!duration])
+   If r.Count > 0 Then
+      Message.Warning("This patient may attend the same school/workplace as an adjacent patient")
+   Endif
+   Catch
+      Log.ErrorMsg(Error.Text)
+End
+
+
+Public Sub Check_Referral_Expired(appt As Crow)
+   
+  Dim r As Collection
+  
+  r = modBillingDBI.Find_Referrer(appt!fk_patient)
+  If Not IsNull(r) Then
+     If r!indefinite Then Return
+     If DateDiff(Now(), r!expiry, gb.Day) < 10 Then
+         Message.Warning("This patient's referral may be close to expiry")
+      Endif 
+  Endif
+   
+End
+
 
 '''Mark appointment as deleted returns True if appointment has been deleted, false if not already invoiced
 Public Sub Appointment_Delete(row As Crow) As Boolean
@@ -408,3 +445,51 @@ Public Sub Appointment_Delete(row As Crow) As Boolean
 Catch
    Return False   
 End
+
+
+' get next appojintment for a given patient
+Public Function Next_Appointment(fk_patient As Integer) As Collection
+   
+  Return modDBConnect.exec_query_first("select * from clerical.vwappointments where fk_patient=&1 and begin > now() order by begin limit 1", [fk_patient]) 
+   
+End
+
+Public Function All_Future_Appointments(fk_patient As Integer) As Result
+   
+  Return modDBConnect.exec_query("select * from clerical.vwappointments where fk_patient=&1 and begin > now() order by begin", [fk_patient]) 
+   
+End
+
+
+' send an SMS message to a patient
+Public Sub Send_SMS(fk_patient As Variant, msg As String)
+   
+   Dim res As Result
+   Dim mobile As String
+   
+   res = modDBConnect.exec_query("select v.value from contacts.vwpersonscomms v, clerical.data_patients p where p.pk = &1 and p.fk_person = v.fk_person and v.fk_type = 4 and deleted is not true", [fk_patient])  
+   If res.Count = 0 Then Return
+   mobile = res!value
+   Send_SMS_Direct(mobile, msg)
+   
+End
+
+Public Sub Send_SMS_Direct(mobile As String, msg As String)
+
+   Dim req As HttpForm
+
+   req = New HttpForm
+   req.URL = "https://api.smsbroadcast.com.au/api-adv.php"
+   'req.SSL = Net.TLS
+   mobile = Replace$(mobile, " ", "")
+   req["username"] = modAdminDBI.Config_Get("sms_username") 
+   req["password"] = modAdminDBI.Config_Get("sms_password") 
+   req["to"] = mobile
+   req["from"] = modAdminDBI.Config_Get("sms_sender_telephone", "EASYGP")
+   req["message"] = msg
+   req["ref"] = "123"
+   req.Submit()
+   ' FIXME: check HTTP return code?
+   
+End
+

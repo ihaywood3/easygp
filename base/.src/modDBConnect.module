@@ -18,6 +18,7 @@
 Export
 
 Private $hconn As Connection
+Private txnStartTime As Float
 Private inferior_ssh As Process
 Private inferior_ssh_error As String
 Private inferior_ssh_buffer As String
@@ -441,6 +442,7 @@ Public Function CommitTrans() As Result
   Dim $Result As Result
   Dim startTime As Float
   Dim time_diff As String
+  Dim txn_time_diff As String
 
   If bTransaction Then
     bTransaction = False
@@ -454,7 +456,8 @@ Public Function CommitTrans() As Result
     Else
       If Not IsNull(profile_file) Then
         time_diff = timeDiff(startTime)
-        Log.DebugMsg(" COMMIT ( took " & time_diff & "msec )")
+        txn_time_diff = timeDiff(txnStartTime)
+        Log.DebugMsg(" COMMIT ( took " & time_diff & "msec, transaction took " & txn_time_diff & "msec )")
         Print #profile_file, "<TR><TD>"; modUtil.Get_Caller().Join("<BR/>"); "</TD><TD>COMMIT</TD><TD>"; time_diff; "msec </TD></TR>"
       Endif
     Endif
@@ -480,6 +483,7 @@ Public Function exec_query(sql As String, Optional params As Variant[]) As Resul
   Dim restart As Boolean
   Dim v As Variant
   Dim conn_lost As Boolean
+  Dim txnTime As Float
 
   If Not IsNull(params) Then
     sql = Me.Subst(sql, params)
@@ -489,9 +493,23 @@ Public Function exec_query(sql As String, Optional params As Variant[]) As Resul
   If Not IsNull(profile_file) Then
     startTime = Timer()
   Endif
-  If Not bTransaction And prefix <> "select" And prefix <> "listen" Then
-    $hconn.Exec("BEGIN")
-    bTransaction = True
+  If bTransaction Then
+    If Not IsNull(profile_file) Then
+      txnTime = Timer() - txnStartTime
+      If txnTime > 20 Then
+        Message.Error("Transaction longer than 20 sec")
+        Log.PanicMsg("TRANSACTION LASTING LONGER THAN 20 SEC")
+      Endif
+    Endif
+  Else
+    If prefix = "insert" Or prefix = "update" Or prefix = "delete" Then
+      $hconn.Exec("BEGIN")
+      bTransaction = True
+      If Not IsNull(profile_file) Then
+        Log.DebugMsg("BEGIN")
+        txnStartTime = Timer()
+      Endif
+    Endif
   End If
   If Len(sql) > 8000 Then
     Log.DebugMsg(Left$(sql, 8000))
@@ -503,35 +521,44 @@ do_query:
   If Error Then
     errtxt = Error.Text
     bt = Error.Where
-    Log.DebugMsg("errtxt = \"" & errtxt & "\"")
     conn_lost = False
     For Each s In connection_lost_errors
-      Log.DebugMsg("comparing with \"" & s & "\"")
       If errtxt Begins s Then
         conn_lost = True
+        Log.ErrorMsg("LOST CONNECTION DETECTED detected with match = \"" & s & "\"")
         Break
       Endif
     Next
     If conn_lost Then
       ' connection lost
       $hconn = Null
-      Log.ErrorMsg("lost connection with \"" & errtxt & "\"")
-      If event_listeners.Exist("lost_connection") Then
-        restart = False
-        For Each obj In event_listeners["lost_connection"]
-          v = Null
-          Try v = Object.Call(obj, "Lost_Connection")
-          If v = "restart" Then
-          Endif
-        Next
-        ' FIXME: for now always attempt restart
-        If restart Then
-          Log.DebugMsg("attempting restart")
-          Actual_Connect()
-          Goto do_query
-        Else
-          Error.Raise("lost connection and not restarting")
+      Log.ErrorMsg("entering lost connection code")
+      If IsNull(event_listeners) Then
+        Log.ErrorMsg("event-listeners is NULL")
+      Else
+        If event_listeners.Exist("lost_connection") Then
+          restart = False
+          For Each obj In event_listeners["lost_connection"]
+            v = Null
+            Log.DebugMsg("calling lost_connection hander " & Str$(obj))
+            Try v = Object.Call(obj, "Lost_Connection")
+            Log.DebugMsg("hander returned \"" & Str$(v) & "\"")
+            If v = "restart" Then
+              restart = True
+            Endif
+          Next
         Endif
+      Endif
+      ' FIXME: for now always attempt restart
+      restart = True
+      If restart Then
+        Log.DebugMsg("now attempting restart")
+        Actual_Connect()
+        Log.DebugMsg("now retrying query")
+        Goto do_query
+      Else
+        Log.DebugMsg("not restarting")
+        Error.Raise("lost connection and not restarting")
       Endif
     Else If errtxt Begins "Query failed: ERROR:  schema \"db\" does not exist" Then
       Error.Raise("The database you have connected to seems empty of data, please check your database setup")

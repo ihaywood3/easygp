@@ -1031,17 +1031,17 @@ End
 
 Public Sub txtPayment_LostFocus()
    
-  ' If txtPayment.text = "" Then
-   '   txtPayment.text = txtPayment_Last_Value
-  ' Endif
    gvwPayments_SaveProperty
+   gvwPayments_AutoFill_Validate_Row
    
 End
 
 Public Sub txtPayment_GotFocus()
    
    cmbPaymentMethods.Visible = False
+   Print "in txtPayment_got_focus", gvwPayments[gvwPayments.row, gvwPayments.Column].Text
    txtPayment_Last_Value = gvwPayments[gvwPayments.row, gvwPayments.Column].Text
+   txtPayment.text = gvwPayments[gvwPayments.row, gvwPayments.Column].Text
    
 End
 
@@ -1090,7 +1090,7 @@ Public Sub gvwPayments_SaveProperty()
          If gvwPayments[gvwPayments.row, cGridColumnPayments_Date].Text = "" And gvwPayments[gvwPayments.row, 0].Text <> "" Then   'if have no payment method but have money
             gvwPayments[gvwPayments.row, cGridColumnPayments_Date].Text = Format$(Now(), "dd/mm/yy")
          Endif
-         Payment_Calculate_Total
+         Invoice_Calculate_Amount_Paid()
       Case cGridColumnPayments_PaymentMethod
          cmbPaymentMethods.index = cmbPaymentMethods.Find(gvwPayments[gvwPayments.row, oncol_payments].Text)
       Case cGridColumnPayments_Date
@@ -1118,7 +1118,6 @@ Public Sub gvwPayments_HideProperty() As Boolean
    cmbPaymentMethods.Visible = False
    txtPayment.Visible = False
    panGvwItemsBilledEditor.Hide
-   gvwPayments_lblOverLay.Hide
    
 End
 
@@ -1140,7 +1139,6 @@ Public Sub gvwPayments_ShowProperty()
    
    txtPayment.Hide
    cmbPaymentMethods.Hide
-   gvwPayments_lblOverLay.Hide
    panGvwPaymentsEditor.Hide
    Select Case gvwPayments.column
       Case cGridColumnPayments_PaymentMethod
@@ -1154,7 +1152,7 @@ Public Sub gvwPayments_ShowProperty()
    GvwPayments_MoveProperty        ' Move the Hbox panGvwItemsBilledEditor into position over the cell
    $hEditor_gvwPayments.Show       ' Make transparent label "visible" or the combo box visible
    pangvwPaymentsEditor.Show       ' Show the container, hence the  control
-   $hEditor_gvwPayments.SetFocus         ' give control focus > responded to key and click events
+   $hEditor_gvwPayments.SetFocus   ' give control focus > responded to key and click events
    
 End
 
@@ -1173,11 +1171,104 @@ End
 
 Public Sub gvwPayments_MouseDown()
    
-   '  If gvwPayments[gvwPayments.row, gvwPayments.Column].text <> "" Then
-   '  Endif
-   'If gvwPayments.Column = cGridColumnPayments_Amount Or bgvwPayments_First_Focus Then 
-   If gvwPayments[gvwPayments.row, gvwPayments.column].text <> "" Then txtPayment_Last_Value = gvwPayments[gvwPayments.row, gvwPayments.column].text
+   ' If invoice_total = Invoice_Calculate_Amount_Paid() Then 
+   '    Print "all paid   gvwPayments_MouseDown()"
+   '    Return
+   ' Endif
    gvwPayments_AutoFill_Validate_Row
+   
+End
+
+Public Sub gvwPayments_AutoFill_Validate_Row_new()
+   '---------------------------------------------------------------------------
+   'Enable the payments grid if there is something to pay and not bulk billing
+   'Auto-insert the probable amount of money being payed for the first rows
+   'default to EFTPos which is the  most common method
+   'If user tries to click on another row below this, and the totals in the grid
+   'already add up to the invoice total, don't allow them, reset row to the last
+   'row which when the rows add up made up to the invoice total
+   '--------------------------------------------------------------------------
+   
+   Dim row As Integer
+   Dim paid_to_date As Float
+   Dim s As String
+   Dim x As Integer 
+   Dim cumulative_paid As Float
+   
+   If gvwItemsBIlled[0, 0].text <> "" And gvwItemsBIlled[0, 0].text <> "" Then        'if we have an item we have added to invoice
+      If rbInvoiceToMedicare.value = True Or rbInvoiceToVeterans.value = True Then    'disable the payments grid if this is bulk billed item
+         gvwPayments.Enabled = False
+         If bExit Then Return
+         bExit = True
+         Message.Error("You can't pay when billing mode set to Medicare or Veterans.\n\nTo pay off these categories please click on the Bulk Bill Batching Tab")
+         bExit = False
+         Return
+      End If
+   Else                                                                               'nothing in the items billed grid
+      gvwPayments.Enabled = False                                                     ' don't let them pay
+      Return
+   Endif
+   
+   If Not GvwPayments_IsEmpty() Then 
+      bgvwPayments_First_Focus = False 
+   Else
+      bgvwPayments_First_Focus = True  
+      gvwPayments.Row = 0
+   End If  
+   'ensure they are not clicking on empty row, if are then set next empty row
+   If gvwPayments.Row > 0 And If gvwPayments[gvwPayments.Row, 0].text = "" Then 'if user clicks on row and row above not filled in move back FIXME THIS CODE DOES NOT DO THIS
+      For row = 0 To gvwPayments.Rows.Max    
+         If gvwPayments[row, 0].text = "" Then
+            gvwPayments.Row = row
+            Break
+         Endif
+      Next
+   End If    
+   Print "ENABLING THE GRID" & Format(Now(), "hh:nnnn")  
+   gvwPayments.Enabled = True                                                         'otherwise, enable the payments grid
+   Print paid_to_date, " = paid to date"
+   Print invoice_total, " = invoice total"
+   cumulative_paid = Invoice_Calculate_Amount_Paid()
+   s = "*INVALID*"
+   Try s = gvwPayments[gvwPayments.row, cGridColumnPayments_Amount].text              'get the amount for this row
+   'If the row cilcked on doesn't contain an amount in the amount column, try and auto-fill that row
+   If s = "" Then                                                                     'if not re-clicking on a filled in row
+      'For row = 0 To gvwPayments.Rows.Max                                             'now add up all the rows and check if the cumulative amount    
+      '  If gvwPayments[row, cGridColumnPayments_Amount].text <> "" Then
+      '    Print " CHECKING CUMULATIVE PAYMENTS ", Format(Now(), "hh:nn:ss")
+      '    Print gvwPayments[row, cGridColumnPayments_Amount].text
+      '    Print modUtil.MoneyToFloat(gvwPayments[row, cGridColumnPayments_Amount].text)
+      '    cumulative_paid += modUtil.MoneyToFloat(gvwPayments[row, cGridColumnPayments_Amount].text) ' if is the invoice total
+      '   Print "CUKULATIVE PAID IS:" & cumulative_paid
+      If cumulative_paid = invoice_total Then                                  'invoice_total was calculated when a row in the invoice list clicked on
+         gvwPayments.row = row                                                 'then leave focus on that row of the grid
+         Return
+         ' Else If cumulative_paid > invoice_total Then
+         '   Message.Info("Can't pay more than the invoice")
+         '   Return
+         ' Endif
+      End If   
+      'Next
+      gvwPayments[gvwPayments.row, cGridColumnPayments_Amount].text = modUtil.Money_Format(invoice_total - cumulative_paid)  'put in the amount to complete payment
+      gvwPayments[gvwPayments.row, cGridColumnPayments_PaymentMethod].text = "EFTPOS"                                     'its usually EFTPOS
+      gvwPayments[gvwPayments.Row, cGridColumnPayments_Date].Text = Format$(Now(), "dd/mm/yy")                            'and most likely being paid on the day 
+      Invoice_Calculate_Amount_Paid()                                                       'work out amount now paid, and prominantly display total under the grid
+      EditArea_Notify_Data_Change(True)
+      gvwPayments_ShowProperty
+   Else
+      If cumulative_paid = Invoice_total Then Return
+      'There is an amount in that row ?is it Kosha.
+      ' If modUtil.MoneyToFloat(gvwPayments[gvwPayments.row, cGridColumnPayments_Amount].text) <= invoice_total - cumulative_paid Then
+      '    gvwPayments[gvwPayments.row, cGridColumnPayments_Amount].text = modUtil.Money_Format(invoice_total - cumulative_paid)  'put in the amount to complete payment
+      '    gvwPayments[gvwPayments.row, cGridColumnPayments_PaymentMethod].text = "EFTPOS"                                     'its usually EFTPOS
+      '    gvwPayments[gvwPayments.Row, cGridColumnPayments_Date].Text = Format$(Now(), "dd/mm/yy")                            'and most likely being paid on the day 
+      '    Invoice_Calculate_Amount_Paid()                                                       'work out amount now paid, and prominantly display total under the grid
+      '    EditArea_Notify_Data_Change(True)
+      '    gvwPayments_ShowProperty
+      '  Else
+      '    gvwPayments[gvwPayments.row, cGridColumnPayments_Amount].text = modUtil.Money_Format(invoice_total - cumulative_paid)  'put in the amount to complete payment
+      '  Endif
+   End If
    
 End
 
@@ -1225,7 +1316,8 @@ Public Sub gvwPayments_AutoFill_Validate_Row()
             Break
          Endif
       Next
-   End If      
+   End If    
+   Print "ENABLING THE GRID" & Format(Now(), "hh:nnnn")  
    gvwPayments.Enabled = True                                                         'otherwise, enable the payments grid
    Print paid_to_date, " = paid to date"
    Print invoice_total, " = invoice total"
@@ -1234,12 +1326,16 @@ Public Sub gvwPayments_AutoFill_Validate_Row()
    If s = "" Then                                                                     'if not re-clicking on a filled in row
       For row = 0 To gvwPayments.Rows.Max                                          'now add up all the rows and check if the cumulative amount    
          If gvwPayments[row, cGridColumnPayments_Amount].text <> "" Then
+            Print " CHECKING CUMULATIVE PAYMENTS ", Format(Now(), "hh:nn:ss")
             Print gvwPayments[row, cGridColumnPayments_Amount].text
             Print modUtil.MoneyToFloat(gvwPayments[row, cGridColumnPayments_Amount].text)
             cumulative_paid += modUtil.MoneyToFloat(gvwPayments[row, cGridColumnPayments_Amount].text) ' if is the invoice total
-            Print cumulative_paid
+            Print "CUKULATIVE PAID IS:" & cumulative_paid
             If cumulative_paid = invoice_total Then                                   'if it is 
                gvwPayments.row = row                                                 'then leave focus on that row of the grid
+               Return
+            Else If cumulative_paid > invoice_total Then
+               Message.Info("Can't pay more than the invoice")
                Return
             Endif
          End If   
@@ -1247,17 +1343,24 @@ Public Sub gvwPayments_AutoFill_Validate_Row()
       gvwPayments[gvwPayments.row, cGridColumnPayments_Amount].text = modUtil.Money_Format(invoice_total - cumulative_paid)  'put in the amount to complete payment
       gvwPayments[gvwPayments.row, cGridColumnPayments_PaymentMethod].text = "EFTPOS"                                     'its usually EFTPOS
       gvwPayments[gvwPayments.Row, cGridColumnPayments_Date].Text = Format$(Now(), "dd/mm/yy")                            'and most likely being paid on the day 
-      Payment_Calculate_Total                                                          'work out amount now paid, and prominantly display total under the grid
+      Invoice_Calculate_Amount_Paid()                                                      'work out amount now paid, and prominantly display total under the grid
       EditArea_Notify_Data_Change(True)
       gvwPayments_ShowProperty
+   Else
+      
    End If
    
 End
 
 Public Sub gvwPayments_DblClick()
    
-   ' txtPayment_Last_Value = gvwPayments[gvwPayments.row, gvwPayments.Column].Text
+  ' If invoice_total = Invoice_Calculate_Amount_Paid() Then 
+  '  Print "all paid gvwPayments_DblClick"
+  ' Return  
+  ' End If
+ ' If gvwPayments[gvwPayments.row, gvwPayments.Column].text <> "" Then   
    gvwPayments_ShowProperty
+ ' End If 
    
 End
 
@@ -1266,10 +1369,13 @@ Public Sub gvwPayments_MouseUp()
    'User has clicked on one of the cells in the grid
    'Don't know why this responds to a disabled grid
    '------------------------------------------------
-   
-   If gvwPayments.Column <> cGridColumnPayments_Amount Then
+   ' If invoice_total = Invoice_Calculate_Amount_Paid() Then 
+   '     Print "all paid gvwPayments_MOuseUp"
+   '    Return 
+   ' Endif
+   'If gvwPayments.Column <> cGridColumnPayments_Amount Then
       gvwPayments_ShowProperty                                  'bad name but show the control we want to overlay a cell
-   End If   
+  ' End If   
    
 End
 
@@ -1311,6 +1417,7 @@ Public Sub gvwPayments_Clear()
       .Border = Border.None
    End With
    Vbox_PaymentGrid.height = (gvwPayments.rows.count + 3) * gvwPayments.rows[0].height
+   txtPayment_Last_Value = ""
    
 End
 
@@ -1340,7 +1447,8 @@ Public Sub gvwPayments_Delete_Row()
    For col = 0 To 3
       gvwPayments[gvwPayments.row, col].text = ""
    Next
-   Payment_Calculate_Total()
+   txtPayment_Last_Value = ""
+   Invoice_Calculate_Amount_Paid()
    
 End
 
@@ -1418,49 +1526,6 @@ Public Sub gvwItemsBIlled_Clear()
    
 End
 
-' Public Sub gvwItemsBilled_lblOverLay_KeyPress()
-'    '----------------------------------------------------------------
-'    'This is a transparent label, "hiding" the editing textbox
-'    'Pass the keypress character into the underlying textbox if empty
-'    'and enter 'edit mode'
-'    '----------------------------------------------------------------
-'    
-'    gwItemsBilled_Cell_Overlay_Remove(key.Text)
-'    
-' End
-
-' Public Sub gwItemsBilled_Cell_Overlay_Remove(char As String)
-'    '----------------------------------------------------------------
-'    'use the underlying cell text to either set the fee combox index
-'    'or the textbox 1 editing textbox
-'    'remove the label hiding the control in the grid to allow use
-'    'either a combobox or a textbox
-'    '-----------------------------------------------------------------
-'    ' Dim hEditor As Object
-'    
-'    Dim Cell_Text As String
-'    
-'    If gvwItemsBIlled.Row = -1 Then Return
-'    cell_text = gvwItemsBIlled[gvwItemsBIlled.Row, gvwItemsBIlled.column].Text
-'    Select Case gvwItemsBIlled.column
-'       Case cGridColumnItem_FeeType
-'          Return ' don't do for the fee: it's a combo which has already been created
-'       Case cGridColumnItem_ItemNumber
-'          If cell_text <> "" Then Return ' can't edit the item number once set
-'       Case cGridColumnItem_Fee
-'          ' editing the fee is OK
-'       Case Else
-'          Return ' everything else, don't edit (yet)
-'    End Select
-'    oncol_items = gvwItemsBIlled.column ' remember which column we are editing
-'    txtFindItemNumber.text = char
-'    $hEditor_gvwItems = txtFindItemNumber
-'    gvwItemsBilled_lblOverLay.Visible = False
-'    $hEditor_gvwItems.visible = True
-'    $hEditor_gvwItems.SetFocus
-'    
-' End
-
 Public Sub gvwItemsBIlled_Init()
    '----------------------------------------------------------
    'Contruct the grid which will hold the items on the invoice
@@ -1472,19 +1537,6 @@ Public Sub gvwItemsBIlled_Init()
       .Columns.Count = 7
       .Rows.count = 4
    End With
-   '    .Columns[0].text = "Item"
-   '    .Columns[1].text = "Description"
-   '    .Columns[2].text = "Fee"
-   '    .Columns[3].text = "Gap"
-   '    .Columns[4].text = "Rate"
-   '    .Columns[5].text = "GST"
-   '    If Trim(lblInvoiceItems.text) = "Invoice Items" Then
-   '       .Columns[6].text = ""
-   '    Else
-   '        .Columns[6].text = "Reason Not Paid"
-   '    Endif
-   '    .Enabled = False
-   'End With
    
 End
 
@@ -1699,7 +1751,6 @@ Private Sub gvwItemsBilled_MoveProperty()
    'Move the editing Hbox control to match a grid cell co-ordinates and size
    '------------------------------------------------------------------------
    
-   Print "in move", gvwItemsBIlled.column
    If IsNull($hEditor_gvwItems) Or gvwItemsBIlled.Row = -1 Then Return
    With gvwItemsBIlled[gvwItemsBIlled.Row, gvwItemsBIlled.column]
       panGvwItemsBilledEditor.Move(gvwItemsBIlled.X + .X - gvwItemsBIlled.ScrollX, gvwItemsBIlled.Y + .Y - gvwItemsBIlled.ScrollY, .Width, .Height)
@@ -1719,7 +1770,7 @@ End
 
 Public Sub cmbPaymentMethods_Menu()
    
-   ' gvwPayments_lblOverLay_Menu()
+   mnuPayments.Popup
    
 End
 
@@ -3013,9 +3064,10 @@ Public Sub Invoice_Calculate_Total(sTotalType As String)
    
 End
 
-Public Sub Payment_Calculate_Total()
+Public Function Invoice_Calculate_Amount_Paid() As Float
    '-----------------------------------------------------------------
    'Calculates the total amount of all payments made for this invoice
+   'returns the total
    '------------------------------------------------------------------
    
    Dim x As Integer
@@ -3044,6 +3096,7 @@ Public Sub Payment_Calculate_Total()
       tbSaveNoPrint.Enabled = True
       tbSaveNoPrint.Text = "Account No Print"
    Endif
+   Return total 
    
 End
 
@@ -3849,7 +3902,7 @@ Private Sub Reload_Invoice_Data()
    gvwPayments[gvwPayments.row, cGridColumnPayments_Amount].text = modUtil.Money_Format(invoice_total - amount_paid)  'put in the amount to complete payment
    gvwPayments[gvwPayments.row, cGridColumnPayments_PaymentMethod].text = "EFTPOS"                                     'its usually EFTPOS
    gvwPayments[gvwPayments.Row, cGridColumnPayments_Date].Text = Format$(Now(), "dd/mm/yy")                            'and most likely being paid on the day 
-   Payment_Calculate_Total                                                          'work out amount now paid, and prominantly display total under the grid
+   Invoice_Calculate_Amount_Paid()                                                      'work out amount now paid, and prominantly display total under the grid
    EditArea_Notify_Data_Change(True)
    Hbox_InvoiceGrid.Enabled = True
    gvwPayments.Enabled = True
@@ -7537,13 +7590,12 @@ End
 Public Sub Button1_Click()
    
    gvwItemsBIlled.Enabled = True 
-   Print gvwPayments_lblOverLay.Visible
    
 End
 
 Public Sub gvwPayments_GotFocus()
    
-   txtPayment_Last_Value = ""
+   ' txtPayment_Last_Value = ""
    
 End
 

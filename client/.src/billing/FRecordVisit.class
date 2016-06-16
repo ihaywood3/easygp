@@ -1018,13 +1018,6 @@ Public Function Item_Number_Selected() As Boolean
    
 End
 
-Public Sub txtPayment_LostFocus()
-   
-   gvwPayments_SaveProperty
-   gvwPayments_HideProperty
-   
-End
-
 Public Sub txtPayment_GotFocus()
    
    If gvwPayments.row = -1 Then Return
@@ -1125,7 +1118,6 @@ Public Sub gvwPayments_ShowProperty()
    Dim sProp As String  'contents of the grid cell
    Dim hEditor As Object
    
-  
    txtPayment.Hide
    txtPayment.text = ""
    If cell_text_gvwPayments <> "" Then txtPayment.text = cell_text_gvwPayments
@@ -1133,11 +1125,10 @@ Public Sub gvwPayments_ShowProperty()
    panGvwPaymentsEditor.Hide
    Select Case gvwPayments.column
       Case cGridColumnPayments_PaymentMethod
-         ' cmbPaymentMethods.Index = cmbPaymentMethods.Find(gvwPayments[gvwPayments.Row, gvwPayments.column].Text)
+          cmbPaymentMethods.Index = cmbPaymentMethods.Find(gvwPayments[gvwPayments.Row, gvwPayments.column].Text)
          hEditor = cmbPaymentMethods
       Case Else
          hEditor = txtPayment
-         ' If txtPayment_Last_Value <> "" Then gvwPayments[gvwPayments.row, gvwPayments.Column].Text = txtPayment_Last_Value
    End Select
    oncol_payments = gvwPayments.Column
    $hEditor_gvwPayments = hEditor
@@ -1176,14 +1167,34 @@ Public Sub gvwPayments_MouseDown()
 End
 
 Public Sub gvwPayments_MouseUp()
-   '------------------------------------------------
+   '------------------------------------------------------------------------
    'User has clicked on one of the cells in the grid
    'Don't know why this responds to a disabled grid
-   '------------------------------------------------
+   'If total payment <> invoice total, allow them to use the row clicked on
+   'also could be an 'invalid' row, i.e, total may already be reached
+   'if so re-set the row back to the last valid one
+   '------------------------------------------------------------------------
+   
+   Dim row As Integer
+   Dim cumulative_paid As Float
+   Dim on_Row As Integer = gvwPayments.Row
    
    If gvwPayments.row = -1 Or gvwItemsBilled_IsEmpty() Then Return
-   gvwPayments_AutoFill_Validate_Row    
-   gvwPayments_ShowProperty
+   If (CInt(Invoice_Calculate_Amount_Paid()) >= CInt(invoice_total)) Then 
+      For row = 0 To gvwPayments.Rows.Max                                                               ' now add up all the rows 
+         If gvwPayments[row, cGridColumnPayments_Amount].text <> "" Then                                ' with money in them             
+            cumulative_paid += modUtil.MoneyToFloat(gvwPayments[row, cGridColumnPayments_Amount].text)  ' as the cumulative total    
+            If cumulative_paid = invoice_total Then                                                     ' if is equal to the invoice total
+               If on_Row <= row Then row = on_Row                                                       ' if user had clicked on a valid row 
+               gvwPayments.row = row                                                                    ' then leave focus on that row of the grid
+               Break                                                                                    ' or the last valid one
+            Endif
+         End If   
+      Next
+      gvwPayments_ShowProperty
+   Else
+      gvwPayments_AutoFill_Validate_Row                                                                 'Not yet reached the invoice total, auto-fill grid
+   End If   
    
 End
 
@@ -1204,10 +1215,6 @@ Public Sub gvwPayments_AutoFill_Validate_Row()
    Dim cumulative_paid As Float
    
    paid_to_date = Invoice_Calculate_Amount_Paid()
-   If CInt(paid_to_date) >= CInt(invoice_total) Then 
-      Stop Event
-      Return
-   End If   
    If gvwItemsBIlled[0, 0].text <> "" And gvwItemsBIlled[0, 0].text <> "" Then        'if we have an item we have added to invoice
       If rbInvoiceToMedicare.value = True Or rbInvoiceToVeterans.value = True Then    'disable the payments grid if this is bulk billed item
          gvwPayments.Enabled = False
@@ -1230,7 +1237,6 @@ Public Sub gvwPayments_AutoFill_Validate_Row()
    End If  
    'ensure they are not clicking on empty row out of sequence, if are then set next empty row underneaeth existing text
    If gvwPayments.Row > 0 And If gvwPayments[gvwPayments.Row, 0].text = "" Then 'if user clicks on row and row above not filled in move back FIXME THIS CODE DOES NOT DO THIS
-      
       For row = 0 To gvwPayments.Rows.Max    
          If gvwPayments[row, 0].text = "" Then
             gvwPayments.Row = row
@@ -1261,15 +1267,9 @@ Public Sub gvwPayments_AutoFill_Validate_Row()
       Wait
       Invoice_Calculate_Amount_Paid()                                                      'work out amount now paid, and prominantly display total under the grid
       EditArea_Notify_Data_Change(True)
-      ' gvwPayments_ShowProperty
-   Else
-      ' txtPayment.text = txtPayment_Last_Value
-      Print
    End If
    
 End
-
-
 
 Public Function gvwPayments_IsEmpty() As Boolean
    '
@@ -6562,9 +6562,9 @@ Public Sub mnuAccountHistory_Click()
          End If   
          Items_Today_Or_Unpaid_Reload                         'reload the list of items under the edit area
          Account_History_Show                                 'reload the accounts history
-       '  If Not bSearchingAccounts Then                       'if the data source was patient from the unbilled appointments list
-            UnBilled_Appointments_Reload                      'reload this to re-show the now un-billed consultation 
-       '  Endif
+         '  If Not bSearchingAccounts Then                       'if the data source was patient from the unbilled appointments list
+         UnBilled_Appointments_Reload                      'reload this to re-show the now un-billed consultation 
+         '  Endif
       Case "mark unpaid"
          If Message.Question("Mark this invoice as unpaid?", "Yes", "No") = 2 Then Return
          If modBillingDBI.invoice_Mark_Unpaid(items_billed[cvwAccountHistory_Key]!fk_invoice) Then

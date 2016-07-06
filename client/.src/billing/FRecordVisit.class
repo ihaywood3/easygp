@@ -196,6 +196,8 @@ Private Items_Billed As Collection
 Private Items_Today_Or_Unpaid As Collection
 Private invoice As Crow
 Private ScheduledFeeItems As Collection
+Private FilteredScheduledFeeItems As Collection
+
 Private FeeItem As Collection
 Private iLast_Invoice_Type As Integer
 Private Const cLast_Invoice_Type_Private As Integer = 0
@@ -345,8 +347,7 @@ Public Sub Init()
       .Columns[0].Width = 80
    End With
    Form_Billing = Me
-   lblSearchAccounts.Foreground = Color.LightGray
-   lblmeasure.text = "  Medicare Voucher  "
+    lblmeasure.text = "  Medicare Voucher  "
    tbUniversal.width = lblmeasure.Width
    Item_Number_Categories = New String[]
    Item_Number_Categories.Add("all items")
@@ -596,6 +597,7 @@ Public Sub Scheduled_Fees_Reload()
    Dim num_patients As String = ""
    Dim x As Integer
    
+   FilteredScheduledFeeItems = New Collection 
    With gvwFeeScheduleItems
       .Clear
       .Columns.count = 2
@@ -618,9 +620,8 @@ Public Sub Scheduled_Fees_Reload()
       
       If Not bskip Then
          Inc gvwFeeScheduleItems.rows.count
-         '  gvwFeeScheduleItems.row = x
          num_patients = ""
-         If FeeItem!percentage_fee_rule Then
+         If FeeItem!number_of_patients <> 0 Then
             num_patients = "/" & Str(FeeItem!number_of_patients)
          Endif
          gvwFeeScheduleItems[x, 0].text = Trim(FeeItem!mbs_item & " " & FeeItem!ama_item & " " & FeeItem!user_item) & num_patients
@@ -633,6 +634,7 @@ Public Sub Scheduled_Fees_Reload()
             gvwFeeScheduleItems[x, 1].WordWrap = True
             gvwFeeScheduleItems.rows[x].Height = -1
          End If
+         FilteredScheduledFeeItems.Add(FeeItem, FilteredScheduledFeeItems.count)
          Inc x
       End If
    Next
@@ -681,6 +683,10 @@ Public Sub Fee_Schedule_Reload()
    End With
    Inc Application.Busy
    ScheduledFeeItems = modUtil.Copy_Collection_Keyed_Sequentially(modBillingDBI.Fees_Get_With_Brief_Descriptor())
+   FilteredScheduledFeeItems = modUtil.Copy_Collection(ScheduledFeeItems)
+   If Trim(txtFilter.text) <> "" Then
+      Scheduled_Fees_Reload
+   Endif
    gvwFeeScheduleItems_FillGrid()
    Dec Application.Busy
    
@@ -754,7 +760,7 @@ Public Sub UnBilled_Appointments_Reload(Optional single_day As Date = Null)
       ' Else
       '    pic = pic_empty
       ' Endif
-     
+      
       gvwUnpaidVisits[x, 0].Text = Format(Unbilled_consultation!begin, "dd/mm/yyyy") 
       
       gvwUnpaidVisits[x, 0].Alignment = Align.TopLeft
@@ -762,7 +768,7 @@ Public Sub UnBilled_Appointments_Reload(Optional single_day As Date = Null)
       gvwUnpaidVisits[x, 1].RichText = "<P><B>" & Unbilled_consultation!title & " " & Left(Unbilled_consultation!firstname, 1) & " " & Unbilled_consultation!surname & "</B>"
       If Not IsNull(Unbilled_consultation!comment_for_billing) Then
          gvwUnpaidVisits[x, 1].RichText &= "<BR>" & Unbilled_consultation!comment_for_billing & "</P>"
-          gvwUnpaidVisits[x, 0].Foreground = Color.Red 'the date
+         gvwUnpaidVisits[x, 0].Foreground = Color.Red 'the date
          gvwUnpaidVisits[x, 1].Foreground = Color.red  ' the comment 
          gvwUnpaidVisits.Rows[x].Height = sFontHeight * 2.2  
       Endif
@@ -1774,11 +1780,16 @@ Public Sub txtFindItemNumber_Activate()
             txtFindItemNumber.Visible = False
             gvwItemsBIlled.SetFocus()
             ' re-compute GST amounts if required
-            Try gst = modUtil.MoneyToFloat(gvwItemsBilled[gvwItemsBilled.Row, cGridColumnItem_gst_amount].Text)
-            If Not Error And If gst > 0 And If old_fee > 0 Then
-               gst = fee_float * (gst / old_fee)
+            Print selected_item_num_and_billing_level!gst_rate
+            If selected_item_num_and_billing_level!gst_rate <> 0 Then
+               gst = fee_float / selected_item_num_and_billing_level!gst_rate
                gvwItemsBilled[gvwItemsBilled.Row, cGridColumnItem_gst_amount].Text = modUtil.Money_Format(gst)
             Endif
+            ' Try gst = modUtil.MoneyToFloat(gvwItemsBilled[gvwItemsBilled.Row, cGridColumnItem_gst_amount].Text)
+            ' If Not Error And If gst > 0 And If old_fee > 0 Then
+            '    gst = fee_float * (gst / old_fee)
+            '    gvwItemsBilled[gvwItemsBilled.Row, cGridColumnItem_gst_amount].Text = modUtil.Money_Format(gst)
+            ' Endif
             ' re-compute the gap if required
             Try old_gap = modUtil.MoneyToFloat(gvwItemsBilled[gvwItemsBilled.Row, cGridColumnItem_Gap].Text)
             If Not Error And If old_gap > 0 Then
@@ -1787,6 +1798,9 @@ Public Sub txtFindItemNumber_Activate()
             Endif
             Invoice_Calculate_Total("Total Owing")
          Endif
+      Case cGridColumnItem_gst_amount
+         selected_item_num_and_billing_level
+         
       Case cGridColumnItem_BriefDescriptor
          If IsNull(item) Then Return
          If IsNull(item!descriptor_brief) Then
@@ -1822,6 +1836,90 @@ Public Sub txtFindItemNumber_KeyPress()
    End Select
    
 End
+
+Public Sub txtFindItemNumber_Activate_old()
+   'This is the textbox which overlays the cells in the grid
+   'user has hit the <enter> key
+   
+   Dim fee As String
+   Dim fee_float As Float
+   Dim old_fee As Float
+   Dim gst As Float
+   Dim old_gap As Float
+   
+   If bexit Or gvwItemsBIlled.row = -1 Then Return 
+   panGvwItemsBilledEditor.Hide
+   $hEditor_gvwItems = Null
+   Select Case OnCol_Items
+      Case cGridColumnItem_ItemNumber
+         gvwItemsBIlled[gvwItemsBIlled.row, 0].Text = txtFindItemNumber.text
+         txtFindItemNumber.Visible = False
+         Item_Number_Get_Fee_Levels_Fill_Invoice_Row(txtFindItemNumber.text)
+      Case cGridColumnItem_Fee
+         fee = Trim(txtFindItemNumber.text)
+         fee = Replace$(fee, "$", "")
+         Try fee_float = modUtil.MoneyToFloat(fee)
+         If Error Then
+            Message.Error("Not a valid monetary value")
+         Else
+            old_fee = 0
+            Try old_fee = modUtil.MoneyToFloat(gvwItemsBilled[gvwItemsBilled.Row, 2].Text)
+            gvwItemsBilled[gvwItemsBilled.Row, 2].Text = "$" & fee
+            txtFindItemNumber.Visible = False
+            gvwItemsBIlled.SetFocus()
+            ' re-compute GST amounts if required
+            Print selected_item_num_and_billing_level!gst_rate
+            Try gst = modUtil.MoneyToFloat(gvwItemsBilled[gvwItemsBilled.Row, cGridColumnItem_gst_amount].Text)
+            If Not Error And If gst > 0 And If old_fee > 0 Then
+               gst = fee_float * (gst / old_fee)
+               gvwItemsBilled[gvwItemsBilled.Row, cGridColumnItem_gst_amount].Text = modUtil.Money_Format(gst)
+            Endif
+            ' re-compute the gap if required
+            Try old_gap = modUtil.MoneyToFloat(gvwItemsBilled[gvwItemsBilled.Row, cGridColumnItem_Gap].Text)
+            If Not Error And If old_gap > 0 Then
+               old_gap = old_gap + fee_float - old_fee
+               gvwItemsBilled[gvwItemsBilled.Row, cGridColumnItem_Gap].Text = modUtil.Money_Format(old_gap)
+            Endif
+            Invoice_Calculate_Total("Total Owing")
+         Endif
+      Case cGridColumnItem_gst_amount
+         selected_item_num_and_billing_level
+         
+      Case cGridColumnItem_BriefDescriptor
+         If IsNull(item) Then Return
+         If IsNull(item!descriptor_brief) Then
+            Message.Title = "Brief Descriptors"
+            gvwItemsBIlled[gvwItemsBIlled.row, 1].Text = Trim(txtFindItemNumber.text)
+            If Message.question("Do you want to save this brief descriptor?", "Yes", "No") = 1 Then
+               modDBConnect.update("billing.fee_schedule", Null, ["pk": item!fk_fee_schedule, "descriptor_brief": gvwItemsBIlled[gvwItemsBIlled.row, 1].Text])
+               item!descriptor_brief = gvwItemsBIlled[gvwItemsBIlled.row, 1].Text
+               modDBConnect.CommitTrans()
+               txtFindItemNumber.Visible = False
+               HBox_Descriptor.Visible = False
+               txtDescriptor.text = ""
+               gvwItemsBIlled.SetFocus()
+            Endif
+         Endif
+   End Select
+   
+End
+
+' Public Sub txtFindItemNumber_KeyPress()
+'    
+'    Select Case key.Code
+'       Case key.Down
+'          If OnCol_Items = cGridColumnItem_BriefDescriptor Then
+'             If columnview1.Visible Then
+'                With columnview1
+'                   .MoveFirst
+'                   .Item.Selected = True
+'                   .SetFocus()
+'                End With
+'             End If
+'          End If
+'    End Select
+'    
+' End
 
 Public Sub txtFindItemNumber_KeyRelease()
    '--------------------------------------------------------------------
@@ -1991,7 +2089,7 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True)
       If Not IsNull(latex) Then modPrinting.Print_latex(latex)
       Return           'no data change no save
    Endif
-   If Not Valid_Invoice_Items() Then Return                 'items invalid no save
+   If Not Valid_Invoice_Items(bBulkBill) Then Return                 'items invalid no save
    '-----------------------------------------------------
    'Now, work out if being paid, if so ?all, is it valid?
    '-----------------------------------------------------
@@ -2294,9 +2392,10 @@ Public Sub gvwFeeScheduleItems_FillGrid()
    Dim num_patients As String = ""
    Dim x As Integer
    
-   For Each FeeItem In ScheduledFeeItems
+   ' For Each FeeItem In ScheduledFeeItems
+   For Each FeeItem In FilteredScheduledFeeItems   
       num_patients = ""
-      If FeeItem!percentage_fee_rule Then
+      If FeeItem!number_of_patients <> 0 Then
          num_patients = "/" & Str(FeeItem!number_of_patients)
       Endif
       Inc gvwFeeScheduleItems.rows.count
@@ -2307,7 +2406,12 @@ Public Sub gvwFeeScheduleItems_FillGrid()
       gvwFeeScheduleItems.Rows[gvwFeeScheduleItems.row].Height = -1
       Inc x
    Next
-   
+   If gvwFeeScheduleItems.rows.count Then
+      With gvwFeeScheduleItems
+         .SetFocus
+         .row = 0
+       End With
+   Endif
 End
 
 Public Sub Resize_Grids()
@@ -2561,7 +2665,9 @@ Public Sub Item_Number_Get_Fee_Levels_Fill_Invoice_Row(txt As String)
    Scheduled_Fee = modBillingDBI.Fee_Get_For_Item_And_Billing_Type(txt, const.Billingtype_Scheduled_Fee)
    If IsNull(scheduled_fee) Then
       fk_lu_billing_type = const.Billingtype_Private  
-      rbInvoiceToPatient.Value = True     'though sets this,  bInvoiceTo_Click() won't execute because bExit=True
+      If rbInvoiceToOther.value = False Then    
+         rbInvoiceToPatient.Value = True     'though sets this,  bInvoiceTo_Click() won't execute because bExit=True
+      End If   
    Endif
    fees_for_an_item_numbers_billing_levels = modBillingDBI.Fees_Get_All_Levels_For_Item(txt) ', fk_lu_billing_type)
    If fees_for_an_item_numbers_billing_levels.count = 0 Then
@@ -3391,7 +3497,12 @@ Public Sub Invoice_New()
    
    bexit = True
    Unbilled_consultation = Null                 'the invoice is not being raised from appointment list
-   gvwItemsBIlled.Clear                    'clear the grid the user will type in the item numbers
+   With gvwItemsBIlled
+      .Clear                    'clear the grid the user will type in the item numbers
+      .Enabled = True
+      .Rows.count = 4
+      .row = 0
+   End With
    lblcol7.text = ""                            'in payment mode this says "Reason Not Paid"
    lblInvoiceItems.text = " Invoice Items"
    item_flags = New Collection
@@ -3415,7 +3526,6 @@ Public Sub Invoice_New()
    rbOnline_Yes.Visible = True
    rbOnline_No.Visible = True
    lblOnlineStatus.text = ""
-   gvwItemsBIlled.Rows.count = 4 'reset row count
    HBox_InvoiceGrid.Visible = True 
    cvwItemsTodayOrUnpaid.UnselectAll() 
    bExit = False
@@ -3730,7 +3840,6 @@ Public Sub txtSearch_GotFocus()
    
    txtSearch.Text = ""
    Last.BackGround = Color.rgb(95, 255, 175)
-   lblSearchAccounts.Foreground = Color.Black
    txtSearch.Clear()
    With columnview99
       .clear
@@ -3748,7 +3857,6 @@ End
 
 Public Sub txtSearch_KeyRelease()
    
-   Debug "key release"
    timer_count = 0
    timer1.Enabled = True
    timer1.Start
@@ -4135,10 +4243,12 @@ Finally
    
 End
 
-Public Function Valid_Invoice_Items() As Boolean
+Public Function Valid_Invoice_Items(bBulkBill As Boolean) As Boolean
    '--------------------------------------------------
    'Validates if the item data on the invoice is valid
    '--------------------------------------------------
+   
+   Dim grid_row As Integer
    
    If IsNull(fk_patient) Then
       Message.Info("Please select a valid patient")
@@ -4160,6 +4270,22 @@ Public Function Valid_Invoice_Items() As Boolean
    If Not gvwPayments_DataValid() Then
       Return
    Endif
+   If bBulkBill = False Then  
+      If rbInvoiceToPatient.Value = False Then
+         If rbInvoiceToOther.value = False Then
+            Message.Info("Please select the person or organisation resonsible for this invoice")
+            Return
+         Endif
+      Endif
+   Endif
+   For grid_row = 0 To gvwItemsBIlled.Rows.count - 1  'fixme check all necessary data is in grids cells
+      If gvwItemsBIlled[grid_row, cGridColumnItem_ItemNumber].Text <> "" Then
+         If modUtil.MoneyToFloat(gvwItemsBIlled[grid_row, cGridColumnItem_Fee].Text) <= 0 Then
+            Message.Info("Please enter a valid amount of money for any items in the billing grid")
+            Return
+         Endif
+      End If  
+   Next
    Return True
    
 End
@@ -4338,7 +4464,6 @@ Public Sub combobox1_Click()
    If bexit Then Return
    Select Case TabStrip1.Index
       Case cTab_Invoices_Receipts
-         lblSearchAccounts.Foreground = Color.LightGray
          Reload()
       Case cTab_Banking
       Case cTab_ScheduleFees
@@ -4456,11 +4581,15 @@ Public Sub TabStrip1_Click()
          HBox_Search.Visible = True
          HBox_Veterans_or_medicare.Visible = False
          VBox_ForOtherTabs.Visible = True
+         
          DateChooser1.visible = False
          gvwFeeScheduleItems.visible = True
          columnview99.Visible = False
          VBox_Accounts.Visible = False
          VBox_ForOtherTabs.Visible = True
+         lblFilter.Text = "Filter         "
+         lblMeasure.text = lblFilter.Text
+         modEditAreaHelpers.Resize_labels(VBox_ForOtherTabs, lblmeasure)
          If IsNull(from_fee_schedule) Then
             With from_fee_schedule = New FFeeSchedule(Vbox_FeeSchedule)
                .Init()
@@ -4468,12 +4597,10 @@ Public Sub TabStrip1_Click()
             combobox1.index = cAll_ItemNumbers 'loads the fee schedule
             combobox1.Visible = True
             HBox_Search.Visible = True
-            lblFilter.Text = "Filter "
             Try gvwFeeScheduleItems.font = Font[Settings["FRecordVisit_Billing_FeeSchedule/gvwFeeScheduleItems.font"]]
             gvwFeeScheduleItems.row = 0
             gvwFeeScheduleItems.SetFocus()
             gvwFeeScheduleItems.Rows[0].Selected = True
-            
          End If
          Wait
          
@@ -5903,7 +6030,7 @@ Public Function visit_type_create_html(visit_subset As Collection, group_name As
          Endif
       End If   
       'income_generated += modUtil.MoneyToFloat(visit!amount)
-      If visit!paid = True And modUtil.IsSameDay(visit!date_paid, visit!appointment_date) Then  'Or visit!paid = True And modUtil.IsSameDay(visit!date_paid, visit!date_paid) Then
+      If (visit!paid = True And modUtil.IsSameDay(visit!date_paid, visit!appointment_date)) Or (visit!paid = True And modUtil.IsSameDay(visit!date_paid, visit!date_invoiced) And IsNull(visit!appointment_date)) Then
          total_paid_all_items_on_invoice = modUtil.MoneyToFloat(visit!total_paid)
          For Each payment In visit!payments
             If payment!fk_lu_payment_method = const.payment_method_bad_debt Then
@@ -6452,8 +6579,7 @@ Public Sub cmbUnpaidInvoices_Click()
    ' >1 month, 2 month 3 months, i.e whatever the cmbUnpaidInvoices.text is
    
    If Bexit Then Return
-   lblSearchAccounts.Foreground = Color.LightGray
-   txtSearchAccountNames.text = ""
+    txtSearchAccountNames.text = ""
    gvwUnpaidVisits.UnselectAll                 ' if a marquee showing on the appointments not billed list remove it
    gvwAccountNames.Clear                    ' clear the grid
    bSearchingAccounts = True 
@@ -6662,8 +6788,11 @@ Public Sub gvwFeeScheduleItems_Select()
    'User has clicked on the gridview containing the list of scheduled fees
    '----------------------------------------------------------------------
    
-   Dim sfi As Collection = ScheduledFeeItems[gvwFeeScheduleItems.row]
+   Dim sfi1 As Collection = ScheduledFeeItems[gvwFeeScheduleItems.row]
    
+   Dim sfi As Collection = FilteredScheduledFeeItems[gvwFeeScheduleItems.row]
+   
+   Print ScheduledFeeItems
    With from_fee_schedule
       .Fee_Schedule_Item_Set(sfi)
       .Fee_Schedule_Item_Display()
@@ -7070,5 +7199,17 @@ End
 Public Sub gvwPayments_Scroll()
    
    GvwPayments_MoveProperty
+   
+End
+
+Public Sub txtSearch_Change()
+
+   If TabStrip1.Index = cTab_ScheduleFees Then 
+      If Trim(txtSearch.text) = "" Then
+         timer1.Stop
+         combobox1.index = 0
+         gvwFeeScheduleItems.SetFocus
+      End If   
+   End If   
    
 End

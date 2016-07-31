@@ -1288,21 +1288,25 @@ Public Sub gvwPayments_MouseUp()
    Dim on_Row As Integer = gvwPayments.Row
    
    If gvwPayments.row = -1 Or gvwItemsBilled_IsEmpty() Then Return
-   If (CInt(Invoice_Calculate_Amount_Paid()) >= CInt(invoice_total)) Then 
-      For row = 0 To gvwPayments.Rows.Max                                                               ' now add up all the rows 
-         If gvwPayments[row, cGridColumnPayments_Amount].text <> "" Then                                ' with money in them             
-            cumulative_paid += modUtil.MoneyToFloat(gvwPayments[row, cGridColumnPayments_Amount].text)  ' as the cumulative total    
-            If cumulative_paid = invoice_total Then                                                     ' if is equal to the invoice total
-               If on_Row <= row Then row = on_Row                                                       ' if user had clicked on a valid row 
-               gvwPayments.row = row                                                                    ' then leave focus on that row of the grid
-               Break                                                                                    ' or the last valid one
-            Endif
-         End If   
-      Next
-      gvwPayments_ShowProperty
-      
+   If gvwPayments.Column = 0 Then 
+      If (CInt(Invoice_Calculate_Amount_Paid()) >= CInt(invoice_total)) Then 
+         For row = 0 To gvwPayments.Rows.Max                                                               ' now add up all the rows 
+            If gvwPayments[row, cGridColumnPayments_Amount].text <> "" Then                                ' with money in them             
+               cumulative_paid += modUtil.MoneyToFloat(gvwPayments[row, cGridColumnPayments_Amount].text)  ' as the cumulative total    
+               If cumulative_paid = invoice_total Then                                                     ' if is equal to the invoice total
+                  If on_Row <= row Then row = on_Row                                                       ' if user had clicked on a valid row 
+                  gvwPayments.row = row                                                                    ' then leave focus on that row of the grid
+                  Break                                                                                    ' or the last valid one
+               Endif
+            End If   
+         Next
+         gvwPayments_ShowProperty
+         
+      Else
+         gvwPayments_AutoFill_Validate_Row                                                                 'Not yet reached the invoice total, auto-fill grid
+      End If   
    Else
-      gvwPayments_AutoFill_Validate_Row                                                                 'Not yet reached the invoice total, auto-fill grid
+      gvwPayments_ShowProperty
    End If   
    
 End
@@ -2828,14 +2832,22 @@ Public Sub Item_Number_Get_Fee_Levels_Fill_Invoice_Row(txt As String)
    If IsNull(selected_item_num_and_billing_level!descriptor_brief) Then 
       bMissingBriefDescriptor = True
    Endif
+   If selected_item_num_and_billing_level!percentage_fee_rule Then
+      selected_item_num_and_billing_level = Precentage_Fee_Rule_Adjust_Price(selected_item_num_and_billing_level)
+   Endif
    price = Replace(selected_item_num_and_billing_level!price, "$", "")
    gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_BriefDescriptor].Text = selected_item_num_and_billing_level!descriptor_brief
    gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_Fee].Text = selected_item_num_and_billing_level!price
-   If fk_lu_billing_type <> const.Billingtype_DVA_LM0 Or fk_lu_billing_type <> const.Billingtype_Scheduled_Fee Then
-      Try gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_Gap].Text = modUtil.Money_Format(Str(CFloat(Val(Replace(selected_item_num_and_billing_level!price, "$", ""))) - CFloat(Val(Replace(Scheduled_Fee!price, "$", "")))))
-   Else
+   
+   If rbInvoiceToVeterans.value = True Or rbInvoiceToMedicare.value = True Then
       gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_Gap].Text = "$0.00"
-   End If
+   Else
+      If fk_lu_billing_type <> const.Billingtype_DVA_LM0 Or fk_lu_billing_type <> const.Billingtype_Scheduled_Fee Then
+         Try gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_Gap].Text = modUtil.Money_Format(Str(CFloat(Val(Replace(selected_item_num_and_billing_level!price, "$", ""))) - CFloat(Val(Replace(Scheduled_Fee!price, "$", "")))))
+      Else
+         gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_Gap].Text = "$0.00"
+      End If
+   End If   
    gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_FeeType].text = selected_item_num_and_billing_level!fee_type
    last_Fee_type = selected_item_num_and_billing_level!fee_type
    If Not IsNull(selected_item_num_and_billing_level!gst_rate) And selected_item_num_and_billing_level!gst_rate <> 0 Then 'FIX ME ?CONVERT BACKEND TO NULL IN THIS FIELD NOT ZERO.
@@ -2880,6 +2892,35 @@ Invalid_Item_Number:
    bexit = False  
    gvwItemsBilled_Delete_Row()
    
+End
+
+Public Function Precentage_Fee_Rule_Adjust_Price(selected_item_num_and_billing_level As Collection) As Collection   
+   'precentage fee rule = 100% for the first, 50% for the second, 25% for the third and subsequent?
+   
+   Dim x As Integer
+   Dim price As String
+   Dim occurence_of_item_count As Integer
+   Dim mbs_item As String = selected_item_num_and_billing_level!mbs_item  
+   
+   price = Replace(selected_item_num_and_billing_level!price, "$", "")
+   
+   For x = 0 To gvwItemsBIlled.Rows.count - 1
+      If gvwItemsBIlled[x, 0].text = mbs_item Then 
+         Inc occurence_of_item_count
+      Endif
+   Next
+   Select Case occurence_of_item_count 
+      Case 1        'full fee is ok
+         Return selected_item_num_and_billing_level
+      Case 2        'need 1/2 fee
+         selected_item_num_and_billing_level!price = modUtil.Money_Format(modUtil.MoneyToFloat(price) * 0.5)
+         Print price 
+      Case Else     'need 1/4 fee
+         selected_item_num_and_billing_level!price = modUtil.Money_Format(modUtil.MoneyToFloat(price) * 0.25)
+         
+   End Select
+   Return selected_item_num_and_billing_level
+
 End
 
 Public Sub gvwItemsBIlled_Add_Row()
@@ -4454,7 +4495,7 @@ Public Sub Invoice_To_Set_Billing_To_Details(patient_collection As Collection)
             End With
             With rbInvoiceToMedicare
                .Value = False
-               .Enabled = False
+               .Enabled = True           'can still bill as both
             End With
             tbUniversal.text = "Veterans Voucher"
          Else
@@ -6160,24 +6201,32 @@ Public Function visit_type_create_html(visit_subset As Collection, group_name As
          If bOldAccount Then 
             total_paid_all_items_on_invoice = modUtil.MoneyToFloat(visit!total_paid)
             'substract any bad debt and collect payment methods into one string
-            all_payment_methods = ""
-            For Each payment In visit!payments
-               If Not InStr(all_payment_methods, payment!payment_method) Then
-                  If payment!fk_lu_payment_method <> const.payment_method_bad_debt Then
-                     all_payment_methods &= payment!payment_method
-                  End If   
-               Endif
-               payment_totals[payment!fk_lu_payment_method] = payment_totals[payment!fk_lu_payment_method] + CFloat(Replace(payment!amount, "$", "")) 'EFTPOS, Cheque, Cash etc
-               If bad_debt = 0 Then                                                        ' each visit has replica of all payments                             
-                  If payment!fk_lu_payment_method = const.payment_method_bad_debt Then
-                     total_paid_all_items_on_invoice -= modUtil.MoneyToFloat(payment!amount)
-                     bad_debt += modUtil.MoneyToFloat(payment!amount)
+            If Not bSameInvoice Then
+               all_payment_methods = ""
+               For Each payment In visit!payments
+                  If Not InStr(all_payment_methods, payment!payment_method) Then
+                     If payment!fk_lu_payment_method <> const.payment_method_bad_debt Then
+                        If modUtil.IsSameDay(payment!date_paid, DateChooser1.Value) Then
+                           all_payment_methods &= payment!payment_method
+                        End If   
+                     End If   
                   Endif
-               End If   
-            Next
-            shtml = Replace(shtml, "%paid%", modUtil.Money_Format(total_paid_all_items_on_invoice))
-            shtml = Replace(shtml, "%paymentmethod%", UCase(all_payment_methods))
-            running_total_old_invoices += modUtil.MoneyToFloat(visit!amount) + modUtil.MoneyToFloat(visit!amount_gst)
+                  If modUtil.IsSameDay(payment!date_paid, DateChooser1.Value) Then
+                     payment_totals[payment!fk_lu_payment_method] = payment_totals[payment!fk_lu_payment_method] + CFloat(Replace(payment!amount, "$", "")) 'EFTPOS, Cheque, Cash etc
+                  Else   
+                     total_paid_all_items_on_invoice -= modUtil.MoneyToFloat(payment!amount)
+                  Endif
+                  If bad_debt = 0 Then                                                        ' each visit has replica of all payments                             
+                     If payment!fk_lu_payment_method = const.payment_method_bad_debt Then
+                        total_paid_all_items_on_invoice -= modUtil.MoneyToFloat(payment!amount)
+                        bad_debt += modUtil.MoneyToFloat(payment!amount)
+                     Endif
+                  End If   
+               Next
+               shtml = Replace(shtml, "%paid%", modUtil.Money_Format(total_paid_all_items_on_invoice))
+               shtml = Replace(shtml, "%paymentmethod%", UCase(all_payment_methods))
+               running_total_old_invoices += modUtil.MoneyToFloat(visit!amount) + modUtil.MoneyToFloat(visit!amount_gst)
+            End If   
          Else
             'though not fully paid, it could be part paid ie total_paid not null but < amount
             If (visit!paid = True Or Not IsNull(visit!total_paid)) And modUtil.IsSameDay(visit!date_paid, visit!appointment_date) Then
@@ -6211,7 +6260,6 @@ Public Function visit_type_create_html(visit_subset As Collection, group_name As
          End If   
          If modUtil.IsSameDay(DateChooser1.Value, visit!appointment_date) Or modUtil.IsSameDay(DateChooser1.Value, visit!visit_date) Then  
             If bInvoiceisPrivate Then 
-               
                If visit!paid = False Then   
                   running_total_private_account += modUtil.MoneyToFloat(visit!amount) 
                End If   
@@ -7330,7 +7378,7 @@ Public Sub txtGSTDate_KeyPress()
             tbCalculateGST.SetFocus()
       End Select
    Endif
-
+   
 End
 
 Public Sub tbGST_Click()
@@ -7341,5 +7389,5 @@ Public Sub tbGST_Click()
          txtGSTToDate.text = ""
    End Select
    Report_Show_HTML(GST_Create_HTML())
-
+   
 End

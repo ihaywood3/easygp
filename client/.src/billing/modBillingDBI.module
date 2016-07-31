@@ -890,7 +890,7 @@ Public Function GST_Paid(Optional from_date As String, Optional to_date As Strin
    sql &= "order by date_paid" 
    Print sql
    Return modDBConnect.exec_query_collection(sql)
-
+   
 End
 
 Public Function Payments_Unbanked_Get() As Collection
@@ -1016,24 +1016,6 @@ Public Function Items_Invoices_Get_temp(fk_patient As Variant, iAccount_Display_
    Return items_billed
    
 End
-' Public Function Items_Billed_Get(fk_patient As Variant, iAccount_Display_Mode As Integer, Optional limit As Integer = 100) As Collection
-'    '-----------------------------------------------------------------------------------------------------------------------------------------
-'    ' returns a Collection of all invoices for this patient, most recent first, ordered by display mode (see const.Billing_Accounts constants)
-'    ' ----------------------------------------------------------------------------------------------------------------------------------------
-'    
-'    Dim sql As String
-'    
-'    sql = "select * from billing.vwItemsBilled where fk_patient = " & fk_patient
-'    Select Case iAccount_Display_Mode
-'       Case const.Billing_Accounts_Unpaid
-'          sql &= " AND paid = false "
-'       Case const.Billing_Accounts_Paid
-'          sql &= " AND paid = true "
-'    End Select
-'    sql &= " ORDER BY date_invoiced desc "
-'    Return modDBConnect.exec_query_collection(sql)
-'    
-' End
 
 ' finds a referral for this patient
 ' returns NULL if they have no referral
@@ -1078,7 +1060,9 @@ Public Function Get_Billed_Items(invoice As Crow) As Collection
    
    Dim sql As String
    
-   sql = "select * From billing.vwitemsbilled where fk_invoice = &1 AND deleted is false"  'deeleted = the field items-billed.deleted
+   ' sql = "select * From billing.vwitemsbilled where fk_invoice = &1 AND deleted is false"  'deleted = the field items-billed.deleted
+   'RT added the order by as otherwise when printing bulk billed forms the area of needs get out of order
+   sql = "select * From billing.vwitemsbilled where fk_invoice = &1 AND deleted is false ORDER BY pk_items_billed"  'deleted = the field items-billed.deleted
    Return modDBConnect.exec_query_collection(sql, [invoice!fk_invoice])
    
 End
@@ -1245,6 +1229,7 @@ Private Sub Load_FDF_Common(fdf As String, doctor As Collection, cc As CConsult,
       cc!patient!medicare_number = "0000000000" 'FIXME PUT THIS IN UNTIL REPAT STUFF SORTED
    End If
    ' Error.Raise("Medicare number can't be NULL here")
+   fdf = Replace$(fdf, "dva-number", cc!patient!veteran_number)
    fdf = Replace$(fdf, "MA1", Mid$(cc!patient!medicare_number, 1, 1))
    fdf = Replace$(fdf, "MA2", Mid$(cc!patient!medicare_number, 2, 1))
    fdf = Replace$(fdf, "MA3", Mid$(cc!patient!medicare_number, 3, 1))
@@ -1258,11 +1243,17 @@ Private Sub Load_FDF_Common(fdf As String, doctor As Collection, cc As CConsult,
    fdf = Replace$(fdf, "Ref", cc!patient!medicare_ref_number)
    fdf = Replace$(fdf, "Surname", Upper$(cc!patient!surname))
    modUtil.Split_Firstname(cc!patient!firstname, ByRef s, ByRef initial)
+   fdf = Replace$(fdf, "patient-firstname-surname", Upper$(s) & " " & Upper$(initial) & " " & Upper$(cc!patient!surname)) 'veterans
    fdf = Replace$(fdf, "Firstname", Upper$(s))
    fdf = Replace$(fdf, "Initial", Upper$(initial))
    fdf = Replace$(fdf, "DOB", Format$(cc!patient!birthdate, "dd/mm/yy"))
+   s = Format$(cc!patient!birthdate, "ddmmyy")
+   fdf = Replace$(fdf, "dob-dd", Mid$(s, 1, 2)) 'veterans
+   fdf = Replace$(fdf, "dob-mm", Mid$(s, 3, 2)) 'veterans
+   fdf = Replace$(fdf, "dob-yy", Mid$(s, 5, 2)) 'veterans
    fdf = Replace$(fdf, "Add1", cc!patient!street1 & " " & cc!patient!street2)
    fdf = Replace$(fdf, "Add2", cc!patient!town & " " & cc!patient!postcode)
+   
    s = Format$(invoice!visit_date, "ddmmyy")
    fdf = Replace$(fdf, "DD1", Mid$(s, 1, 1))
    fdf = Replace$(fdf, "DD2", Mid$(s, 2, 1))
@@ -1270,6 +1261,11 @@ Private Sub Load_FDF_Common(fdf As String, doctor As Collection, cc As CConsult,
    fdf = Replace$(fdf, "MM2", Mid$(s, 4, 1))
    fdf = Replace$(fdf, "YY1", Mid$(s, 5, 1))
    fdf = Replace$(fdf, "YY2", Mid$(s, 6, 1))
+   fdf = Replace$(fdf, "today-dd", Mid$(s, 1, 2))  'for veterans voucher
+   fdf = Replace$(fdf, "today-mm", Mid$(s, 3, 2))
+   fdf = Replace$(fdf, "today-yy", Mid$(s, 5, 2))
+   fdf = Replace(fdf, "address-vertical", Trim(cc!patient!street1 & " " & Trim(cc!patient!street2) & "\n" & cc!patient!town & " " & cc!patient!postcode))
+   
    s = doctor!wholename & "\n"
    If IsNull(doctor!provider_number) Then
       s &= doctor!street1
@@ -1281,12 +1277,24 @@ Private Sub Load_FDF_Common(fdf As String, doctor As Collection, cc As CConsult,
       s &= doctor!provider_number
    Endif
    fdf = Replace$(fdf, "Provider", s)
-   
+   fdf = Replace$(fdf, "practioner-name", doctor!wholename) 'veterans form
+   If Not IsNull(invoice!notes) Then
+      fdf = Replace$(fdf, "practitioner-use", invoice!notes)
+   Else
+      fdf = Replace$(fdf, "practitioner-use", "")
+   Endif
+   'finally get rid of stuff in Veteran's we don't use
+   fdf = Replace(fdf, "M", "") 'M= Description of requested pathology
+   fdf = Replace(fdf, "b-up-the-top", "") 'b-up-the-top =  No clue what goes there
+   fdf = Replace(fdf, "number-of-km-travelled", "") 
+   fdf = Replace(fdf, "number-of-patients-attended", "1") 
+   fdf = Replace(fdf, "facility-name", "") 
+   fdf = Replace(fdf, "condition-treated", "") 'fixme needed for white card holders
    Return fdf
    
 End
 
-Private Sub Load_FDF_GP(fdf As String, items As Collection) As String
+Private Sub Load_FDF_GP_Medicare_Voucher(fdf As String, items As Collection) As String
    
    Dim i As Collection
    Dim no_free_item As Integer = 0
@@ -1366,38 +1374,130 @@ Private Sub Load_FDF_GP(fdf As String, items As Collection) As String
             End Select
       End Select
    Next
-   If no_free_item < 2 Then
-      fdf = Replace$(fdf, "Item2_1", "")
-      fdf = Replace$(fdf, "Item2_2", "")
-      fdf = Replace$(fdf, "Item2_3", "")
-      fdf = Replace$(fdf, "Item2_4", "")
-      fdf = Replace$(fdf, "Item2_5", "")
-      fdf = Replace$(fdf, "Des6", "")
-      fdf = Replace$(fdf, "Ben6_1", "")
-      fdf = Replace$(fdf, "Ben6_2", "")
-      fdf = Replace$(fdf, "Ben6_3", "")
-      fdf = Replace$(fdf, "Ben6_4", "")
-      fdf = Replace$(fdf, "Ben6_5", "")
-   Endif
-   If no_free_item = 1 Then
-      fdf = Replace$(fdf, "Item1_1", "")
-      fdf = Replace$(fdf, "Item1_2", "")
-      fdf = Replace$(fdf, "Item1_3", "")
-      fdf = Replace$(fdf, "Item1_4", "")
-      fdf = Replace$(fdf, "Item1_5", "")
-      fdf = Replace$(fdf, "Des5", "")
-      fdf = Replace$(fdf, "Ben5_1", "")
-      fdf = Replace$(fdf, "Ben5_2", "")
-      fdf = Replace$(fdf, "Ben5_3", "")
-      fdf = Replace$(fdf, "Ben5_4", "")
-      fdf = Replace$(fdf, "Ben5_5", "")
-   Endif
-   If Not standard_items_cleared Then
-      fdf = Replace$(fdf, "Ben4", "")
-      fdf = Replace$(fdf, "Ben1", "")
-      fdf = Replace$(fdf, "Ben3", "")
-      fdf = Replace$(fdf, "Ben2", "")
-   Endif
+   ' If no_free_item < 2 Then
+   fdf = Replace$(fdf, "Item2_1", "")
+   fdf = Replace$(fdf, "Item2_2", "")
+   fdf = Replace$(fdf, "Item2_3", "")
+   fdf = Replace$(fdf, "Item2_4", "")
+   fdf = Replace$(fdf, "Item2_5", "")
+   fdf = Replace$(fdf, "Des6", "")
+   fdf = Replace$(fdf, "Ben6_1", "")
+   fdf = Replace$(fdf, "Ben6_2", "")
+   fdf = Replace$(fdf, "Ben6_3", "")
+   fdf = Replace$(fdf, "Ben6_4", "")
+   fdf = Replace$(fdf, "Ben6_5", "")
+   ' Endif
+   '  If no_free_item = 1 Then
+   fdf = Replace$(fdf, "Item1_1", "")
+   fdf = Replace$(fdf, "Item1_2", "")
+   fdf = Replace$(fdf, "Item1_3", "")
+   fdf = Replace$(fdf, "Item1_4", "")
+   fdf = Replace$(fdf, "Item1_5", "")
+   fdf = Replace$(fdf, "Des5", "")
+   fdf = Replace$(fdf, "Ben5_1", "")
+   fdf = Replace$(fdf, "Ben5_2", "")
+   fdf = Replace$(fdf, "Ben5_3", "")
+   fdf = Replace$(fdf, "Ben5_4", "")
+   fdf = Replace$(fdf, "Ben5_5", "")
+   'Endif
+   ' If Not standard_items_cleared Then
+   fdf = Replace$(fdf, "Ben4", "")
+   fdf = Replace$(fdf, "Ben1", "")
+   fdf = Replace$(fdf, "Ben3", "")
+   fdf = Replace$(fdf, "Ben2", "")
+   ' Endif
+   Return fdf
+   
+End
+
+Private Sub Load_FDF_GP_Veteran_Voucher(fdf As String, items As Collection) As String
+   
+   Dim i As Collection
+   Dim no_free_item As Integer = 0
+   Dim standard_items_cleared As Boolean = False
+   Dim s As String
+   
+   Print fdf
+   For Each i In items
+      Select Case i!mbs_item
+            ' Case "3"
+            '    ' fdf = Replace$(fdf, "cb3", "Yes")
+            '    ' fdf = Replace$(fdf, "Ben1", i!amount)
+            '    ' fdf = Replace$(fdf, "Ben2", "")
+            '    ' fdf = Replace$(fdf, "Ben3", "")
+            '    ' fdf = Replace$(fdf, "Ben4", "")
+            '    ' standard_items_cleared = True
+         Case "23"
+            s = Replace(i!amount, "$", "")
+            Print InStr(s, ".")
+            Print Left(s, InStr(s, ".") - 1)
+            Print Right(s, Len(s) - InStr(s, "."))
+            'fdf = Replace$(fdf, "item23dollars", Str(Left(s, InStr(s, "."))
+            fdf = Replace$(fdf, "item23dollars", Left(s, InStr(s, ".") - 1))
+            fdf = Replace$(fdf, "item23cents", Right(s, Len(s) - InStr(s, ".")))
+            standard_items_cleared = True
+            
+         Case Else
+            If IsNull(i!descriptor_brief) Then
+               s = i!descriptor
+            Else
+               s = i!descriptor_brief
+            Endif
+            If Len(s) > 40 Then s = Left$(s, 40)
+            s = Upper$(s)
+            While Len(i!mbs_item) < 5
+               i!mbs_item = " " & i!mbs_item
+            Wend
+            Select Case no_free_item
+               Case 0
+                  no_free_item = 1
+                  fdf = Replace$(fdf, "service-1", s)
+                  fdf = Replace(fdf, "item-1", i!mbs_item)
+                  s = Format$(modUtil.MoneyToFloat(i!amount), "#00.00")
+                  fdf = Replace$(fdf, "i1-dollars", Left(s, InStr(s, ".") - 1))
+                  fdf = Replace$(fdf, "i1-cents", Right(s, Len(s) - InStr(s, ".")))
+               Case 1
+                  Print i!mbs_ite
+                  no_free_item = 2
+                  fdf = Replace$(fdf, "service-2", s)
+                  fdf = Replace(fdf, "item-2", i!mbs_item)
+                  s = Format$(modUtil.MoneyToFloat(i!amount), "#00.00")
+                  fdf = Replace$(fdf, "i2-dollars", Left(s, InStr(s, ".") - 1))
+                  fdf = Replace$(fdf, "i2-cents", Right(s, Len(s) - InStr(s, ".")))
+                  Print fdf
+               Case 2
+                  no_free_item = 3
+                  fdf = Replace$(fdf, "service-3", s)
+                  fdf = Replace(fdf, "item-3", i!mbs_item)
+                  s = Format$(modUtil.MoneyToFloat(i!amount), "#00.00")
+                  fdf = Replace$(fdf, "i3-dollars", Left(s, InStr(s, ".") - 1))
+                  fdf = Replace$(fdf, "i3-cents", Right(s, Len(s) - InStr(s, ".")))
+               Case 3
+                  no_free_item = 4
+                  fdf = Replace$(fdf, "service-4", s)
+                  fdf = Replace(fdf, "item-4", i!mbs_item)
+                  s = Format$(modUtil.MoneyToFloat(i!amount), "#00.00")
+                  fdf = Replace$(fdf, "i4-dollars", Left(s, InStr(s, ".") - 1))
+                  fdf = Replace$(fdf, "i4-cents", Right(s, Len(s) - InStr(s, ".")))  
+            End Select
+      End Select
+   Next
+   Print fdf
+   fdf = Replace$(fdf, "item23cents", "")
+   fdf = Replace$(fdf, "item23dollars", "")
+   
+   fdf = Replace(fdf, "service-2", "")
+   fdf = Replace(fdf, "service-3", "")
+   fdf = Replace(fdf, "service-4", "")
+   fdf = Replace(fdf, "item-2", "")
+   fdf = Replace(fdf, "item-3", "")
+   fdf = Replace(fdf, "item-4", "")
+   fdf = Replace(fdf, "i2-dollars", "")
+   fdf = Replace(fdf, "i3-dollars", "")
+   fdf = Replace(fdf, "i4-dollars", "")
+   fdf = Replace(fdf, "i2-cents", "")
+   fdf = Replace(fdf, "i3-cents", "")
+   fdf = Replace(fdf, "i4-cents", "")
    Return fdf
    
 End
@@ -1469,6 +1569,9 @@ Public Sub Print_Invoice(invoice_in As Variant, bPrint As Boolean, Optional bBul
    Dim items_for_single_voucher As Collection
    Dim item As Collection
    Dim vouchers_items As Collection
+   Dim iBulkBillingtype As Integer
+   Dim nAllowableItemsOnVoucher As Integer    'will vary according to toucher type and area of need or if item 23 is on the voucher
+   Dim bHaveItem23 As Boolean 
    
    If TypeOf(invoice_in) = gb.Integer Then
       invoice = Get_Invoice_PK(invoice_in)
@@ -1520,21 +1623,34 @@ Public Sub Print_Invoice(invoice_in As Variant, bPrint As Boolean, Optional bBul
          'First determine if using area of need item numbers
          'in this case, can only put two items per voucher as that's all will fit.
          For Each item In items
+            If item!item = "23" Then bHaveItem23 = True  
             If item!common_item = "10991" Then
                bNeedMultipleVouchers = True
                bHaveAreaOfNeed = True  
-               Break 
+            End If   
+            If invoice!fk_lu_bulk_billing_type = const.BulkBilling_Type_Medicare Then   'vouchers has space for 1 of item 23, 36, 44 or 53 + 2 spare spots
+               If bHaveAreaOfNeed Then
+                  nAllowableItemsOnVoucher = 2
+               Else
+                  nAllowableItemsOnVoucher = 3
+               End If   
+            Else                                      'is a veterans voucher
+               If bHaveAreaOfNeed Then nAllowableItemsOnVoucher = 4   '23 + 10991 plus 1 other + its 10991 etc (there are only 5 spots inc that for item 23)
+               If Not bHaveAreaOfNeed Then nAllowableItemsOnVoucher = 5
             Endif
          Next
-         'If don't have area of need, can allow up to 3 item numbers per voucher
+         
+         'If don't have area of need, can allow up to 3 item numbers per voucher for medire or 5 for repat
          If Not bHaveAreaOfNeed Then
             vouchers = New Collection
             voucher = New Collection
             For Each item In items
-               If items_on_voucher = 3 Then                  'if have accuulated 3 items on a voucher
-                  vouchers.Add(voucher, vouchers.count)      'add to vouchers collection
-                  voucher = New Collection                   'start a new voucher
-                  items_on_voucher = 0
+               If invoice!fk_lu_bulk_billing_type = const.BulkBilling_Type_Medicare Then
+                  If items_on_voucher = 2 Then                  'if have accuulated 3 items on a voucher
+                     vouchers.Add(voucher, vouchers.count)      'add to vouchers collection
+                     voucher = New Collection                   'start a new voucher
+                     items_on_voucher = 0
+                  End If   
                End If   
                voucher.Add(item, voucher.count)
                Inc items_on_voucher
@@ -1548,30 +1664,42 @@ Public Sub Print_Invoice(invoice_in As Variant, bPrint As Boolean, Optional bBul
                vouchers = New Collection
                voucher = New Collection 'start with a new voucher
                For Each item In items
-                  If Item!common_item = "10991" Then
-                     voucher.Add(item, voucher.count)
-                     vouchers.add(voucher, vouchers.count)
-                     voucher = New Collection
-                  Else
-                     voucher.Add(item, voucher.count)
-                  Endif
+                  ' If invoice!fk_lu_bulk_billing_type = const.BulkBilling_Type_Medicare Then
+                  If voucher.count = nAllowableItemsOnVoucher Then                  'if have accuulated n items on a voucher
+                     vouchers.Add(voucher, vouchers.count)      'add to vouchers collection
+                     voucher = New Collection                   'start a new voucher
+                  End If   
+                  voucher.Add(item, voucher.count)
                Next
+               If voucher.count Then
+                  vouchers.Add(voucher, vouchers.count)      'add to vouchers collection
+               Endif
             Endif
          End If   
          ' cue scary music: patient is being bulk-billed
          If referrer_type = "s" Then  'FIXME: reliable way of determining specialist status
             pdfname = "db2-ot"
          Else
-            pdfname = "db2-gp"
+            If invoice!fk_lu_bulk_billing_type = const.BulkBilling_Type_Medicare Then
+               pdfname = "db2-gp" 
+            Else
+               pdfname = "D1216G-1page"  'the D1216G veterans form with the crap split off (page 1 gone) leaving on the form
+            End If   
          Endif
          For Each voucher In vouchers
             fdf = File.Load(modUtil.Find_File("templates" &/ pdfname & ".fdf"))
             If referrer_type = "s" Then
                fdf = Load_FDF_Specialist(fdf, voucher, doctor, cc, invoice, referrer)
             Else
-               fdf = Load_FDF_GP(fdf, voucher)
+               If invoice!fk_lu_bulk_billing_type = const.BulkBilling_Type_Medicare Then
+                  fdf = Load_FDF_GP_Medicare_Voucher(fdf, voucher)
+               Else
+                  fdf = Load_FDF_GP_Veteran_Voucher(fdf, voucher)
+               End If   
             Endif
+            Print fdf
             fdf = Load_FDF_Common(fdf, doctor, cc, invoice)
+            Print fdf
             tmpfile = Temp$("bulkbill")
             File.Save(tmpfile & ".fdf", fdf)
             pdftk_path = modUtil.FindProgram("pdftk", "pdftk")

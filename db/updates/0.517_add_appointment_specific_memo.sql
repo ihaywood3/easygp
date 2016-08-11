@@ -2,6 +2,7 @@
 -- Horst's staff wanted a day-only appointment slot memo 
 -- also they wanted a list of patient's for their staff on the side bar, so added he staff name seeing each patient
 -- DROP VIEW clerical.vwappointments;
+alter table clerical.bookings add column appointment_specific_memo text default null;
 
 CREATE OR REPLACE VIEW clerical.vwappointments AS 
  SELECT bookings.pk,

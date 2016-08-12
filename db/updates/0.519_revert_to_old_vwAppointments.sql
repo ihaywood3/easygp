@@ -1,6 +1,5 @@
 ﻿-- View: clerical.vwappointments
-
--- DROP VIEW clerical.vwappointments;
+DROP VIEW clerical.vwappointments;
 
 CREATE OR REPLACE VIEW clerical.vwappointments AS 
  SELECT bookings.pk,

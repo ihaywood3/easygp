@@ -69,8 +69,7 @@ CREATE OR REPLACE VIEW clerical.vwappointments AS
      LEFT JOIN billing.lu_reasons_not_billed ON bookings.fk_lu_reason_not_billed = lu_reasons_not_billed.pk
   ORDER BY bookings.begin;
 
-ALTER TABLE clerical.vwappointments
-  OWNER TO richard;
-GRANT ALL ON TABLE clerical.vwappointments TO richard;
-GRANT ALL ON TABLE clerical.vwappointments TO easygp;
+ALTER TABLE clerical.vwappointments  owner to easygp;
 GRANT ALL ON TABLE clerical.vwappointments TO staff;
+
+update db.lu_version set lu_minor=519;

@@ -150,13 +150,16 @@ Private Sub Process_Dir_Or_File(fname As String)
                Case ".hl7", ".oru"
                   Log.DataMsg(Subst$("decided &1 is HL7 by suffix", fname))
                   typ = "hl7"
+               Case ".pdf"
+                  Log.DataMsg(Subst$("decided &1 is pdf by suffix", fname))
+                  typ = "pdf"
             End Select
          Endif
          If typ = "pit" Then
             If IsNull(f) Then f = Open fname For Read
             processing_log = PITImporter.Import(f, File.Name(fname))
             Close #f
-         Else  ' at the moment try to parse as HL7 if not clearly PIT
+         Else If typ <> "pdf" Then       ' at the moment try to parse as HL7 if not clearly PIT or a pdf file
             i = Read #f, Lof(f)
             Close #f
             hl7 = New CHL7(i)
@@ -165,8 +168,14 @@ Private Sub Process_Dir_Or_File(fname As String)
          Endif
          Print fname 
          Print modUtil.filepath_fix_Blanks(File.Name(fname))
-         Move fname To importdir &/ "processed" &/ modUtil.filepath_fix_Blanks(File.Name(fname))
-         processing_log.Add("Executed: Move " & fname & " to " & "processed" &/ modUtil.filepath_fix_Blanks(File.Name(fname)))
+         If typ <> "pdf" Then 
+            Move fname To importdir &/ "processed" &/ modUtil.filepath_fix_Blanks(File.Name(fname))
+            processing_log.Add("Executed: Move " & fname & " to " & "processed" &/ modUtil.filepath_fix_Blanks(File.Name(fname)))
+         Else
+            modFiles.Put("document_scanning_directory", File.Name(fname), fname)
+            Processing_Log = New String[]
+            processing_log.Add("Executed: Move " & fname & " to unfiled directory")
+         End If   
          modDBConnect.CommitTrans()
          processing_log.Add("Transaction committed")
       Endif 
@@ -957,8 +966,8 @@ Private Sub Process_File(hl7 As CHL7, fname As String)
                '    '    ' PdfDocument = New Collection
                '    ' End If   
                ' End If  
-              ' If Not bIsPDF Then
-                  modDBConnect.insert("documents.observations", obx)
+               ' If Not bIsPDF Then
+               modDBConnect.insert("documents.observations", obx)
                'End If   
             Loop
             processing_log.Add("The OBX segments have been successfully analysed and saved but not yet committed to the database")
@@ -1454,9 +1463,9 @@ Private Sub Process_File_Pre17march16(hl7 As CHL7, fname As String)
                
                If obx!value_type = "ED" Then '[5,2]=JPEG,PDF, [5,3]=base64 [5,4]=data
                   obx!value_type &= ":" & Lower(Trim(hl7[5, 2])) 'ie ED:pdf, ED:html, ED:jpeg etc. <<My convention
-                '  Print hl7[5, 2]
-                 ' Print hl7[5, 3]
-                ' Print hl7[5, 4]
+                  '  Print hl7[5, 2]
+                  ' Print hl7[5, 3]
+                  ' Print hl7[5, 4]
                   Tempfile = Temp() & "." & Lower(Trim(hl7[5, 2]))   'eg 1.tmp.pdf
                   sData = ModBase64.FromB64(hl7[5, 4])
                   '   sData = Replace(sData, "\"", "'")
@@ -1468,7 +1477,7 @@ Private Sub Process_File_Pre17march16(hl7 As CHL7, fname As String)
                         'temporary code march 16, if the obx also contains a pdf, copy it to the file system for clerical to allocate
                         bIsPDF = True  
                         File.Save(Tempfile, ModBase64.FromB64(hl7[5, 4]))
-                       ' Print fname & "-" & File.Name(Tempfile)
+                        ' Print fname & "-" & File.Name(Tempfile)
                         modFiles.Put("document_scanning_directory", File.Name(fname) & "-" & File.Name(Tempfile), Tempfile)
                         
                         ' D = New CRow
@@ -1478,9 +1487,9 @@ Private Sub Process_File_Pre17march16(hl7 As CHL7, fname As String)
                         ' D.Save("documents.documents", "pk")
                      Case "jpg", "jpeg", "png"
                         '  File.Save(Tempfile, ModBase64.FromB64(hl7[5, 4]))
-                               Message.Info("Richard.. in modHl7FileImport.. encountered a base64 Image.. did nothing with it")
+                        Message.Info("Richard.. in modHl7FileImport.. encountered a base64 Image.. did nothing with it")
                      Case "html"
-                      '  Message.Info("Richard.. in modHl7FileImport.. encountered a base64 HTML - did nothing with it")
+                        '  Message.Info("Richard.. in modHl7FileImport.. encountered a base64 HTML - did nothing with it")
                         D = New CRow
                         D.put_unchanged(document!pk, "pk")
                         D!fk_lu_data_content_type = const.cData_Type_HTML '1
@@ -1521,6 +1530,7 @@ Private Sub Process_File_Pre17march16(hl7 As CHL7, fname As String)
    Endif
    
 End
+
 Public Function Get_Name_As_String(name As Collection) As String
    
    Return Trim(name!title & " " & name!firstname & " " & name!surname) 

@@ -821,7 +821,135 @@ Catch
    
 End
 
-Public Sub Patient_Requests_Show(cons As Cconsult, cvw As Columnview, Optional limit As Integer = 0, Optional bShowProvider As Boolean = False, Optional exclude_request As String = "", Optional filter_request As String = "", Optional ifilter_by_request_type As Integer = 199, Optional bRefresh As Boolean = True, Optional INRLimit As Integer = 1)
+Public Function Patient_Requests_Show(cons As Cconsult, cvw As Columnview, Optional limit As Integer = 0, Optional bShowProvider As Boolean = False, Optional exclude_request As String = "", Optional filter_request As String = "", Optional ifilter_by_request_type As Integer = 199, Optional bRefresh As Boolean = True, Optional INRLimit As Integer = 1, bFromInbox As Boolean = False) As Collection   
+   '-----------------------------------------------------------------------------------------
+   ' This sub is used by: FClinLists_Ordering, FClericalRequests, Finbox
+   ' Fill a column view with all the patients requests optionally filtered 
+   ' This loads all requests on a form onto a columnview row
+   ' If limit to the display display limit number Finbox uses this variable nowhere else does
+   ' ifilter_by_request_type is used to allow filtering of what has been ordered in the 
+   ' clinical request ordered list (FClinLists_Ordering)
+   ' returned collection used to mark off requests a finalised
+   ' this is a mess (10/2016: had to knock up quickly the ability to mark off requests as back
+   ' to pass accreditation)
+   '-----------------------------------------------------------------------------------------
+   
+   Dim bSkip As Boolean  
+   Dim SingleRequest As Collection 
+   Dim HasResult As Boolean
+   Dim x As Integer
+   Dim last_form_fk As Variant
+   Dim current_form_fk As Variant
+   Dim parent_key As Variant
+   Dim icounter As Integer 
+   Dim inrCount As Integer
+   Dim bIsINR As Boolean
+   Dim the_requests As Collection
+   Dim unique_requests As New Collection 'unique requests for the single row which will be showing as outstanding requests
+   'i.e a collection of e.g fbc;uec lfts;hba1c = 3 collection items
+   Dim request_forms As New Collection
+   Dim request_form As Collection
+   Dim request_forms_requests As Collection
+   Dim request As Collection
+   bRefresh = True 'remove me
+   If exclude_request <> "" Then exclude_request &= ";"                             'only allow exclusion of 'full' request eg INR; otherewise anything with say an 'i' in it gets excluded if user just types 'i'
+   cvw.Clear()
+   If bRefresh Then  'this is the default, to refresh the collection 
+      If bFromInbox Then
+         cons.Refresh("request_ordered_not_finalised")
+         the_requests = cons!request_ordered_not_finalised
+      Else
+         cons.Refresh("requests_ordered")
+         the_requests = cons!requests_ordered
+      Endif
+   End If   
+   
+   For Each SingleRequest In the_requests
+      bSkip = False  
+      If ifilter_by_request_type <> 199 Then                                       'if user wants to filter on type
+         If SingleRequest!fk_lu_request_type <> ifilter_by_request_type Then            'if this request is not of that type
+            bSkip = True                                                           'skip this one
+         Endif
+      Endif
+      If bskip = False Then                              'check everything, doesn't really matter if not a path request, so quick
+         If Lower(SingleRequest!item) = "inr" Then      'if an INR
+            bIsINR = True
+            Inc inrCount
+            If inrCount < INRLimit + 1 Then  
+               bskip = False
+            Else
+               bSkip = True    
+            Endif
+         End If  
+      End If   
+      If Not Bskip Then
+         current_form_fk = SingleRequest!fk_form
+         If SingleRequest!request_result_html <> "" Then 
+            Hasresult = True
+         Else
+            HasResult = False
+         End If
+         If last_form_fk <> current_form_fk Then
+            '-------------------
+            'Start of a new form
+            '-------------------
+            
+            last_form_fk = SingleRequest!fk_form
+            request_form = New Collection  
+            request_form!requests = New Collection                    
+            request_forms.Add(request_form, x)                   'becomes request_forms[0]!request_form
+            request = New Collection
+            'request_forms_requests = New Collection
+            'request_form.Add(request_forms_requests, request_form.count)
+            
+            Inc x
+            If Not InStr(Lower(singleRequest!requests_summary), exclude_request) Then                       'exclude and requests containing exclude_request text
+               If filter_request <> "" Then                                                                 'if user also wants to filter
+                  If InStr(Lower(singleRequest!requests_summary), filter_request) Then    
+                     Parent_Key = Str(x) & "-" & Str(SingleRequest!pk_view)
+                     cvw.add(parent_key, 0)
+                     cvw[parent_key][0] = Format(singleRequest!date, "dd/mm/yyyy") & "  " & singleRequest!requests_summary
+                     If bShowProvider Then
+                        If Not IsNull(SingleRequest!organisation) Then
+                           cvw[parent_key][1] = singleRequest!organisation
+                        Endif
+                     Endif
+                     request_form!requests.add(SingleRequest, request_form!requests.count)
+                   End If   
+               Else
+                  If bFromInbox Then 
+                     Parent_key = x - 1  '0 based key to match the forms collection
+                     cvw.add(parent_key, 0)
+                     cvw[parent_key][0] = Format(singleRequest!date, "dd/mm/yyyy") & "  " & singleRequest!item & ";" 'don't show ones reconciled
+                  Else
+                     Parent_Key = Str(x) & "-" & Str(SingleRequest!pk_view)
+                     cvw.add(parent_key, 0)
+                     cvw[parent_key][0] = Format(singleRequest!date, "dd/mm/yyyy") & "  " & singleRequest!requests_summary
+                  Endif
+                  request_form!requests.add(SingleRequest, request_form!requests.count)
+                  If bShowProvider Then
+                     If Not IsNull(SingleRequest!organisation) Then
+                        cvw[parent_key][1] = singleRequest!organisation
+                     Endif
+                  Endif
+               End If  
+               
+            Endif
+         Else
+            If bFromInbox Then 
+               cvw[parent_key][0] &= singleRequest!item & ";"
+            Endif
+            request_form!requests.add(SingleRequest, request_form!requests.count)
+         End If   
+         Inc icounter   
+         If icounter = limit Then Break
+      End If   
+   Next
+   Return request_forms
+   
+End
+
+Public Sub Patient_Requests_Show_old(cons As Cconsult, cvw As Columnview, Optional limit As Integer = 0, Optional bShowProvider As Boolean = False, Optional exclude_request As String = "", Optional filter_request As String = "", Optional ifilter_by_request_type As Integer = 199, Optional bRefresh As Boolean = True, Optional INRLimit As Integer = 1, bFromInbox As Boolean = False)
    '-----------------------------------------------------------------------------------------
    ' This sub is used by: FClinLists_Ordering, FClericalRequests, Finbox
    ' Fill a column view with all the patients requests optionally filtered 
@@ -841,13 +969,21 @@ Public Sub Patient_Requests_Show(cons As Cconsult, cvw As Columnview, Optional l
    Dim icounter As Integer 
    Dim inrCount As Integer
    Dim bIsINR As Boolean
+   Dim the_requests As Collection
    
    If exclude_request <> "" Then exclude_request &= ";"                             'only allow exclusion of 'full' request eg INR; otherewise anything with say an 'i' in it gets excluded if user just types 'i'
    cvw.Clear()
    If bRefresh Then  'this is the default, to refresh the collection 
+      '  If bFromInbox Then
+      ' cons.Refresh("request_ordered_not_finalised")
+      '  the_requests = cons!request_ordered_not_finalised
+      ' Else
       cons.Refresh("requests_ordered")
+      the_requests = cons!requests_ordered
+      ' Endif
    End If   
-   For Each SingleRequest In cons!requests_ordered
+   
+   For Each SingleRequest In the_requests
       bSkip = False  
       If ifilter_by_request_type <> 199 Then                                       'if user wants to filter on type
          If SingleRequest!fk_lu_request_type <> ifilter_by_request_type Then            'if this request is not of that type

@@ -79,6 +79,7 @@ Private Const clinicalList_Correspondance As Integer = 2
 Private loincs As Collection 'temporary ?FIXME
 Private obs As Observer
 Private pfile As String ' name of temp picture file
+Private cvwPatientsRequests_key As Variant 
 '-------------
 'Boolean flags
 '-------------
@@ -104,7 +105,7 @@ Private synonyms As Collection                  'collection matching a senders e
 Private Observations As Collection              'Any 'observations' ie measurement results, associated with a document
 Private Documents As Collection
 Private lu_requests_names As Collection 
-
+Private Outstanding_forms As Collection      'all request where clin_requests.forms_requests.finalised is false
 '-------------
 'Database Keys
 '-------------
@@ -2080,7 +2081,7 @@ End
 Public Sub tbRefreshInbox_Click()
    'Refreshes the inbox
    'also sets the patient filter to ""
-     
+   
    Dim fk_sending_entity As Variant
    
    Inc Application.Busy
@@ -2199,12 +2200,15 @@ End
 Public Sub Patient_Outstanding_Requests_Show(Optional bReloadFromFClinical As Boolean = False)
    '------------------------------------------------------------------------------
    'Show the last 10 requests ordered, just to jog users memory what they ordered
+   'Show requests ordered where date_finalised is null
    'as often what comes back is a different name, helps them put in the correct
    'user-tag to match what they ordered
    '------------------------------------------------------------------------------  
    
+   Outstanding_forms = New Collection
    If cvwPatientsRequests.tag = 0 Or bReloadFromFClinical = True Then  'no patient
-      modEditAreaHelpers.Patient_Requests_Show(currentconsult, cvwPatientsRequests, 10)
+      Outstanding_forms = modEditAreaHelpers.Patient_Requests_Show(currentconsult, cvwPatientsRequests, 10,,,,,,, True)
+      Outstanding_forms = modUtil.Copy_Collection_Keyed_Sequentially(Outstanding_forms)
       cvwPatientsRequests.tag = Selected_Inbox!fk_patient
    End If
    
@@ -2549,14 +2553,15 @@ End
 
 Public Sub txtFilterPatient_KeyRelease()
    
-  Try Inbox = Inbox_Reload()
+   Try Inbox = Inbox_Reload()
    
 End
 
-
 Public Sub cvwPatientsRequests_Select()
    
-   Form_ActionDocument.context_date = "15/10/2010"
+   ' Form_ActionDocument.context_date = "15/10/2010"
+   cvwPatientsRequests.MoveCurrent
+   cvwPatientsRequests_key = cvwPatientsRequests.Item.Key
    
 End
 
@@ -2767,13 +2772,73 @@ Public Sub txtMonthsToView_Change()
 End
 
 Public Sub chkExcludeInactivePatients_Click()
-
+   
    Fill_Inbox
-
+   
 End
 
 Public Sub chkExcludeDeceasedPatients_Click()
-
+   
    Fill_Inbox
+   
+End
 
+Public Sub cvwPatientsRequests_Menu()
+   
+   Dim mnu As Menu
+   Dim request As Collection
+   Dim requests As Collection = Outstanding_forms[cvwPatientsRequests_key]!requests 
+   Dim x As Integer
+   
+   mnuInbox_RecentRequests_Mark_Back.Children.Clear
+   mnuInbox_RecentRequests_Mark_Not_Done.Children.Clear
+   If cvwPatientsRequests.count Then
+      For x = 0 To requests.count - 1
+         With mnu = New Menu(mnuInbox_RecentRequests_Mark_Back) As "Mark_Request_Result_Back"
+            .Name = requests[x]!item
+            .text = requests[x]!item
+            .tag = requests[x]!fk_forms_requests
+         End With
+         With mnu = New Menu(mnuInbox_RecentRequests_Mark_Not_Done) As "Mark_Request_Not_Done"
+            .Name = requests[x]!item
+            .text = requests[x]!item
+            .tag = requests[x]!fk_forms_requests
+         End With
+      Next
+      mnuInbox_RecentRequests.popup()
+   Endif
+   
+End
+
+Public Sub Mark_Request_Result_Back_Click()
+   
+   Dim sMsg As String
+   Select Case Last.tag
+      Case "mark back"
+      Case "mark off" 
+      Case "mark why not done"
+      Case Else 'is a key to clin_requests.forms_requests
+         Print Last.tag
+         Message.Title = "Reconciling Requests"
+         sMsg = "Mark off the test " & Last.text & " as having been completed"
+         If Message.Question(sMsg, "Yes - Mark Off", "No") = 2 Then Return
+         If modDBConnect.update("clin_requests.forms_requests", Null, ["pk": Last.tag, "finalised": True]) Then
+            modDBConnect.CommitTrans()
+            Patient_Outstanding_Requests_Show(True) 'reload outstanding requests, ie refresh the gui FIX ME
+            'THIS Is USING THE WRONG FLAG 
+         End If   
+   End Select
+   
+End
+
+Public Sub mnuInbox_RecentRequests_Click()
+   
+   Select Case Last.tag
+      Case "mark back"
+      Case "mark off" 
+      Case "mark why not done"
+      Case Else 'is a key to clin_requests.forms_requests
+         Print Last.tag  
+   End Select
+   
 End

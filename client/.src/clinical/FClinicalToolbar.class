@@ -45,7 +45,6 @@ Private obs As Observer
 Public form_clinical As FClinical
 Public form_patient_photo As FPatientPhoto
 Private form_select As FPatientsSelect
-
 Static Private form_clinical_toolbar As FClinicalToolbar
 
 Public Sub _new()
@@ -54,6 +53,21 @@ Public Sub _new()
    form_clinical = New FClinical(VBox_Clinical)      'load the workspace editor and all the right side tabs etc
    form_patient_photo = New FPatientPhoto(Vbox_Photo)
    Init_Gui                                          'initialise lists, combo's observers etc for this form
+   
+End
+
+Static Public Sub Find_Patient_External(fk_patient As Variant)
+   
+   form_clinical_toolbar.cmbSearch_GotFocus()  'save existing patient's work
+   form_clinical_toolbar.cmbSearch.Enabled = False  
+   form_clinical_toolbar.patients_find(fk_patient, True) 'true = don't show patient photo
+   
+End
+
+Static Public Sub Refresh_Toolbar_External()
+   'called from other forms that need to reload the toolbar
+   
+   form_clinical_toolbar.Refresh_Toolbar
    
 End
 
@@ -131,6 +145,7 @@ End
 
 Static Public Sub EditLastConsultButton_Display(bflag As Boolean)
    'User has changed visibility of the button to allow editing last consult
+   
    Return 
    With form_clinical_toolbar
       .bShowEditLastConsultButton = bFlag
@@ -372,7 +387,7 @@ Public Sub Init_Gui()
    End With
    mnuDecisionSupport_Chads.Visible = True
    lblMeasure.text = "  Cumulative   "
-   tbEditLastConsult.Visible = bShowEditLastConsultButton
+   ' tbEditLastConsult.Visible = bShowEditLastConsultButton
    Health_Funds_Menu_Create
    txtConsultDate.text = Format(Now, "dd/mm/yyyy")
    modLater.Add(Me, "Init_Gui_Later")
@@ -387,7 +402,7 @@ Public Sub Init_Gui_Later()
    consultationtypes = modUtilGUI.LoadCombo(cmbConsultationType, modConsultDBI.consult_get_types(True), "type") 'True = user selectable
    cmbConsultationType.index = cmbConsultationType.Find("At consulting rooms")
    Refresh_Toolbar()                                         'Refreshes the toolbar buttons.
-  
+   
    If modAdminDBI.Config_Get_Staff_Member("show-edit-last-consult-button", False, Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff) Then
       bShowEditLastConsultButton = True
       tbEditLastConsult.Visible = bShowEditLastConsultButton
@@ -732,7 +747,7 @@ Private Sub Settings_Load()
    
 End Sub
 
-Public Sub Patients_Find(Optional fk_patient As Variant)
+Public Sub Patients_Find(Optional fk_patient As Variant, Optional bDontShowPatientPhoto As Boolean = False)
    '-----------------------------------------------------------------------------
    'Attemps to find patients according to criteria entered in cmbSearch
    'of by patient key if picked from list of patients seen that day
@@ -792,14 +807,16 @@ Public Sub Patients_Find(Optional fk_patient As Variant)
          'Don't bug the user AKA don't bug Ian with confirming the patients identity
          '--------------------------------------------------------------------------
          If modAdminDBI.Config_Get_Staff_Member("clinical_enforce_confirm_id", False, Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff) = True Then
-            FConfirmPatient.Init(P, patient)
-            If Not FConfirmPatient.ShowModal() Then
-               cmbSearch.Enabled = True
-               Dec application.Busy
-               bExit = False
-               cmbSearch.SetFocus()
-               Return
-            End If
+            If bDontShowPatientPhoto = False Then  'can only be true if user loaded the patient from the side bar appointment menu
+               FConfirmPatient.Init(P, patient)
+               If Not FConfirmPatient.ShowModal() Then
+                  cmbSearch.Enabled = True
+                  Dec application.Busy
+                  bExit = False
+                  cmbSearch.SetFocus()
+                  Return
+               End If
+            End If   
          End If
          Patient_Load_Record(patient, bPhotoConfirmed, P)
       Else
@@ -1038,6 +1055,50 @@ Public Sub cmbSearch_GotFocus()
    Gui_Clear()                                  'clear the input area
    cmbSearch.Enabled = True                     'allow user to click on combo again.
    cmbSearch.SetFocus
+   
+End
+
+Public Sub Save_Existing_Consult()
+   
+   '----------------------------------------------------------------
+   'User has clicked on the cmbSearch combo box in the text part
+   'i.e they want to end the consultation and find another patient
+   'First check there is no un-saved data - save that, then make
+   'sure the consultation is coded if user has added notes
+   'then clear all patient specific data from the gui
+   're-setting the lists, notification labels etc
+   'See FStaffPreferencesClinical for the config option for coding
+   '----------------------------------------------------------------
+   
+   Dim PN As Collection
+   
+   If bexit Then Return
+   With form_clinical.Form_ClinicalLists
+      .bexit = True
+      .TabStrip_Lists.Enabled = False
+   End With
+   If Not IsNull(currentconsult) Then                   'no consult, no save
+      cmbSearch.Enabled = False                         'stop clicking again until finished database accessing
+      If Not Consult_Time_Check_Valid() Then Return
+      form_clinical.Consult_Save                        'loop through all  open forms and call 'Save'
+      currentconsult.Refresh("progress_notes_today")    'Is there actually a reason to code?, maybe there are no notes
+      If currentconsult!progress_notes_today.count Then 'If we have progress notes
+         For Each PN In currentconsult!progress_notes_today
+            If PN!problem = "New General Notes" Then    'If there are general notes (i.e ones user has typed in)
+               teForSpelling.RichText = PN!notes        'this can contain html construct with no actual notes FIXME - examine this situation
+               If Trim(Replace(teForSpelling.text, "\n", "")) <> "" Then
+                  If bProgressNotesEnforceCoding Then       'this global user preference was loaded in init from the backend.
+                     If Not form_clinical.Consult_Is_Coded() Then         'then enforce coding, if not done and they want to do so
+                        cmbSearch.Enabled = True            'get  ouf of here
+                        Return                              'now
+                     End If
+                  End If
+               End If
+               Break
+            End If
+         Next
+      End If
+   End If
    
 End
 
@@ -1844,6 +1905,7 @@ Public Sub Occupation_Save()
                   modOccupationalHistoryDBI.Patient_Occupation_Make_Current_And_Main(OH!fk_occupational_history)
                   modContactsDBI.Person_Set_occupation(currentconsult!patient!fk_person, fk_occupation)
                   modDBConnect.CommitTrans()
+                  FClinical.Refresh_Section(const.cSection_HealthSummary)    'check if health summary showing, if so update it as it has occupations on it
                   Try FGPMPTCA.GPMP_Update                 'If care planning module loaded update the LaTex
                Case 2 'No, then reset the default occupation in the patients view.
                   If Not IsNull(currentconsult!patient!occupation) Then
@@ -1876,12 +1938,11 @@ Public Sub Occupation_Save()
       occupational_history!main_occupation = True
       occupational_history!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sMsg, const.cSection_OccupationalHistory, Null, "Occupational History")
       occupational_history.Save("clin_history.occupational_history", "fk_occupational_history")
-      modDBConnect.CommitTrans()
-      Try FGPMPTCA.GPMP_Update                                         'If care planning module loaded update the LaTex
+      modDBConnect.CommitTrans() 
       currentconsult!patient!fk_occupation = fk_occupation
       currentconsult!patient!occupation = modStrings.Capitalise_Words_In_String(txtOccupation.text)
       currentconsult.Refresh("occupational_history")
-      With Last
+      With txtOccupation
          .Background = txtAge.Background
          .ReadOnly = True
          .pos = 0
@@ -1894,6 +1955,7 @@ Public Sub Occupation_Save()
          txtOccupation.text = "Occupation?"
       Endif
    End If
+   Try FGPMPTCA.GPMP_Update                                         'If care planning module loaded update the LaTex
    FClinical.Refresh_Section(const.cSection_HealthSummary)
    
 End
@@ -2008,6 +2070,7 @@ Public Sub Consult_Edit(consult_to_edit As Collection)
    '-------------------------------------------------------------------------------------------
    ' Sets up easygp so that today = previous date
    ' i.e the consult of a previous date is reloaded and an appropriate audit trail will be kept
+   ' the passed params are wrong/not needed. FIXME
    ' ------------------------------------------------------------------------------------------
    
    form_clinical.WorkspaceEditor_Clear  'remove all tabs from workspace
@@ -2031,18 +2094,13 @@ Public Sub Consult_Edit(consult_to_edit As Collection)
          .text = " from "
       Endif
    End With
-   With datebox1
-      .Background = Color.Yellow
-      .Foreground = Color.Red
-      .value = consult_to_edit!consult_date
-      .Visible = True
-   End With
    If IsNull(consult_to_edit!fk_consult) Then
       currentconsult = New CConsult(currentconsult!patient, consultationtypes[cmbConsultationType.Index]!pk, True) 'force new consult
    Else
       currentconsult.Set_pk(consult_to_edit!fk_consult)
    Endif
-   currentconsult.Set_date(consult_to_edit!consult_date)
+   currentconsult.Set_date(datebox1.Value)                 'set date and time
+   form_clinical.Init_Patient(currentconsult)
    form_clinical.Editor_ShowPage("All Previous Notes")
    form_clinical.Editor_ShowPage("New General Notes")
    tbSave.Enabled = True
@@ -2230,9 +2288,12 @@ Public Sub DateBox1_Activate()
          Message.Info(smsg)
          Return
       Endif
-      tbSave.Enabled = True   
+      tbSave.Enabled = True 
+      Save_Existing_Consult
+      Print DateBox1.value
       Consult_Edit(["consult_date": modUtil.Make_Date_From_String(Format(DateBox1.value, "dd/mm/yyyy")), "consult_type": cmbConsultationType.Text])
-      datebox1.SetFocus
+      form_clinical.FGeneralNotesEditor.teNotes.SetFocus
+      '   datebox1.SetFocus
    Else
       Consult_Edit(SC[Format(DateBox1.value, "dd/mm/yyyy")])
    Endif

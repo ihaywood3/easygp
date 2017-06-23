@@ -1,0 +1,1314 @@
+' Gambas class file
+
+' TO FIX :Allergies_Sensitivities_Refresh() PUT IN THE TOOLBAR
+Private currentpasthistory As Collection         'the current health issue/past history item being manipulated
+Private currentRecall As Collection              'the current recall being maninpulated
+Private CurrentPastHistoryList As Columnview     'three Past history lists on TabStripProblemLists, reference one in us
+Private GP_Management_Plan As Collection 
+Public bEditing As Boolean
+Public FGeneralNotesEditor As FProgressNoteEditor  ' dont remove just testing
+Private ProgressNotesPage As FProgressNoteEditor    'will always be re-initialised with new patient
+Private PrescriptionPage As FPrescriptions          'must be destroyed in Gui_Reset()
+Private form_email_documents As FEmailDocument
+Public ProgressNotesPage_cvwMedications As ColumnView
+Private Form_Diabetes As FDiabetes
+Private obs As Observer
+Private GP_Management_Plans As FGPMPTCA
+Private Control_For_Focus As Control            'don't remove this without asking me (RT)
+Public EditorPages As Collection                 'all pages which are stuck onto the workspace
+Private Const cListMedications As Integer = 0    'all these reference lists of tabstip_lists
+Private Const cListRequests As Integer = 1
+Private Const clistReferrals As Integer = 2
+Private Const clistRecalls As Integer = 3
+Private Const cListCertificates As Integer = 4
+Private Const clistMeasurements As Integer = 5
+Public Const clistImages As Integer = 6          'accessed from other forms
+Private Const cListGPMPTCA As Integer = 9
+Private Const cList_Miscellaneous_forms As Integer = 10
+Private Const cTabResults As Integer = 1
+Private Const CTabLetters As Integer = 2         
+Private Const ctabCalculators As Integer = 7
+Private Const cTabQuickContacts As Integer = 8
+Private Const cMainDisplay_DataEntry As Integer = 1
+Private Const cMainDisplay_ProgressNotes As Integer = 2
+Private Const cMainDisplay_CarePlan As Integer = 3
+Public Form_ClinicalLists As FClinicalLists
+Private Form_Patient_Tasks As FPatientTasks       'all outstanding tasks for the patient in a grid
+Public Form_ExportClinical As New FExportClinical 'Allows user to export notes from FClinical as pdf
+Public currentconsult As CConsult
+
+Static Private form_clinical_new As FClinical_New
+
+Public Sub _new()
+   
+   Form_Patient_Tasks = New FPatientTasks(Vbox_PatientTasks) 
+   form_clinical_new = Me  
+   Form_ClinicalLists = New FClinicalLists(VBox_Clinical_Lists)
+    EditorPages = New Collection
+End
+
+Public Sub Init(cons As CConsult)
+   
+   currentconsult = cons
+   With Form_ClinicalLists
+      .bExit = False 
+      .Init(Currentconsult)           'create the lists and init the medications list
+      .TabStrip_Lists.Enabled = True   
+   End With
+   Form_Patient_Tasks.Init(currentconsult)           'Show a list of outstanding tasks
+   Workspace_Load_Minimal_Panels  'all progress notes and general notes
+   ' wait
+End
+
+
+Public Sub Workspace_Load_Minimal_Panels()
+   
+   WorkspaceEditor.Lock()                    'DO NOT REMOVE THE LOCK/UNLOCK
+   Editor_ShowPage("All Previous Notes")     'Always show all previous notes
+   Editor_ShowPage("New General Notes")      'Default to general notes tab.
+   WorkspaceEditor.Unlock()                  'OR THE GUI WILL RE-SET ITSELF
+   
+End
+Public Sub Editor_ShowPage(sPageName As String, Optional page_tag As String = "", page_data As Variant, additional_page_tag As String = "") As Form
+   '----------------------------------------------------------------
+   'PURPOSE:   Adds a new page to the progress notes workspace
+   '           according to sType parameter passsed to it
+   '           e.g "past history", "new page", "Request" etc
+   '           Two types of pages Document_Viewer and Result_Viewer are global instances of FDocumentviewer
+   '           and once created in this subroutine 'live' for the life of the EasyGP instance unless the
+   '           tab is closed
+   ' A FProgressNotePageContainer doesn't contain the texteditor - just a form
+   ' containg two rows of toolbars with combo's and text formatting
+   ' buttons, contained in VboxEditor
+   '
+   ' The container then has added to it either other forms or just
+   ' a plain textedit control for pages only needing a text editor
+   ' Note that Collections start from a zero(0) count
+   ' but the tablist count starts from 1
+   ' hence first tab > EditorPages[0] etc
+   ' the page tag is either fixed eg "Skin Excision" or
+   ' is a pk_pasthistory if doing progress notes for a past historyDisplay_Health_Issue
+   ' item
+   'FIXME convert this routine so that lower(page.title) = tag
+   'NB: Though it would seem logical not to repeat for every new page
+   '    the code: WorkspaceEditor.Add(NewPage)
+   '    within each case statement, putting it at the end seems to
+   '    make it impossible to auto-set focus on the first control
+   '    in the new form.
+   '--------------------------------------------------------------
+   
+   Dim Demographics As FPatients
+   Dim Form_Clozapine As FClozapine
+   Dim ExportPartial As FExportPartial
+   Dim INRManager As FInr
+   Dim Shortcuts As FStaffPreferencesShortCuts
+   Dim Image_Viewer As FProgressNotesImages
+   Dim retform As Form ' the Form we are returning to the caller: very useful for scripting
+   Dim webpage As FBrowser
+   Dim Browser As FHtmlViewer
+   Dim GPCOG As FGPCOG
+   Dim EdinburghPNDS As FEdinburgPNDScale
+   Dim Chads As FChads
+   Dim HasBled As FHasBled
+   Dim K10 As FK10OutcomeTool
+   Dim RestlessLegs As FRestlessLegs
+   Dim Export_Clinical As FExportClinical
+   Dim MultiMedia As FMoviePlayer
+   Dim PsychoSocialHistory As FPsychoSocialHistory
+   Dim AllPreviousNotes As FProgressNotesViewer
+   Dim SingleHealthIssueNotes As FProgressNotesViewer
+   Dim ExcisionPage As FProcedures
+   Dim RequestPage As FRequests
+   Dim Request_Names As FRequestNames
+   Dim PregnancyPage As FPregnancy
+   Dim RecreationalDrugs As FRecreationalDrugs
+   Dim FamilyHistoryPage As FFamilyHistory
+   Dim HealthAssessmentPage As FHealthAssessment
+   Dim OccupationalHistoryPage As FOccupation
+   Dim Certificates As FCertificates
+   Dim AllergyPage As FAllergy
+   Dim RecallPage As FRecalls
+   Dim PastHistoryPage As FPastHistory
+   Dim ReferralPage As FReferrals
+   Dim MentalHealthPage As FMentalHealth
+   Dim VaccinationPage As FVaccinations
+   Dim workcoverNSWPage As FWorkcoverNSW
+   Dim TravelPage As FTravel
+   Dim page As FLinkContainer
+   Dim PDF As FPDF
+   Dim DrugBrowser As FPDF
+   Dim Form_Library As FLibrary
+   Dim Picture_Viewer As FDocumentViewer
+   Dim sMsg As String
+   Dim Document_Viewer As FDocumentViewer                 'view any document but on the same page as previous
+   Dim Result_Viewer As FDocumentViewer                   'view any resuilt  but on the same page as previous
+   Dim Letters_Written_Viewer As FDocumentViewer          'view any previous letters written on same page as previous
+   Dim bPagefound As Boolean
+   Dim downloader As CFileDownloader
+   '----------------------------------------------------------------------
+   'With these pages, we want the appropriate list to be in the foreground
+   'So this switches the list
+   '----------------------------------------------------------------------
+   Select Case sPageName
+      Case "Referrals"
+         Form_ClinicalLists.TabStrip_Lists.index = clistReferrals
+         Refresh_Section_Instance(const.cSection_Referrals)
+      Case "Requests"
+         Form_ClinicalLists.TabStrip_Lists.index = cListRequests
+         Refresh_Section_Instance(const.cSection_Requests)            'swap tabbed lists to requests
+      Case "Workcover"
+         Form_ClinicalLists.TabStrip_Lists.index = cListCertificates
+         Form_ClinicalLists.form_clinlists_certificates.rbWorkCoverCertificate.value = True
+      Case "Measurements"
+         Form_ClinicalLists.TabStrip_Lists.index = clistMeasurements
+      Case "Recalls"
+         Form_ClinicalLists.TabStrip_Lists.index = clistRecalls
+   End Select
+   'Results and documents  and audits are always shown on the same editor page, just re-loaded every time
+   If sPageName = "result" Then                                             'generic tab for documents, re-used time after time after time
+      bPagefound = False  
+      For Each page In WorkspaceEditor.Windows                                    'search all tabs
+         If Page.title = "Result" Or Page.Title = "UNFILED RESULT" Then                     'if result tab showing
+            WorkspaceEditor.ActiveWindow = page
+            Result_Viewer = page.VBoxEditor.Children[0]
+            bPagefound = True   
+            Break
+         End If
+      Next
+      If bPagefound = False Then                                             'if not already showing
+         page = New FLinkContainer                               'create the container
+         page.tag = "Result"
+         page.title = "Result"
+         Result_Viewer = New FDocumentViewer(page.VBoxEditor)  'and instance of document (never killed whilst program running)
+         WorkspaceEditor.Add(page)
+      Endif
+      If additional_page_tag = "html" Then
+         Result_Viewer.Load_Html(page_data)
+      Else
+         downloader = New CFileDownloader
+         downloader.Set_Viewer(Result_Viewer, additional_page_tag)
+         modFiles.Background_Get("document_archiving_directory", page_data, downloader)
+      Endif
+   Else If sPageName = "audit trail" Then
+      bPagefound = False  
+      For Each page In WorkspaceEditor.Windows                  'search all tabs
+         If Page.title = "Audit Trail" Then                     'if audit trail tab is showing
+            WorkspaceEditor.ActiveWindow = page
+            Document_Viewer = page.VBoxEditor.Children[0]
+            bPagefound = True   
+            Break
+         End If
+      Next
+      If bPagefound = False Then                                 'if not already showing
+         page = New FLinkContainer                               'create the container
+         page.tag = "Document"
+         page.title = "Document"
+         Document_Viewer = New FDocumentViewer(page.VBoxEditor)  'and instance of document (never killed whilst program running)
+         WorkspaceEditor.Add(page)
+      End If   
+      Document_Viewer.Load_Html(page_data)
+   Else If sPageName = "Immunisation Schedule" Then
+      bPagefound = False  
+      For Each page In WorkspaceEditor.Windows                                    'search all tabs
+         If Page.title = "Immunisation Schedule" Then                     'if result tab showing
+            WorkspaceEditor.ActiveWindow = page
+            Document_Viewer = page.VBoxEditor.Children[0]
+            bPagefound = True 
+            '   'lblsection.text = ""  
+            Break
+         End If
+      Next
+      If bPagefound = False Then                                             'if not already showin
+         page = New FLinkContainer                               'create the container
+         page.tag = "Immunisation Schedule"
+         page.title = "Immunisation Schedule"
+         Document_Viewer = New FDocumentViewer(page.VBoxEditor)  'and instance of document (never killed whilst program running)
+         WorkspaceEditor.Add(page)
+         ' 'lblsection.text = ""
+      End If   
+      With Document_Viewer
+         .Load_PDF("clinical/vaccination" &/ page_data)
+         .form_pdf.btNext_Click()
+      End With
+   Else If sPagename = "document" Or If sPageName = "pdf document" Then
+      bPagefound = False  
+      For Each page In WorkspaceEditor.Windows                                    'search all tabs
+         If Page.title = "Document" Then                     'if result tab showing
+            WorkspaceEditor.ActiveWindow = page
+            Document_Viewer = page.VBoxEditor.Children[0]
+            bPagefound = True   
+            Break
+         End If
+      Next
+      If bPagefound = False Then                                             'if not already showin
+         page = New FLinkContainer                               'create the container
+         page.tag = "Document"
+         page.title = "Document"
+         Document_Viewer = New FDocumentViewer(page.VBoxEditor)  'and instance of document (never killed whilst program running)
+         WorkspaceEditor.Add(page)
+      End If
+      If additional_page_tag = "html" Then
+         Document_Viewer.Load_Html(page_data)
+      Else
+         downloader = New CFileDownloader
+         downloader.Set_Viewer(Document_Viewer, "pdf")
+         modFiles.Background_Get("document_archiving_directory", page_data, downloader)
+      Endif
+   Else If sPagename = "letters written" Then
+      bPagefound = False  
+      For Each page In WorkspaceEditor.Windows                                    'search all tabs
+         If Page.title = "Letters Written" Then                     'if result tab showing
+            WorkspaceEditor.ActiveWindow = page
+            Letters_Written_Viewer = page.VBoxEditor.Children[0]
+            bPagefound = True   
+            Break
+         End If
+      Next
+      If bPagefound = False Then                                             'if not already showin
+         page = New FLinkContainer                               'create the container
+         page.tag = "Letters Written"
+         page.title = "Letters Written"
+         Letters_Written_Viewer = New FDocumentViewer(page.VBoxEditor)  'and instance of document (never killed whilst program running)
+         WorkspaceEditor.Add(page)
+      End If   
+      Select Case additional_page_tag                            'show appropriate document
+         Case "tex"
+            Message.info("sorry you'll have to fix the tex stuff  yourself")
+            ' Letters_Written_Viewer.Load_PDF(modFiles.Get("document_archiving_directory", page_data))
+         Case "html"
+            Letters_Written_Viewer.Load_Html(page_data)
+      End Select
+   Else
+      If Not Editor_SetActivePage(sPageName, page_tag) Then 'check if this page be it section or a result is already showing.
+          Select Case sPageName
+            Case "image"
+               page = New FLinkContainer
+               Picture_Viewer = New FDocumentViewer(page.VBoxEditor)
+               Picture_Viewer.Load_Picture(modFiles.Get("document_archiving_directory", page_data))
+               WorkspaceEditor.Add(page)
+               page.tag = sPageName
+               Page.title = sPageName
+               retform = Picture_Viewer
+          Case "Patients"                                             'the FPatients patient contact manager
+               page = New FLinkContainer
+               Demographics = New FPatients(page.VBoxEditor)
+               WorkspaceEditor.Add(page)
+               page.tag = sPageName
+               Page.title = sPageName
+               retform = Demographics
+            Case "Clozapine"
+               page = New FLinkContainer
+               With Form_Clozapine = New FClozapine(page.VBoxEditor)
+                  .Init(currentconsult)
+               End With
+               WorkspaceEditor.Add(page)
+               page.tag = sPageName
+               Page.title = sPageName
+               retform = Form_Clozapine
+            Case "Request Names"
+               page = New FLinkContainer
+               With Request_Names = New FRequestNames(page.VBoxEditor)
+                  .Init()
+               End With
+               WorkspaceEditor.Add(page)
+               page.tag = sPageName
+               Page.title = sPageName
+               retform = Request_Names
+            Case "Short Cuts"
+               page = New FLinkContainer
+               With Shortcuts = New FStaffPreferencesShortCuts(page.VBoxEditor)
+                  .Init()
+                  .ShortCut_New(page_data)
+                  .Set_Embedded_Name("FClinical")
+               End With
+               WorkspaceEditor.Add(page)
+               page.tag = sPageName
+               Page.title = sPageName
+               retform = Request_Names
+            Case "multimedia"
+               page = New FLinkContainer
+               With MultiMedia = New FMoviePlayer(page.VBoxEditor)
+                  .Init(page_data)
+               End With
+               WorkspaceEditor.Add(page)
+               page.tag = page_tag
+               Page.title = page_tag
+               retform = MultiMedia
+            Case "Library"
+               page = New FLinkContainer
+               With Form_Library = New FLibrary(page.VBoxEditor)
+                  .HBox_Heading.Visible = False
+               End With
+               WorkspaceEditor.Add(page)
+               page.tag = sPageName
+               Page.title = sPageName
+               retform = Form_Library
+               EditorPages.Add(Form_Library, sPageName)
+               Control_For_Focus = Form_Library.TreeView1
+            Case "Export Wizard"
+               page = New FLinkContainer
+               Export_Clinical = New FExportClinical(page.VBoxEditor)
+               Export_Clinical.Init(currentconsult)
+               WorkspaceEditor.Add(page)
+               retform = Export_Clinical
+               page.tag = sPageName
+               Page.title = sPageName
+               EditorPages.Add(Export_Clinical, sPageName)
+            Case "INR"
+               page = New FLinkContainer
+               INRManager = New Finr(page.VBoxEditor)
+               INRManager.Init(currentconsult)
+               WorkspaceEditor.Add(page)
+               page.tag = sPageName
+               Page.title = sPageName
+               EditorPages.Add(INRManager, sPageName)
+               Control_For_Focus = INRManager.txtReason
+            Case "Certificates"
+               page = New FLinkContainer
+               Certificates = New FCertificates(page.VBoxEditor)
+               Certificates.Init(currentconsult)
+               WorkspaceEditor.Add(page)
+               page.tag = sPageName
+               Page.title = sPageName
+               retform = Certificates
+               EditorPages.Add(Certificates, sPageName)
+               Control_For_Focus = Certificates.tabstrip1
+            Case "pdf file"
+               page = New FLinkContainer
+               With PDF = New FPDF(page.VBoxEditor)
+                  .Init(currentconsult)
+                  .Load_PDF(page_data, False, True)
+                  .tbSave.Enabled = True
+                  .tbSave.Visible = True
+                  .btRotate.Visible = True
+                  .tag = page_tag
+               End With
+               WorkspaceEditor.Add(page)
+               page.tag = page_tag
+               Page.title = page_tag
+               retform = PDF
+               EditorPages.Add(PDF, page_tag)
+            Case "drugs browser"
+               page = New FLinkContainer
+               With DrugBrowser = New FPDF(page.VBoxEditor)
+                  .Load_PDF(page_data)
+                  .Init_Drugs_Browser()
+               End With
+               WorkspaceEditor.Add(page)
+               page.tag = page_tag
+               Page.title = page_tag
+               retform = DrugBrowser
+               EditorPages.Add(PDF, page_tag)
+            Case "pdf document"
+               page = New FLinkContainer
+               With PDF = New FPDF(page.VBoxEditor)
+                  .Load_PDF(modFiles.Get("document_archiving_directory", page_data))
+                  .btRotate.Visible = True
+                  .btRotate.Enabled = True
+                  .btZoomIn.Visible = True
+                  .btZoomIn.Enabled = True
+               End With
+               WorkspaceEditor.Add(page)
+               page.tag = page_tag
+               Page.title = page_tag
+               retform = PDF
+               EditorPages.Add(PDF, page_tag)
+            Case "pdf document external"   'not one of our documents
+               page = New FLinkContainer
+               With PDF = New FPDF(page.VBoxEditor)
+                  .Load_PDF(page_data)
+                  .btRotate.Visible = True
+                  .btRotate.Enabled = True
+                  .btZoomIn.Visible = True
+                  .btZoomIn.Enabled = True
+               End With
+               WorkspaceEditor.Add(page)
+               page.tag = page_tag
+               Page.title = page_tag
+               retform = PDF
+               EditorPages.Add(PDF, page_tag)
+            Case "Habits"   'changed back at behest of Horst apparent patient's looking at screen took offence.
+               page = New FLinkContainer
+               RecreationalDrugs = New FRecreationalDrugs(page.VBoxEditor)
+               RecreationalDrugs.Init(currentconsult)
+               WorkspaceEditor.Add(page)
+               page.tag = sPageName
+               Page.title = sPageName
+               retform = RecreationalDrugs
+               EditorPages.Add(RecreationalDrugs, sPageName)
+               Control_For_Focus = RecreationalDrugs.lblMeasure
+            Case "Care Planning"
+               'remove past history tab if showing (this is included also in care planning and they cannot exist together)
+               If Editor_PageExists("Past History", "Health Issues") Then
+                  Editor_RemovePage("Health Issues")  'yes this is all rather stupid code and mixed up strings (historical - too lazy/no time to fix)
+               Endif
+               If Not modAdminDBI.Has_User_Seen_Tip("FGPMPTCA.FirstRun") Then 
+                  With FUsageTip
+                     .Init("Creating GPMP or TCA", "FGPMPTCA.FirstRun", modPastHistoryDBI.First_Run_Message())
+                     .ShowModal()
+                  End With  
+               End If
+               If IsNull(currentconsult!patient!fk_doctor) Then   
+                  modPatientWarnings.Usual_Doctor_InForm_Missing(currentconsult)
+               End If   
+               page = New FLinkContainer
+               With GP_Management_Plans = New FGPMPTCA(page.VBoxEditor)
+                  .Init(currentconsult)
+               End With
+               WorkspaceEditor.Add(page)
+               page.tag = sPageName
+               Page.title = sPageName
+               retform = GP_Management_Plans
+               EditorPages.Add(GP_Management_Plans, sPageName)
+            Case "browser"
+               page = New FLinkContainer
+               With Browser = New FHtmlViewer(page.VBoxEditor)
+                  Print page_data
+                  .WebView1.HTML = page_data
+                  .Set_Document_Details(Trim(additional_page_tag & " " & page_tag))
+               End With
+               obs = New Observer(Browser.mnuTest) As "mnuWebViewTest"
+               obs = New Observer(Browser.Webview1) As "WebView"
+               WorkspaceEditor.Add(page)
+               page.tag = page_tag
+               Page.title = page_tag
+               retform = Browser
+               EditorPages.Add(Browser, page_tag)
+            Case "images"             'currently this means images embedded in clinical notes
+               page = New FLinkContainer
+               Image_Viewer = New FProgressNotesImages(page.VBoxEditor)
+               Image_Viewer.Init(Currentconsult, page_data)
+               WorkspaceEditor.Add(page)
+               retform = Image_Viewer
+               page.tag = page_tag
+               Page.title = page_tag
+               EditorPages.Add(Image_Viewer, page_tag)
+            Case "GPCOG"
+               page = New FLinkContainer
+               GPCOG = New FGPCOG(page.VBoxEditor)
+               GPCOG.Init(Currentconsult)
+               retform = GPCOG
+               WorkspaceEditor.Add(page)
+               page.tag = sPageName
+               Page.title = sPageName
+            Case "Edinburgh"
+               page = New FLinkContainer
+               EdinburghPNDS = New FEdinburgPNDScale(page.VBoxEditor)
+               EdinburghPNDS.Init(Currentconsult)
+               WorkspaceEditor.Add(page)
+               retform = EdinburghPNDS
+               page.tag = sPageName
+               Page.title = sPageName
+            Case "Restless Legs"
+               page = New FLinkContainer
+               RestlessLegs = New FRestlessLegs(page.VBoxEditor)
+               RestlessLegs.Init(Currentconsult)
+               WorkspaceEditor.Add(page)
+               retform = RestlessLegs
+               page.tag = sPageName
+               Page.title = sPageName 
+            Case "K10"
+               page = New FLinkContainer
+               K10 = New FK10OutcomeTool(page.VBoxEditor)
+               K10.Init("FClinical") 'not yet integrated as a stand alone tool FIXME
+               WorkspaceEditor.Add(page)
+               page.tag = sPageName
+               Page.title = sPageName
+               retform = K10
+               EditorPages.Add(K10, "K10")
+            Case "Has-Bled Calculator"
+               page = New FLinkContainer
+               HasBled = New FHasBled(page.VBoxEditor)
+               HasBled.Init(Currentconsult)
+               WorkspaceEditor.Add(page)
+               page.tag = "Has-Bled Calculator"
+               page.Title = "Has-Bled Calculator"
+               EditorPages.Add(HasBled, "Has-Bled Calculator")
+               retform = HasBled
+            Case "Chads Calculator"
+               page = New FLinkContainer
+               Chads = New FChads(page.VBoxEditor)
+               Chads.Init(Currentconsult)
+               WorkspaceEditor.Add(page)
+               page.tag = "Chads Calculator"
+               page.Title = "Chads Calculator"
+               EditorPages.Add(Chads, "Chads Calculator")
+               retform = Chads
+               ' Case "Edit Notes"
+               '    page = New FLinkContainer
+               '    EditPastNotes = New FEditNotes(page.VBoxEditor)
+               '    EditPastNotes.Init(currentconsult)
+               '    WorkspaceEditor.Add(page)
+               '    page.tag = "Edit Notes"
+               '    page.Title = "Edit Notes"
+               '    EditorPages.Add(EditPastNotes, "Edit Notes")
+               '  retform = EditPastNotes
+            Case "Single Health Issue Notes"
+               page = New FLinkContainer
+               With SingleHealthIssueNotes = New FProgressNotesViewer(page.VBoxEditor)
+                  .Init(currentconsult, page_data)
+                  .LblNotesFilter.text = page_tag
+               End With
+               WorkspaceEditor.Add(page)
+               page.tag = page_tag
+               page.Text = page_tag
+               retform = SingleHealthIssueNotes
+               EditorPages.Add(SingleHealthIssueNotes, page_tag)
+               Control_For_Focus = SingleHealthIssueNotes.WebView1
+            Case "All Previous Notes"
+               page = New FLinkContainer
+               With AllPreviousNotes = New FProgressNotesViewer(page.VBoxEditor)
+                  .Init(currentconsult) 'defaults to no audit trail
+               End With
+               WorkspaceEditor.Add(page)
+               page.tag = "All Previous Notes"
+               page.Text = "All Previous Notes"
+               retform = AllPreviousNotes
+               EditorPages.Add(AllPreviousNotes, "All Previous Notes")
+               Control_For_Focus = AllPreviousNotes.WebView1
+            Case "Diabetes"
+               page = New FLinkContainer
+               Form_Diabetes = New FDiabetes(page.VBoxEditor)
+               Form_Diabetes.Init(Currentconsult)
+               page.tag = "Diabetes"
+               page.Text = "Diabetes"
+               WorkspaceEditor.Add(page)
+               retform = Form_Diabetes
+               EditorPages.Add(Form_Diabetes, "Diabetes")
+            Case "Edit Last Consult"
+               '----------------------------------------------------------------------
+               'General notes page as the name implies is for notes not tied to a
+               'particular health issue or problem. For particular problems the user
+               'should be taught to open an editor tab for that problem.
+               '----------------------------------------------------------------------
+               page = New FLinkContainer
+               ProgressNotesPage = New FProgressNoteEditor(page.VBoxEditor)
+               WorkspaceEditor.Add(page)
+               page.tag = "Edit Last Consult"
+               page.Text = "Edit Last Consult"
+               ProgressNotesPage_cvwMedications = ProgressNotesPage.cvwMedicationsToday
+               ProgressNotesPage.Init(currentconsult, True)         'True = edit last progress notes
+               EditorPages.Add(ProgressNotesPage, "Edit Last Consult")
+               FGeneralNotesEditor = ProgressNotesPage               'used if want to insert text back into progress note
+               retform = ProgressNotesPage
+            Case "New General Notes"
+               '----------------------------------------------------------------------
+               'General notes page as the name implies is for notes not tied to a
+               'particular health issue or problem. For particular problems the user
+               'should be taught to open an editor tab for that problem.
+               '----------------------------------------------------------------------
+               page = New FLinkContainer
+               ProgressNotesPage = New FProgressNoteEditor(page.VBoxEditor)
+               WorkspaceEditor.Add(page)
+               page.tag = "New General Notes"
+               page.Text = "New General Notes"
+               ProgressNotesPage_cvwMedications = ProgressNotesPage.cvwMedicationsToday
+               ProgressNotesPage.Init(currentconsult)
+               EditorPages.Add(ProgressNotesPage, "New General Notes")
+               FGeneralNotesEditor = ProgressNotesPage               'used if want to insert text back into progress note
+               retform = ProgressNotesPage
+            Case "Travel"
+               page = New FLinkContainer
+               TravelPage = New FTravel(page.VBoxEditor)
+               TravelPage.Init(currentconsult)
+               page.tag = "Travel"
+               page.Title = "Travel"
+               WorkspaceEditor.Add(page)
+               retform = TravelPage
+               EditorPages.Add(TravelPage, "Travel")
+               Control_For_Focus = TravelPage.txtDestination
+            Case "Occupational History"
+               page = New FLinkContainer
+               With OccupationalHistoryPage = New FOccupation(page.VBoxEditor)
+                  .Init(currentconsult)
+               End With
+               page.tag = "Occupational History"
+               page.Title = "Occupational History"
+               WorkspaceEditor.Add(page)
+               retform = OccupationalHistoryPage
+               EditorPages.Add(OccupationalHistoryPage, "Occupational History")
+               Control_For_Focus = OccupationalHistoryPage.lbloccupation
+            Case "Health Assessment"
+               page = New FLinkContainer
+               HealthAssessmentPage = New FHealthAssessment(page.VBoxEditor)
+               HealthAssessmentPage.Init(currentconsult)
+               page.tag = "HealthAssessment"
+               page.Title = "HealthAssessment"
+               WorkspaceEditor.Add(page)
+               retform = HealthAssessmentPage
+               EditorPages.Add(HealthAssessmentPage, "HealthAssessment")
+            Case "Mental Health"
+               page = New FLinkContainer
+               MentalHealthPage = New FMentalHealth(page.VBoxEditor)
+               MentalHealthPage.Init(currentconsult)
+               page.tag = "Mental Health"
+               page.Title = "Mental Health"
+               WorkspaceEditor.Add(page)
+               retform = MentalHealthPage
+               EditorPages.Add(MentalHealthPage, "Mental Health")
+               ' Control_For_Focus = MentalHealthPage.WebView1
+            Case "Allergies"
+               page = New FLinkContainer
+               AllergyPage = New FAllergy(page.VBoxEditor)
+               ' AllergyPage.Init(currentconsult)
+               AllergyPage.Init(currentconsult)
+               page.tag = "Allergies"
+               page.Title = "Allergies & Sensitivities"
+               WorkspaceEditor.Add(page)
+               retform = AllergyPage
+               EditorPages.Add(AllergyPage, "Allergies & Sensitivities")
+               ' Control_For_Focus = AllergyPage.tbNewAllergy
+            Case "webpage"
+               page = New FLinkContainer
+               '  Page.tag = txtURL.text
+               WebPage = New FBrowser(page.VBoxEditor)
+               WebPage.Expand = True
+               WorkspaceEditor.Add(page)
+               page.Title = "Web"
+               retform = WebPage
+               WebPage.Visible = True 'make it visible, default is not visible, trigger form_load
+               WebPage.txtURL.text = page_data
+               WebPage.btnGo.Value = True
+            Case "Pregnancy"
+               ' Message.Info("Please do not use this section it will crash, you can take a peek if you want at the screens")
+               page = New FLinkContainer
+               With PregnancyPage = New FPregnancy(page.VBoxEditor)
+                  .Init(currentconsult)
+               End With
+               retform = PregnancyPage
+               page.tag = "Pregnancy"
+               page.title = "Pregnancy"
+               WorkspaceEditor.Add(page)
+               EditorPages.Add(PregnancyPage, "Pregnancy")
+            Case "Referrals"
+               page = New FLinkContainer
+               ReferralPage = New FReferrals(page.VBoxEditor)
+               ReferralPage.Init(currentconsult)
+               page.Tag = "Referrals"
+               page.Title = "Referrals"
+               WorkspaceEditor.Add(page)
+               retform = ReferralPage
+               EditorPages.Add(ReferralPage, "Referrals")
+               Control_For_Focus = ReferralPage.txtName
+            Case "Scripts"
+               'First make sure they have prescriber/provider number
+               If IsNull(modDBConnect.currentUser!prescriber_number) Or IsNull(modDBConnect.currentUser!provider_number) Then
+                  Message.Title = "Invalid Prescriber Detected"
+                  sMsg = "Mmmmm...looks like you are attempting to write prescriptions without being a valid prescriber.\n\n\""
+                  "Your activity And ID will be reported To the SysAdmin, in fact, if you are paranoid, it could be that the built in web-cam in this computer has already "
+                  "mailed your photo to the relevant authorities!\n\n\""
+                  "Should you think this is an error your SysAdmin can rectify this by entering valid details."
+                  Message.Warning(sMsg, "Ok")
+                  Return
+               Endif
+               page = New FLinkContainer
+               PrescriptionPage = New FPrescriptions(page.VBoxEditor)
+               PrescriptionPage.set_embedded("FClinical")
+               PrescriptionPage.Init(currentconsult)
+               page.tag = "Scripts"
+               page.Title = "Scripts"
+               retform = PrescriptionPage
+               WorkspaceEditor.Add(page)
+               EditorPages.Add(PrescriptionPage, "Scripts")
+               PrescriptionPage.bexit = True
+               PrescriptionPage.BExit = False
+            Case "Family History"
+               page = New FLinkContainer
+               FamilyHistoryPage = New FFamilyHistory(page.VBoxEditor)
+               FamilyHistoryPage.Init(currentconsult)
+               page.tag = "Family History"
+               page.Title = "Family History"
+               WorkspaceEditor.Add(page)
+               retform = FamilyHistoryPage
+               EditorPages.Add(FamilyHistoryPage, "Family History")
+            Case "Psycho-Social History"
+               page = New FLinkContainer
+               PsychoSocialHistory = New FPsychoSocialHistory(page.VBoxEditor)
+               PsychoSocialHistory.Init(currentconsult)
+               page.tag = "Psycho-Social History"
+               page.Title = "Psyscho-Social History"
+               WorkspaceEditor.Add(page)
+               retform = PsychoSocialHistory
+               EditorPages.Add(PsychoSocialHistory, "Psycho-Social History")
+               Control_For_Focus = PsychoSocialHistory.teSocialHistory
+            Case "Health Issues"
+               If Editor_PageExists("Care Planning", "") Then  'First check that this is not open on the care planning tab
+                  GP_Management_Plans.TabStrip1.index = 0       'If does > switch to that instance
+                  Return                                        'and exit
+               Endif
+               page = New FLinkContainer
+               PastHistoryPage = New FPastHistory(page.VBoxEditor)
+               PastHistoryPage.Init(currentconsult)
+               page.tag = "Health Issues"
+               page.Title = "Health Issues"
+               WorkspaceEditor.Add(page)
+               retform = PastHistoryPage
+               EditorPages.Add(PastHistoryPage, "Health Issues")
+               Control_For_Focus = PastHistoryPage.txtCondition
+            Case "Vaccinations"
+               page = New FLinkContainer
+               VaccinationPage = New FVaccinations(page.VBoxEditor)
+               page.tag = "Vaccinations"
+               page.Title = "Vaccinations"
+               WorkspaceEditor.Add(page)
+               retform = VaccinationPage
+               VaccinationPage.Init(currentconsult)
+               EditorPages.Add(VaccinationPage, "Vaccinations")
+            Case "Workcover"
+               page = New FLinkContainer
+               workcoverNSWPage = New FWorkcoverNSW(page.VBoxEditor)
+               page.tag = "Workcover"
+               page.Title = "Workcover"
+               WorkspaceEditor.Add(page)
+               retform = workcoverNSWPage
+               workcoverNSWPage.Init(currentconsult)
+               EditorPages.Add(WorkcoverNSWPage, "Workcover")
+               Control_For_Focus = workcoverNSWPage.lvwClaims
+            Case "Requests"
+               '------------------------------------------------------------------------
+               'Create an  editor page with embedded request form and space for
+               'some progress notes underneath
+               'Note:   A patient as none or many previously ordered request forms
+               '`       i.e currentconsult!RequestForms collection
+               '        A consultation has none or many RequestForms ordered just
+               '        this consultation
+               '        currently this is pointed to by currentconsult.RequestForms
+               '------------------------------------------------------------------------
+               page = New FLinkContainer
+               RequestPage = New FRequests(page.VBoxEditor)
+               WorkspaceEditor.Add(page)
+               RequestPage.Init(currentconsult)
+               page.tag = "Requests"
+               page.title = "Requests"
+               retform = RequestPage
+               EditorPages.Add(RequestPage, "Requests")
+               Control_For_Focus = RequestPage.txtFindRequest
+            Case "Measurements"
+               Return 'nothing done yet
+            Case "Recalls"
+               page = New FLinkContainer
+               RecallPage = New FRecalls(page.VBoxEditor)  'add a recalls page
+               WorkspaceEditor.Add(page)
+               RecallPage.Init(currentconsult)
+               page.tag = "Recalls"
+               page.Title = "Recalls"
+               retform = RecallPage
+               EditorPages.Add(RecallPage, "Recalls")
+               Control_For_Focus = RecallPage.txtRecallFor
+            Case "Skin Excision"
+               modUtilGUI.NotImplemented("Skin Excision Module")
+               Return
+               page = New FLinkContainer
+               ExcisionPage = New FProcedures(page.VBoxEditor)
+               WorkspaceEditor.Add(page)
+               page.Title = "Skin Excision"
+               page.Tag = "Skin Excision"
+               ExcisionPage.Init(currentconsult)
+               retform = ExcisionPage
+               EditorPages.Add(ExcisionPage, "Skin Excision")
+               Control_For_Focus = ExcisionPage.cmbExcisionTypes
+            Case Else
+               Message.info("Unknown editor page type " & sPageName & " - please contact the developers")
+               '   Error.Raise("unknown editor page type " & sPageName)
+         End Select
+      End If
+   End If   
+   
+   Return retform
+   
+End
+Public Sub Refresh_Section_Instance(section As Integer)
+   '-------------------------------------------------------------------------
+   'Refreshs lists, progress note pages when another section alters something
+   'If not a list being refreshed, refresh all progress notes pages contained
+   'in the workspace, this way e.g if you have added new management plans or
+   'historial summaries in past history, and have a progress note page
+   'open entering notes for that problem, next time you switch to it those
+   'summaries will have been updated
+   '-------------------------------------------------------------------------
+   
+   Dim hCtrl As Control
+   Dim frmConsult As FProgressNotePage
+   Dim Page As FLinkContainer
+   Dim Container As FLinkContainer
+   Dim HTMLViewer As FHtmlViewer
+   Dim Form_PDF As FPDF
+   
+   If IsNull(currentconsult) Then Return
+   Select Case section
+      Case Const.cSection_Lists_GPMP_TCA
+         Try Form_ClinicalLists.form_clinlists_gpmp_tca.cvwGPMPTCA_Reload(True) 'reload any gpmp/tca documents refreshing the collection  - this form can be null
+      Case const.cSection_CarePlan
+         GPMP_Reload                                                             'change toolbutton captions/tag and se the GP_Management_Plan collection 
+      Case const.cSection_Lists_Results                 
+         Try Form_ClinicalLists.form_clinlists_ordering.cvwResults_Reload         'this form can be null if not accessed yet
+      Case const.cSection_PastHistory
+         pasthistory_refresh_lists()
+      Case const.cSection_Prescriptions
+         Form_ClinicalLists.form_clinlists_medications.Medications_Refresh       'this list is always present
+      Case const.cSection_Requests                                              'these textboxes are a misnomer - shared with request/results FIXME.
+         Try Form_ClinicalLists.form_clinlists_ordering.cvwRequests_Reload   'refreshes the requests collection and reloads the columnview if this form exists
+      Case const.cSection_Referrals
+         currentconsult.Refresh("referrals_written")     'fixme probably should pass a flag to cvwReferrals_load
+         Try Form_ClinicalLists.form_clinlists_correspondence.cvwReferrals_Load
+      Case const.cSection_allergies
+       '  Allergies_Sensitivities_Refresh() fixme put in toolbar
+      Case const.cSection_Images
+         Try Form_ClinicalLists.form_clinlists_images.Images_Reload(True)
+      Case Const.cSection_Recalls
+         Try Form_ClinicalLists.form_clinlists_recalls.cvwRecalls_Reload
+         FClinicalToolbar.ToolBar_Reminders_Refresh
+      Case Const.cSection_Workcover
+         Try Form_ClinicalLists.form_clinlists_certificates.Workcover_Certificates_Reload 'can be null if not yet viewed
+      Case Const.cSection_MedicalCertificates
+         Try Form_ClinicalLists.form_clinlists_certificates.Certificates_Medical_Refresh()
+      Case const.cSection_Documents    'fixme to reflect the letters list
+         Try Form_ClinicalLists.form_clinlists_correspondence.cvwLettersReceived_Reload(True)
+      Case Else
+         '-------------------------------------------------
+         'Not a list to update must be a progress note page
+         'Update this whether active or not
+         'or care plan or health summary
+         '-------------------------------------------------
+         For Each page In WorkspaceEditor.Windows
+            Container = page
+            For Each hctrl In page.VBoxEditor.Children
+               Print hctrl.Name
+               Select Case hctrl.Name
+                  Case "FProgressNotePage"
+                     frmConsult = hctrl
+                     If section <> Const.cSection_GeneralNotes Then
+                        If frmConsult.Get_pk_pasthistory() Then
+                           frmConsult.Health_Issue_Reload()
+                           page.title = frmConsult.HealthIssue_GetName()
+                        End If
+                     End If
+                     Break
+                  Case "FPDF"
+                     Select Case section
+                        Case Const.cSection_HealthSummary
+                           Form_PDF = hCtrl
+                           'reconstruct the health summary but do not delete the temporary file when FPDF loads it.
+                           Form_PDF.Load_PDF(modPrinting.Latex_To_PDF(modProgressNotes.Health_Summary_Construct_LaTex(currentconsult).GetData()), False, False)
+                     End Select
+                  Case "FHtmlViewer"
+                     Select Case section
+                        Case const.cSection_CarePlan
+                           ' If Page.caption = "Care Plan" Then
+                           '    HTMLViewer = hctrl
+                           '    HTMLViewer.WebView1.HTML = modProgressNotes.Care_Plan_Construct_html(Currentconsult)
+                           '    Break
+                           ' Endif
+                        Case const.cTab_Food_Drug_List
+                           If Page.caption = "Brand Equivalents" Then
+                              HTMLViewer = hctrl
+                              HTMLViewer.WebView1.HTML = modPrescribingDBI.Brand_Equivalents_Make_HTML(modPrescribingDBI.active_medication_list(currentconsult), currentconsult)
+                              Break
+                           Endif  
+                     End Select
+               End Select
+            Next
+         Next
+   End Select
+   
+End
+
+Function Editor_SetActivePage(pagetitle As String, page_tag As String) As Boolean
+   '---------------------------------------------------------------
+   'PURPOSE: If a page is already opened, the switch to that page
+   'EXPECTS: title of a page as a string
+   'RETURNS: boolean flag TRUE if page found, FALSE = not yet added
+   'for historical reasons which which will make no sens the
+   'FProgressNotePageContainer is only a Vbox. FIXME
+   '----------------------------------------------------------------
+   
+   Dim page As FLinkContainer
+   
+   If bediting Then Return    'force a reload of general notes even if tab is open
+   For Each page In WorkspaceEditor.Windows
+      If Page.tag = pagetitle Or page.tag = page_tag Then
+         WorkspaceEditor.ActiveWindow = page
+         ' 'lblsection.text = pagetitle
+         Return True
+      End If
+   Next
+   Return False
+   
+End
+Function Editor_PageExists(pagetitle As String, page_tag As String) As Boolean
+   'Returns true if a page is in the workspace
+   
+   Dim page As FLinkContainer
+   
+   For Each page In WorkspaceEditor.Windows
+      If Page.tag = pagetitle Or page.tag = page_tag Then
+         Return True
+      End If
+   Next
+   Return False
+   
+End
+
+Static Public Function Editor_RemovePage(sKey As Variant, Optional bCloseAll As Boolean = False)
+   '-------------------------------------------------------------------------------------------------
+   'Removes 1 or all pages  from the EditorPages collection and its associated workspace tab
+   'The key of the hWindow can be integer if past history progress notes page or a string eg "Travel"
+   'If we are implicitly calling this page (ie - it is not being shut down by the user closing a tab
+   'or the program exiting - then cancel the save of information on this page
+   'For example - we use this when the user may have deleted a past history item, whilst still having
+   'unsaved progress notes on this item in a progress notes editor.
+   '-------------------------------------------------------------------------------------------------
+   
+   Dim Page As FLinkContainer
+   Dim hCtrl As Control
+   Dim frmConsult As FProgressNotePage
+   
+   form_clinical_new.WorkspaceEditor.Lock()
+   For Each page In form_clinical_new.WorkspaceEditor.Windows
+      If bCloseAll Then
+         page.Close()
+      Else
+         If page.tag = sKey Then
+            '------------------------------------------------------------------------------------
+            'Found a specific page  if this is a progress notes page, stop it saving its contents
+            'when frmConsult.form_close() is called, it attempts to save the editor contents
+            '------------------------------------------------------------------------------------
+            form_clinical_new.EditorPages.Remove(skey)
+            For Each hctrl In page.VBoxEditor.Children
+               If hctrl Is Form Then
+                  Select Case hctrl.Name
+                     Case "FProgressNotePage"
+                        frmConsult = hctrl
+                        frmConsult.bCancelSave = True
+                        Goto Unlock_Editor 'don't allow progress note page to close
+                        ' Break
+                  End Select
+               End If
+            Next
+            page.Close
+            Break
+         End If
+      End If
+   Next
+   Goto Unlock_Editor
+   
+Unlock_Editor:
+   form_clinical_new.WorkspaceEditor.Unlock()
+   
+End
+
+Public Sub GPMP_Reload()
+   
+   GP_Management_Plan = modPastHistoryDBI.GP_Management_Plans_Get(currentconsult!patient!fk_patient, True)
+   If Not IsNull(GP_Management_Plan) Then
+      With FClinical.tbHealthSummary_Update_Caption
+         .Caption = "View GPMP"
+         .tag = "GPMP"
+      End With
+      currentconsult!patient!gp_management_plan = GP_Management_Plan
+   Endif
+   
+End
+Public Sub PastHistory_Delete()
+   '------------------------------------------------------------------------------
+   'Deletes the past history item, enforces an audit trail and refreshes the lists
+   'the notes are kept in the system, just visible now as struck-through with
+   'an audit note written underneath
+   '------------------------------------------------------------------------------
+   
+   Dim sMsg As String
+   
+   Message.Title = "Delete Health Issue Item"
+   sMsg = "You have chosen to delete a Health Issue.\n\n"
+   "Note that any actual progress notes associated with this health issue will not be visually removed from the progress notes "
+   "but will be 'struck through' and accompanied by an audit-trail annotation of who deleted this information and why.\n\n"
+   "Do you want to continue"
+   If Message.Question(sMsg, "Yes", "No") = 2 Then Return
+   modDBConnect.BeginTrans()
+   modPastHistoryDBI.HealthIssue_Delete(currentconsult, currentPastHistory!pk_pasthistory, currentPastHistory)
+   modDBConnect.CommitTrans()
+   pasthistory_refresh_lists()
+   Try FPastHistory.Reload_Lists()
+   
+End
+
+Public Sub Pasthistory_Refresh_Lists()
+   '------------------------------------------------------------
+   'refreshes the cvwProblemsSignificant and cvwProblemsInactive lists
+   'which are displayed bottom right of FClinical
+   'the collection members are referenced by the pk_past history
+   'which is kept as the key of the list
+   '------------------------------------------------------------
+   
+   Dim PastHistoryCondition As Collection
+   Dim sLaterality As String
+   Dim col_widths As Integer[]
+   
+   lblMeasure.font = cvwProblemsMajor.Font
+   currentconsult.Refresh("past_history")
+   ProgressNotesMenu_Refresh
+   cvwProblemsMajor.columns.Count = 2
+   cvwProblemsSignificant.columns.Count = 2 '0 = date problem noted, 1 = empty as spacer, 2 = the description
+   cvwProblemsInActive.columns.Count = 2
+   cvwProblemsInActive.Clear()
+   cvwProblemsMajor.Clear()
+   cvwProblemsSignificant.Clear()
+   col_widths = New Integer[3]
+   For Each PastHistoryCondition In currentconsult!past_history
+      If PastHistoryCondition!major Then
+         CurrentPastHistoryList = cvwProblemsMajor
+      Else If PastHistoryCondition!active Then
+         CurrentPastHistoryList = cvwProblemsSignificant
+      Else
+         CurrentPastHistoryList = cvwProblemsInActive
+      End If
+      CurrentPastHistoryList.Add(PastHistoryCondition!pk_pasthistory, 0)
+      CurrentPastHistoryList[PastHistoryCondition!pk_pasthistory][0] = PastHistoryCondition!year_onset
+      lblMeasure.text = PastHistoryCondition!year_onset
+      col_widths[0] = lblMeasure.Width
+      Select Case PastHistoryCondition!fk_laterality
+         Case const.LateralityBoth
+            sLaterality = "(Bilateral)"
+         Case const.LateralityLeft
+            sLaterality = "(Left)"
+         Case const.LateralityRight
+            sLaterality = "(Right)"
+         Case const.LateralityNone
+            sLaterality = ""
+      End Select
+      CurrentPastHistoryList[PastHistoryCondition!pk_pasthistory][1] = PastHistoryCondition!description & " " & sLaterality
+   Next
+   cvwProblemsMajor.Columns[0].width = col_widths[0]
+   TabStripProblemLists.index = 1
+   TabStripProblemLists.Caption = "Inactive Health Issues (" & Str(cvwProblemsInActive.count) & ")"
+   TabStripProblemLists.index = 0
+   TabStripProblemLists.Caption = "Active Health Issues (" & Str(cvwProblemsMajor.count + cvwProblemsSignificant.count) & ")"
+   
+End Sub
+
+Public Sub PastHistoryLists_Menu()
+   
+   popupMnu_ProblemList_MakeMajor.Enabled = True
+   popupMnu_ProblemList_MakeSignificant.Enabled = True
+   popupMnu_ProblemList_MakeInactive.Enabled = True
+   
+   With Last
+      If .count Then
+         .MoveCurrent
+         popupMnu_ProblemList_title.caption = UCase(currentpasthistory!description)
+         Select Case Last.tag
+            Case "major"
+               popupMnu_ProblemList_MakeMajor.Enabled = False
+            Case "significant"
+               popupMnu_ProblemList_MakeSignificant.Enabled = False
+            Case "inactive"
+               popupMnu_ProblemList_MakeInactive.Enabled = False
+         End Select
+         If currentpasthistory!confidential Then
+            popupMnu_ProblemList_MarkAsConfidential.Caption = "Mark as Not Confidential"
+         Else
+            popupMnu_ProblemList_MarkAsConfidential.Caption = "Mark as Confidential"
+         Endif
+         If currentpasthistory!operation Then
+            popupMnu_ProblemList_MarkAsOperation.Caption = "Mark as Not an Operation"
+         Else
+            popupMnu_ProblemList_MarkAsOperation.Caption = "Mark as Operation"
+         Endif
+         popupMnu_ProblemList.Popup
+      End If
+   End With
+Catch
+   Return 
+   
+End
+
+Public Sub PastHistoryLists_Select()
+   '--------------------------------------------------
+   'Moves internal record pointer of the last list the
+   'user clicked on to match the row they clicked on.
+   'Sets active past history item to that highlighted.
+   'Note this routine is needed by:
+   '         PastHistoryLists_DblClick()
+   '         PastHistoryLists_menu()
+   '--------------------------------------------------
+   
+   CurrentPastHistoryList = Last
+   With Last
+      If .count Then
+         .MoveCurrent
+         currentpasthistory = currentconsult!past_history[.item.key]
+      End If
+   End With
+Catch
+   Return 
+   
+End
+
+Public Sub PastHistoryLists_DblClick()
+   '-----------------------------------------------------
+   'Called when the user clicks on any of the three
+   'past history lists (Major, significant, inactive
+   'Creates a new editor page ie FProgressNotePage instance
+   'in the main tab control
+   '-----------------------------------------------------
+   
+'    Return 
+'    If Not currentconsult Then Return
+'    If Not Last.count Then Return
+'    
+'    Last.MoveCurrent()
+'    
+'    Editor_PastHistory_ProgressNotePage(currentconsult!past_history[Last.item.key])
+' Catch
+'    Return 
+   
+End
+
+
+Public Sub ProgressNotesMenu_Refresh()
+   '------------------------------------------------------------------
+   'Refreshes the progress notes menu on the main toolbar
+   'Clears all existing entries as user could have added new problems
+   'rebuilds the menu with menu's for
+   '*show all notes
+   '*general notes
+   '*major problems as submenu
+   '*significant active problems as submenu
+   '*inactive problems as submenu
+   '-------------------------------------------------------------------
+   
+   Dim mnu As Menu
+   Dim mnu_major As Menu
+   Dim mnu_active As Menu
+   Dim mnu_inactive As Menu
+   Dim PastHistoryCondition As Collection
+   Dim bNeedSeparator As Boolean = True
+   Dim bNoMainMenu As Boolean = True
+   
+   If Not currentconsult Then Return
+   '----------------------------------------------------------------
+   'Clear menu, even if exit this sub, don't want the last patient's
+   'menu items on the list
+   '----------------------------------------------------------------
+   popupMenuProgressNotes.Children.Clear()
+   '-----------------------------------------------------------
+   'Clear all children from the popup menu then add two entries
+   'one for general notes, one for show all notes
+   '-----------------------------------------------------------
+   
+   mnu = New Menu(popupMenuProgressNotes) As "popupMenuProgressNotes"
+   mnu.name = "Show All Notes"
+   mnu.caption = "Show All Notes"
+   mnu.tag = "show all notes"
+   mnu = New Menu(popupMenuProgressNotes) As "popupMenuProgressNotes"
+   mnu.name = "General Notes"
+   mnu.caption = "General Notes"
+   mnu.tag = "general notes"
+   If currentconsult!past_history.count = 0 Then Return
+   '---------------------------------------------------------
+   'Next add all the major conditions followed by a separator
+   '---------------------------------------------------------
+   currentconsult.Refresh("past_history")
+   For Each PastHistoryCondition In currentconsult!past_history
+      If PastHistoryCondition!major Then
+         If bNeedSeparator Then
+            mnu = New Menu(popupMenuProgressNotes)
+            mnu.name = "separator_1"
+            mnu.caption = ""
+            bNeedSeparator = False
+         End If
+         If bNoMainMenu Then
+            mnu_major = New Menu(popupMenuProgressNotes) As "popupMenuProgressNotes"
+            mnu_major.name = "popupMenuProgressNotes_Major"
+            mnu_major.caption = "Major Health Issues"
+            mnu_major.tag = "major"
+            bNoMainMenu = False
+         End If
+         
+         mnu = New Menu(mnu_major) As "popupMenuProgressNotes"
+         mnu.name = PastHistoryCondition!description
+         mnu.caption = PastHistoryCondition!description
+         mnu.tag = PastHistoryCondition!pk_pasthistory
+      End If
+   Next
+   
+   bNeedSeparator = True
+   bNoMainMenu = True
+   '---------------------------------------------------------------
+   'Next add all the significant conditions followed by a separator
+   '---------------------------------------------------------------
+   For Each PastHistoryCondition In currentconsult!past_history
+      If PastHistoryCondition!active = True Then
+         If bNeedSeparator Then
+            mnu = New Menu(popupMenuProgressNotes)
+            mnu.name = "separator_2"
+            mnu.caption = ""
+            bNeedSeparator = False
+         End If
+         If bNoMainMenu Then
+            mnu_active = New Menu(popupMenuProgressNotes) As "popupMenuProgressNotes"
+            mnu_active.name = "popupMenuProgressNotes_Significant"
+            mnu_active.caption = "Significant Issues"
+            mnu_active.tag = "significant"
+            bNoMainMenu = False
+         End If
+         mnu = New Menu(mnu_active) As "popupMenuProgressNotes"
+         mnu.name = PastHistoryCondition!description
+         mnu.caption = PastHistoryCondition!description
+         mnu.tag = PastHistoryCondition!pk_pasthistory
+      End If
+   Next
+   bNeedSeparator = True
+   bNoMainMenu = True
+   '--------------------------------------------------------------
+   'Lastly add all the inactive conditions followed by a separator
+   '--------------------------------------------------------------
+   For Each PastHistoryCondition In currentconsult!past_history
+      If PastHistoryCondition!active = False And PastHistoryCondition!major = False
+         If bNeedSeparator Then
+            mnu = New Menu(popupMenuProgressNotes)
+            mnu.name = "separator_3"
+            mnu.caption = ""
+            bNeedSeparator = False
+         End If
+         If bNoMainMenu Then
+            mnu_inactive = New Menu(popupMenuProgressNotes) As "popupMenuProgressNotes"
+            mnu_inactive.name = "popupMenuProgressNotes_Significant"
+            mnu_inactive.caption = "Inactive Issues"
+            mnu_inactive.tag = "inactive"
+            bNoMainMenu = False
+         End If
+         mnu = New Menu(mnu_inactive) As "popupMenuProgressNotes"
+         mnu.name = PastHistoryCondition!description
+         mnu.caption = PastHistoryCondition!description
+         mnu.tag = PastHistoryCondition!pk_pasthistory
+      End If
+   Next
+   
+End
+
+Public Sub popupMenuProgressNotes_Click()
+   '----------------------------------------------------------------------------
+   'Show either all notes, general notes only, or those for a health issue alone
+   '----------------------------------------------------------------------------
+   
+   Dim fk_section As Variant
+   Dim shtml As String
+   Dim page_heading As String
+   
+   If Not currentconsult Then Return
+   Select Case Last.tag
+      Case "show all notes"
+         Editor_ShowPage("All Previous Notes")
+         Return
+      Case "general notes"
+         fk_section = const.cSection_GeneralNotes
+         page_heading = "GENERAL NOTES"
+         shtml = modProgressNotes.ConstructHTML_SingleProblem(currentconsult, 0, fk_section)
+      Case Else
+         fk_section = const.cSection_PastHistory
+         shtml = modProgressNotes.ConstructHTML_SingleProblem(currentconsult, Last.tag, fk_section)
+         page_heading = UCase(currentconsult!past_history[Last.tag]!description)
+   End Select
+   
+End

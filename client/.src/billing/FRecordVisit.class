@@ -48,7 +48,7 @@
 '    fixme - put in code in cvwAccounts_select > get payer for branch as a payer
 
 '-----------------------------------------------------------------------------------------------
-
+Private Banking_Slips As Collection 
 Private bulk_billed_Distinct_Dates As Collection
 Private Payment_Refusal_Reasons As Collection 'of non-medical easygp-user codes where payment refused e.g 'Insurance won't pay'
 Private running_total As Float
@@ -141,7 +141,7 @@ Private iAccountDisplayMode As Integer  'const.Billing_Accounts_Paid,  Billing_A
 Private form_billingcards As FPatientBillingCards
 Private form_patient_photo As FPatientPhoto 
 Private form_reports As FHtmlViewer
-Private form_banking As FHtmlViewer
+Private form_banking As FBanking
 Private form_unbilled_comment As FUnbilledComment
 Private sPatient_Collection_Key As Variant
 Private staff As Collection
@@ -269,6 +269,19 @@ Catch
    Return
    
 End
+
+Static Public Sub Banking_Slips_Reload_External()
+   
+  ' Called from FBankingSlip instance
+  form_billing.Banking_Slips_Show_Dates
+   
+End
+
+' Static Public Sub Banking_Slips_List_Remove_Marquee()
+'    
+'   form_billing.Columnview99.UnselectAll() 
+'    
+' End
 
 Static Public Function fk_patient_Key() As Variant
    ' Used in bulk bill batching to see if this patient needs to have
@@ -438,7 +451,7 @@ Public Sub Init()
    fk_invoice = Null
    fk_invoice_for_printing = Null
    payment_methods = modBillingDBI.Payment_Methods_Get()
-  ' UnBilled_Appointments_Reload
+   ' UnBilled_Appointments_Reload
    modDBConnect.Register_Listener("invoice_print", Me)
    
 End
@@ -561,8 +574,7 @@ Public Sub columnview99_Refresh()
       Case cTab_Batching
          Bulk_Billing_Show_Dates
       Case cTab_Reports
-         
-         Reports_Available_Refresh()
+        Reports_Available_Refresh()
          ' Case cTab_ScheduleFees
          '    Fee_Schedule_Reload()
    End Select
@@ -723,7 +735,6 @@ Public Sub UnBilled_Appointments_Reload(Optional single_day As Date = Null)
    Dim name_length As Integer
    Dim x As Integer
    Dim sFontHeight As Integer = gvwUnpaidVisits.Font.Height
-   
    
    EditArea_Clear
    With gvwUnpaidVisits
@@ -921,7 +932,6 @@ Public Sub columnview99_Select()
          form_batching.Days_Vouchers_Display(bulk_billed_Distinct_Dates[columnview99.Item.key]!date_invoiced, Bulk_Bill_Batching_type)
       Case cTab_Reports
          Select Case columnview99[columnview99.Item.key][0]
-               
             Case "Day List - Invoices/Payments"
                Vbox_Reports_GST_Box.visible = False
                Report_Show_HTML(Day_List_Create_HTML(DateChooser1.Value))
@@ -930,7 +940,9 @@ Public Sub columnview99_Select()
                txtGSTFromDate.SetFocus
                Report_Show_HTML(GST_Create_HTML())
          End Select
-   End Select
+      Case cTab_Banking
+      Form_Banking.Banking_Slip_Show_Existing(Banking_Slips[columnview99.Item.key])
+    End Select
    
 End
 
@@ -1858,6 +1870,9 @@ Public Sub txtFindItemNumber_Activate()
    Dim old_fee As Float
    Dim gst As Float
    Dim old_gap As Float
+   Dim gap As String
+   Dim gap_float As Float
+   Dim scheduled_fee_float As Float 
    
    If bexit Or gvwItemsBIlled.row = -1 Then Return 
    panGvwItemsBilledEditor.Hide
@@ -1867,6 +1882,19 @@ Public Sub txtFindItemNumber_Activate()
          gvwItemsBIlled[gvwItemsBIlled.row, 0].Text = txtFindItemNumber.text
          txtFindItemNumber.Visible = False
          Item_Number_Get_Fee_Levels_Fill_Invoice_Row(txtFindItemNumber.text)
+      Case cGridColumnItem_Gap
+         gap = Trim(txtFindItemNumber.text)
+         gap = Replace$(gap, "$", "")
+         Try gap_float = modUtil.MoneyToFloat(gap)
+         gvwItemsBIlled[gvwItemsBIlled.row, 2].Text = modUtil.Money_Format(scheduled_fee_float + gap_float)
+         gvwItemsBilled[gvwItemsBilled.Row, 3].Text = modUtil.Money_Format(gap_float)
+         txtFindItemNumber.Visible = False
+         gvwItemsBIlled.SetFocus()
+         'If selected_item_num_and_billing_level!gst_rate <> 0 Then
+         '   gst = fee_float / selected_item_num_and_billing_level!gst_rate
+         '   gvwItemsBilled[gvwItemsBilled.Row, cGridColumnItem_gst_amount].Text = modUtil.Money_Format(gst)
+         ' Endif
+         Invoice_Calculate_Total("Total Owing")
       Case cGridColumnItem_Fee
          fee = Trim(txtFindItemNumber.text)
          fee = Replace$(fee, "$", "")
@@ -1899,7 +1927,7 @@ Public Sub txtFindItemNumber_Activate()
             Invoice_Calculate_Total("Total Owing")
          Endif
       Case cGridColumnItem_gst_amount
-         selected_item_num_and_billing_level
+         ' selected_item_num_and_billing_level
          
       Case cGridColumnItem_BriefDescriptor
          If IsNull(item) Then Return
@@ -1981,7 +2009,8 @@ Public Sub Settings_Save()
    Settings["FRecordVisit/VSplit_Main.Layout"] = Vsplit_Main.Layout
    Settings["FRecordVisit/HSplit_Main.Layout"] = Hsplit_Main.Layout
    Settings["FRecordVisit/HSplit_EditArea.Layout"] = Hsplit_EditArea.Layout
-   Try from_fee_schedule.Settings_Save()
+   Try form_banking.Settings_Save
+   Try from_fee_schedule.Settings_Save 
    
 End
 
@@ -2322,9 +2351,12 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True)
             payment!date_paid = date_paid
             payment!referent = gvwPayments[grid_row, cGridColumnPayments_Comment].Text  '?used for cheque details
             payment!fk_staff_receipted = modDBConnect.currentUser!fk_staff
-            ' If payment!fk_lu_payment_method <> const.payment_method_cash Or payment!fk_lu_payment_method <> const.payment_method_cheque Then
-            '    payment!date_banked = payment!date_paid
-            ' End If   
+            Select Case payment!fk_lu_payment_method
+               Case const.payment_method_cash, const.payment_method_cheque
+                   payment!fk_banking_slip = Null
+               Case Else
+                  payment!fk_banking_slip = 0
+            End Select
             payment.Save("billing.payments_received", "fk_payment")
          End If
       Next
@@ -2815,9 +2847,11 @@ Invalid_Item_Number:
 Catch
    sMsg = "An error occurred trying to find either the item number or the amount to be billed.\n\nPlease check the fee schedule and ensure the item number and fee amounts for the selected fee level are present."
    Goto Invalid_Item_Number 
+   
 End
 
 Public Sub reset_biller_option_button(Initial_fk_lu_billing_type As Integer)
+   
    Print bexit
    Select Case Initial_fk_lu_billing_type
       Case const.Billingtype_Scheduled_Fee
@@ -2992,6 +3026,53 @@ Public Sub mnuFeeSchedule_Click()
    End Select
 Catch
    Log.PanicMsg(Error.Text, Error.Backtrace)
+   
+End
+
+Public Sub Invoice_Delete_Single_Item() As Boolean
+   ' deletes a single item from the invoice, re-adjusts the total_billed and total_gst
+   ' the invoice_item collection contains all the info about the individual item + allthe totals on the invoice
+   ' I've made this wordy and step wise for readability
+   
+   Dim invoice_item As Collection = items_billed[cvwAccountHistory_Key]                 'a single mbs item on an invoice
+   Dim invoice_total_bill As Variant = modUtil.MoneyToFloat(invoice_item!total_bill)    'the total amount for all items on the invoice added up
+   Dim invoice_total_gst As Variant = modUtil.MoneyToFloat(invoice_item!total_gst)      'the total gst for the invoice for all items added up
+   Dim invoice_item_gst As Variant = modUtil.MoneyToFloat(invoice_item!gst)             'gst payable on this item only
+   Dim invoice_item_amount As Variant = modUtil.MoneyToFloat(invoice_item!amount)       'the amount payable just for this invoice item.   
+   
+   If invoice_item!paid = True Then
+      Message.Info("This invoice has been paid in full and can not be deleted.")
+      Return  'false 
+   Else
+      If Message.Question("Are you sure you want to delete this single item from the invoice?", "Yes", "No") = 2 Then Return
+      Print "total bill", invoice_total_bill
+      Print "total gst", invoice_total_gst
+      Print "this items amount", invoice_item_amount
+      Print "gst on this item", invoice_item_gst
+      'First set the deleted flag in items_billed   
+      If modDBConnect.update("billing.items_billed", Null, ["pk": invoice_item!pk_items_billed, "deleted": True]) Then 
+         ' next adjust the total bill downwards in billing.invoices
+         Print modUtil.Money_Format(invoice_total_bill - invoice_item_amount)
+         If modDBConnect.update("billing.invoices", Null, ["pk": invoice_item!fk_invoice, "total_bill": modUtil.Money_Format(invoice_total_bill - invoice_item_amount)]) Then   
+            'Now adjust any GST which would have been payable
+            If modUtil.MoneyToFloat(invoice_item_gst) <> 0 Then
+               Print modUtil.Money_Format(invoice_total_gst - invoice_item_gst)
+               If Not modDBConnect.update("billing.items_billed", Null, ["pk": invoice_item!fk_invoice, "total_gst": modUtil.Money_Format(invoice_total_gst - invoice_item_gst)]) Then
+                  Goto Deletion_Error
+               End If   
+            Endif
+         Else  
+            Goto Deletion_Error
+         End If   
+      Else  
+         Goto Deletion_Error
+      End If   
+   End If    
+   Return True 
+Deletion_Error:
+   Message.Info("An error occurred whilst attempting to delete the item number")
+   modDBConnect.RollBack
+   Return
    
 End
 
@@ -3637,6 +3718,8 @@ Public Function Fill_Columnview(CVW As Columnview, coll As Collection, Optional 
    Dim item_billed As Collection
    Dim bSkipRow As Boolean
    Dim bFirstPaymentMethod As Boolean 
+   Dim bLastInvoiceHadBadDebt As Boolean = False  
+   Dim bad_debt_amount As Variant
    
    If IsNull(coll) Then Return 'shouldn't happen but looking for a bug here
    CVW.Clear
@@ -3651,8 +3734,32 @@ Public Function Fill_Columnview(CVW As Columnview, coll As Collection, Optional 
          bSkipRow = False                                                                             ' don't skip
       End If
       If bSkipRow = False Then
+         ' If bLastInvoiceHadBadDebt Then
+         '  Print "bad debt"       
+         '  CVW.Add(x, 0)
+         '   ' CVW[x][grid_col_firstname] = "1"
+         '   ' CVW[x][grid_col_visit_date] = "2"
+         '    CVW[x][grid_col_total_paid] = "-" & modUtil.Money_Format(bad_debt_amount)
+         '    CVW[x][grid_col_notes] = "Bad Debt"
+         '    bLastInvoiceHadBadDebt = False   
+         '    bad_debt_amount = 0
+         '    Inc x 
+         ' Endif
          CVW.Add(x, 0)
          If fk_last_invoice <> Item_Billed!fk_invoice Then
+            If bLastInvoiceHadBadDebt Then
+               Print "bad debt"       
+               '   CVW.Add(x, 0)
+               CVW[x][grid_col_firstname] = ""
+               CVW[x][grid_col_visit_date] = ""
+               CVW[x][grid_col_total_paid] = "-" & modUtil.Money_Format(bad_debt_amount)
+               CVW[x][grid_col_notes] = "Bad Debt"
+               bLastInvoiceHadBadDebt = False   
+               bad_debt_amount = 0
+               Inc x 
+               CVW.Add(x, 0)
+            Endif
+            bLastInvoiceHadBadDebt = False   
             items_on_invoice = 1
             bFirstPaymentMethod = True    
             CVW[x][grid_col_firstname] = Split(Item_Billed!patient_firstname, " ")[0] & "  "
@@ -3664,6 +3771,10 @@ Public Function Fill_Columnview(CVW As Columnview, coll As Collection, Optional 
             If item_Billed!paid Then
                If item_billed!payments.count Then
                   For Each payment In item_billed!payments
+                     If payment!fk_lu_payment_method = const.payment_method_bad_debt Then 
+                        bLastInvoiceHadBadDebt = True 
+                        bad_debt_amount = payment!amount
+                     End If   
                      If bFirstPaymentMethod Then 
                         CVW[x][grid_col_payment_type] &= payment!payment_method
                         bFirstPaymentMethod = False   
@@ -3685,7 +3796,6 @@ Public Function Fill_Columnview(CVW As Columnview, coll As Collection, Optional 
             If Not IsNull(item_Billed!reason_code_description) Then
                CVW[x][grid_col_payment_type] = item_Billed!reason_code_description
             Endif
-            
             Inc items_on_invoice
          End If
          If Not IsNull(Item_Billed!mbs_item) Then item = Item_Billed!mbs_item
@@ -4595,15 +4705,6 @@ Public Sub TabStrip1_Click()
          bexit = False
          lblUnpaidBulkBIllingInvoices.Visible = False 
          Return
-      ' Case cTab_Banking                                             'User has clicked on the medicare batching tab
-      '    combobox1.Visible = False                                    'don't need this
-      '    With columnview99 
-      '       .SetFocus
-      '       .Item.Selected = True 
-      '    End With
-      '    columnview99.MoveLast 
-      '    columnview99.SetFocus
-      '    Try columnview99.Item.Selected = True 
       Case cTab_Batching
          HBox_Veterans_or_medicare.Visible = False                     'don't want to see the scheduled fee list
          Hbox_Filter.Visible = False                                  'or the filtering stuff for scheduled fees
@@ -4673,7 +4774,6 @@ Public Sub TabStrip1_Click()
          If IsNull(from_fee_schedule) Then
             With from_fee_schedule = New FFeeSchedule(Vbox_FeeSchedule)
                .Init()
-
             End With
             combobox1.index = cAll_ItemNumbers 'loads the fee schedule
             combobox1.Visible = True
@@ -4685,98 +4785,61 @@ Public Sub TabStrip1_Click()
          End If
          Wait
          
-      Case cTab_Banking
-         DateChooser1.Visible = True
-         HBox_Veterans_or_medicare.Visible = False
-         With columnview99
-            .Visible = False
+      Case cTab_Banking                                               'the banking slip tab
+         gvwFeeScheduleItems.visible = False                          'hide scheduled fee list could be visible if used that tab
+         DateChooser1.Visible = False                                 'don't want the date choose
+         HBox_Veterans_or_medicare.Visible = False                    'nore medicare stuff
+         VBox_ForOtherTabs.Visible = True                             'the box holding all the gui stuff for banking
+         Hbox_Filter.Visible = False                                  'or the filtering stuff for scheduled fees
+         HBox_Search.visible = False                                  'or the search stuff for scheduled fees
+         VBox_Accounts.Visible = False                                'the VBox holding the lists of unbilled appts or account  holders for visits & Payments
+         With lblUnpaidBulkBIllingInvoices                            'use this label for our heading  
+            .text = "Previous Banking Slips"
+            .visible = True   
+         End With
+         With columnview99                                            'the columnview to hold all past banking slip dates
+            .Visible = True
             .header = False
             .Clear
          End With
-         Hbox_Filter.Visible = False
-         gvwFeeScheduleItems.Visible = False
-         Banking_Show_Html(Banking_Create_Banking_Slip_HTML())
-   End Select
+         If IsNull(form_banking) Then
+            With Form_Banking = New FBanking(Vbox_Banking)
+               .Init()
+            End With
+          Endif
+          Banking_Slips_Show_Dates
+    End Select
 Catch
    
    Return 
+   
+End
+' 
+Public Sub Banking_Slips_Show_Dates()
+   
+  Banking_Slips = modUtil.Copy_Collection_Keyed_Sequentially(modBillingDBI.Billing_Slips_Get())
+  If Banking_Slips.count Then Banking_slips_Reload
+   
 End
 
-Public Function Banking_Create_Banking_Slip_HTML() As String
+Public Sub Banking_slips_Reload()
    
-   Dim Unbanked_Payments As Collection
-   Dim unbanked_payment As Collection
-   Dim total_cash As Float
-   Dim total_cheques As Float
-   Dim sHtml As String
-   Dim sRow_Template As String
-   Dim banking_total As Float
-   Dim surgery_name As String
-   Dim cheque_details_html As String
-   Dim bFirstCheque As Boolean
-   Dim last_fk_invoice As Integer
-   
-   Unbanked_Payments = modBillingDBI.Payments_Unbanked_Get() 
-   For Each unbanked_payment In Unbanked_Payments
-      If unbanked_payment!fk_lu_payment_method = const.payment_method_cash Then
-         total_cash += modUtil.MoneyToFloat(unbanked_payment!total_paid)
-      Else
-         If Not bFirstCheque Then
-            bFirstCheque = True 
-            cheque_details_html &= "<TABLE WIDTH=100% CELLPADDING=0 CELLSPACING=1 >"
-            "<COL WIDTH=80%>"
-            "<COL WIDTH=10%>" 
-         End If  
-         If last_fk_invoice <> Unbanked_Payment!fk_invoice Then
-            cheque_details_html &= "<TR VALIGN=TOP>"
-            cheque_details_html &= totals_html_row_template()   
-            cheque_details_html = Replace(cheque_details_html, "%payment_method%", unbanked_payment!referent)
-            cheque_details_html = Replace(cheque_details_html, "%total_amount%", unbanked_payment!total_paid) 
-            total_cheques += modUtil.MoneyToFloat(unbanked_payment!total_paid)
-            cheque_details_html &= "</TR>"
-            last_fk_invoice = Unbanked_Payment!fk_invoice
-         End If   
-      Endif
-   Next
-   surgery_name = modDBConnect.currentUser!organisation 
-   banking_total = modUtil.MoneyToFloat(total_cheques) + modUtil.MoneyToFloat(total_cash)
-   sHtml = "<HTML><BODY><H3><B><p align='center'>" & modDBConnect.currentUser!organisation & "</H3></P>"
-   sHtml &= "<HTML><BODY><H3><B><p align='center'>Banking Summary for period from x to " & Format(Now(), "dd/mm/yyyy") & "</H3></P>"
-   sHtml &= "<TABLE WIDTH=441 CELLPADDING=0 CELLSPACING=1 >"
-   "<COL WIDTH=50%>"
-   "<COL WIDTH=50%>"
-   shtml &= "<TR VALIGN=TOP>"
-   sHtml &= totals_html_row_template()
-   shtml = Replace(shtml, "%payment_method%", "Total Cash")
-   shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(total_cash))
-   sHtml &= "</TR>"
-   shtml &= "<TR VALIGN=TOP>"
-   sHtml &= totals_html_row_template()
-   shtml = Replace(shtml, "%payment_method%", "Total Cheques")
-   shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(total_cheques))
-   sHtml &= "</TR>"
-   sHtml &= "</TABLE>"
-   sHtml &= "<TABLE WIDTH=441 CELLPADDING=0 CELLSPACING=1 >"
-   "<COL WIDTH=50%>"
-   "<COL WIDTH=50%>"
-   shtml &= "<TR VALIGN=TOP>"
-   sHtml &= totals_html_row_template()
-   shtml = Replace(shtml, "%payment_method%", "")
-   shtml = Replace(shtml, "%total_amount%", "________")
-   sHtml &= "</TR>"
-   shtml &= "<TR VALIGN=TOP>"
-   sHtml &= totals_html_row_template()
-   shtml = Replace(shtml, "%payment_method%", "Total Amount for Banking")
-   shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(banking_total))
-   sHtml &= "</TR>"
-   sHtml &= "</TABLE>"
-   If total_cheques <> 0 Then
-      sHtml &= "<P><B>Cheque Details</B></P>" & cheque_details_html & "</TABLE>"
-   Endif
-   sHtml &= "</HTML>"
-   Return shtml
+  'Reloads the banking slips, called from this module or FBankingSlips
+  Dim BS As Collection
+  Dim x As Integer
+  
+  With columnview99
+     .Clear
+     .Columns.count = 1
+  End With
+  For Each BS In Banking_Slips
+     columnview99.Add(x, 0)
+     columnview99[x][0] = Format(BS!date_from, "dd/mm/yyyy") & " - " & Format(BS!date_to, "dd/mm/yyyy")
+     Inc x
+  Next
    
 End
+
 
 Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
    
@@ -5780,7 +5843,6 @@ Public Function Day_List_Heading_Stats_Row(Optional bcolour As String) As String
    "   <P><B></P>" 
    "</TD>"
    sHtml = Replace(shtml, "bg", bcolour)
-   Print shtml
    Return shtml
    
 End
@@ -5944,14 +6006,43 @@ End
 Public Function totals_html_row_template() As String
    
    Return ""
-   "<TD WIDTH=212>"
+   "<TD>"
    "<P>%payment_method%</P>"
    "</TD>"
-   "<TD WIDTH=208>"
+   "<TD>"
    "<P>%total_amount%</P>"
    "</TD>"
    
 End
+' 
+' Public Function banking_row_html_row_template(Optional use_background_colour As Boolean = False) As String
+'    
+'    Dim shtml As String
+'    Dim bgc As String
+'    
+'    If use_background_colour Then  
+'       bgc = " style='background-color:gainsboro;color:black;'"
+'    Endif
+'    shtml = ""
+'    "<TD bg >"
+'    "<P>%date_paid%</P>"
+'    "</TD>"
+'    "<TD bg >"
+'    "<P>%patient_name%</P>"
+'    "</TD>"
+'    "<TD bg >"
+'    "<P>%account_to_name%</P>"
+'    "</TD>"
+'    "<TD bg >"
+'    "<P>%referent%</P>"
+'    "</TD>"
+'    "<TD bg > "
+'    "<P>%total_paid%</P>"
+'    "</TD>"
+'    sHtml = Replace(shtml, "bg", bgc)
+'    Return shtml
+'    
+' End
 
 Public Sub cmbFeeType_Leave()
    
@@ -6048,7 +6139,7 @@ Public Sub cmbUnpaidInvoices_Click()
    bexit = False  
    
    UnPaid_Invoices_Reload()
-
+   
 End
 
 Public Sub gvwUnpaidVisits_Select()
@@ -6226,7 +6317,7 @@ End
 
 Public Sub DateChooserAccountDate_Activate()
    
-   Last.tag.text = Format(Last.value, "dd/mm/yyyy")
+   Last.tag.text = Format(Last.value, "dd/mm/yyyy")  'bug here, crashed with null object
    UnPaid_Invoices_Reload()
    HBox_Calander.Visible = False
    DateChooserAccountDate.tag.SetFocus() 'fixme do the rest
@@ -6343,6 +6434,15 @@ Public Sub tbWipePayer_Click()
    
 End
 
+Public Sub cvwAccountHistory_Select()
+   'User has clicked on the patient's account history
+   
+   cvwAccountHistory.MoveCurrent
+   cvwAccountHistory_Key = cvwAccountHistory.Item.Key
+   Print items_billed[cvwAccountHistory_Key]
+   
+End
+
 Public Sub cvwAccountHistory_Menu()
    
    cvwAccountHistory.MoveCurrent
@@ -6366,8 +6466,17 @@ Public Sub mnuAccountHistory_Click()
    Dim pdf_path As String
    Dim smsg As String
    Dim Latex As String
+   Dim total_bill As Variant
+   Dim total_gst As Variant
    
+   Print Last.tag
    Select Case Last.tag
+      Case "delete invoice item"       'fixme replace with a trigger in the backend.
+         If Invoice_Delete_Single_Item() Then
+            modDBConnect.CommitTrans
+            Account_History_Show
+            Items_Today_Or_Unpaid_Reload
+         Endif
       Case "delete invoice"
          Print items_billed[cvwAccountHistory_Key]
          If Message.Question("Are you sure you want to delete this invoice.\n\nThis Cannot be undone.", "Yes", "Cancel") = 2 Then
@@ -6453,15 +6562,9 @@ Public Sub gvwAccountNames_Select()
    Endif
    Account_Patient_Display(True)   'True signals this sub we are searching from accounts
    txtSearchAccountNames_LostFocus
-   
-End
-
-Public Sub cvwAccountHistory_Select()
-   'User has clicked on the patient's account history
-   
-   cvwAccountHistory.MoveCurrent
-   cvwAccountHistory_Key = cvwAccountHistory.Item.Key
-   Print items_billed[cvwAccountHistory_Key]
+   tbNewInvoice.Enabled = True   
+   VBox_EditArea_Inner.Enabled = True  
+   VBox_EditArea_Outer.Enabled = True
    
 End
 
@@ -6548,34 +6651,9 @@ End
 
 Public Sub DateChooser1_Change()
    
-   ' If columnview99[columnview99.Item.key][0] <> "Day List - Invoices/Payments"
-   '    With columnview99 
-   '       .MoveFirst ' to the day list report   
-   '       .Item.Selected = True  
-   '    End With
-   ' Else
-     Vbox_Reports_GST_Box.visible = False
-     columnview99.UnselectAll
-      Report_Show_HTML(Day_List_Create_HTML(DateChooser1.Value))
-  ' End If   
-
-End
-
-Public Sub Banking_Show_Html(shtml As String)
-   
-   If IsNull(form_banking) Then 
-      With form_banking = New FHtmlViewer(Vbox_Banking)
-         .WebView1.Zoom = 1.0
-         .tbWebBrowserPrint.Visible = True   
-         .tbWebBrowserZoomIn.Visible = True  
-         .tbWebBrowserZoomOut.Visible = True 
-         .Set_Landscape_Printing(False)
-      End With
-   End If   
-   With form_banking
-      .WebView1.HTML = sHtml
-      .WebView1.Zoom = 1.0
-   End With
+   Vbox_Reports_GST_Box.visible = False
+   columnview99.UnselectAll
+   Report_Show_HTML(Day_List_Create_HTML(DateChooser1.Value))
    
 End
 
@@ -6595,7 +6673,7 @@ Public Sub Report_Show_HTML(sHtml As String)
    End If   
    form_reports.WebView1.HTML = sHtml
    Dec Application.Busy
-
+   
 End
 
 Public Sub chkIncludeDeceased_Click()
@@ -6718,9 +6796,17 @@ Public Sub tbGST_Click()
 End
 
 Public Sub Button1_Click()
-
+   
    Print VBox_EditArea_Inner.Enabled
    Print VBox_EditArea_Outer.Enabled
+   
+End
+
+Public Sub VBox_columnview99_Leave()
+
+   If TabStrip1.index = cTab_Banking Then
+      columnview99.UnselectAll
+   Endif
    
 
 End

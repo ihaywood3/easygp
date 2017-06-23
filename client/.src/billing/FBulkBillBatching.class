@@ -42,7 +42,8 @@ Private invoices_in_claim As Integer
 Private CheckBoxes As CheckBox[]
 Private on_invoice_row As Integer                       'the invoice row we are on
 Private current_return_code_textbox As Textbox
-
+Private Claims_Invoices As Collection
+Private Current_Invoice As Collection 'of vouchers
 Public Sub _new()
    
    tlInstructions.text = Instructions_Help()
@@ -58,14 +59,8 @@ Public Sub init(s As Collection, c As Collection)
    
    staff = s
    clinics = c
-   ' modUtilGUI.LoadCombo(cmbStaff, staff, "wholename")
-   ' clinics = modUtilGUI.LoadCombo(cmbClinic, clinics, "branch")
    lblMeasure.text = "Max Number of Vouchers  "
    bExit = True
-   '   cmbClinic.index = -1
-   ' cmbStaff.Index = -1
-   'rbBulkBillMedicare.value = True 'set fk_lu_bulk_billing_type
-   
    lblMeasure.text = "Total Selected to Pay Off       "
    modEditAreaHelpers.Resize_labels(VBox_EditArea, lblMeasure)
    fk_lu_bulk_billing_type = const.BulkBilling_Type_Medicare
@@ -165,21 +160,27 @@ Public Sub Vouchers_Refresh(fk_lu_bulk_billing_type As Integer, Optional the_dat
    Dim chkbox_Container As Vbox
    Dim chkbox_spacer As Label
    Dim txtCode As TextBox
+   Dim invoice_vouchers As Collection   'just the vouchers for a single invoice
    
+   Claims_Invoices = New Collection
    EditArea_Clear   'clear input, zero running totals, clear the scrollview
    If bexit Then Return
    bexit = True   
-   claims_vouchers = New Collection
    CheckBoxes = New CheckBox[]
    Inc Application.Busy
+   x = - 1
    Vouchers = modBillingDBI.Bulk_BIll_Vouchers_Get_UnPaid(modDBConnect.currentUser!fk_branch, fk_lu_bulk_billing_type, the_date)
    For Each voucher In Vouchers
       If fk_last_invoice <> voucher!fk_invoice Then                                 'for each new invoice generate a new row in the scrollivew
+         Inc x
+         
          If last_total_bill <> "" Then
             last_label_for_total.text = last_total_bill
          Endif
          Inc invoices_in_claim
-         If voucher!paid = False Then  
+         If voucher!paid = False Then 
+            invoice_vouchers = New Collection
+            Claims_Invoices.Add(invoice_vouchers, x)
             With RowBox = New Vbox(scrollview1) As "Invoice_Row"
                .AutoResize = True   
                .expand = False   
@@ -189,18 +190,18 @@ Public Sub Vouchers_Refresh(fk_lu_bulk_billing_type As Integer, Optional the_dat
                If voucher!paid = True Then
                   .Enabled = False  
                Endif
-               .tag = Null
-               ' .tag = voucher 'of the one or more vouchers in this row
             End With
          End If
       Endif
       If voucher!paid = False Then
+         invoice_vouchers.Add(voucher, Invoice_Vouchers.count)
          With HB = New HBox(Rowbox) 
             .width = ScrollView1.Width
             .AutoResize = False
             .Height = 28
             .Padding = 0
             .Background = Color.Transparent
+            .tag = x
          End With
          
          With col1 = New Label(HB)
@@ -263,7 +264,7 @@ Public Sub Vouchers_Refresh(fk_lu_bulk_billing_type As Integer, Optional the_dat
          ' Else
          '   ' txtCode.border = False  
          ' Endif
-          With chkbox_spacer = New Label(HB)
+         With chkbox_spacer = New Label(HB)
             .width = 25
             .Height = 25
             .expand = False 
@@ -284,7 +285,7 @@ Public Sub Vouchers_Refresh(fk_lu_bulk_billing_type As Integer, Optional the_dat
             End With
             CheckBoxes.Add(chkbox, CheckBoxes.Count)
          End If
-      
+         
          With lblErrorDescription = New Label(HB)
             .height = HB.Height
             .Expand = False
@@ -296,13 +297,14 @@ Public Sub Vouchers_Refresh(fk_lu_bulk_billing_type As Integer, Optional the_dat
             .Font.size = 8
          End With
          'txtCode.tag = lblErrorDescription               ' so when user types in code > we load the description into this label
-         If x = 0 Then
-            lblPatientHeading.Width = col1.Width 
-            lblCol2.Width = col2.Width
-            lblCol3.Width = col3.Width
-            lblCol4.width = col4.Width
-            lblItemDescriptor.Width = col7.width + 15 'col5= just a spacer, col6 = the descriptor
-         Endif
+         ' If x = 0 Then
+         lblPatientHeading.Width = col1.Width 
+         lblCol2.Width = col2.Width
+         lblCol3.Width = col3.Width
+         lblCol4.width = col4.Width
+         lblItemDescriptor.Width = col7.width + 15 'col5= just a spacer, col6 = the descriptor
+         ' Endif
+         Print x
       End If   
       fk_last_invoice = voucher!fk_invoice   
       running_total_billed += modUtil.MoneyToFloat(voucher!amount)
@@ -321,7 +323,8 @@ Public Sub Vouchers_Refresh(fk_lu_bulk_billing_type As Integer, Optional the_dat
    txtTotalPaid.text = "$    .00"
    Dec Application.Busy
    bExit = False  
-   
+   Print Claims_Invoices
+
 End
 
 Public Sub Mark_Paid()
@@ -473,6 +476,9 @@ Public Sub invoice_row_Enter()
       Last.Background = color.RGB(215, 232, 240) 'Color.LightBackground 
       '    Last.Children[0].Children[7].Background = color.RGB(215, 232, 240) 
       '    Last.Children[1].Children[7].Background = color.RGB(215, 232, 240) 
+       Print Last.Children[0].tag
+       Current_Invoice = Claims_Invoices[Last.Children[0].tag]
+       Print Current_Invoice
    End If   
 Catch
    Return
@@ -490,6 +496,7 @@ Public Sub invoice_Row_Leave()
    '  End With   
    '  Last.Children[1].Children[7].Background = color.White
    Last.Background = Color.white
+  
 Catch
    Return
    
@@ -666,7 +673,20 @@ End
 
 Public Sub ScrollView1_Menu()
    
-   If Vouchers.count Then mnuBulkBillBatching.Popup
+   Dim mnu As Menu
+   Dim V As Collection
+   
+   If Vouchers.count Then 
+      mnuBulkBillBatching_Rejected.Children.Clear
+      For Each V In Current_Invoice
+         With mnu = New Menu(mnuBulkBillBatching_Rejected) As "mnuBulkBillBatching"
+              mnu.Caption = V!item & " " & V!descriptor_brief
+              mnu.Tag = V!pk_items_billed 
+         End With
+      Next
+   
+      mnuBulkBillBatching.Popup
+   End If   
    
 End
 
@@ -674,17 +694,19 @@ Public Sub mnuBulkBillBatching_Click()
    
    Select Case Last.tag
       Case "font"
-      Case "enter error code"
-         With current_return_code_textbox  'richard bug here, current_return_code_textbox can be NULL
-            .enabled = True
-            .Visible = True
-            .Border = True 
-            .Background = Color.White
-            .setfocus
-         End With
+      Case Else
+           Print Last.tag
+         ' With current_return_code_textbox  'richard bug here, current_return_code_textbox can be NULL
+         '    .enabled = True
+         '    .Visible = True
+         '    .Border = True 
+         '    .Background = Color.White
+         '    .setfocus
+         ' End With
    End Select 
-   Catch
-      Return   
+Catch
+   Return   
+
 End
 
 Public Sub txtErrorCode_KeyPress()

@@ -196,7 +196,10 @@ End
 
 Public Function Consultation_Ubilled_Get(fk_appointment As Variant) As Collection
    
-   Return modDBConnect.exec_query_first("Select * from clerical.vwAppointments where pk= &1", [fk_appointment])
+  
+   Return modDBConnect.exec_query_first("Select * from clerical.vwAppointments where pk= &1" & " LIMIT 1", [fk_appointment])
+  ' changed this 23/11/2016 - if staff has put in multiple patient addresses, vwAppointments will have multiple rows with only address different
+  
    
 End
 
@@ -246,6 +249,13 @@ End
 Public Function Centrelink_Card_Types_Get() As Collection
    
    Return modCache.Get("clerical.lu_centrelink_card_type")
+   
+End
+
+Public Function Billing_Slips_Get() As Collection
+   
+  'returns collection of all billing slips
+  Return modDBConnect.exec_query_collection("Select * from billing.banking_slips where pk > 0") 
    
 End
 
@@ -435,7 +445,8 @@ Public Function fk_fee_shedule_Get_For_Item_Number(item As String) As Variant
    Try number_of_patients = Val(compound_item_number[1])
    real_item_number = UCase(compound_item_number[0])
    
-   sql = "Select * From billing.fee_schedule where (mbs_item =$$" & real_item_number & "$$ or ama_item =$$" & real_item_number & "$$ or  user_item =$$" & real_item_number & "$$) "
+   sql = "Select * From billing.fee_schedule where (mbs_item =$$" & real_item_number & "$$ or ama_item =$$" & real_item_number & "$$  "
+   sql &= "OR lower(user_item) = $$" & Lower(real_item_number) & "$$)" 
    If number_of_patients Then
       sql &= " AND number_of_patients =" & number_of_patients
    Endif
@@ -887,19 +898,22 @@ Public Function GST_Paid(Optional from_date As String, Optional to_date As Strin
    If IsDate(from_date) And IsDate(to_date) Then
       sql &= " AND date_paid BETWEEN $$" & from_date & "$$ AND $$" & to_date & "$$  "
    Endif
-   sql &= "order by date_paid" 
-   Print sql
+   sql &= "order by date_paid " 
    Return modDBConnect.exec_query_collection(sql)
    
 End
 
-Public Function Payments_Unbanked_Get() As Collection
-   
+Public Function Payments_Unbanked_Get(end_date As String) As Collection
+   'Returns collection of all unbanked paymemnts (cashe or cheque)
+   'up to the end_date given
+      
    Dim sql As String
-   
-   sql = "select  * from billing.vwdaysinvoicesandpayments  where paid Is True And date_banked Is Null "
-   'sql &= " AND payment_deleted is false " 'richard added this 30may16
-   sql &= " AND fk_lu_payment_method =" & const.payment_method_cash & " OR fk_lu_payment_method = " & const.payment_method_cheque
+ 
+   sql = "select  * from billing.vwdaysinvoicesandpayments  where fk_banking_slip Is Null " 
+   sql &= " AND (fk_lu_payment_method =" & const.payment_method_cash & " OR fk_lu_payment_method = " & const.payment_method_cheque & ")"
+   sql &= " AND date_paid < $$" & Format(DateAdd(Val(end_date), gb.day, 1), "dd/mm/yyyy") & "$$ "
+   sql &= " ORDER by date_paid, fk_invoice"
+   Print sql
    Return modDBConnect.exec_query_collection(sql)
    
 End
@@ -2036,7 +2050,7 @@ Public Function Accounts_Overdue_Find_Patients(start_duration As String) As Coll
    "AND i.fk_lu_bulk_billing_type is null order by surname, fk_patient"
    patients = modDBConnect.exec_query_collection(sql, [start_duration])
    For Each patient In patients  
-      C = modDBConnect.exec_query_first("Select * from contacts.vwPatients where fk_patient = " & patient!fk_patient)   
+      C = modDBConnect.exec_query_first("Select * from contacts.vwPatients where fk_patient = " & patient!fk_patient & " LIMIT 1")   'multiple addresses > multiple rows
       For Each vVal In C
          patient.Add(vVal, C.key)
       Next

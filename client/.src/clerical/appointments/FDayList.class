@@ -71,6 +71,7 @@ Public form_select As FPatientsSelect
 Private bKeyValid As Boolean                       'if true the keypress is valid
 Private bMoveToNextAvailableAppointment As Boolean 'if true after a save the next vacant appt slot is found
 Private WeeksAppointments As Collection
+Private bDisplayInFMainSideBar As Boolean = False
 
 Public Sub WeeksAppointments_Set(wa As Collection)
    
@@ -78,7 +79,15 @@ Public Sub WeeksAppointments_Set(wa As Collection)
    
 End
 
-Public Sub Init(sm As Collection, app_date As Date, clinic_key As Variant, icons As Collection, wa As Collection, Optional nh As Boolean = False)
+' Public Function Get_Fk_Patient() As Variant
+'    
+'   ' called from Fmain when user clicks on the day list
+'   ' to pass the patient key to FClinicalToolbar for auto-patient load
+'   Return gridrows[onrow]!fk_patient
+'    
+' End
+
+Public Sub Init(sm As Collection, app_date As Date, clinic_key As Variant, icons As Collection, wa As Collection, Optional nh As Boolean = False, bWeekList As Boolean = True, bNameOnly As Boolean = False)
    '------------------------------------------------------------------
    'initialise the appointment module from  FMakeAppointments
    'sm= the staff member
@@ -88,6 +97,7 @@ Public Sub Init(sm As Collection, app_date As Date, clinic_key As Variant, icons
    '------------------------------------------------------------------
    ' Dim colors As Integer[]
    
+   If bNameOnly Then bDisplayInFMainSideBar = True
    name_hidden = nh
    WeeksAppointments = wa
    staff_member = sm
@@ -97,10 +107,23 @@ Public Sub Init(sm As Collection, app_date As Date, clinic_key As Variant, icons
    appointment_icons = icons
    txtAppointment.height = irowheight                                    'grid rows = same height as our textbox
    Me.title = UCase(staff_member!title & " " & staff_member!wholename)   'will appear on the tab
-   lblDate.text = Format(appointment_date, gb.LongDate)                  'Wednesay 18th September
-   With gridview1                                                        'construct the basic grid  for appointments
-      .columns.count = 2 ' column 0 for the icon
-      .columns[0].width = 22            
+   If bWeekList Then
+      lblDate.text = Format(appointment_date, gb.LongDate)                  'Wednesay 18th September
+   Else
+      lblDate.text = UCase(staff_member!title & " " & staff_member!wholename)  
+   End If   
+   With gridview1                                                           'construct the basic grid  for appointments
+      .columns.count = 2 ' column 0 for the icon                            'times are in the vertical header, col 0=icons, 1= the name
+      .columns[0].width = 22                                              'for the icon  
+      .Columns[0].Alignment = Align.Right     
+      If bDisplayInFMainSideBar Then                                             'experimental day list on the side bar in FMain
+         .Columns[0].width = 35                                            'don't want to see the icon column
+         .Header = GridView.None                                           'can't fit the times
+         Try .Font = Font[Settings["FMain/DayList_Font", "DejaVu Sans,7"]] 'need a smaller font
+         lblDate.Visible = False                                           'date heading won't fit
+         Me.Padding = 0                                                    'grab some more pixels!
+         Try .Background = Settings["FMain/DayList_Background_Colour"]      'try and load users colour choice
+      Endif
    End With
    appointment_interval = 10                                             'fix me get me from backend (when done)
    Appointment_Status_Colors = New String[6]                             'don't use 0 member
@@ -124,6 +147,7 @@ Private Sub Reload_Data()
    GridRows_Init(Time(8, 30, 0), Time(18, 0, 0), appointment_interval)  'fill empty collection with times
    GridRows_Update()                                                 'update the underlying collection of data
    Gridview1_Refresh()
+   '
    
 End
 
@@ -167,7 +191,11 @@ Private Function Get_Name(appt As Collection) As String
    If name_hidden Then
       Return Replace(appt!title & " " & Left$(appt!firstname, 1) & " " & Left$(appt!surname) & " [" & Format(appt!birthdate, "dd/mm/yyyy") & "] ", "Unknown", "")
    Else
-      Return Replace(appt!wholename & " [" & Format(appt!birthdate, "dd/mm/yyyy") & "] ", "Unknown", "")
+      If bDisplayInFMainSideBar Then  'display on firstname, split out any middle name, + surname
+         Return modUtil.Ucase_Word_First_Letter(Split(appt!firstname, " ")[0]) & " " & modUtil.Ucase_Word_First_Letter(appt!surname)
+      Else
+         Return Replace(appt!wholename & " [" & Format(appt!birthdate, "dd/mm/yyyy") & "] ", "Unknown", "")
+      End If 
    End If
    
 End
@@ -212,11 +240,13 @@ Public Sub Form_KeyPress()
             gridrows[onrow]!fk_lu_appointment_status = Const.Appointment_Status_Arrived_And_Waiting
             bMoveToNextAvailableAppointment = False
             Appointment_Update(False)  'False flag = don't check if appt slot taken
+            FMakeAppointments.Refresh_Patients_Waiting
          Case 71, 103 'Asc("g")
             fk_lu_appointment_status = Const.Appointment_Status_Completed
             gridrows[onrow]!fk_lu_appointment_status = Const.Appointment_Status_Completed
             bMoveToNextAvailableAppointment = False
             Appointment_Update(False)  'False flag = don't check if appt slot taken
+            FMakeAppointments.Refresh_Patients_Waiting
          Case 78, 110 ' Asc("n")                                     'n=normal appointment made
             fk_lu_appointment_status = Const.Appointment_Status_Booked
             gridrows[onrow]!fk_lu_appointment_status = Const.Appointment_Status_Booked
@@ -227,6 +257,7 @@ Public Sub Form_KeyPress()
             gridrows[onrow]!fk_lu_appointment_status = Const.Appointment_Status_In_Consulting_Room
             bMoveToNextAvailableAppointment = False
             Appointment_Update(False)  'False flag = don't check if appt slot taken
+            FMakeAppointments.Refresh_Patients_Waiting
          Case 69, 101 'Asc("e")
             Emergency_Insert()
          Case 70, 102 'Asc("f")
@@ -257,7 +288,6 @@ Public Sub GridRows_Init(starttime As Date, EndTime As Date, appointment_interva
    Do Until x = -1
       griddata = New Collection
       griddata!time = Format(Time(ihour, iminute, 0), "hh:nn:AM/PM")
-      ' griddata!time = Format(Time(ihour, iminute, 0), "hh:nn")
       griddata!slots = 1
       gridrows.add(griddata, x)
       iminute += appointment_interval
@@ -290,11 +320,11 @@ Public Sub Reload()
 End
 
 Public Sub Appointments_Refresh()
-   
-   Appointments = modAppointmentsDBI.Appointments_GetDay(appointment_date, staff_member!fk_staff, fk_clinic)
-   WeeksAppointments = Null
-   
-End
+'    
+'    Appointments = modAppointmentsDBI.Appointments_GetDay(appointment_date, staff_member!fk_staff, fk_clinic)
+'    WeeksAppointments = Null
+'    
+ End
 
 Public Sub GridRows_Update()
    '----------------------------------------------
@@ -335,8 +365,8 @@ Private Sub GridRows_Process_Data()
          'Duration can be in multiples of the days appointment_interval
          'the time off appointmen is the key to the gridrows collection
          '-------------------------------------------------------------
+         '  sTime = Format(appointment!begin, "hh:nn:AM/PM")                      ' e.g 10:20 gridrows key
          sTime = Format(appointment!begin, "hh:nn:AM/PM")                      ' e.g 10:20 gridrows key
-         ' sTime = Format(appointment!begin, "hh:nn")
          duration = Val(Split(appointment!duration, ":")[1]) + Val(Split(appointment!duration, ":")[0]) * 60          ' e.g 10, 20, 30, 50, 60, 70 .... etc!
          Select Case duration
             Case 1
@@ -355,7 +385,7 @@ Private Sub GridRows_Process_Data()
                            gridrows[i]!language_problems = appointment!language_problems
                            gridrows[i]!language = appointment!language
                            gridrows[i]!appointment_memo = appointment!appointment_memo
-                          ' gridrows[i]!appointment_specific_memo = appointment!appointment_specific_memo
+                           ' gridrows[i]!appointment_specific_memo = appointment!appointment_specific_memo
                         Else
                            gridrows[i]!name = appointment!notes
                            gridrows[i]!notes = appointment!notes
@@ -387,7 +417,148 @@ Private Sub GridRows_Process_Data()
                            gridrows[i]!language_problems = appointment!language_problems
                            gridrows[i]!language = appointment!language
                            gridrows[i]!appointment_memo = appointment!appointment_memo
-                        '  gridrows[i]!appointment_specific_memo = appointment!appointment_specific_memo
+                           '  gridrows[i]!appointment_specific_memo = appointment!appointment_specific_memo
+                        Endif
+                        gridrows[i]!slots = slots
+                        gridrows[i]!pk_appointment = appointment!pk
+                        gridrows[i]!fk_patient = appointment!fk_patient
+                        gridrows[i]!fk_lu_appointment_icon = appointment!fk_lu_appointment_icon
+                        gridrows[i]!fk_lu_appointment_status = appointment!fk_lu_appointment_status
+                        Try gridrows[i]!picture = Picture.Load(appointment_icons[appointment!fk_lu_appointment_icon]!icon_path) 'most often there is no icon
+                        Wait
+                        '---------------------------------------------------------------------------------------------
+                        'Now the 'virgin' grid has time slots all the same - each 10 minutes
+                        'now, we have 'consumed' extra slots, so remove the gridrow corresponding to those extra slots
+                        'as gridrows is a collection[] array, this automatically re-orders the index 0-n
+                        'We don't remove the next say 2 slots if it was a double appointment, but the same slot twice
+                        'reason for this is the Gridrows.Remove(n) re-orders the collection to contain 1 less every
+                        'time
+                        '---------------------------------------------------------------------------------------------
+                        For x = 1 To slots - 1
+                           gridrows.Remove(i + 1)  'important do not change this.
+                        Next
+                        Break
+                     End If
+                  End If
+               Next
+         End Select
+         Inc x
+      End If
+   Next
+   '-------------------
+   'now add the fit-ins
+   '-------------------
+   For Each appointment In appointments
+      If Format(appointment!begin, "dd/mm/yyyy") = Format(appointment_date, "dd/mm/yyyy") Then
+         sTime = Format(appointment!begin, "hh:nn:AM/PM")                       ' e.g 11:00:AM
+         duration = Val(Split(appointment!duration, ":")[1])             ' e.g 10, 20, 30
+         If duration = 1 Then                                            ' e,g 11:01
+            find_time = Time(Hour(appointment!begin), Minute(appointment!begin) - 1, 0)
+            For i = 0 To gridrows.count - 1
+               If gridrows[i]!time = Format(find_time, "hh:nn:AM/PM") Then
+                  fitin = New Collection
+                  fitin!time = sTime
+                  fitin!slots = 1
+                  Try fitin!name = Get_Name(appointment)
+                  If Error Then
+                     fitin!name = appointment!notes
+                  Endif
+                  fitin!pk_appointment = appointment!pk
+                  fitin!fk_patient = appointment!fk_patient
+                  fitin!language_problems = appointment!language_problems
+                  fitin!appointment_memo = appointment!appointment_memo
+                  fitin!fk_lu_appointment_icon = appointment!fk_lu_appointment_icon
+                  fitin!fk_lu_appointment_status = appointment!fk_lu_appointment_status
+                  fitin!is_fitin = True
+                  gridrows.add(fitin, i + 1)
+                  Try gridrows[i + 1]!picture = Picture.Load(appointment_icons[appointment!fk_lu_appointment_icon]!icon_path) 'most often there is no icon
+                  Break
+               Endif
+            Next
+         Endif
+      End If
+   Next
+   
+End
+
+Private Sub GridRows_Process_Data_old()
+   ' -------------------------------------------
+   '  do the update without reloading from the backend
+   ' -----------------------------------------------------
+   
+   Dim NewRows As New Collection
+   Dim i As Integer
+   Dim x As Integer
+   Dim sTime As String
+   Dim sArray As String[]
+   Dim duration As Integer
+   Dim sEndTime As Date
+   Dim sBeginTime As String
+   Dim slots As Integer
+   Dim oldRowCount As Integer
+   Dim lastAppointment As Collection
+   Dim FitIn As Collection
+   Dim find_time As Date
+   
+   For Each appointment In appointments
+      If Format(appointment!begin, "dd/mm/yyyy") = Format(appointment_date, "dd/mm/yyyy") Then
+         '-------------------------------------------------------------
+         'Duration can be in multiples of the days appointment_interval
+         'the time off appointmen is the key to the gridrows collection
+         '-------------------------------------------------------------
+         '  sTime = Format(appointment!begin, "hh:nn:AM/PM")                      ' e.g 10:20 gridrows key
+         sTime = Format(appointment!begin, "hh:nn:AM/PM")                      ' e.g 10:20 gridrows key
+         duration = Val(Split(appointment!duration, ":")[1]) + Val(Split(appointment!duration, ":")[0]) * 60          ' e.g 10, 20, 30, 50, 60, 70 .... etc!
+         Select Case duration
+            Case 1
+               'do nothing but please don't remove this or scews things up
+            Case 10
+               '----------------------------------------------------------------
+               'this is a standard appointment length - will have only 1 slot
+               'i.e in this fixed 10 minute interval FIXME MAKE ME CONFIGURABLE
+               'this appointment is for 10 minutes only
+               '----------------------------------------------------------------
+               For i = 0 To GridRows.Count - 1
+                  If Not IsNull(gridrows[i]) Then    'may have been merged so i is missing
+                     If gridrows[i]!time = stime Then
+                        If Not IsNull(appointment!fk_patient) Then
+                           gridrows[i]!name = Get_Name(appointment)
+                           gridrows[i]!language_problems = appointment!language_problems
+                           gridrows[i]!language = appointment!language
+                           gridrows[i]!appointment_memo = appointment!appointment_memo
+                           ' gridrows[i]!appointment_specific_memo = appointment!appointment_specific_memo
+                        Else
+                           gridrows[i]!name = appointment!notes
+                           gridrows[i]!notes = appointment!notes
+                        End If
+                        gridrows[i]!pk_appointment = appointment!pk
+                        gridrows[i]!fk_patient = appointment!fk_patient
+                        gridrows[i]!fk_lu_appointment_icon = appointment!fk_lu_appointment_icon
+                        gridrows[i]!fk_lu_appointment_status = appointment!fk_lu_appointment_status
+                        Try gridrows[i]!picture = Picture.Load(appointment_icons[appointment!fk_lu_appointment_icon]!icon_path) 'most often there is no icon
+                     Endif
+                  End If
+               Next
+            Case Else
+               '---------------------------------------
+               'duration longer than 1 appointment slot
+               '---------------------------------------
+               sBeginTime = Format(appointment!begin, "hh:nn:AM/PM")
+               sEndTime = DateAdd(appointment!begin, gb.minute, duration)        ' work out the end time
+               sTime = sTime & "-" & Format(sEndTime, "hh:nn:AM/PM")              ' key becomes eg 10-20:10-30 fixme more complex than this eg 10:50-11,20
+               For i = 0 To GridRows.Count - 1
+                  If Not IsNull(gridrows[i]) Then
+                     If gridrows[i]!time = sBeginTime Then
+                        slots = duration / appointment_interval
+                        gridrows[i]!time = sTime
+                        If IsNull(appointment!fk_patient) Then
+                           gridrows[i]!name = appointment!notes
+                        Else
+                           gridrows[i]!name = Get_Name(appointment) 'if title unknown don't show this
+                           gridrows[i]!language_problems = appointment!language_problems
+                           gridrows[i]!language = appointment!language
+                           gridrows[i]!appointment_memo = appointment!appointment_memo
+                           '  gridrows[i]!appointment_specific_memo = appointment!appointment_specific_memo
                         Endif
                         gridrows[i]!slots = slots
                         gridrows[i]!pk_appointment = appointment!pk
@@ -476,6 +647,7 @@ Public Sub Gridview1_Refresh()
    Dim appt_hour_min_am_pm As String[]                                         'e.g "09:10:AM" will be split to  appt_hour_min_am_pm[0]="09" etc
    Dim x As Integer
    Dim sDisplayTime As String                                                  'time appearing on the grayed out left side 'header'
+   Dim sFMainSideBarTime As String
    
    Gridview1.Clear()                                                           'clear the grid
    
@@ -488,8 +660,11 @@ Public Sub Gridview1_Refresh()
       sAM_PM = appt_hour_min_am_pm[2]
       If appt_hour_min_am_pm[1] = "00" Or i = 0 Then                           'if first on the grid or 'on the hour'
          sDisplayTime = Split(gridrows[i]!time, "-")[0]                       ' show the full time eg 09:00 AM
+         If InStr(sDisplayTime, "AM") Then sFMainSideBarTime = Replace(sDisplayTime, ":AM", "")
+         If InStr(sDisplayTime, "PM") Then sFMainSideBarTime = Replace(sDisplayTime, ":PM", "")
       Else
          sDisplayTime = Format(appt_hour_min_am_pm[1], "############")        'otherwise show only the minutes
+         sFMainSideBarTime = Format(appt_hour_min_am_pm[1], "######")
       End If
       If gridrows[i]!slots <> 1 Then                                           'if eg starts at 09:00 and two slots
          For x = 1 To gridrows[i]!slots - 1                                    'add the minutes down the column as per above
@@ -501,15 +676,21 @@ Public Sub Gridview1_Refresh()
                   ihour = 1
                End If
                sDisplayTime &= "\n" & Format(ihour, "0#") & ":" & Format(imin, "0#") & ":" & sAM_PM
+               sFMainSideBarTime &= "\n" & Format(ihour, "0#") & ":" & Format(imin, "0#")
             Else
                sDisplayTime &= "\n" & Format(Str(imin), "############")
+               sFMainSideBarTime &= "\n" & Format(Str(imin), "######")
             End If
          Next
       Endif
-      
       gridview1.rows[i].text = sDisplayTime                                       'set the left side grayed out vertical oriented header to the time
       Gridview1[i, 0].Alignment = Align.Center                                    'column with the picture in it
-      Gridview1[i, 0].picture = gridrows[i]!picture                               'put in picture if it exists
+      If bDisplayInFMainSideBar Then
+         Gridview1[i, 1].picture = gridrows[i]!picture                               'put in picture if it exists
+         Gridview1[i, 0].text = sFMainSideBarTime
+      Else
+         Gridview1[i, 0].picture = gridrows[i]!picture                               'put in picture if it exists
+      End If   
       Gridview1[i, 1].Richtext = gridrows[i]!name                                     'next column put in the name of patient or message
       If Not IsNull(gridrows[i]!appointment_memo) Then
          Gridview1[i, 1].Richtext &= "<BR>" & gridrows[i]!appointment_memo
@@ -525,7 +706,7 @@ Public Sub Gridview1_Refresh()
       Try Gridview1[i, 1].Foreground = Appointment_Status_Colors[gridrows[i]!fk_lu_appointment_status]
       If gridrows[i]!fk_lu_appointment_status = Const.Appointment_Status_Emergency Then                    'show an emergency slot in yellow
          Gridview1[i, 1].Background = Color.Yellow
-         Gridview1[i, 1].text = "RESERVED FOR EMERGENCY"
+         Gridview1[i, 1].text = "EMERGENCY"
       Else If Not IsNull(gridrows[i]!is_fitin) Then                               'of fit-in cyan
          Gridview1[i, 1].Background = Color.cyan
          Gridview1[i, 0].text = "FIT"
@@ -631,6 +812,11 @@ Public Sub mnuAppointments_Click()
          bCheckSlotTaken = False
    End Select
    Save(bCheckSlotTaken)
+   Select Case Last.tag
+      Case "in waiting room", "in consulting room", "patient gone"
+         FMakeAppointments.Refresh_Patients_Waiting
+         
+   End Select
    
 End
 
@@ -878,11 +1064,18 @@ Public Sub Gridview1_Select()
    'user has clicked on or otherwise selected a grid row
    'remove and clear the appointment textbox
    '----------------------------------------------------
-
+   
    txtAppointment.visible = False
    txtAppointment.text = ""
    onrow = gridview1.row
    If onrow = -1 Then Return 
+   Print Me.Parent.name
+   If Me.Parent.Name = "VBox_FMain_DayList" Then
+      Print gridrows[onrow]!fk_patient 
+      If Not FClinical.IsSamePatient(gridrows[onrow]!fk_patient) Then
+         FClinicalToolbar.Find_Patient_External(gridrows[onrow]!fk_patient)
+      Endif
+   End If   
    Try fk_lu_appointment_status = gridrows[onrow]!fk_lu_appointment_status
    Print gridrows[onrow]
    
@@ -1217,5 +1410,17 @@ End
 Public Sub ToolButton1_Click()
    
    Me.Reparent(Null)
+   
+End
+
+Public Sub HBox3_Leave()
+   
+   Gridview1.ScrollBar = Scroll.None
+   
+End
+
+Public Sub HBox3_Enter()
+   
+   Gridview1.ScrollBar = Scroll.Vertical
    
 End

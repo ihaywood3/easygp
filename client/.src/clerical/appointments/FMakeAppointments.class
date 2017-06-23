@@ -37,6 +37,7 @@
 '                   - If mouse re-enters the form the appointments will immediately refresh
 '                   - the delay of the timer is shown in the gui.
 '---------------------------------------------------------------------------------------------
+Private bDisplayAppointmentsByArrivalTime As Boolean
 Private bFormBeingUsed As Boolean  'True if this form is visible to the user
 Private bexit As Boolean
 Private bKeyValid As Boolean
@@ -64,13 +65,17 @@ Private FContainer As FAppLists
 Public DayLists As Object[]
 Private DayList As FDayList
 Private DayListContainer As Window
+'Private Todays_Appointment_Lists As FDayList[] 'only today but for all doctors
+Private Todays_Appointment_Lists As Object[] 
 Private HB As HBox
 Private sv As ScrollView
 Private CurrentSearchTxtBox As Textbox
 Private iSlotCount As Integer
 Public AppointmentList As FDayList
 Private WeeksAppointments As Collection
+Private days_appointments As Collection
 Private counter As Integer
+Private drs_with_patients_waiting As Collection
 
 Static Private Form_Make_Appointments As FMakeAppointments
 
@@ -83,6 +88,12 @@ Static Public Sub Refresh_Appointments_External()
    If Form_Make_Appointments.bAppointmentListsShowing Then
       Form_Make_Appointments.WeekList_Reload()
    Endif
+   
+End
+
+Static Public Sub Refresh_Patients_Waiting()
+   
+   Try Form_Make_Appointments.Patients_Waiting_Refresh 'bug here
    
 End
 
@@ -130,6 +141,8 @@ Public Sub Init()
    
    Form_Make_Appointments = Me
    staff = modUtilGUI.LoadCombo(cmbStaff, modContactsDBI.Staff_Get(), "wholename")        'get all staff
+   ' staff = modUtilGUI.LoadCombo(cmbStaff, modContactsDBI.Staff_Get(,,,,, True), "wholename")
+   
    fk_staff_default_appointments = modAdminDBI.Config_Get("fk_default_staff_member_appointments", -1, Null, modDBConnect.currentUser!fk_clinic)
    chkExcludeWeekends.value = Not modAdminDBI.Config_Get("appointments_show_weekends", False, Null, modDBConnect.currentUser!fk_clinic)
    If fk_staff_default_appointments <> -1 Then
@@ -164,13 +177,77 @@ Public Sub Init()
    bExit = True
    cmbStaff.index = -1
    bExit = False
-   Try ColorButton1.Color = Val(Settings[Me.name & "/appointment_background_colour", "16777087"])
-   
-   If fk_staff_default_appointments <> - 1 Then
-      Create_WeekList_GUI(Now()) 
-   Endif
-   ' Daylists_Update_Background_Colour(ColorButton1.value)
+   Try ColorButton_WeekView.Color = Val(Settings[Me.name & "/weekview_appointment_background_colour", "16777087"])
+   Try ColorButton_DayView.Color = Val(Settings[Me.name & "/dayview_appointment_background_colour", "16777087"])
+   Settings_Load
+   '----------------------------------------------------------------------------------------------
+   'temporary code whilst I change how this module works to just show todays appts for all doctors
+   '-----------------------------------------------------------------------------------------------
+   Todays_Appointment_Lists = New Object[]
+   datebox2.Value = Now()
+   DateBox2_Click()         'Sets days label, loads day list of all cinical staff.
+  '
+ 
+End
 
+Public Sub Day_List_All_Clinical_Staff()
+   ' Displays a day liset for all medical staff FIXME expand to all clinical staff 
+   
+   Dim DL As FDayList
+   Dim sm As Collection
+   Dim staff_already_shown As New Collection
+   
+   If Todays_Appointment_Lists.count Then
+      For Each DL In Todays_Appointment_Lists
+         days_appointments = modAppointmentsDBI.Appointments_GetDay(datebox2.value, DL.tag!fk_staff, modDBConnect.currentUser!fk_clinic)
+         DayList_Fill_With_Appointments(DL, DL.tag, days_appointments)
+         staff_already_shown.Add(DL.tag!fk_staff, DL.tag!fk_staff)    'create array collection of those already with apointment page, keyed on fk_staff
+     Next
+   Endif
+   For Each sm In staff
+      'If sm!has_appointments Then   
+      If sm!fk_role = const.StaffRole_Doctor Or sm!fk_role = const.StaffRole_Practice_Principal Then
+         If Not staff_already_shown.Exist(sm!fk_staff) Then  
+            days_appointments = modAppointmentsDBI.Appointments_GetDay(datebox2.value, sm!fk_staff, sm!fk_clinic)
+            With DL = New FDayList(hBox_DayList_All_Clinical_Staff)
+               DL.gridview1.Background = ColorButton_DayView.Color
+               DayList_Fill_With_Appointments(DL, sm, days_appointments)
+               obs = New Observer(DL.Gridview1) As "AppointmentList"
+               obs = New Observer(DL.txtAppointment) As "TxtFindPatient"
+               .tag = sm
+               Todays_Appointment_Lists.Add(DL)
+            End With
+         End If   
+      Endif
+   Next
+   
+End
+
+Public Sub Get_Staff_Member_collection(fk_staff As Variant) As Collection
+   'fix me re-key the staff collection to the staff key to remove this sub
+   
+   Dim sm As Collection
+   
+   For Each sm In staff
+      If sm!fk_staff = fk_staff Then 
+         Print sm
+         Return sm
+      End If   
+   Next
+   
+End
+
+Public Sub DayList_Fill_With_Appointments(DL As FDayList, sm As Collection, days_appointments As Collection)
+   
+   DL.Init(sm, datebox2.value, modDBConnect.currentUser!fk_clinic, Appointment_Icons, days_appointments, False, False)
+   
+End
+
+Public Sub DateBox2_Click()
+   
+   lblAppointmentsDate.text = "  " & Format(datebox2.value, gb.LongDate) & "  "
+   Day_List_All_Clinical_Staff()
+   
 End
 
 Public Sub Form_Close()
@@ -227,9 +304,10 @@ End
 
 Private Sub Settings_Load()
    'Print Settings[Me.name & "/appointment_background_colour"]
-
-   Daylists_Update_Background_Colour(Settings[Me.name & "/appointment_background_colour"])
-
+   
+   ' Daylists_Update_Background_Colour(Settings[Me.name & "/appointment_background_colour"])
+   HSplit1.layout = Settings[Me.name & "/HSplit1.value", modUtilGUI.HSplit([1, 3])]
+   
 End
 
 Public Sub form_Resize()
@@ -311,6 +389,27 @@ Public Sub cbHideNames_Click()
          Endif
       Next
    Next
+   ' For Each hCtrl In hBox_DayList_All_Clinical_Staff
+   ' If hctrl Is ScrollView Then
+   '  sv = hctrl
+   ' For Each hctrl In sv.Children
+   '  If hctrl Is HBox Then
+   '  hb = hctrl
+   For Each hctrl In hBox_DayList_All_Clinical_Staff.Children
+      If hctrl Is Form Then
+         FDL = hctrl
+         If cbHideNames.Value = CheckBox.True Then
+            FDL.SetNameHidden(True)
+         Else
+            FDL.SetNameHidden(False)
+         End If
+      End If
+   Next
+   '  Endif
+   ' Next
+   ' Endif
+   '  Next
+   ' Next
    Dec application.Busy
    
 End
@@ -334,9 +433,9 @@ Public Sub Create_WeekList_GUI(startdate As Date, Optional bGenerateWeeksAppoint
       .Arrangement = Arrange.Fill
       .Expand = True
       If DateDiff(Now, startdate, gb.day) <> 0 Then
-         .title = Staff_Member!wholename & " from " & Format(startdate, gb.LongDate)
+         .title = Staff_Member!wholename  '& " from " & Format(startdate, gb.LongDate)
       Else
-         .title = Staff_Member!wholename & " from " & Format(Now, gb.LongDate)
+         .title = Staff_Member!wholename  '& " from " & Format(Now, gb.LongDate)
       Endif
       .tag = Staff_Member
    End With
@@ -366,8 +465,8 @@ Public Sub Create_WeekList_GUI(startdate As Date, Optional bGenerateWeeksAppoint
          .width = (DayLists.count + 1) * Max(Me.width / 5, 350)
       End With
       With AL = New FDayList(HB)
-          AL.Gridview1.Background = ColorButton1.Color
-          .Init(Staff_Member, thedate, clinics[cmbLocation.index]!fk_clinic, Appointment_Icons, WeeksAppointments, name_hidden)
+         AL.Gridview1.Background = ColorButton_WeekView.Color
+         .Init(Staff_Member, thedate, clinics[cmbLocation.index]!fk_clinic, Appointment_Icons, WeeksAppointments, name_hidden)
          obs = New Observer(AL.Gridview1) As "AppointmentList"
          obs = New Observer(AL.txtAppointment) As "TxtFindPatient"
          .tag = daycount
@@ -377,6 +476,7 @@ Public Sub Create_WeekList_GUI(startdate As Date, Optional bGenerateWeeksAppoint
    Loop
    Dec application.Busy
    bAppointmentListsShowing = True
+   Patients_Waiting_Refresh(Staff_Member)
    
 End
 
@@ -570,10 +670,26 @@ Public Sub DateChooser1_Change()
    
 End
 
+Public Sub DateControlButtons_Click()
+   'The date control value tagas are -7, -1 +1, +7)
+   'i.e back a week, a day, forward a day a week
+   
+   datebox2.value = DateAdd(DateBox2.value, gb.day, Val(Last.tag))
+   ' If modUtil.IsSameDay(Now(), datebox2.value) Then 
+   '    lbltoday.text = ""
+   ' Else
+   '    lbltoday.TEXT = ""
+   ' End If   
+   DateBox2_Click() 
+   
+End
+
 Public Sub Form_KeyPress()
    
    If Key.code = Key.F9 Then
       DateChooser1.Value = Now()  'will trigger reloading appointments at today's date
+      datebox2.value = Now()
+      DateBox2_Click()
    Endif
    
 End
@@ -601,16 +717,8 @@ Public Sub Form_Show()
    '----------------------------------------------------------------
    'Always refresh the appointments if this form is being re-entered
    '----------------------------------------------------------------
-   
-   bFormBeingUsed = True
-   
-End
 
-Public Sub ToolButton1_Click()
-   
-   If bAppointmentListsShowing And bFormBeingUsed Then
-      WeekList_Reload
-   End If
+   bFormBeingUsed = True
    
 End
 
@@ -645,20 +753,165 @@ Public Sub SelectPatient_click()
    
 End
 
-Public Sub ColorButton1_Change()
-   
-   Daylists_Update_Background_Colour(ColorButton1.value)
-   
-End
+Public Sub ColorButton_DayView_Change()
 
-Public Sub Daylists_Update_Background_Colour(bgc As Integer)
-   
    Dim x As Integer 
    
-   For x = 0 To DayLists.Max
-      DayLists[x].Children[0].Children[1].Children[0].Background = bgc
+   For x = 0 To Todays_Appointment_Lists.Max
+    '  (Todays_Appointment_Lists[x].Children[0]).Children(1).Background = ColorButton_DayView.value
+      Todays_Appointment_Lists[x].Children[0].children[1].Children[0].Background = ColorButton_DayView.value
+             '         daylists[x].Children[0].Children[1].Children[0].Background = bgc
    Next
-   Settings[Me.name & "/appointment_background_colour"] = Str(bgc)
+   Settings[Me.name & "/dayview_appointment_background_colour"] = Str(ColorButton_DayView.value)
    Settings.Save
 
 End
+
+Public Sub ColorButton_WeekView_Change()
+   
+   WeekView_Update_Background_Colour(ColorButton_WeekView.value)
+   
+End
+
+Public Sub WeekView_Update_Background_Colour(bgc As Integer)
+   
+   Dim x As Integer 
+   If Not IsNull(daylists) Then
+   For x = 0 To daylists.Max
+      daylists[x].Children[0].Children[1].Children[0].Background = bgc
+   Next
+   End If   
+   Settings[Me.name & "/weekview_appointment_background_colour"] = Str(bgc)
+   Settings.Save
+   
+End
+
+Public Sub Patients_Waiting_Refresh(Optional staff_member As Collection)
+   
+   Dim patients_waiting As Collection
+   Dim patient As Collection
+   Dim fk_last_staff As Variant
+   Dim name_bits As String[]
+   Dim sm As Collection
+   Dim x As Integer
+   Dim gv As GridView
+   
+   Hbox_Waiting.Children.Clear
+   drs_with_patients_waiting = New Collection
+   patients_waiting = modAppointmentsDBI.Appointments_Get_Waiting(bDisplayAppointmentsByArrivalTime)
+   For Each patient In patients_waiting
+      If fk_last_staff <> patient!fk_staff Then
+         x = 0
+         With gv = New GridView(Hbox_Waiting)
+            .columns.count = 2
+            .columns[0].width = 50
+            .Columns[0].Alignment = Align.Center
+            .autoresize = True  
+            .Border = True
+            .Expand = True   
+            .header = GridView.Horizontal
+            .Expand = True 
+            .grid = False  
+            .mode = GridView.Horizontal
+            .ScrollBar = Scroll.Vertical
+            For Each sm In staff
+               If sm!fk_staff = patient!fk_staff Then
+                  .columns[1].Text = "Patients waiting for " & modUtil.Ucase_Word_First_Letter(sm!wholename)
+                  Break
+               Endif
+            Next
+            drs_with_patients_waiting.Add(patient!fk_staff, patient!fk_staff)
+         End With
+         fk_last_staff = patient!fk_staff
+      Endif
+      Inc gv.Rows.Count
+      Print gv.Rows.Count
+      gv[x, 0].text = Format(patient!begin, "hh:nn")
+      If Not IsNull(patient!firstname) Then
+            name_bits = Split(patient!firstname, " ")             'get rid of middle name
+            gv[x, 1].Text = patient!firstname & " " & patient!surname
+      Else
+         gv[x, 1].Text = patient!surname
+      End If   
+      Inc x
+   Next
+   ' With gv = New GridView(Hbox_Waiting)
+   '    ' With gvwWaiting
+   '    '    Clear
+   '    '    .Rows.count = patients_waiting.Count
+   '    .columns.count = 2
+   '    .columns[0].width = 50
+   '    .Columns[0].Alignment = Align.Center
+   '    .autoresize = True  
+   '    .Border = True
+   '    .Expand = True   
+   '    .header = True
+   '    
+   '    If Not IsNull(staff_member) Then
+   '       .Columns[0].Text = modUtil.Ucase_Word_First_Letter(staff_member!wholename)
+   '    Endif
+   '    '     .Columns[1].width = 200
+   '    '    .Columns[2].width = 200
+   ' End With
+   ' ' For Each patient In patients_waiting
+   '       gvwWaiting[x, 0].text = Format(patient!begin, "hh:nn")
+   '       For Each sm In staff
+   '          If sm!fk_staff = patient!fk_staff Then
+   '              gvwWaiting[x, 2].text = modUtil.Ucase_Word_First_Letter(sm!wholename)
+   '           Endif
+   '       Next
+   '    name_bits = Split(patient!firstname, " ")             'get rid of middle name
+   '    gvwWaiting[x, 1].Text = name_bits[0] & " " & patient!surname
+   '    Inc x
+   ' Next
+   
+End
+
+Public Sub Patients_Waiting_Refresh_old()
+   
+   Dim patients_waiting As Collection
+   Dim patient As Collection
+   Dim fk_last_staff As Variant
+   Dim name_bits As String[]
+   Dim sm As Collection
+   Dim x As Integer
+   
+   patients_waiting = modAppointmentsDBI.Appointments_Get_Waiting(bDisplayAppointmentsByArrivalTime)
+   ' With gvwWaiting
+   '    .Clear
+   '    .Rows.count = patients_waiting.Count
+   '    .Columns.count = 3
+   '    .Columns[0].width = 50
+   '     .Columns[1].width = 200
+   '    .Columns[2].width = 200
+   ' End With
+   ' For Each patient In patients_waiting
+   '       gvwWaiting[x, 0].text = Format(patient!begin, "hh:nn")
+   '       For Each sm In staff
+   '          If sm!fk_staff = patient!fk_staff Then
+   '              gvwWaiting[x, 2].text = modUtil.Ucase_Word_First_Letter(sm!wholename)
+   '           Endif
+   '       Next
+   '    name_bits = Split(patient!firstname, " ")             'get rid of middle name
+   '    gvwWaiting[x, 1].Text = name_bits[0] & " " & patient!surname
+   '    Inc x
+   ' Next
+   
+End
+
+Public Sub ChkAllDoctors_Click()
+   
+   'Day view all doctors
+   
+End
+
+Public Sub DateBox2_MouseDown()
+   
+End
+
+Public Sub HSplit1_Resize()
+   
+   Settings[Me.name & "/HSplit1.value"] = HSplit1.layout
+   
+End
+

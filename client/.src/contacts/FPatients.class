@@ -417,7 +417,7 @@ Public Sub Patient_Display()
             address!state = row!state
             address!postcode = row!postcode
             address!preferred_address = row!preferred_address
-            addresses.Add(address, cvwAddresses.count)
+            addresses.Add(address, Addresses.count)
          Else
             If bFoundPerson Then Break
          End If
@@ -895,11 +895,7 @@ Public Sub Save()
    Endif
    cvwPatients.UnselectAll()
    If sSearchCriteria <> "" Then
-      EditArea_Clear
-      sSearchMode = "general search"
-      txtSearch.text = sSearchCriteria
-      iTimer_Count = 4
-      Timer1.start()
+      Reload_Using_Search_Criteria
    Else
       txtSearch.SetFocus 'resets the search text for input
    Endif
@@ -908,6 +904,18 @@ Catch
    Message.Error("An error occurred whilst trying to save this patient's record.\n\nIf this persists then please contact your SysAdmin "
    "who can notify the developers of the problem")
    modDBConnect.RollBack
+   
+End
+
+Public Sub Reload_Using_Search_Criteria()
+   'reloads gui with patients using current search criteria
+   'i.e sSearchCriteria <> ""
+
+   EditArea_Clear
+   sSearchMode = "general search"
+   txtSearch.text = sSearchCriteria
+   iTimer_Count = 4
+   Timer1.start()
    
 End
 
@@ -1046,7 +1054,7 @@ Public Sub mnuPersons_Click()
          Next
          Patients_Get() 'refresh the list
       Case "delete address"
-         Address_Delete
+         Address_Delete(True) 'True tells delete is from popup persons menu
       Case "delete person"
       Case "font"
          If Embedded_In_Form = "persons" Then
@@ -1137,40 +1145,71 @@ Public Sub Person_Merge()
    
 End
 
-Sub Address_Delete()
+Sub Address_Delete(Optional bFromPatientListMenu As Boolean = False)
+   
+   'Addresses can be deleted either from the popup menu over the patients list
+   'or by using clicking on cvwAddresses
    
    Dim i As Integer
    Dim sMsg As String
+   Dim fk_last_patient As Variant
+   Dim P As Collection
+   Dim address_count As Integer
    
    Message.title = "Altering a patient's address"
    smsg = "<P><B>Please read this very carefully</B><P>"
-          "<P>When a patient is added to EasyGP, they must have an address, like it or not, that's how it works. "
-          "If you delete the patients address, then, whilst the patient's records and data are not physically "
-          "deleted from the database, the internal records are marked with a 'deleted' flag, and effectively "
-          "they 'disappear."
-         "<P>Whilst not good design, this is how life is at the moment and you will have to live with this until "
-         "a future version is released.<P>"
-         "Hence, at the moment  you can only delete an address if there are two current addresses, so to change a "
-         "person's address please click over the address, and select 'Edit', make your changes, and "
-         "click the 'Add to List' button, located under the address area."
+   "<P>When a patient is added to EasyGP, they must have an address, like it or not, that's how it works. "
+   "If you delete the patients address, then, whilst the patient's records and data are not physically "
+   "deleted from the database, the internal records are marked with a 'deleted' flag, and effectively "
+   "they 'disappear."
+   "<P>Whilst not good design, this is how life is at the moment and you will have to live with this until "
+   "a future version is released.<P>"
+   "Hence, at the moment  you can only delete an address if there are two current addresses, so to change a "
+   "person's address please click over the address, and select 'Edit', make your changes, and "
+   "click the 'Add to List' button, located under the address area."
+   'First see how many addresses there are in the list for this person, must leave one
+   ' If bFromPatientListMenu Then
+   '    For Each P In rows_in_view
+   '       If P!fk_patient = row_in_view!fk_patient Then
+   '          Inc address_count
+   '       Endif
+   '    Next
+   ' Else
+   ' If cvwAddresses.count = 1 Then address_count = 1
+   'End If   
    If cvwAddresses.count = 1 Then
       Message.Warning(smsg)
       Return
    Endif
    If Message.Question("You have elected to deleted an existing address, are you sure you want to proceed.", "Yes", "No") = 2 Then Return
    bExit = True
-   cvwAddresses.MoveCurrent
-   i = cvwAddresses.Item.Key
-   If addresses[i].Exist("fk_address") Then ' only delete in backend when we have a PK
-      modDBConnect.BeginTrans()
-      modContactsDBI.person_address_delete(addresses[i]!fk_address)
+   If bFromPatientListMenu Then
+      modContactsDBI.person_address_delete(row_in_view!fk_address)
       modDBConnect.CommitTrans()
-   Endif
-   addresses.Remove(i)
-   addresses = modUtil.Copy_Collection_Keyed_Sequentially(addresses) ' renumber the collection
-   Addresses_FillList()
-   Address_New() ' refresh whatever we were editing to prevent confusion
-   bExit = True
+   Else
+      cvwAddresses.MoveCurrent
+      i = cvwAddresses.Item.Key
+      If addresses[i].Exist("fk_address") Then ' only delete in backend when we have a PK
+         modContactsDBI.person_address_delete(addresses[i]!fk_address)
+         modDBConnect.CommitTrans()
+      Endif
+   End If  
+   cvwPatients.UnselectAll()
+   Print sSearchCriteria
+   Reload_Using_Search_Criteria()
+   Wait
+   With cvwPatients
+         .SetFocus
+         .MoveFirst
+         .Item.Selected = True   
+   End With
+ 
+   ' Return
+   ' addresses.Remove(i)
+   ' addresses = modUtil.Copy_Collection_Keyed_Sequentially(addresses) ' renumber the collection
+   ' Addresses_FillList()
+   ' Address_New() ' refresh whatever we were editing to prevent confusion
+   ' bExit = True
    
 End
 
@@ -1397,7 +1436,7 @@ Public Sub Form_KeyPress()
 End
 
 Public Sub cvwPatients_Menu()
-  
+   
    If cvwPatients.Columns.Count < 6 Then Return ' not being used to display patients
    If cvwPatients.count Then
       mnuPersons.Popup()
@@ -1710,7 +1749,7 @@ Public Sub EditArea_TextBox_GotFocus()
    
    sSearchMode = Last.tag
    Last.BackGround = Color.rgb(95, 255, 175)
-   ReferenceHboxForTopOfListBox = Last.Parent.Parent
+   ReferenceHboxForTopOfListBox = Last.Parent.Parent  'Last is sometimes not what you think > catch
    'Should work but doesn't seem to ?why
    With listview1
       .top = Last.Parent.Parent.top + Last.Parent.height
@@ -1736,8 +1775,9 @@ Public Sub EditArea_TextBox_GotFocus()
    '       End With
    ' End Select
    Timer1.Stop
-
    
+   Catch 
+         Timer1.Stop
 End
 
 Public Sub EditArea_TextBox_LostFocus()
@@ -1800,6 +1840,7 @@ Catch
 End
 
 Public Sub Communication_SendSMS()
+   
    Dim mobile As String
    Dim msg As String
    Dim form_sms As FSendSMS
@@ -2408,7 +2449,6 @@ Catch
    
 End
 
-
 Public Sub Workplace_Selection(action As String, Optional calling_control As String)
    
    Dim iMatched As Boolean
@@ -2680,7 +2720,7 @@ Public Sub MbtnReligions_Menu()
 End
 
 Public Sub bListAllAppointments_Click()
-
+   
    Dim res As Result
    Dim x As Integer = 0
    
@@ -2697,15 +2737,14 @@ Public Sub bListAllAppointments_Click()
          Inc x
       Next
    Endif
-
+   
 End
 
 Public Sub bAllActive_Click()
-
-      
+   
    Inc Application.Busy
    rows_in_view = modContactsDBI.Patients_Get_All_Active()
    Patients_List_Fill()
    Dec Application.Busy
-
+   
 End

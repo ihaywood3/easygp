@@ -1,0 +1,352 @@
+' Gambas class file
+
+' Copyright (C) 2014 Dr. Richard Terry
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'-----------------------------------------------------------------------
+'A Form to display the patient's active or inactive medications
+'Used in FClinical and Finbox
+'-----------------------------------------------------------------------
+
+Public currentconsult As CConsult                   'passed from calling form
+Private medication_sort_order As String = "generic" 'whereas this is the default, may be changed at any time on the scripts tab
+Private embedded_in_form As String                  'the form this form is embedded e.g "FClinical" or "FInbox"
+Private Deleted_medications As Collection           'fixme not yet implemented
+
+Public Sub Init(cons As CConsult)
+   
+   currentconsult = cons 
+   If embedded_in_form = "FInbox" Then
+      With lblPatient
+         .Visible = True   
+         .text = currentconsult!patient!wholename
+      End With
+   Endif
+   
+   Settings_Load
+   Medications_Refresh
+   Deleted_Medications = New Collection
+   
+End
+
+Public Sub Set_Embedded_Form_Name(fn As String)
+   
+   embedded_in_form = fn
+   
+End
+
+Public Sub Medications_Refresh()
+   '-------------------------------------------------------------------------------------------
+   'Refreshes the medications list
+   'the medications collection = collection of **ALL** drugs ever prescribed
+   'ordered by the last_date - ie most recent on the top
+   'hence the brand displayed in the medication list will be the last brand prescribed
+   'The medication list is looped through, the first occurrance of a generic medication is
+   'used, all subsequent ones ignored
+   'Note: Display via generic names and display by brand differ
+   '      - with generic could just check if last fk_medication was the same and skip the drug
+   '        as with ordered generic names all the fk_medication keys will be sequential
+   '      - when sorted by brands, the fk_medication keys are all over the place, so the
+   '        solution I've used is to keep the keys in a string[] and use the .Find function
+   '        to make sure the brand for this fk_medication not already displayed.
+   '        FIXME USE:modPrescribingDBI.Prescriptions_Fill_Columnview
+   '        FIXME some dulicatation here in building the collection active_medications
+   '        FIXME NO NEED FOR LBLMEDICATIONS ANY MORE - READ OFF THE OPTION BUTTONS
+   '        HOWEVER THIS STILL WORKS   
+   '------------------------------------------------------------------------------------------
+   
+   modPrescribingDBI.cvwMedications_Refresh(cvwMedications, currentconsult, lblmedications, medication_sort_order)
+   
+End
+
+Public Sub Set_Patient_Name(pn As String)
+   
+   lblmedications.text = pn 
+   
+End
+
+Public Sub rbActiveInactive_Click()
+   
+   '--------------------------------------------
+   'Switches the display from active <> inactive
+   '--------------------------------------------
+   If Last.tag = "active" Then  
+      lblMedications.tag = "active"
+      lblMedications.text = "Active Medications"
+   Else
+      lblMedications.tag = "inactive"
+      lblMedications.text = "Inactive Medications"
+   Endif
+   Medications_Refresh
+   
+End
+
+Public Sub Settings_Save()
+   
+End
+
+Private Sub Settings_Load()
+   '---------------------------------------------------
+   'Load font settings according to FClinical or FInbox 
+   '---------------------------------------------------
+   
+   cvwMedications.Font = Font[Settings[embedded_in_form & "_MedicationsList/cvwMedications.font", "Arial,9"]]
+   
+End
+
+Public Sub Refresh_Parent_Forms()
+   '---------------------------------------------------------------------------- 
+   'this form is embedded in Fclinical or Finbox or Both at the same time (rare)
+   'Update appropriate lists and anything which could be showing eg care plans
+   'drug-food lists etc
+   '---------------------------------------------------------------------------- 
+   
+   Select Case embedded_in_form
+      Case "FClinical"                                                'meds list already updated
+         Try FGPMPTCA.GPMP_Update                                     'try and update the GPMP
+         Try FGPMPTCA.GPMP_TCA_Reload_Latex                           'update latex showing in TCA
+         If FInbox.Is_Same_Patient(currentconsult!patient!fk_patient) 'if same patient loaded into inbox
+            Try FInbox.Medications_Refresh    
+         End If    
+         FClinical.Refresh_Section(const.cSection_Food_Drug_List) 'if a drug food list is on a tab, update this
+         FClinical.Refresh_Section(const.cSection_HealthSummary)  'if a GPMP or health summary is on a tab refresh this
+      Case "FInbox"
+         If FClinical.IsSamePatient(currentconsult!patient!fk_patient) Then   
+            FClinical.Refresh_Section(const.cSection_Prescriptions)  'refresh the meds list on the tabs in FClinical
+            FClinical.Refresh_Section(const.cSection_Food_Drug_List) 'if a drug food list is on a tab, update this
+            FClinical.Refresh_Section(const.cSection_HealthSummary)  'if a GPMP or health summary is on a tab refresh this
+            Try FGPMPTCA.GPMP_Update()                               'if user doing care planning refresh this
+            Try FGPMPTCA.GPMP_TCA_Reload_Latex                       'update latex showing in TCA
+         End If   
+   End Select
+   
+End
+
+Public Sub mnuMedications_Click()
+   
+   Dim medication As Collection
+   Dim new_Prescription_item As Collection
+   Dim prescribed As CRow
+   Dim x As Integer
+   
+   cvwMedications.MoveCurrent()
+   medication = currentconsult!medications[cvwMedications.Selection[0]]
+   Select Case Last.tag
+      Case "fonts"
+         If embedded_in_form = "FInbox" Then   
+            modUtilGUI.Columnview_SetFont(cvwMedications, "FInbox_MedicationsList")
+         Else
+            modUtilGUI.Columnview_SetFont(cvwMedications, "FClinical_MedicationsList") 
+         End If    
+      Case "interactions"
+      Case "unselect all"
+         cvwMedications.UnselectAll
+      Case "food interactions"
+         FClinical.Editor_ShowPage_External("browser", "Brand Equivalents", modPrescribingDBI.Food_Interactions_Drugs_Construct_HTML(modPrescribingDBI.active_medication_list(currentconsult)))
+      Case "brands like"
+         FClinical.Editor_ShowPage_External("browser", "Brand Equivalents", modPrescribingDBI.Brand_Equivalents_Make_HTML(modPrescribingDBI.active_medication_list(currentconsult), currentconsult))
+      Case "delete"
+         Message.info("The delete medication function is temporarily unavailable, you should make the medication inactive.")
+         Return    
+         If modPrescribingDBI.Medication_Delete(currentconsult, medication!med!pk, const.cSection_Prescriptions, "mark deleted", "Medication:" & medication!generic) Then
+            modDBConnect.CommitTrans()
+            Deleted_medications.Add(medication, cvwMedications.Selection[0])
+            Medications_Refresh                                                          'refresh the collection and reshow the list
+            modPrescribingDBI.Medication_update_Progress_notes(currentconsult)   
+            Select Case embedded_in_form
+               Case "FClinical"                                                             'must be the same patient!
+                  'this form only exists in FClinical the GP Management TCA Form                         
+                  Try FClinical.Todays_Prescriptions_Reload                                 'refresh list under the editing area in FClinical 
+               Case "FInbox"
+                  If FInbox.Is_Same_Patient(currentconsult!patient!fk_patient) Then Try FInbox.Medications_Refresh
+            End Select
+         Else
+            modDBConnect.RollBack
+         End If
+      Case "undo delete"
+         Print Deleted_medications
+         Message.Info("Undeleting a medication is currently not available")
+      Case "full product information"
+         cvwMedications.MoveCurrent()
+         If Not IsNull(medication!product_information_filename) Then
+            Try FClinical.Editor_ShowPage_External("drugs browser", medication!brand & " (" & medication!generic & ")", modAdminDBI.Config_Get("product_information_directory", "", Null, modDBConnect.currentUser!fk_clinic) &/ medication!product_information_filename)
+            If Error Then
+               Message.info("The product information could not be found")
+            Endif
+         Else
+            Message.info("The product information could not be found")
+         Endif
+      Case "make active"
+         modPrescribingDBI.Medication_MakeActiveOrInactive(medication!prescribed!fk_medication, True) 'do the backend commit straight away
+         Medications_Refresh              'update the current med list showing
+         Refresh_Parent_Forms             'update lists on Fclinical or Finbox
+      Case "make inactive"
+         modPrescribingDBI.Medication_MakeActiveOrInactive(medication!prescribed!fk_medication, False)
+         Medications_Refresh              'update the current med list showing
+         Refresh_Parent_Forms             'update lists on Fclinical or Finbox
+      Case "make inactive with comment"
+         modUtilGUI.NotImplemented("Making the drug inactive and adding a comment to the audit trail")
+         Return 
+         Refresh_Parent_Forms
+      Case "view inactive medications"
+         rbInactiveMedications.value = True
+      Case "view active medications"
+         rbactiveMedications
+      Case "brief product information"
+         modUtilGUI.NotImplemented("Brief Product Information")
+      Case "view medication history"
+         modUtilGUI.NotImplemented("Viewing a single medication history")
+      Case "view medication as printed"
+         '------------------------------------------------------------------------------------------------------------------------------
+         'If a Latex defination exists (which it should, except for myself who used this in beta form before this feature was available)
+         'show the actual script as printed (could contain 1-3 drugs)
+         '------------------------------------------------------------------------------------------------------------------------------
+         If Not IsNull(medication!prescribed!latex) Then
+            FClinical.Editor_ShowPage_External("pdf file", medication!brand, modPrinting.Latex_To_PDF(medication!prescribed!latex))
+         End If
+      Case "prescribe selected", "prescribe all", "prescribe selected reg24", "prescribe all reg24"
+         If embedded_in_form = "FClinical" Then
+            FClinical.Editor_ShowPage_External("Scripts", "Prescriptions", "")      'Ensure the script module is loaded and visible
+         End If   
+         If Last.tag = "prescribe all" Or Last.tag = "prescribe all reg24" Then  'cvwMedicals.SelectAll does not work??
+            cvwMedications.SelectAll()
+         End If
+         cvwMedications.MoveFirst()
+         For x = 0 To cvwMedications.Selection.Count - 1
+            medication = currentconsult!medications[cvwMedications.Selection[x]]
+            new_Prescription_item = medication                 'set all the display fields, are the same as the original, not saved
+            new_Prescription_item!date_script_written = currentconsult.getConsultDate()
+            new_Prescription_item!med!last_date = currentconsult.getConsultDate()
+            prescribed = medication!prescribed.Clone()         'create a new prescribed cRow, don't put in authority approval etc even if an authority
+            prescribed.Remove("pk")                            ' make cRow save a new row
+            prescribed.Remove("printed")
+            If InStr(Last.tag, "24") Then
+               prescribed!reg24 = True
+            Else
+               prescribed!reg24 = False
+            Endif
+            prescribed!date_on_script = currentconsult.getConsultDate()                  'FIXME ALLOW MENU DRIVEN DATE AHEAD OPTIONS
+            prescribed!fk_consult = currentconsult.GetPK()
+            prescribed!script_number = modPrescribingDBI.Script_Number_Get_Next()
+            prescribed!latex = Null
+            If Not IsNull(prescribed!authority_reason) Then
+               prescribed!authority_script_number = modPrescribingDBI.Authority_Number_Get_Next(modDBConnect.currentUser!fk_staff)
+               If Not IsNull(prescribed!authority_approval_number) Then 
+                  If InStr(Lower(prescribed!authority_approval_number), "z") Then 'all Z numbers are phone approvals
+                     prescribed!authority_approval_number = Null
+                  Else 'get latest streamlined code
+                '     prescribed!authority_approval_number = modPrescribingDBI.Restriction_code_get(prescribed!fk_product) <<DO NOT UNCOMMENT THIS IS WRONG
+                  End If   
+               End If   
+            Endif
+            ' prescribed! = concession_details : these three not yet implemented
+            ' prescribed! = brand_substitution : do not remove this code
+            ' prescribed! = fk_progress_note
+            new_Prescription_item!prescribed = prescribed         'new cRow, otherwise the fields not changed IAN FIXME EASIER WAY
+            FPrescriptions.Script_Item_Re_Prescribe(new_Prescription_item)
+         Next
+         cvwMedications.UnselectAll()   
+      Case "view all medications history"
+         Print modPrescribingDBI.Medications_History_Construct_HTML(currentconsult!medications)
+         FClinical.Editor_ShowPage_External("browser", "Medication history", modPrescribingDBI.Medications_History_Construct_HTML(currentconsult!medications))
+      Case Else 'for undelete there are sub-items on the undelete menu with tags = the drug generic
+         If IsInteger(Last.tag) Then 
+            If modPrescribingDBI.Medication_UnDelete(currentconsult, Val(Last.tag), const.cSection_Prescriptions, "undelete", "Medication:" & Last.caption) Then
+               modDBConnect.CommitTrans()
+               For Each medication In Deleted_Medications
+                  If medication!med!pk = Val(Last.tag) Then
+                     Deleted_Medications.Remove(medication!prescribed!pk)
+                     Break
+                  Endif
+               Next
+               Medications_Refresh 'refresh the collection and reshow the list
+               Try FPrescriptions.Prescriptions_Written_Today_Reload   'refresh list under the editing area
+            Else
+               modDBConnect.RollBack
+            End If
+         Endif
+   End Select
+Catch
+   Return
+   
+End
+
+Public Sub cvwMedications_Menu()
+   
+   Dim medication As Collection
+   Dim mnu As Menu
+   Dim deleted_med As Collection 
+   
+   If Not currentconsult Or embedded_in_form = "FResearch" Then Return
+   Last.MoveCurrent()
+   If Deleted_Medications.count Then                            'could still be some that were deleted this consult
+      If cvwMedications.count = 0 Then                          'if no meds left on meds list   
+         For Each mnu In mnuMedications.Children                 'disable all other menu options
+            mnu.Enabled = False  
+         Next
+      End If   
+      mnuMedications_UndoDelete.Children.Clear
+      mnuMedications_UndoDelete.Enabled = True                  'except the undo-delete
+      For Each deleted_med In Deleted_Medications                'add onto this as sub-menu items the name of drug deleted
+         With mnu = New Menu(mnuMedications_UndoDelete) As "mnuMedications"
+            .name = deleted_med!generic
+            .text = .Name
+            .tag = Str(deleted_med!med!pk)                            'the tag is clin_prescribing.medications.pk
+            .Visible = True   
+            .Enabled = True   
+         End With
+      Next
+   End If   
+   If cvwMedications.count = 0 And Deleted_Medications.count = 0 Then Return 'nothing to action, nothing to reverse
+   If cvwMedications.count Then  
+      If cvwMedications.MoveCurrent() Then
+         cvwMedications.MoveFirst()
+      Endif
+      medication = currentconsult!medications[cvwMedications.Selection[0]]  'BUG HERE NULL OBJECT FIXME
+      If lblMedications.tag = "active" Then
+         mnuMedications_MakeActive.Enabled = False
+         mnuMedications_MakeActiveWithComment.Enabled = False
+         mnuMedications_MakeInActive.Enabled = True
+         mnuMedications_MakeInActiveWithComment.Enabled = True
+      Else
+         mnuMedications_MakeActive.Enabled = True
+         mnuMedications_MakeActiveWithComment.Enabled = True
+         mnuMedications_MakeInActive.Enabled = False
+         mnuMedications_MakeInActiveWithComment.Enabled = False
+      Endif
+      If Not IsNull(medication!product_information_filename) Or Not IsNull(medication!product_information_filename_user) Then
+         mnuMedications_FullProductInformation.Enabled = True
+      Else
+         mnuMedications_FullProductInformation.Enabled = False
+      Endif
+   End If   
+   If embedded_in_form = "FInbox" Then
+      mnuMedications_BrandsLike.Enabled = False 
+      mnuMedications_Interactions.Enabled = False 
+      mnuMedications_AuditTrailAll.Enabled = False
+      mnuMedications_ViewHistory.Enabled = False 
+      mnuMedications_ViewMedicationPrescription.Enabled = False 
+      mnuMedications_FullProductInformation.Enabled = False 
+   Endif
+   mnuMedications.popup()  
+Catch
+   Return 
+   
+End
+
+Public Sub rbMedicationsDisplay_Click()
+   
+   medication_sort_order = Last.tag
+   Medications_Refresh()
+   
+End

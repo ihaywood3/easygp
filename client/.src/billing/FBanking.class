@@ -1,2 +1,943 @@
 ' Gambas class file
 
+' Copyright (C) 2008-2016 Dr. Richard Terry
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'---------------------------------------------------------------------------------------
+' A module for printing a simple banking slip cheque list + cash to bank
+'
+' HOW THIS WORKS     The backend (unless a totally new Db must have been
+'                    reset to mark off all monies already banked which
+'                    are payments in biling.payments_received to have
+'                    an fk_banking_slip of 0 .
+'
+'                    When this module generates a banking slip it pulls in
+'                    all payments where fk_banking_slip is null and paid is true
+'                    into the collection Unbanked_Payments, hence other work stations
+'                    which may be adding new payments can continue as only the 
+'                    collection generated here will be marked off for the days
+'                    banking slip.
+'
+'                    User can generated cash-for-cheque exchanges which will be
+'                    validated and saved into the billing.banking_slips table
+'                    (see Save())
+'
+'                    Once saved, alll payments in the unbanked_payments collection
+'                    are marked off by adding the new fk_banking_slip key to the
+'                    billing.payments_received table
+'----------------------------------------------------------------------------------------
+Private Unbanked_Payments As Collection
+Private Form_Cash_Cheques As FHtmlViewer
+Private form_banking_slip As FHtmlViewer
+Private cheque_details_html As String
+Private cash_details_html As String
+Private banking_slip_cheque_details_html As String
+Private banking_slip_cash_details_html As String
+Private banking_slip_html As String
+Private total_cheques As Float
+Private total_cash As Float
+Private Cash_for_Cheque As Collection
+Private cash_for_cheques As Collection
+Private cvwChequeToCash_key As Variant
+Private bExit As Boolean
+Private obs As Observer
+Private From_Date As Variant
+
+Public Sub Init()
+   
+   With Form_Cash_Cheques = New FHtmlViewer(VBox_HTMLViewer)           ' instantiate the webview to show the cheques and cash outstanding
+      .tbWebBrowserPrint.Visible = True   
+      .tbWebBrowserZoomIn.Visible = True  
+      .tbWebBrowserZoomOut.Visible = True 
+      .Set_Landscape_Printing(True)
+      .lblHtmlViewerHeading.text = "Cash and Cheque Details"
+      .lblHtmlViewerHeading.font = lblMainHeadingHidden.Font
+      ' .tbExternalViewer.Visible = False  
+   End With
+   With form_banking_slip = New FHtmlViewer(Vbox_Banking_Slip)
+      .tbWebBrowserPrint.Visible = True   
+      .tbWebBrowserZoomIn.Visible = True  
+      .tbWebBrowserZoomOut.Visible = True 
+      .tbExternalViewer.Visible = False 
+      .Set_Landscape_Printing(False)
+      .lblHtmlViewerHeading.text = "Banking Slip"
+   End With
+   'HBox_Banking_Slip_Heading.height = form_banking_slip.HBox_Heading.Height
+   lblMeasure.text = " Account Name on Cheque "
+   modEditAreaHelpers.Resize_labels(Vbox_EditArea, lblMeasure)
+   lblMeasure.text = "  01/01/1900  "
+   With cvwChequeToCash
+      .Columns.count = 4
+      .Columns[0].text = "date"
+      .Columns[0].width = lblMeasure.Width
+      .Columns[0].Alignment = Align.Center
+      lblMeasure.text = "  $200.00   "
+      .Columns[1].text = "Amount"
+      .Columns[1].width = lblMeasure.width
+      .Columns[1].Alignment = Align.Center
+      .Columns[2].width = 200
+      .Columns[2].text = "Bank"
+      .Columns[2].Alignment = Align.Center
+      .Columns[3].text = "Payee"
+      .Columns[3].Alignment = Align.Left 
+   End With
+   obs = New Observer(form_banking_slip.tbWebBrowserPrint) As "banking_slip_print_preview"
+   Settings_Load 
+   cash_for_cheques = New Collection
+   tlHelp.text = On_Screen_Help()
+   txtEndDate.text = Format(DateAdd(Now(), gb.day, -1), "dd/mm/yyyy") 
+   Reload   
+   
+Catch
+   Print Error.Text 
+   
+End
+
+Public Sub banking_slip_print_preview_click()
+   
+   Dim sHtml As String
+   Dim sHeading As String
+   
+   Stop Event
+   If tbBankingSlip_Save_And_Print.Enabled Then
+      If Message.Question("You may print out the preminary banking slip, however it will not have appropriate headings.\n\n"
+         "To finalise the banking slip you should click the 'Save and Print' button on the main toolbar.\n\n"
+         "Do you wish to print out a preview of the banking slip", "Yes", "No") = 2 Then Return
+         sheading = "<html><head><P align=CENTER><B>NOT TO BE USED AS A BANKING SLIP - PREVIEW ONLY </B></P>"
+         sHtml = Replace(form_banking_slip.WebView1.HTML, "<html><head>", sHeading)
+         modPrinting.PrintHtml(sHtml)
+      Else
+         modPrinting.PrintHtml(form_banking_slip.WebView1.HTML)    'otherwise user is just re-printing an old slip
+      End If     
+      
+End
+
+Public Function On_Screen_Help() As String
+   
+   Dim sMsg As String
+   
+   smsg = "<P align=centre><B>Preparing the Banking Slip</B></P>"
+   "<UL><LI>Note the from date is automatically generated, however due to weekends, or no "
+   "receipts on a particular day they may not be contiguous when listed in the left hand "
+   "column of the screen"
+   "<LI> Enter  the date up to which you want to do the banking "
+   "this must be the end of a day, not include a part-day, the default date is yesterday"
+   "<LI>You may swap cash for cheques by entering appropriate details and the slip "
+   "will be automatically updated"
+   "<LI>You may print a preview of the banking slip using the print button above the slip "
+   "however this will not include the necessary headings to use when doing the banking"
+   "<LI>When you have checked the cash and cheques you have against data "
+   "shown on the screen you should select 'Save and Print'"
+   "<LI>To view a previous days banking please select from the list on the "
+   "left hand side of the screen</UL>"
+   Return sMsg   
+   
+End
+
+Public Sub Reload()
+   ' Get all unbanked cash and cheques to Now()
+   ' unbanked_payemtns is global to this module
+   
+   Unbanked_Payments = modBillingDBI.Payments_Unbanked_Get(txtEndDate.text)  'those in the backend                            'ordered by payment_date
+   Unbanked_Monies_Show_Html
+   
+End
+
+Public Function Unbanked_Monies_Create_HTML() As String
+   
+   'Creates a html display off all unbanked cash and cheques from the unbanked payments
+   'collection which is refreshed either:
+   '  1) When the module was first loaded
+   '  2) when the staff members manually clicks the update cheques and cash button 
+   '      at the top of the screen
+   Dim unbanked_payment As Collection
+   Dim payments_cheques As New Collection    'collection of all cheques including patient details
+   Dim payments_cash As New Collection       'collection of all cash including patient details
+   Dim payments_cash_day As Collection
+   Dim days_payments As Collection
+   Dim day_total As Float
+   Dim C As Collection
+   Dim last_day As Date
+   Dim sHtml As String
+   Dim sRow_Template As String
+   Dim banking_total As Float
+   Dim surgery_name As String
+   Dim x As Integer
+   Dim bFirstCheque As Boolean
+   Dim last_fk_invoice As Integer
+   Dim cash_to_cheque As Collection
+   Dim y As Integer
+   Dim bits As String[]
+   Dim total_cash_for_cheques As Float
+   
+   cheque_details_html = ""
+   cash_details_html = ""
+   banking_slip_cheque_details_html = ""
+   banking_slip_html = ""
+   total_cheques = 0
+   total_cash = 0
+   last_day = Date(1900, 01, 01)
+   sHtml = "<HTML><BODY>"
+   From_date = Null  
+   For Each unbanked_payment In Unbanked_Payments                                        'split into cash and cheque entries
+      Print From_Date
+      If IsNull(From_Date) Then 
+         from_date = unbanked_payment!date_paid  
+         lblHeading.text = modDBConnect.currentUser!organisation & " - "
+         lblHeading.text &= " Unbanked monies for period from " & Format(from_date, "dd/mm/yyyy") & " to " 
+      End If   
+      If unbanked_payment!fk_lu_payment_method = const.payment_method_cash Then          'if payment is by cash
+         total_cash += modUtil.MoneyToFloat(unbanked_payment!total_paid)                 'increment cash total
+         If Not modUtil.IsSameDay(unbanked_payment!date_paid, last_day) Then          'if this date paid <> the previous date_paid
+            payments_cash_day = New Collection                                          'start a collection of amounts for this date
+            last_day = unbanked_payment!date_paid                                      'and add to our payments_cash collection (of all dates)
+            payments_cash.Add(payments_cash_day, payments_cash.count)
+         End If   
+         payments_cash_day.Add(unbanked_payment, payments_cash_day.count)
+      Else
+         If last_fk_invoice <> Unbanked_Payment!fk_invoice Then                   'the amount_paid in the cheque may be < total_paid (e.g cheque + bad debt)
+            total_cheques += modUtil.MoneyToFloat(unbanked_payment!amount_paid)   'total_cheques += modUtil.MoneyToFloat(unbanked_payment!total_paid)
+            payments_cheques.Add(unbanked_payment, payments_cheques.count)
+            last_fk_invoice = Unbanked_Payment!fk_invoice
+         End If   
+      End If   
+   Next
+   If cvwChequeToCash.Count Then
+      cvwChequeToCash.MoveFirst()
+      For y = 0 To cvwChequeToCash.Count - 1
+         x = cvwChequeToCash.Item.Key
+         cash_to_cheque = New Collection
+         bits = Split(cvwChequeToCash[x][0], "/")
+         cash_to_cheque!date_paid = Date(Val(bits[2]), Val(bits[1]), Val(bits[0]))
+         cash_to_cheque!amount_paid = "$" & cvwChequeToCash[x][1]
+         cash_to_cheque!referent = cvwChequeToCash[x][2]
+         cash_to_cheque!account_to_name = cvwChequeToCash[x][3]
+         payments_cheques.Add(cash_to_cheque, payments_cheques.count)
+         total_cash_for_cheques += modUtil.MoneyToFloat(cash_to_cheque!amount_paid)
+         cvwChequeToCash[x][4] = "Yes"
+         cvwChequeToCash.MoveNext 
+      Next
+   Endif
+   banking_total = modUtil.MoneyToFloat(total_cheques) + modUtil.MoneyToFloat(total_cash)
+   'Banking slip columns are only the account_to_name, the bank, the amount
+   banking_slip_cheque_details_html &= "<TABLE WIDTH=100% CELLPADDING=0 CELLSPACING=1 >"
+   "<COL WIDTH=45%>"
+   "<COL WIDTH=45%>"
+   "<COL WIDTH=10%>"
+   'Cheque details as pulled from back end are the date, the patient, the account_to_details, the bank, the amount   
+   cheque_details_html &= "<TABLE WIDTH=100% CELLPADDING=0 CELLSPACING=1 >"
+   "<COL WIDTH=10%>"
+   "<COL WIDTH=20%>"
+   "<COL WIDTH=20%>"
+   "<COL WIDTH=30%>"
+   "<COL WIDTH=10%>"
+   "<COL WIDTH=10%>"
+   cheque_details_html &= unbanked_monies_cheque_html_row_template(True)  
+   cheque_details_html = Replace(cheque_details_html, "%visit_date%", "Visit Date")
+   cheque_details_html = Replace(cheque_details_html, "%patient_name%", "Patient")
+   cheque_details_html = Replace(cheque_details_html, "%account_to_name%", "Payee")
+   cheque_details_html = Replace(cheque_details_html, "%date_paid%", "Date Paid")
+   cheque_details_html = Replace(cheque_details_html, "%referent%", "Bank")
+   cheque_details_html = Replace(cheque_details_html, "%total_paid%", "Day Total")
+   
+   last_fk_invoice = 0
+   For Each unbanked_payment In payments_cheques
+      If last_fk_invoice <> Unbanked_Payment!fk_invoice Then
+         If Not IsNull(Unbanked_Payment!fk_invoice) Then    
+            cheque_details_html &= "<TR VALIGN=TOP>"
+            cheque_details_html &= unbanked_monies_cheque_html_row_template() 
+            cheque_details_html = Replace(cheque_details_html, "%visit_date%", Format(unbanked_payment!visit_date, "dd/mm/yyyy"))
+            cheque_details_html = Replace(cheque_details_html, "%date_paid%", Format(unbanked_payment!date_paid, "dd/mm/yyyy"))
+            cheque_details_html = Replace(cheque_details_html, "%patient_name%", unbanked_payment!wholename)
+            If IsNull(unbanked_payment!account_to_name) Then
+               cheque_details_html = Replace(cheque_details_html, "%account_to_name%", unbanked_payment!wholename)
+            Else
+               cheque_details_html = Replace(cheque_details_html, "%account_to_name%", unbanked_payment!account_to_name)   
+            Endif
+            cheque_details_html = Replace(cheque_details_html, "%referent%", unbanked_payment!referent)     'cheque could included a bad debt adjustment then
+            cheque_details_html = Replace(cheque_details_html, "%total_paid%", unbanked_payment!amount_paid) 'use amount_paid not total_paid 
+            cheque_details_html &= "</TR>"
+            last_fk_invoice = Unbanked_Payment!fk_invoice
+         End If   
+         'Now the banking slip , this will include any cash-for-cheques
+         banking_slip_cheque_details_html &= "<TR VALIGN=TOP>"
+         banking_slip_cheque_details_html &= banking_slip_html_row_template()
+         If IsNull(unbanked_payment!account_to_name) Then
+            banking_slip_cheque_details_html = Replace(banking_slip_cheque_details_html, "%account_to_name%", unbanked_payment!wholename)
+         Else
+            banking_slip_cheque_details_html = Replace(banking_slip_cheque_details_html, "%account_to_name%", unbanked_payment!account_to_name)   
+         Endif
+         banking_slip_cheque_details_html = Replace(banking_slip_cheque_details_html, "%referent%", unbanked_payment!referent)
+         banking_slip_cheque_details_html = Replace(banking_slip_cheque_details_html, "%total_paid%", unbanked_payment!amount_paid) 
+         banking_slip_cheque_details_html &= "</TR>"
+      End If   
+   Next
+   If total_cheques <> 0 Then
+      sHtml &= "<HR><TABLE width=100% CELLPADDING=0 CELLSPACING=1>"
+      "<COL WIDTH=10%>"
+      "<COL WIDTH=90%>"
+      "<TR VALIGN=TOP>"
+      sHtml &= totals_html_row_template()
+      shtml = Replace(shtml, "%payment_method%", "<B>CHEQUES</B>")
+      shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(total_cheques))
+      sHtml &= "</TR>"
+      sHtml &= "</TABLE><HR>"
+      sHtml &= cheque_details_html & "</TABLE>"
+      'Now put heading on the banking slip, first terminating the table of cheques on the banking slip
+      banking_slip_cheque_details_html &= "</TABLE>"
+      banking_slip_html &= "<HR><TABLE width=100% CELLPADDING=0 CELLSPACING=1>"
+      "<COL WIDTH=10%>"
+      "<COL WIDTH=90%>"
+      "<TR VALIGN=TOP>"
+      banking_slip_html &= totals_html_row_template()
+      banking_slip_html = Replace(banking_slip_html, "%payment_method%", "<B>CHEQUES</B>")
+      banking_slip_html = Replace(banking_slip_html, "%total_amount%", modUtil.Money_Format(total_cheques + total_cash_for_cheques))
+      banking_slip_html &= "</TR>"
+      banking_slip_html &= "</TABLE><HR>"
+      banking_slip_html &= banking_slip_cheque_details_html
+   Endif
+   If total_cash <> 0 Then    
+      'consult_date, patient name, not used, amount pre-sub total, total paid if one day or cumulative total if multiple days
+      cash_details_html &= "<TABLE WIDTH=100% CELLPADDING=0 CELLSPACING=1 >"
+      "<COL WIDTH=10%>"
+      "<COL WIDTH=60%>"
+      "<COL width=10%>"
+      "<COL WIDTH=10%>"
+      "<COL WIDTH=10%>"
+      cash_details_html &= unbanked_monies_cash_html_row_template(True)  
+      cash_details_html = Replace(cash_details_html, "%visit_date%", "Visit Date")
+      cash_details_html = Replace(cash_details_html, "%patient_name%", "Patient")
+      cash_details_html = Replace(cash_details_html, "%date_paid%", "Date Paid")
+      cash_details_html = Replace(cash_details_html, "%amount_paid%", "Amount")
+      cash_details_html = Replace(cash_details_html, "%total_paid%", "Day Total")
+      For Each days_payments In payments_cash 
+         x = 0
+         For Each C In days_payments
+            cash_details_html &= "<TR VALIGN=TOP>"
+            cash_details_html &= unbanked_monies_cash_html_row_template()   
+            cash_details_html = Replace(cash_details_html, "%patient_name%", C!wholename)
+            If x = 0 Then                                                           
+               day_total = 0 
+               cash_details_html = Replace(cash_details_html, "%date_paid%", Format(C!date_paid, "dd/mm/yyyy"))
+               cash_details_html = Replace(cash_details_html, "%visit_date%", Format(C!visit_date, "dd/mm/yyyy"))
+            Else                                                                                                 
+               cash_details_html = Replace(cash_details_html, "%date_paid%", "")            'there are multiple payments on this day, only want date once
+               cash_details_html = Replace(cash_details_html, "%visit_date%", "")
+            End If   
+            If x = 0 And days_payments.Length = 1 Then                                        'if only one payment on this day
+               cash_details_html = Replace(cash_details_html, "%total_paid%", C!total_paid)   'put in the total paid column
+               cash_details_html = Replace(cash_details_html, "%amount_paid%", C!total_paid)
+            Else
+               day_total += modUtil.MoneyToFloat(C!total_paid)
+               If x = days_payments.Length - 1 Then
+                  cash_details_html = Replace(cash_details_html, "%total_paid%", modUtil.Money_Format(day_total))
+               Else
+                  cash_details_html = Replace(cash_details_html, "%total_paid%", "")
+               End If   
+            End If   
+            cash_details_html = Replace(cash_details_html, "%amount_paid%", C!total_paid)
+            cash_details_html &= "</TR>"
+            Inc x
+         Next
+      Next
+      sHtml &= "<HR><TABLE width=100% CELLPADDING=0 CELLSPACING=1>"
+      "<COL WIDTH=10%>"
+      "<COL WIDTH=90%>"
+      "<TR VALIGN=TOP>"
+      sHtml &= totals_html_row_template()
+      shtml = Replace(shtml, "%payment_method%", "<B>CASH</b>")
+      shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(total_cash))
+      sHtml &= "</TR>"
+      sHtml &= "</TABLE><HR>"
+      sHtml &= cash_details_html & "</TABLE>"
+      banking_slip_html &= "<BR><BR><HR><TABLE width=100% CELLPADDING=0 CELLSPACING=1>"
+      "<COL WIDTH=10%>"
+      "<COL WIDTH=90%>"
+      "<TR VALIGN=TOP>"
+      banking_slip_html &= totals_html_row_template()
+      banking_slip_html = Replace(banking_slip_html, "%payment_method%", "<B>CASH</b>")
+      banking_slip_html = Replace(banking_slip_html, "%total_amount%", modUtil.Money_Format(total_cash - total_cash_for_cheques))
+      banking_slip_html &= "</TR>"
+      banking_slip_html &= "</TABLE><HR>"
+   End If   
+   sHtml = Replace(shtml, "%account_to_name%", "")
+   sHtml &= "</HTML>"
+   Return sHtml
+   
+End
+
+Public Sub Unbanked_Monies_Show_Html()
+   
+   Form_Cash_Cheques.WebView1.HTML = Unbanked_Monies_Create_HTML()
+   form_banking_slip.WebView1.HTML = banking_slip_html 
+   
+End
+
+Public Sub Settings_Load()
+   
+   VSplit_Banking.Layout = Settings[Me.name & "/VSplit_Banking.Layout", modUtilGUI.VSplit([4, 1])]
+   HSplit_Banking_Slip.Layout = Settings[Me.name & "/HSplit_Banking_Slip.Layout", modUtilGUI.HSplit([1, 1, 1])]
+   Form_Cash_Cheques.WebView1.Zoom = Settings[Me.name & "/Form_Cash_Cheques.WebView1.zoom", 1.0]
+   form_banking_slip.WebView1.Zoom = Settings[Me.name & "/form_banking_slip.WebView1.zoom", 1.0]
+   txtBankToChequeAccount.Text = Settings[Me.name & "/Bank_Acccount_Name", "Account Name"]
+   
+End
+
+Public Sub Settings_Save()
+   
+   Settings[Me.name & "/VSplit_Banking.Layout"] = VSplit_Banking.Layout 
+   Settings[Me.name & "/HSplit_Banking_Slip.Layout"] = HSplit_Banking_Slip.Layout 
+   Settings[Me.name & "/Form_Cash_Cheques.WebView1.zoom"] = Form_Cash_Cheques.WebView1.Zoom
+   Settings[Me.name & "/form_banking_slip.WebView1.zoom"] = form_banking_slip.WebView1.Zoom
+   Settings[Me.name & "/Bank_Acccount_Name"] = txtBankToChequeAccount.Text
+   
+End
+
+Public Function totals_html_row_template() As String
+   
+   Return ""
+   "<TD>"
+   "<P>%payment_method%</P>"
+   "</TD>"
+   "<TD>"
+   "<P>%total_amount%</P>"
+   "</TD>"
+   
+End
+
+Public Function unbanked_monies_cash_html_row_template(Optional use_background_colour As Boolean = False) As String
+   
+   Dim shtml As String
+   Dim bgc As String
+   
+   If use_background_colour Then  
+      bgc = " style='background-color:gainsboro;color:black;'"
+   Endif
+   shtml = ""
+   "<TD bg >"
+   "<P>%visit_date%</P>"
+   "</TD>"
+   "<TD bg >"
+   "<P>%patient_name%</P>"
+   "</TD>"
+   "<TD bg >"
+   "<P>%date_paid%</P>"
+   "</TD>"
+   "<TD bg >"
+   "<P>%amount_paid%</P>"
+   "</TD>"
+   "<TD bg > "
+   "<P>%total_paid%</P>"
+   "</TD>"
+   sHtml = Replace(shtml, "bg", bgc)
+   Return shtml
+   
+End
+
+Public Function unbanked_monies_cheque_html_row_template(Optional use_background_colour As Boolean = False) As String
+   
+   Dim shtml As String
+   Dim bgc As String
+   
+   If use_background_colour Then  
+      bgc = " style='background-color:gainsboro;color:black;'"
+   Endif
+   shtml = ""
+   "<TD bg >"
+   "<P>%visit_date%</P>"
+   "</TD>"
+   "<TD bg >"
+   "<P>%patient_name%</P>"
+   "</TD>"
+   "<TD bg >"
+   "<P>%account_to_name%</P>"
+   "</TD>"
+   "<TD bg >"
+   "<P>%referent%</P>"
+   "</TD>"
+   "<TD bg >"
+   "<P>%date_paid%</P>"
+   "</TD>"
+   "<TD bg > "
+   "<P>%total_paid%</P>"
+   "</TD>"
+   sHtml = Replace(shtml, "bg", bgc)
+   Return shtml
+   
+End
+
+Public Function banking_slip_html_row_template(Optional use_background_colour As Boolean = False) As String
+   'account_to_name = either patient or a company responsible
+   'referent = the bank
+   
+   Dim shtml As String
+   Dim bgc As String
+   
+   If use_background_colour Then  
+      bgc = " style='background-color:gainsboro;color:black;'"
+   Endif
+   shtml = ""
+   "<TD bg >"
+   "<P>%account_to_name%</P>"
+   "</TD>"
+   "<TD bg >"
+   "<P>%referent%</P>"
+   "</TD>"
+   "<TD bg > "
+   "<P>%total_paid%</P>"
+   "</TD>"
+   sHtml = Replace(shtml, "bg", bgc)
+   Return shtml
+   
+End
+
+Public Sub txtBankToChequeAccount_Change()
+   
+   Dim charpos1 As Integer
+   Dim charpos2 As Integer
+   Dim tempstring As String
+   
+   charpos1 = InStr(banking_slip_html, "<B>")
+   charpos2 = InStr(banking_slip_html, "</H3>")
+   Print Left(banking_slip_html, charpos1 + 2) 
+   
+   tempstring = Left(banking_slip_html, charpos1 + 2) & "<H3><P><B>" & UCase(Trim(txtCashForChequeDate.text)) & "</B></P></H3>"
+   form_banking_slip.webview1.Html = tempstring & Right(banking_slip_html, Len(banking_slip_html) - charpos2 - 4) 
+   
+End
+
+Public Sub EditArea_txtBox_KeyPress()
+   
+   Dim x As Integer
+   Dim bKeyValid As Boolean
+   
+   bkeyvalid = EditArea_TxtBox_ExcludeKeys(key.code, Last.tag)
+   If bkeyvalid = False Then
+      Stop Event
+      Return
+   End If
+   Select Case Key.Code
+      Case Key.Return
+         Select Case Last.tag
+            Case "cash for cheque date"
+               txtCashForchequeAmount.Setfocus
+            Case "amount"
+               txtCashForChequePayee.SetFocus
+            Case "payee"
+               txtCashForChequeBank.SetFocus
+            Case "bank"
+               tbAddCashForCheque.SetFocus
+         End Select
+   End Select
+   
+End
+
+Public Sub EditArea_TxtBox_Change()
+   
+   If Bexit Then Return
+   If Last.tag = "bank" Then
+      txtCashForChequeBank.text = UCase(txtCashForChequeBank.text)
+   Endif
+   If Last.tag = "cash for cheque date" Then
+      Print modUtil.DateString_Decode
+      If Len(Last.text) = 10 And IsDate(Last.text) Then
+         
+         Print DateDiff(DateAdd(From_Date, gb.day, -1), Val(Last.text), gb.day) 
+         If DateDiff(Val(Last.text), DateAdd(Val(txtEndDate.text), gb.day, 1), gb.day) < 1 Or DateDiff(DateAdd(From_date, gb.day, -1), Val(Last.text), gb.day) < 1 Then
+            Message.Info("The date you have entered, <B>" & Last.text & "</B> is not valid.<P>Any cash for cheque date must be within the banking slip date ranges</P>")
+            Last.text = ""
+            Return
+         Endif 
+      End If 
+   Endif
+   If Last.tag = "end date" Then
+      If IsNull(From_Date) Then Return
+      If Len(Last.text) = 10 And IsDate(Last.text) Then
+         If DateDiff(Val(Last.text), Now(), gb.day) < 1 Then
+            Message.Info("The date you have entered, <B>" & Last.text & "</B> is not valid")
+            Return
+         Endif
+         If DateDiff(From_date, Val(Last.text), gb.day) < 1 Then
+            Message.Info("The date range you have entered: <P><B>" & Format(From_date, "dd/mm/yyyy") & " - " & Last.text & "</B></P> is not valid")
+            Reset_Gui
+            Return
+         Endif
+         Reload
+      Else
+         If Len(Last.text) < 10 Then
+            Reset_Gui
+         Endif
+      Endif
+   Endif
+   
+End
+
+Public Sub Reset_Gui()
+   
+   cash_for_cheques = New Collection
+   Editarea_Clear
+   Form_Cash_Cheques.WebView1.HTML = ""
+   form_banking_slip.WebView1.HTML = "'"
+   tbBankingSlip_Save_And_Print.Enabled = True  
+   VBox_Cash_Cheque.Enabled = True  
+   
+End
+
+Public Function EditArea_TxtBox_ExcludeKeys(keycode As Integer, tag As String) As Boolean
+   
+   Dim bKeyValid As Boolean
+   
+   Select Case tag
+      Case "amount"
+         bKeyValid = modUtilGUI.AllowKeys(const.AllowKeys_money, keycode)
+      Case "cash for cheque date", "start date", "end date"
+         bKeyValid = modUtilGUI.AllowKeys(const.AllowKeys_DateFormat, keycode)
+      Case Else
+         bKeyValid = True  
+   End Select
+   Return bKeyValid
+   
+End
+
+Public Sub Banking_Slip_Show_Existing(bs As Collection)
+   
+   Dim all_cash_for_cheques As String[]
+   Dim one_cash_for_cheque As String
+   Dim bits As New String[]
+   
+   ' called from FRecordVisit when user clicks on a previous date
+   Banking_slip_new
+   tbBankingSlip_Save_And_Print.Enabled = False 
+   VBox_Cash_Cheque.Enabled = False 
+   cvwChequeToCash.Clear
+   lblHeading.Text = "Existing Banking Slip for period from " & Format(bs!date_from, "dd/mm/yyyy") & " to "
+   Cash_for_Cheques = New Collection
+   form_banking_slip.WebView1.HTML = bs!html_slip   
+   Form_Cash_Cheques.WebView1.HTML = bs!html_cash_cheques
+   bexit = True   
+   txtEndDate.text = Format(bs!date_to, "dd/mm/yyyy")
+   If Not IsNull(bs!cash_for_cheques) Then
+      all_cash_for_cheques = Split(bs!cash_for_cheques, ";", "", True)
+      For Each one_cash_for_cheque In all_cash_for_cheques
+         bits = Split(one_cash_for_cheque, "|")
+         Cash_for_Cheque = New Collection
+         Cash_for_Cheque!date = bits[0]
+         Cash_for_Cheque!amount = bits[1]
+         Cash_for_Cheque!bank = bits[2]
+         Cash_for_Cheque!payee = bits[3]
+         cash_for_cheques.Add(Cash_for_Cheque, cash_for_cheques.Count)
+      Next
+   Endif
+   cvwChequeToCash_Refresh  
+   bexit = False  
+   
+End
+
+Public Sub Banking_slip_new()
+   
+   Reset_Gui
+   txtEndDate.text = Format(DateAdd(Now(), gb.day, -1), "dd/mm/yyyy") 'triggers   Reload
+   cvwChequeToCash.Clear
+   Reload
+   
+End
+
+Public Sub EditArea_Buttons_Click()
+   
+   Dim sMsg As String
+   
+   Select Case Last.tag
+      Case "new"
+         Banking_slip_new
+      Case "reload unbanked monies"
+         If txtEndDate.Text = "" Then
+            txtEndDate.text = Format(Now(), "dd/mm/yyyy")
+         Endif
+         If Not IsDate(txtEndDate.text) Then
+            Message.Info("Please enter a final valid date for the banking slip end date")
+            Return 
+         Endif
+         Reload
+      Case "clear"
+         txtCashForchequeAmount.text = ""
+         txtCashForChequeDate.text = ""
+         txtCashForChequePayee.text = ""
+         txtCashForChequeBank.Text = ""
+         txtCashForChequeDate.SetFocus
+      Case "add cash to cheque"
+         Cash_To_Cheques_Add                     'add cash to cheques list and update the html of banking slip
+      Case "save and print"
+         Save   
+   End Select
+   
+End
+
+Public Function Valid_Data() As Boolean
+   
+   If Trim(txtBankToChequeAccount.text) = "" Then
+      Message.Info("Please ensure the name of the account you are banking to is recorded.")
+      txtBankToChequeAccount.SetFocus
+      Return
+   Endif
+   If IsNull(From_Date) Then
+      Return
+   Endif
+   If Not IsDate(txtEndDate.text) Then
+      Message.Info("Please ensure the date up to which you wish to create the banking slip is valid")
+      txtEndDate.SetFocus
+      Return
+   Endif
+   Return True  
+   
+End
+
+Public Sub Save()
+   
+   'Saves the finalised banking slip and saves to back-end 
+   
+   Dim sFinalBankingSlipHTML As String 'whats in form_banking_slip + a header
+   Dim sheading As String
+   Dim x As Integer
+   Dim bank_slip As CRow   
+   Dim sCash_For_Cheques As String
+   Dim payment As Collection
+   
+   If Not Valid_Data() Then Return
+   
+   For Each Cash_for_Cheque In cash_for_cheques
+      'my abitary structure - saves cash for cheque records as date|amount|payee|bank|, semi-colon separated
+      sCash_For_Cheques &= Cash_for_Cheque!date & "|" & Cash_for_Cheque!amount & "|" & Cash_for_Cheque!payee & "|" & Cash_for_Cheque!bank & ";"
+   Next
+   
+   Print form_banking_slip.WebView1.HTML
+   sheading = "<html><head><P align=CENTER><B>Banking Slip For " & UCase(Trim(txtBankToChequeAccount.text)) & "</B></P>"
+   sheading &= "<P align=CENTER> For the period " & Format(from_date, "dd/mm/yyyy") & " to " & txtEndDate.text & "</P>"
+   sHeading &= "<P align=CENTER><small>Printed on " & Format(Now(), "dd/mm/yyyy") & "</small></P>"
+   sFinalBankingSlipHTML = Replace(form_banking_slip.WebView1.HTML, "<html><head>", sHeading)
+   Print sFinalBankingSlipHTML
+   If Message.Question("Please confirm you wish to print and save the banking slip.", "Yes - Save and Print", "Cancel") = 2 Then Return
+   '---------------------------------------------------------------------------------------------------------
+   ' CREATE TABLE billing.banking_slips
+   ' (
+   '   pk serial NOT NULL,
+   '   fk_staff integer NOT NULL, -- the staff member who generated the banking slip
+   '   date_generated date NOT NULL,
+   '   cash_for_cheques text, -- As this will never be big and never searched is kept as a pipe delimited...
+   '   html text NOT NULL, -- the html rendition of the banking slip
+   '   CONSTRAINT banking_slips_pkey PRIMARY KEY (pk),
+   '   CONSTRAINT banking_slips_fk_staff_fkey FOREIGN KEY (fk_staff)
+   '       REFERENCES admin.staff (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   '----------------------------------------------------------------------------------------------------------
+   bank_slip = New CRow 
+   bank_slip!fk_staff = modDBConnect.currentUser!fk_staff   
+   bank_slip!date_generated = Now()
+   bank_slip!cash_for_cheques = sCash_For_Cheques
+   bank_slip!bank_account_name = Trim(txtBankToChequeAccount.text)
+   bank_slip!html_slip = sFinalBankingSlipHTML
+   bank_slip!html_cash_cheques = Form_Cash_Cheques.webview1.html
+   bank_slip!date_from = from_date
+   bank_slip!date_to = Val(txtEndDate.Text)
+   bank_slip.Save("billing.banking_slips", "fk_banking_slip")
+   
+   For Each Payment In Unbanked_Payments
+      modDBConnect.update("billing.payments_received", Null, ["pk": payment!fk_payment_received, "fk_banking_slip": bank_slip!fk_banking_slip])
+   Next
+   modPrinting.PrintHtml(bank_slip!html_slip)
+   modDBConnect.CommitTrans
+   FRecordVisit.Banking_Slips_Reload_External
+   Banking_slip_new
+Catch
+   modDBConnect.RollBack()
+   Message.Error("An error occurred whilst preparing the banking slip.") 
+   
+End
+
+Public Sub Cash_To_Cheques_Add()
+   'Adds a cash to cheque entry, where e.g petty cash has been replenished
+   'by writing a cheque, then updates the html for the banking slip
+   
+   Dim x As Integer
+   
+   If Not Cash_To_Cheque_Details_Valid() Then Return
+   x = cash_for_cheques.count
+   Cash_for_Cheque = New Collection
+   Cash_for_Cheque!date = Trim(txtCashForChequeDate.text)
+   Cash_for_Cheque!amount = Trim(txtCashForchequeAmount.text)
+   Cash_for_Cheque!bank = Trim(txtCashForChequeBank.Text)
+   Cash_for_Cheque!payee = Trim(txtCashForChequePayee.text)
+   cash_for_cheques.Add(Cash_for_Cheque, x)
+   cvwChequeToCash_Refresh
+   Editarea_Clear
+   txtCashForChequeDate.SetFocus
+   Unbanked_Monies_Show_Html
+   
+End
+
+Public Sub cvwChequeToCash_Refresh()
+   ' clears the cash for cheques columnview
+   ' reloads all the data
+   
+   Dim x As Integer
+   
+   cvwChequeToCash.Clear
+   For Each Cash_for_Cheque In cash_for_cheques
+      cvwChequeToCash.Add(x, 0)
+      cvwChequeToCash[x][0] = Cash_for_Cheque!date
+      cvwChequeToCash[x][1] = Cash_for_Cheque!amount
+      cvwChequeToCash[x][2] = Cash_for_Cheque!bank
+      cvwChequeToCash[x][3] = Cash_for_Cheque!payee
+      cvwChequeToCash[x][4] = "No"
+      Inc x 
+   Next 
+   
+End
+
+Public Sub Editarea_Clear()
+   
+   txtCashForChequeDate.Clear 
+   txtCashForchequeAmount.Clear
+   txtCashForChequePayee.Clear
+   txtCashForChequeBank.Clear
+   
+End
+
+Public Function Cash_To_Cheque_Details_Valid() As Boolean
+   
+   Dim sMsg As String
+   
+   If Trim(txtCashForChequeDate.text) = "" And Trim(txtCashForchequeAmount.text) = "" And Trim(txtCashForChequePayee.text) = "" And Trim(txtCashForChequeBank.text) = "" Then Return
+   If Not IsDate(txtCashForChequeDate.text) Then
+      smsg = "Please enter a valid date for this cheque."
+      txtCashForChequeDate.SetFocus
+      Goto ErrMsg
+      
+   Endif
+   smsg = "Please enter the amount of the cheque in valid money format eg 100.00 to exchange for the cash."
+   If IsNull(Val(txtCashForchequeAmount.text)) Or Val(txtCashForchequeAmount.text) = 0 Then
+      txtCashForchequeAmount.SetFocus
+      Goto ErrMsg
+   Endif
+   If Not modUtil.isMoney("$" & txtCashForchequeAmount.text) Then
+      Print txtCashForchequeAmount.Text
+      Print modUtil.isMoney(txtCashForchequeAmount.text) 
+      txtCashForchequeAmount.SetFocus
+      Goto ErrMsg
+   Endif
+   If txtCashForChequePayee.text = "" Then
+      smsg = "Please enter a valid payee for this cheque."
+      txtCashForChequePayee.SetFocus
+      Goto ErrMsg
+      
+   Endif
+   If txtCashForChequeBank.text = "" Then
+      sMsg = "Please enter the name of the bank on the cheque"
+      txtCashForChequeBank.SetFocus
+      Goto ErrMsg
+      
+   Endif
+   Return True
+ErrMsg:
+   Message.Error(sMsg, "Ok")
+   
+End
+
+Public Sub EditArea_TxtBox_LostFocus()
+   
+   Dim sMsg As String
+   
+   If Last.tag = "cash for cheque date" Or Last.tag = "end date" And Trim(Last.text) <> "" Then
+      Select Case Last.tag
+         Case "cash for cheque date"
+            smsg = " the date on the cheque you are swapping for cash "
+         Case Else
+            sMsg = " the last date to be included in the banking slip "
+      End Select
+      
+      If Not modEditAreaHelpers.Valid_Date(Last) Then
+         Goto Date_Error
+      Endif
+   Endif
+   If Last.tag = "end date" Then Unbanked_Monies_Show_Html
+   Return
+   
+Date_Error:
+   Message.Info("Please enter a valid date for " & sMsg)
+   Last.Setfocus
+   
+End
+
+Public Sub cvwChequeToCash_Menu()
+   
+   If cvwChequeToCash.count Then
+      mnuCashTocheque.Popup
+   Endif
+   
+End
+
+Public Sub mnuCashToCheque_Click()
+   
+   Select Case Last.tag
+      Case "edit"
+         Cash_For_Cheques_Edit 
+      Case "delete"
+         Cash_For_Cheques_Delete
+   End Select
+   
+End
+
+Public Sub Cash_For_Cheques_Edit()
+   'Edits a cash for cheque in the columnview, removes from list
+   're-orders to zero based (to correspond to the columview keys) the collection
+   'updates the html in the banking slip
+   
+   txtCashForChequeDate.text = cash_for_cheques[cvwChequeToCash_key]!date
+   txtCashForchequeAmount.text = cash_for_cheques[cvwChequeToCash_key]!amount
+   txtCashForChequePayee.text = cash_for_cheques[cvwChequeToCash_key]!payee 
+   txtCashForChequeBank.text = cash_for_cheques[cvwChequeToCash_key]!bank
+   Cash_for_Cheques.Remove(cvwChequeToCash_key)
+   cash_for_cheques = modUtil.Copy_Collection_Keyed_Sequentially(cash_for_cheques)
+   cvwChequeToCash_Refresh
+   Unbanked_Monies_Show_Html
+   
+End
+
+Public Sub Cash_For_Cheques_Delete()
+   
+   cash_for_cheques.Remove(cvwChequeToCash_key)
+   modUtil.Copy_Collection_Keyed_Sequentially(cash_for_cheques)
+   cvwChequeToCash_Refresh
+   Unbanked_Monies_Show_Html
+   
+End
+
+Public Sub cvwChequeToCash_Select()
+   
+   cvwChequeToCash.MoveCurrent
+   cvwChequeToCash_key = cvwChequeToCash.Item.Key
+   
+End
+
+Public Sub EditArea_Buttons_KeyPress()
+   
+   Select Case Last.tag
+      Case "add cash to cheque"
+         Cash_To_Cheques_Add
+   End Select
+   
+End

@@ -15,6 +15,8 @@
 ' FMain is called by modStartup, if logon successful, and 'runs the whole show'
 '------------------------------------------------------------------------------
 Public CurrentForm As Object
+'Private obs As Observer
+Private bExit As Boolean
 Public sidebarfont As Font
 Private Btn_Section_Tasks As CCoolButton
 Private btnSection_Clinical As CCoolButton
@@ -49,27 +51,27 @@ Public pnlStaffPreferences As FStaffPreferences
 'Public pnlScanning As FScanning
 Public pnlWorkCentre As FWorkCentre
 'Public pnlAppointments As FMakeAppointments
-'Public pnlDayList As FDayList
+Public pnlDayList As FDayList
 Public pnlClinicalToolbar As FClinicalToolbar
 
 Private Const POS_BUTTON As Integer = 0
 Private HEIGHT_BUTTON As Integer = Desktop.Scale * 3
+Private bHaveLoadedDayList As Boolean
 
 Static Private form_main As FMain
 
 Private Const admin_user_error As String = "The admin user is not allowed to access this module."
 " Please create an ordinary user in the Staff tab and log in as them"
 
-Static Public Sub Refresh_Patients_Waiting()
-   
-   form_main.Patients_Waiting_Refresh 
-   
-End
+' Static Public Sub Refresh_Patients_Waiting()
+'    
+'    form_main.Patients_Waiting_Refresh 
+'    
+' End
 
 Public Sub Form_Open()
    
-   If modStartUp.Startup(Me) Then
-   Else
+   If Not modStartUp.Startup(Me) Then
       Me.Close(0)
    Endif
    
@@ -120,67 +122,56 @@ Public Sub Init()
    Create_SideBar_Buttons()                     'create sidebar buttons
    tlWARNINGTESTDB.text = Replace(tlWARNINGTESTDB.text, "DBName", modDBConnect.DbName)
    FMain.Background = VboxSideBar.Background
-   const.init()                                 'init some constant string arrays, global preferences
-   
-   Expose_SideBar_Buttons(True)
+   const.init()                                 'init some constant string arrays, global preferences, appointment icons etc
+   '
    ' basic title while we are still loading: user data will come later
    Me.Title = "EasyGP Version " & Application.Version & " (on " & modDBConnect.DbHost & "/" & modDBConnect.DbName & ")"
-   
    If modDBConnect.DbName <> "easygp" Then
       pnlTestDBTOp.Visible = True
    Endif
-   Resize_Side_Bar
+  ' Resize_Side_Bar
    If Not IsNull(modDBConnect.currentUser) Then
       modLater.Add(Class.Load("modAdminDBI"), "Pathways_Exist_And_Writable")
    End If
    modLater.Add(Me, "Init_User")
    modLater.Add(Class.Load("const"), "Check_For_ICPC2")
    const.Clinical_Toolbuttons_Refresh()                           'show the toolbar buttons
-  ' Timer1.enabled = True
-  ' Patients_Waiting_Room_Order_Set
-   'Patients_Waiting_Refresh                                       'show any patients waiting
+   pnlDayList = New FDayList(VBox_FMain_DayList) 
+   'obs = New Observer(pnlDayList.gridview1) As "Daylist"
+   Expose_SideBar_Buttons(True)
+  ' modLater.Add(Me, "DayList_Show")
    
 End
 
-Public Sub Patients_Waiting_Room_Order_Set()
-   'fixme update me from the preferences screen to save a reboot
-
-   If modAdminDBI.Config_Get_Staff_Member("side-bar-patient-arrived-order", False, Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff) Then
-      bDisplayAppointmentsByArrivalTime = True
-   Else
-      bDisplayAppointmentsByArrivalTime = False
-   End If  
+Public Sub DayList_Show()
+   'If not yet loaded appointments and user wants to see them at boot
+   'load the day list
+   
+   If Not modAdminDBI.Config_Get_Staff_Member("side-bar-appointments-at-boot", False, Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff) Then
+      Return
+   End If
+   tbDayList.Value = True   
    
 End
 
-Public Sub Patients_Waiting_Refresh()
+Public Sub DayList_ReLoad()
    
-   Dim patients_waiting As Collection
-   Dim patient As Collection
-   Dim fk_last_staff As Variant
-   Dim name_bits As String[]
+   Dim days_appointments As New Collection
    
-   Dim x As Integer
-
-   patients_waiting = modAppointmentsDBI.Appointments_Get_Waiting(bDisplayAppointmentsByArrivalTime)
-   With gvwWaiting
-      .Clear
-      .Rows.count = patients_waiting.Count
-      .Columns.count = 1
+   days_appointments = modAppointmentsDBI.Appointments_GetDay(Now(), modDBConnect.currentUser!fk_staff, modDBConnect.currentUser!fk_clinic)
+   With pnlDayList
+      .Init(modDBConnect.currentUser, Now(), modDBConnect.currentUser!fk_clinic, const.appointment_icons, days_appointments,,, True) 'True = only display name, no title, no birthdate
    End With
-   For Each patient In patients_waiting
-      If fk_last_staff <> patient!fk_staff Then
-         gvwWaiting[x, 0].RichText = "<B>" & patient!staff_name & "<B>"
-         gvwWaiting[x, 0].Background = Color.LightBackground
-         fk_last_staff = patient!fk_staff
-         Inc gvwWaiting.Rows.count
-         Inc x
-      Endif
-      name_bits = Split(patient!firstname, " ")             'get rid of middle name
-      gvwWaiting[x, 0].Text = name_bits[0] & " " & patient!surname
-      Inc x
-   Next
+   
+End
 
+Public Sub Daylist_Select()
+   
+  'User has clicked on an appointment in the appt grid
+  'load the patient into FClinical 
+   ' Stop Event
+   ' FClinicalToolbar.Find_Patient_External(pnlDayList.Get_fk_patient())
+  
 End
 
 Public Sub Resize_Side_Bar()
@@ -189,7 +180,6 @@ Public Sub Resize_Side_Bar()
       .font = btnSection_Preferences.Font
       .text = "Preferences            "
    End With
-   HSplit_Main.Layout = [lblMeasure.width, Me.Width - lblMeasure.Width]
    VboxSideBar.width = lblMeasure.width
    
 End
@@ -299,7 +289,7 @@ Public Sub Expose_SideBar_Buttons(initial_startup As Boolean)
    Endif
    Select Case r
       Case "doctor", "locum", "registered nurse", "practice principal"
-         
+         Vbox_DayList.visible = True   
          btnSection_Clinical.Visible = True
          btnSection_WorkCentre.visible = True
          btnSection_Library.Visible = True
@@ -316,7 +306,6 @@ Public Sub Expose_SideBar_Buttons(initial_startup As Boolean)
          Else
             btnSection_Admin.Visible = False
          End If
-         ' VBox_StopWatch.Visible = True
          If initial_startup Then btnSection_Clinical_Click()
       Case "secretary", "practice manager"
          btnSection_Library.Visible = True
@@ -326,8 +315,18 @@ Public Sub Expose_SideBar_Buttons(initial_startup As Boolean)
          btnSection_Preferences.Visible = True
          btnSection_RoomSetup.Visible = True
          btnSection_Admin.Visible = False
-         '  VboxSideBar.Visible = False   
-         If initial_startup Then btnSection_Clerical_Click()
+         If initial_startup Then 
+            btnSection_Clerical_Click()
+         End If
+      Case "dietitian"
+         btnSection_Clinical.Visible = True
+         btnSection_Library.Visible = True
+         btnSection_Clerical.Visible = True
+         Btn_Section_Tasks.Visible = False
+         btnSection_Help.Visible = True
+         btnSection_Preferences.Visible = True
+         btnSection_RoomSetup.Visible = True
+         btnSection_Admin.Visible = False
       Case "sysadmin"
          btnSection_Clinical.Visible = False
          btnSection_WorkCentre.visible = False
@@ -519,10 +518,11 @@ Public Sub btnSection_Clerical_Click()
       With pnlClerical = New FClerical(VBoxMain)
          .HBox_Heading.Background = VboxSideBar.Background
          .lblSectionHeading.Background = VboxSideBar.Background
-         .Show()
+         .init
       End With
    End If
    CurrentForm = pnlClerical
+   'now show the appointment lists
    
 End
 
@@ -715,15 +715,15 @@ Private Sub Settings_Load()
    'Try and load these, or if not use defaults
    '------------------------------------------------------------------------------------
    
-   Dim username As String
-   
+    
    Me.Left = Settings["FMain/Left", 0]
    Me.Height = Settings["FMain/Height", Desktop.Height]
    Me.Width = Settings["FMain/Width", Desktop.Width]
-   username = "easygp"
    sidebarfont = New Font
    HSplit_Main.layout = Settings["FMain/Hsplit_Main.Layout", modUtilGUI.HSplit([1, 10])]
-   
+   If HSplit_Main.layout[0] = 0 Then  'If easygp closes whilst split set to 0 lose the sidebar
+      HSplit_Main.Layout = [100, HSplit_Main.layout[1]]
+   End If   
 End
 
 Public Sub Form_Close()
@@ -731,19 +731,11 @@ Public Sub Form_Close()
    Dim sMsg As String
    
    SMsg = "Are you sure you want to close down EasyGP.\n\n"
-   ' If Not IsNull(pnlClinicalToolbar) Then
-   '    sMsg &= "Your clinical notes will be saved, but aside from that hopefully you've saved you work in all sections."
-   ' End If
-   ' If Message.Warning(sMsg, "Yes", "No") = 2 Then
-   '    Stop Event
-   '    Return
-   ' End If
    If Not IsNull(pnlClinicalToolbar) Then
       FClinical.Final_Save             'save all open forms in FClinical with a Save() routine
    End If
    Wait
    Settings_Save()                       'save this form and all child forms settings
-   
    modDBConnect.Close_Listener()
    modDBConnect.Shutdown()
    form_main = Null
@@ -2429,8 +2421,36 @@ Public Sub RT_Fix_imported_habits()
    
 End
 
-Public Sub Timer1_Timer()
+
+Public Sub tbDayList_Click()
+   'User clicks on the button to show or hide their days appointments
    
-   Patients_Waiting_Refresh
+   If tbDayList.value = True Then
+      If Not bHaveLoadedDayList Then 
+         DayList_ReLoad
+         bHaveLoadedDayList = True  
+      End If   
+      pnlDayList.Visible = True  
+      tbDayList.Caption = "Hide"
+   Else
+      pnlDayList.Visible = False   
+      tbDayList.Caption = "Day List"
+   Endif
+   
+End
+
+Public Sub ColorButton_DayList_Change()
+   'User clicks on the button to change the grid colour of their day list
+   
+   Settings[Me.name & "/DayList_Background_Colour"] = Str(ColorButton_DayList.value)
+   pnlDayList.Gridview1.Background = ColorButton_DayList.Value
+   
+End
+
+Public Sub FontBox_DayList_Change()
+   'user is changing the font on the daylist grid in the side bar
+   
+   Settings[Me.name & "/DayList_Font"] = FontBox_DayList.Value
+   pnlDayList.Gridview1.font = Font[FontBox_DayList.Value]
    
 End

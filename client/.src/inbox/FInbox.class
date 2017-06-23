@@ -45,7 +45,7 @@
 '                automatically selected and the document displayed, by choosing the appropriate
 '                viewer
 '
-'                SelectedDocument = Selected_Inbox!!documents[gvwDocuments.row] = the document currently slected
+'                SelectedDocument = Selected_Inbox!documents[gvwDocuments.row] = the document currently slected
 '
 '               All documents must be actioned at least by viewing the meta - data of the document
 '               and the user clicking File implicity means they have approved the document as 'OK'
@@ -995,7 +995,13 @@ Public Sub Image_File_Show()
    Vbox_Images.visible = True
    modUtil.Kill_If_Temp(pfile)
    pfile = modFiles.Get("document_archiving_directory", selecteddocument!source_file)
-   Pbox.picture = Picture.Load(pfile)
+   Print pfile 
+   Try Pbox.picture = Picture.Load(pfile)
+   If Error Then 
+      
+      Print Error.Where, Error.Text
+      Print Error.Backtrace
+   Endif
    
 End
 
@@ -1490,48 +1496,6 @@ Public Sub Document_Display_Next()
    
 End
 
-Public Sub Document_Display_Next_old()
-   '--------------------------
-   ' tbFile_Click()
-   ' has called Document_File() which does validation/filing
-   ' then removes the document from the list and refreshes it (the gvwInboxDocuments
-   ' So now, if there are no rows left, Try and move to the next available InBox Collection
-   ' If this fails, do a reload of the entire inbox (could be more waiting
-   ' otherwise if there are rows left
-   '
-   '--------------------------
-   
-   tabStripInbox.index = 0                             'main tab
-   Vbox_ActionDocument.Enabled = False
-   Form_ActionDocument.Tabstrip1.Index = cTab_Metadata  'sucess. switch tab back to metadata
-   If gvwInboxDocuments.rows.count = 0 Then             'no documents left?
-      cvwInbox.MoveCurrent()                            'try and show next inbox item, usually next patient
-      cvwInbox.Remove(cvwInbox.Item.key)
-      Try cvwInbox.MoveFirst()
-      Try cvwInbox.Item.Selected = True
-      Try cvwInbox_Click()
-      Wait
-      If Error Then
-         txtFilterDocuments.Clear()               'could be more, but filtered
-         txtFilterPatient.Clear()
-         cvwPatientsRequests.Clear()
-         tbRefreshInbox_Click
-         'Inbox_Reload()
-         ' If cvwInbox.Count = 0 Then
-         '    Selected_Inbox = Null
-         '    currentconsult = Null
-         ' Endif
-      End If
-      bAutoFileAll = False                        'HORST DO NOT TOUCH THIS LINE
-      bAutoFilePatient = False                    'HORST DO NOT TOUCH THIS LINE
-   Else
-      gvwInboxDocuments.Rows[0].Selected = True  'trigger showing the document
-      Vbox_ActionDocument.Enabled = True
-      Try Form_ActionDocument.FMetaData.txtUserObservationName.SetFocus()
-   End If
-   
-End
-
 Public Sub synonyms_Reload()
    
    synonyms = const.Synonyms()
@@ -1557,7 +1521,6 @@ Public Function Fill_Inbox(Optional fk_sending_entity As Variant = Null, Optiona
    End With
    lblStaffMembersTotalDocuments.text = ""
    tlOutstandingAllStaff.text = ""
-   'If patient_filter = "" Then
    '
    If Trim(txtFilterPatient.text) = "" Then    
       sql = "Select count(pk) as count  from documents.Documents Where "
@@ -1608,6 +1571,7 @@ Public Function Fill_Inbox(Optional fk_sending_entity As Variant = Null, Optiona
       Print sql
       If chkExcludeInactivePatients.value = True Then
          sql &= " AND patient_fk_lu_active_status <>" & const.PatientStatus_Inactive
+         sql &= " OR  patient_fk_lu_active_status is NULL " 'unmatched patient's have no active status
       Endif
       sql &= " ORDER BY patient_surname, patient_firstname, unmatched_patient_surname, unmatched_patient_firstname, date_created " & sort_dir
       If txtLimit.text <> 0 Then
@@ -1640,74 +1604,76 @@ Public Function Fill_Inbox(Optional fk_sending_entity As Variant = Null, Optiona
    Endif
    C = New Collection     'a misnomer content = who message intended for, or About Who
    For Each Document In Documents
-      If IsNull(Document!fk_patient) Then
-         If fk_last_patient <> Document!fk_unmatched_patient Then
-            fk_last_patient = Document!fk_unmatched_patient
-            patient = New Collection
-            patient!documents = New Collection
-            patient!fk_unmatched_patient = Document!fk_unmatched_patient
-            patient!fk_person = Document!patient_fk_person
-            patient!firstname = Document!unmatched_patient_firstname
-            patient!surname = Document!unmatched_patient_surname
-            patient!birthdate = Document!unmatched_patient_birthdate
-            patient!sex = Document!unmatched_patient_sex
-            patient!title = Document!unmatched_patient_title
-            patient!wholename = patient!title & " " & patient!firstname & " " & patient!surname
-            patient!street1 = Document!unmatched_patient_street
-            patient!town = Document!unmatched_patient_town
-            patient!postcode = Document!unmatched_patient_postcode
-            x = cvwInbox.Count
-            C.Add(patient, x)
-            cvwInbox.Add(x, 0)
-            cvwInbox[x][0] = document!unmatched_patient_surname & ", " & document!unmatched_patient_firstname
-            If cvwInbox[x][0] = ", " Then
-               cvwInbox[x][0] = "Non patient document"
-            End If
-         End If
-         bSkiPDocument = False   
-      Else
-         If fk_last_patient <> Document!fk_patient Then
-            fk_last_patient = Document!fk_patient
-            If Trim(txtFilterPatient.text) <> "" Then                                'user filtering on patient
-               Print Lower(Trim(txtFilterPatient.text))
-               Print Lower(Left(Document!patient_surname, Len(Trim(txtFilterPatient.text))))
-               If Lower(Left(Document!patient_surname, Len(Trim(txtFilterPatient.text)))) = Lower(Trim(txtFilterPatient.text)) Then  'match against part of surname
-                  bSkiPDocument = False 
-               Else                                                                  'no partial match
-                  bSkiPDocument = True                                               'skip this document
-               Endif
-            Else                                                                     'not doing any filtering
-               bSkiPDocument = False  
-            End If 
-            If Not bSkiPDocument Then
+      If Document!unmatched_patient_deleted = False Or IsNull(Document!unmatched_patient_deleted) Then
+         If IsNull(Document!fk_patient) Then
+            If fk_last_patient <> Document!fk_unmatched_patient Then
+               fk_last_patient = Document!fk_unmatched_patient
                patient = New Collection
                patient!documents = New Collection
+               patient!fk_unmatched_patient = Document!fk_unmatched_patient
                patient!fk_person = Document!patient_fk_person
-               patient!fk_patient = Document!fk_patient
-               patient!firstname = Document!patient_firstname
-               patient!surname = Document!patient_surname
-               patient!birthdate = Document!patient_birthdate
-               patient!sex = Document!patient_sex
-               patient!title = Document!patient_title
+               patient!firstname = Document!unmatched_patient_firstname
+               patient!surname = Document!unmatched_patient_surname
+               patient!birthdate = Document!unmatched_patient_birthdate
+               patient!sex = Document!unmatched_patient_sex
+               patient!title = Document!unmatched_patient_title
                patient!wholename = patient!title & " " & patient!firstname & " " & patient!surname
-               patient!age_display = Str(Document!patient_age)
-               patient!age_numeric = Document!patient_age
-               patient!street1 = Document!patient_street1
-               patient!street2 = Document!patient_street2
-               patient!town = Document!patient_town
-               patient!postcode = Document!patient_postcode
+               patient!street1 = Document!unmatched_patient_street
+               patient!town = Document!unmatched_patient_town
+               patient!postcode = Document!unmatched_patient_postcode
                x = cvwInbox.Count
                C.Add(patient, x)
                cvwInbox.Add(x, 0)
-               cvwInbox[x][0] = document!patient_surname & ", " & document!patient_firstname
+               cvwInbox[x][0] = document!unmatched_patient_surname & ", " & document!unmatched_patient_firstname
                If cvwInbox[x][0] = ", " Then
                   cvwInbox[x][0] = "Non patient document"
                End If
-            End If   
+            End If
+            bSkiPDocument = False   
+         Else
+            If fk_last_patient <> Document!fk_patient Then
+               fk_last_patient = Document!fk_patient
+               If Trim(txtFilterPatient.text) <> "" Then                                'user filtering on patient
+                  Print Lower(Trim(txtFilterPatient.text))
+                  Print Lower(Left(Document!patient_surname, Len(Trim(txtFilterPatient.text))))
+                  If Lower(Left(Document!patient_surname, Len(Trim(txtFilterPatient.text)))) = Lower(Trim(txtFilterPatient.text)) Then  'match against part of surname
+                     bSkiPDocument = False 
+                  Else                                                                  'no partial match
+                     bSkiPDocument = True                                               'skip this document
+                  Endif
+               Else                                                                     'not doing any filtering
+                  bSkiPDocument = False  
+               End If 
+               If Not bSkiPDocument Then
+                  patient = New Collection
+                  patient!documents = New Collection
+                  patient!fk_person = Document!patient_fk_person
+                  patient!fk_patient = Document!fk_patient
+                  patient!firstname = Document!patient_firstname
+                  patient!surname = Document!patient_surname
+                  patient!birthdate = Document!patient_birthdate
+                  patient!sex = Document!patient_sex
+                  patient!title = Document!patient_title
+                  patient!wholename = patient!title & " " & patient!firstname & " " & patient!surname
+                  patient!age_display = Str(Document!patient_age)
+                  patient!age_numeric = Document!patient_age
+                  patient!street1 = Document!patient_street1
+                  patient!street2 = Document!patient_street2
+                  patient!town = Document!patient_town
+                  patient!postcode = Document!patient_postcode
+                  x = cvwInbox.Count
+                  C.Add(patient, x)
+                  cvwInbox.Add(x, 0)
+                  cvwInbox[x][0] = document!patient_surname & ", " & document!patient_firstname
+                  If cvwInbox[x][0] = ", " Then
+                     cvwInbox[x][0] = "Non patient document"
+                  End If
+               End If   
+            End If
          End If
-      End If
-      If C.count And bSkiPDocument = False Then 
-         C[x]!documents.Add(Document, C[x]!documents.Count)
+         If C.count And bSkiPDocument = False Then 
+            C[x]!documents.Add(Document, C[x]!documents.Count)
+         End If   
       End If   
    Next
    Dec Application.Busy
@@ -2290,9 +2256,47 @@ Public Sub mnuDocuments_Click()
          Form_ActionDocument.FMetaData.txtDocumentDate.SetFocus()
       Case "refile"
          Document_SendBack_For_ReFiling()
+      Case "delete all"
+         'Delete all the documents without an audit trail
+         If Documents_DeleteAll() Then
+            modDBConnect.CommitTrans()
+            Inbox_Reload()
+         End If   
    End Select
    'Catch
    ' Return 
+   
+End
+
+Public Function Documents_DeleteAll() As Boolean
+   'Deletes all documents for the patient (or un-identified patient)
+   'after a warning without an audit trail
+   'used mainly for mail which arrived for non-patients
+   'returns true if successful
+   
+   Dim sMsg As String
+   Dim D As Collection
+   Dim bSuccess As Boolean
+   
+   Print Selected_Inbox!documents
+   Message.Title = "Delete All Documents"
+   sMsg = "All the documents currently listed for this person will be deleted.\n\n"
+   "You should only do this if you are absolutely certain they are either not relevant "
+   "or if the person is not a patient of this surgery.\n\n"
+   "Are you sure you want to continue?"
+   If Message.Warning(smsg, "Yes - Delete All", "Cancel") = 2 Then Return   
+   For Each D In Selected_Inbox!documents
+      If Not modDBConnect.update("Documents.Documents", Null, ["pk": D!pk_document, "deleted": True]) Then
+         'Goto DeleteAll_Error
+      Endif
+   Next
+   Return True
+   
+DeleteAll_Error:
+   sMsg = "An error occurred whilst trying to delete all the documents for this patient.\n\n"
+   "If this problem persists please discuss with your system administrator"
+   Message.Error(sMsg)
+   modDBConnect.RollBack
    
 End
 
@@ -2381,7 +2385,14 @@ Public Sub mnuNonPatientDocuments_Click()
          modDBConnect.update("documents.documents", Null, ["pk": SelectedDocument!pk_document, "deleted": True])
          modDBConnect.CommitTrans()
          Inbox_Reload()
-         
+      Case "delete all"
+         'Delete all the documents without an audit trail
+         If Documents_DeleteAll Then
+            modDBConnect.CommitTrans()
+            Inbox_Reload()
+         Else  
+            modDBConnect.RollBack
+         End If   
       Case "move to my library", "copy to my library", "copy to patient handouts", "move to patient handouts"
          FInboxTransferToLIbrary.Init(SelectedDocument, currentconsult, Last.tag)
          FInboxTransferToLIbrary.ShowModal()
@@ -2813,14 +2824,15 @@ End
 Public Sub Mark_Request_Result_Back_Click()
    
    Dim sMsg As String
+   
    Select Case Last.tag
       Case "mark back"
       Case "mark off" 
       Case "mark why not done"
       Case Else 'is a key to clin_requests.forms_requests
-       '  Message.Title = "Reconciling Requests"
-       '  sMsg = "Mark off the test " & Last.text & " as having been completed"
-       '  If Message.Question(sMsg, "Yes - Mark Off", "No") = 2 Then Return
+         '  Message.Title = "Reconciling Requests"
+         '  sMsg = "Mark off the test " & Last.text & " as having been completed"
+         '  If Message.Question(sMsg, "Yes - Mark Off", "No") = 2 Then Return
          If modDBConnect.update("clin_requests.forms_requests", Null, ["pk": Last.tag, "finalised": True]) Then
             modDBConnect.CommitTrans()
             Patient_Outstanding_Requests_Show(True) 'reload outstanding requests, ie refresh the gui FIX ME
@@ -2841,3 +2853,51 @@ End
 '    End Select
 '    
 ' End
+
+Public Sub cvwInbox_Menu()
+   
+   If cvwInbox.count Then
+      If Selected_Inbox!fk_patient Then Return 'can't delete real patients
+      mnuInbox.popup()
+   Endif
+   
+End
+
+Public Sub mnuInbox_Click()
+   'only one option - delete patient
+   'only used for those who are not our patients and we have tried to match
+   'this menu option only shows where no fk_patient exists
+   
+   Dim sMsg As String
+   
+   Message.Title = "Delete Patient"
+   If modDBConnect.currentUser!fk_role <> const.StaffRole_Practice_Principal Then
+      smsg = "You do not have sufficient permissions to delete  this unmatched patient from the inbox."
+      Message.Warning(sMsg)
+      Return
+   Endif
+   sMsg = "<p><b>WARNING</b></p>"
+   "<P><B><I>To proceed is extremely dangerous.</I></B></P><P>This menu option is only included for situations where "
+   "you have been sent records for a person who seems not to be a patien of this surgery.</P>" 
+   "<P>You should make every attempt to first match the patient to an existing patient, then only "
+   "as a last resort, when absolutely certain, should you delete the patient, as all the attached "
+   "documents will be deleted as well.</P>"
+   "Are you certain you wish to proceed?"
+   If Message.Warning(sMsg, "Yes - Delete this patient", "Cancel") = 2 Then Return
+   If Documents_DeleteAll() Then  'First mark deleted all associated documents
+      If Not IsNull(Selected_Inbox!fk_unmatched_patient) Then 
+         If modDBConnect.update("documents.unmatched_patients", Null, ["pk": Selected_Inbox!fk_unmatched_patient, "deleted": True]) Then
+            modDBConnect.CommitTrans
+            Inbox_Reload()
+         Else
+            Message.Error("An error occurred trying to delete the umatched patient.")
+         Endif
+      Else
+         If IsNull(Selected_Inbox!fk_unmatched_patient) And IsNull(Selected_Inbox!fk_patient) Then    'was a staff document   
+             modDBConnect.CommitTrans
+             Inbox_Reload()
+         End If   
+      End If   
+   Endif
+   
+End

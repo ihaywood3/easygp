@@ -40,4 +40,5 @@ $BODY$
 ALTER FUNCTION clin_prescribing.make_auth_number(integer)   OWNER TO easygp;
 GRANT ALL ON FUNCTION clin_prescribing.make_auth_number(integer) TO staff;
 
-insert into db.lu_version (lu_major,lu_minor) values (0, 522);
+update db.lu_version set lu_minor=522;
+

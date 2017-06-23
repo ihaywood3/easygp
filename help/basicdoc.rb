@@ -57,7 +57,7 @@ end
 
 def new_html_file(key,title,file)
   if $output
-    $output.write("<!--FTR--></body></html>")
+    $output.write("\n<!--FTR--></body></html>")
     $output.close
   end
   title = esc(title)
@@ -66,7 +66,7 @@ def new_html_file(key,title,file)
   else
     $output = File.new(key+".html",'w')
   end
-  $output.write("<html><head><title>%s</title><!--HDR--></head><body>\n" % title)
+  $output.write("<html>\n<head><title>%s</title>\n<!--HDR-->\n</head><body>\n" % title)
   if file
     $output.write("<img src=\"%s\" />\n" % file)
   end
@@ -93,6 +93,11 @@ def latex_esc(str)
   return s2.gsub('_', '\\textunderscore ')
 end
 
+def toc_add(node,title,up)
+  $toc.write("%s\t%s\t%s\n" % [node,title,up])
+  $toctable += [{:node=>node,:title=>title,:up=>up}]
+end
+
 def process_file(fd)
   fd.each_line  do |line|
     case line
@@ -103,7 +108,7 @@ def process_file(fd)
       rescue
 	$latex.write(latex_esc("\n\n\\textt{[No such file %s]}\n\n" % $1))
         $output.write("<p><tt>No such file %s</tt></p>" % $1)
-$stderr.write("no such file %s\n" % $1)
+        $stderr.write("no such file %s\n" % $1)
       end
     when /^\.section (.*)/
       title, file = parse_name($1)
@@ -111,7 +116,7 @@ $stderr.write("no such file %s\n" % $1)
       $section = key
       $subsection = nil
       $subsubsection = nil
-      $toc.write("%s\t%s\troot\n" % [key,title])
+      toc_add(key,title,"root")
       $latex.write("\\chapter{%s}\n\\label{%s}\n" % [latex_esc(title),key])
       new_html_file(key,title,file)
     when /^\.subsection (.*)/
@@ -119,14 +124,14 @@ $stderr.write("no such file %s\n" % $1)
       key = make_key(title)
       $subsection = key 
       $subsubsection = nil
-      $toc.write("%s\t%s\t%s\n" % [key,title,$section])
+      toc_add(key,title,$section)
       $latex.write("\\section{%s}\n\\label{%s}\n" % [latex_esc(title),key])
       new_html_file(key,title,file)
     when /^\.subsubsection (.*)/
       title, file = parse_name($1)
       key = make_key(title)
       $subsubsection = key
-      $toc.write("%s\t%s\t%s\n" % [key,title,$subsection])
+      toc_add(key,title,$subsection)
       $latex.write("\\subsection{%s}\n\\label{%s}\n" % [latex_esc(title),key])
       new_html_file(key,title,file)
     when /^\.paragraph (.*)/,/^\.subsubsubsection (.*)/
@@ -268,6 +273,7 @@ else
   fd = File.new(ARGV[0])
   $latex = File.new('easygp.tex','w')
   $latex.write File.open("intro.tex") {|f| f.read }
+  $toctable = []
   if ARGV[1] == '--debian'
     system 'mkdir -p build'
     $debian = true
@@ -278,18 +284,20 @@ else
     $index = File.new('index.txt.in','w')
     $toc = File.new('toc.txt','w')
   end
-
+ 
   process_file(fd)
-  $output.write("\n</body></html>\n")
+  $output.write("\n<!--FTR-->\n</body></html>\n")
   $output.close
   $toc.close
   $index.close
   Dir.chdir("build") if $debian
   system "sort -u < index.txt.in > index.txt"
   system "rm index.txt.in"
-  Dir.chdir("..") if $debian
-  system "find -type d \\( \\! -path \"*.svn*\" \\) \\( \\! -path \"*build*\" \\) -exec mkdir -p build/\\{} \\;"
-  system "find -name '*.png' \\! -path '*build*' -exec cp \\{} build/\\{} \\;"
+  if $debian
+    Dir.chdir("..")
+    system "find -type d \\( \\! -path \"*.svn*\" \\) \\( \\! -path \"*build*\" \\) -exec mkdir -p build/\\{} \\;"
+    system "find -name '*.png' \\! -path '*build*' -exec cp \\{} build/\\{} \\;"
+  end
   $latex.write File.open("gpl-3.0.tex") {|f| f.read}
   $latex.write("\n\\end{document}\n")
   $latex.close

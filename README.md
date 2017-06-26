@@ -1,24 +1,25 @@
 Pre-requisites
 ==============
 
+- Linux OS, then check your package manager for the following
 - postgresql, version 8.4 or greater
 - gambas, version 3.5 or later
 - ruby (only if you want to compile the docs
-- git revision contorl system (to download the code form this website)
+- git revision control system (to download the code form this website)
 
-Instllation
+Installation
 =============
 
 1) Download via git:
 
-     $ git clone htpps://github.com/ihaywood3/easygp
+    git clone htpps://github.com/ihaywood3/easygp
  
 
 2) Compile the help files, these can only be run from within EasyGP at
    the current time.
    
-     $  cd easygp/trunk/client/help/
-     $  ruby basicdoc.rb easygp.bd
+    cd easygp/trunk/client/help/
+	ruby basicdoc.rb easygp.bd
  
  3) Refer to db/README for instructions on how to set up the database.
  

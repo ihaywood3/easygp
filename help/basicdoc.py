@@ -164,10 +164,10 @@ class LatexWriter(Writer):
         self.output.write("\\subsubsection{%s}\n\\label{%s}\n" % (self.escape(self.title),self.key))
 
     def hyperlink1(self,line):
-        self.output.write("{\\tt %s}" % self.escape(line))
+        self.output.write("\\url{%s}" % self.escape(line))
 
     def hyperlink2(self,url,comment):
-        self.output.write("%s ({\\tt %s})" % (self.escape(comment),self.escape(url)))
+        self.output.write("%s (\\url{%s})" % (self.escape(comment),self.escape(url)))
 
     def xref(self,line):
         self.output.write("%s (see page \\pageref{%s}) " % (line,self.make_key(line)))

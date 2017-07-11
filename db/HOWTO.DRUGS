@@ -1,0 +1,211 @@
+How to update PBS drugs
+~~~~~~~~~~~~~~~~~~~~~~~
+
+
+1. You need to obtain a ZIP file containing the PBS data, form the PBS website. http://www.pbs.gov.au/browse/downloads
+you want the "PBS XML file", not the "PBS text files"
+
+2.Copy this file to this directory (easygp/trunk/db)
+(Make sure no other .zip or .xml files exist in this directory and do not unzip the file - the script will do this for you)
+
+
+3. Make sure you have a postgresql database with a current version of the drugs available on the same machine.
+** IAN NO MENTION AS TO HOW OLD THE 'CURRENT VERSION' NEED BE, IF IT MATTERS **
+You need to be able to log in to this database and makes changes to tables under drugs schema with this logon
+
+open up the file import_pbs.py and look for the line near the top:
+
+conn = psycopg2.connect(database='easygp',user='ian')
+
+edit it for your logon details, you may need to add a "password" field.
+
+4. run the first step
+
+python import_pbs.py products, you will be prompted with options to match for e.g
+
+possible match on brand
+Product: fentanyl 100 microgram orally disintegrating tablet, 28
+0) fentanyl 200 microgram orally disintegrating tablet, 28
+1) fentanyl 200 microgram orally disintegrating tablet, 4
+2) fentanyl 400 microgram tablet: orally disintegrating, 28
+3) fentanyl 400 microgram orally disintegrating tablet, 4
+4) fentanyl 600 microgram orally disintegrating tablet, 28
+5) fentanyl 600 microgram orally disintegrating tablet, 4
+6) fentanyl 800 microgram orally disintegrating tablet, 28
+7) fentanyl 400 microgram orally disintegrating tablet, 28
+8) fentanyl 100 microgram orally disintegrating tablet, 4
+9) fentanyl 800 microgram orally disintegrating tablet, 4
+No:
+
+If none of them match, at the 'No:' prompt just hit enter, if one matches exactly then select the
+number and press enter.
+
+When finished - re-run the script again, at this point a file will have been created named
+similarly to the zip file name and date, which will contain entries which couldn't be matched:
+
+2016-12-01.scts.txt
+20 20:27 2016-12-01-xml.zip
+
+
+5. open this file in a text editor.
+
+This file contains entries for new PBS drugs the system has found.
+You need to manually edit the entries to help the system convert the PBS descriptions
+(which are free text that can't be parsed) into parseable data.
+
+An example:
+
+
+sct: 24881000144103
+atc: N04BA02
+chapter: GE
+original_pbs_name: levodopa 20 mg/mL + carbidopa monohydrate 5 mg/mL intestinal gel, 7 x 100 mL
+brand: Duodopa
+generic: 
+form: 
+strength: 
+free_comment:
+units_per_pack: 1
+pack_size: 7
+amount: 
+amount_unit:
+
+These blank lines (form, dose, strength, etc) have the filled in by you,
+They are defined as follows:
+
+
+brand:
+this is always filled in and shouldn't be changed
+it's just a prompt to help you figure out which drug it is talking about
+
+original_pbs_name:
+this is the free text string provided by the PBS. It has many different formats
+and can take a bit of figuring out. Sometimes you will hav to look up the PI online to
+figure out what it means.
+Again, don't change this
+
+sct: the SNOMED code: don't change this.
+atc: the ATC code, again no need to change
+chapter: the PBS chapter (a reference to when it was a physical book)
+
+
+generic:
+the generic name of the drug, here ""
+so just type the word at the end of the line so it becomes
+generic: ...
+
+if the drug has multiple generic components, these are separated by the ; character.
+so "amoyxcillin;clavulanic acid"
+
+strength:
+the strength of what's in the tablet/injection/thing,
+in whatever units are appropriate.
+For micrograms we use "mcg", for grams "g", for millilitres, "ml". No capitals.
+Note variations on "units": "units" "international units", "standard units" etc, we use just "unit"
+example 500unit. note no plural.
+
+IF both milligrams and units are given, use milligrams (unless it is clearly standard clinical practice to
+use units)
+
+For compunds, separate the strengths with "-"
+
+Never put spaces in the form. Example "500mg-125mg"
+
+For solutions, use mg/ml or mcg/ml note this is for each strength in a compound, so 5mg/ml-10mg/ml, not 5mg-10mg/ml
+Some drugs are "per 5ml", in this case we convert to per 1 ml, so 20mg per 5ml becomes 4mg/ml
+(NOTE this gets converted back again to per 5 ml if users want to, don't worry if a drug is "usually" prescribed per 5 ml)
+
+form:
+the type of "thing" (tablet, capsule, injection, etc). This is a fixed list set in the table in our schema
+(drugs.units), there are 70 or so entries.
+Generally, try not to create new ones if a clear equivalent exists, especially if it's a special word 
+"made up" by the manufacturer.
+For example, dispersible risperidone tablets are called "Ripserdal Quicklets" Nothing else in the pharmacopeia
+is called a "quicklet" and they aren't more special than all the other types of dispersible tablets.
+So we call them 'dispersible tablet" in our database, instead of creating a new form.
+
+pack_size:
+the number of "PBS units" that can be dispensed at once. Generally this is filled in by the program and shouldn't be changed. 
+
+
+units_per_pack:
+sometimes the PBS pack size will be "1", even though to a prescriber that are logically a number of discrete 'things'
+in the pack. Generally this is because the manufacturer doesn't want/doesn't care about breaking up packs,
+so they just give the PBS a text description "foobar 30mg, 30 tablets", and set packsize to 1.
+
+So, put "30" in here to indicate there are "really" 30 tablets 
+Can leave it blank most of the time where this doesn't apply.
+
+amount:
+for fluid or liquid drugs, the amount of physical drug (usually millilitres for thin fluids like injections,
+and grams for thicker things like creams). Leave it blank where is doesn't apply, which is most of the time,
+
+amount_unit:
+the unit for above. Only ever "g" for grams, or "ml" for millilitres.
+
+
+old_sct:
+sometimes the PBS change both the SCT code and the description of a drug, given though nothing has changed with the drug
+often this change is trivial and seemingly purposeless, for example "foobar tablets 5mg" becomes "foobar 5mg tablets"
+
+However the system has no way to detect this and will create a "new" drug 
+IN this case, you need to find the sct code of the existing entry in the postgresql table drugs.product (use a SQL viewer to look a nd search through the table)
+and fill in this entry. Otherwise leave it blank
+
+Remember drug entries that have a different pack size, but otherwise identical generic and strength, are "different" drugs in our system, that's OK.
+
+
+here's the example from before again:
+
+sct: 24881000144103
+atc: N04BA02
+chapter: GE
+original_pbs_name: levodopa 20 mg/mL + carbidopa monohydrate 5 mg/mL intestinal gel, 7 x 100 mL
+brand: Duodopa
+generic: 
+form: 
+strength: 
+free_comment:
+units_per_pack: 1
+pack_size: 7
+amount: 
+amount_unit:
+
+This then becomes once filled in:
+
+sct: 24881000144103
+atc: N04BA02
+chapter: GE
+original_pbs_name: levodopa 20 mg/mL + carbidopa monohydrate 5 mg/mL intestinal gel, 7 x 100 mL
+brand: Duodopa                                                                        
+generic: levodopa;carbidopa
+form: intestinal gel
+strength: 100mg/5ml-25mg/5ml                                                                        
+free_comment:
+units_per_pack: 1                                      
+pack_size: 7
+amount: 100
+amount_unit: ml
+
+
+6. once this table is edited, you need to feed it back in to the system
+
+python import_pbs.py import < drugs-XXX.txt
+
+where drugs-XXX.txt is the name of the file you were editing before.
+
+7. next process the brands, this is simple command with no output.
+
+python import_pbs.py brands
+
+8. finally generate the SQL update script.
+
+python import_pbs.py print > drugs.XXX.sql
+
+this will create a big file drugs-XXX.sql
+again you choose what the XXX is depending on the month.
+this is an SQL script that all users can then run on their databases. You may wish to compress it before sending it out.
+It doesn't matter if they have missed a month's update, this script will "catch them up" to the current PBS.
+
+run psql -f drugs-XXX.sql easygp
+(assuming the database is called "easygp")

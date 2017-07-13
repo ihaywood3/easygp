@@ -161,6 +161,10 @@ Public Function Unbanked_Monies_Create_HTML() As String
    '  1) When the module was first loaded
    '  2) when the staff members manually clicks the update cheques and cash button 
    '      at the top of the screen
+   '
+   ' the cheques listing at the top may contain multiple 'cheques' listed where a single cheque
+   ' was used to pay off 3 items, however it is accurate
+   
    Dim unbanked_payment As Collection
    Dim payments_cheques As New Collection    'collection of all cheques including patient details
    Dim payments_cash As New Collection       'collection of all cash including patient details
@@ -175,7 +179,9 @@ Public Function Unbanked_Monies_Create_HTML() As String
    Dim surgery_name As String
    Dim x As Integer
    Dim bFirstCheque As Boolean
-   Dim last_fk_invoice As Integer
+   Dim last_fk_invoice As Variant
+   Dim last_fk_payment_received As Variant
+   Dim last_pk_items_billed As Variant
    Dim cash_to_cheque As Collection
    Dim y As Integer
    Dim bits As String[]
@@ -203,13 +209,26 @@ Public Function Unbanked_Monies_Create_HTML() As String
             payments_cash_day = New Collection                                          'start a collection of amounts for this date
             last_day = unbanked_payment!date_paid                                      'and add to our payments_cash collection (of all dates)
             payments_cash.Add(payments_cash_day, payments_cash.count)
+            last_fk_payment_received = unbanked_payment!fk_payment_received
+         Else                                                                          'could be one of multiple payments for single invoice
+            If last_fk_payment_received <> unbanked_payment!fk_payment_received Then
+               
+            Endif
          End If   
          payments_cash_day.Add(unbanked_payment, payments_cash_day.count)
       Else
          If last_fk_invoice <> Unbanked_Payment!fk_invoice Then                   'the amount_paid in the cheque may be < total_paid (e.g cheque + bad debt)
-            total_cheques += modUtil.MoneyToFloat(unbanked_payment!amount_paid)   'total_cheques += modUtil.MoneyToFloat(unbanked_payment!total_paid)
+            total_cheques += modUtil.MoneyToFloat(unbanked_payment!amount) + modUtil.MoneyToFloat(unbanked_payment!amount_gst)  'total_cheques += modUtil.MoneyToFloat(unbanked_payment!total_paid)
             payments_cheques.Add(unbanked_payment, payments_cheques.count)
             last_fk_invoice = Unbanked_Payment!fk_invoice
+            last_pk_items_billed = unbanked_payment!pk_items_billed
+         Else
+            If last_pk_items_billed <> unbanked_payment!pk_items_billed Then
+               total_cheques += modUtil.MoneyToFloat(unbanked_payment!amount) + modUtil.MoneyToFloat(unbanked_payment!amount_gst)  'total_cheques += modUtil.MoneyToFloat(unbanked_payment!total_paid)
+               payments_cheques.Add(unbanked_payment, payments_cheques.count)
+               last_fk_invoice = Unbanked_Payment!fk_invoice
+               last_pk_items_billed = unbanked_payment!pk_items_billed
+            Endif
          End If   
       End If   
    Next
@@ -252,7 +271,9 @@ Public Function Unbanked_Monies_Create_HTML() As String
    cheque_details_html = Replace(cheque_details_html, "%total_paid%", "Day Total")
    
    last_fk_invoice = 0
+   last_pk_items_billed = 0
    For Each unbanked_payment In payments_cheques
+      Print unbanked_payment
       If last_fk_invoice <> Unbanked_Payment!fk_invoice Then
          If Not IsNull(Unbanked_Payment!fk_invoice) Then    
             cheque_details_html &= "<TR VALIGN=TOP>"
@@ -266,22 +287,42 @@ Public Function Unbanked_Monies_Create_HTML() As String
                cheque_details_html = Replace(cheque_details_html, "%account_to_name%", unbanked_payment!account_to_name)   
             Endif
             cheque_details_html = Replace(cheque_details_html, "%referent%", unbanked_payment!referent)     'cheque could included a bad debt adjustment then
-            cheque_details_html = Replace(cheque_details_html, "%total_paid%", unbanked_payment!amount_paid) 'use amount_paid not total_paid 
+            cheque_details_html = Replace(cheque_details_html, "%total_paid%", modUtil.Money_Format(modUtil.MoneyToFloat(unbanked_payment!amount) + modUtil.MoneyToFloat(unbanked_payment!amount_gst))) 'use amount_paid not total_paid 
             cheque_details_html &= "</TR>"
             last_fk_invoice = Unbanked_Payment!fk_invoice
+            last_pk_items_billed = unbanked_payment!pk_items_billed
          End If   
-         'Now the banking slip , this will include any cash-for-cheques
-         banking_slip_cheque_details_html &= "<TR VALIGN=TOP>"
-         banking_slip_cheque_details_html &= banking_slip_html_row_template()
-         If IsNull(unbanked_payment!account_to_name) Then
-            banking_slip_cheque_details_html = Replace(banking_slip_cheque_details_html, "%account_to_name%", unbanked_payment!wholename)
-         Else
-            banking_slip_cheque_details_html = Replace(banking_slip_cheque_details_html, "%account_to_name%", unbanked_payment!account_to_name)   
+      Else
+         If last_pk_items_billed <> unbanked_payment!pk_items_billed Then
+            cheque_details_html &= "<TR VALIGN=TOP>"
+            cheque_details_html &= unbanked_monies_cheque_html_row_template() 
+            cheque_details_html = Replace(cheque_details_html, "%visit_date%", Format(unbanked_payment!visit_date, "dd/mm/yyyy"))
+            cheque_details_html = Replace(cheque_details_html, "%date_paid%", Format(unbanked_payment!date_paid, "dd/mm/yyyy"))
+            cheque_details_html = Replace(cheque_details_html, "%patient_name%", unbanked_payment!wholename)
+            If IsNull(unbanked_payment!account_to_name) Then
+               cheque_details_html = Replace(cheque_details_html, "%account_to_name%", unbanked_payment!wholename)
+            Else
+               cheque_details_html = Replace(cheque_details_html, "%account_to_name%", unbanked_payment!account_to_name)   
+            Endif
+            cheque_details_html = Replace(cheque_details_html, "%referent%", unbanked_payment!referent)     'cheque could included a bad debt adjustment then
+            cheque_details_html = Replace(cheque_details_html, "%total_paid%", modUtil.Money_Format(modUtil.MoneyToFloat(unbanked_payment!amount) + modUtil.MoneyToFloat(unbanked_payment!amount_gst))) 'use amount_paid not total_paid 
+            cheque_details_html &= "</TR>"
+            last_fk_invoice = Unbanked_Payment!fk_invoice
+            last_pk_items_billed = unbanked_payment!pk_items_billed
          Endif
-         banking_slip_cheque_details_html = Replace(banking_slip_cheque_details_html, "%referent%", unbanked_payment!referent)
-         banking_slip_cheque_details_html = Replace(banking_slip_cheque_details_html, "%total_paid%", unbanked_payment!amount_paid) 
-         banking_slip_cheque_details_html &= "</TR>"
-      End If   
+      End If      
+      'Now the banking slip , this will include any cash-for-cheques
+      banking_slip_cheque_details_html &= "<TR VALIGN=TOP>"
+      banking_slip_cheque_details_html &= banking_slip_html_row_template()
+      If IsNull(unbanked_payment!account_to_name) Then
+         banking_slip_cheque_details_html = Replace(banking_slip_cheque_details_html, "%account_to_name%", unbanked_payment!wholename)
+      Else
+         banking_slip_cheque_details_html = Replace(banking_slip_cheque_details_html, "%account_to_name%", unbanked_payment!account_to_name)   
+      Endif
+      banking_slip_cheque_details_html = Replace(banking_slip_cheque_details_html, "%referent%", unbanked_payment!referent)
+      banking_slip_cheque_details_html = Replace(banking_slip_cheque_details_html, "%total_paid%", modUtil.Money_Format(modUtil.MoneyToFloat(unbanked_payment!amount) + modUtil.MoneyToFloat(unbanked_payment!amount_gst))) 
+      banking_slip_cheque_details_html &= "</TR>"
+      
    Next
    If total_cheques <> 0 Then
       sHtml &= "<HR><TABLE width=100% CELLPADDING=0 CELLSPACING=1>"

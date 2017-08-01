@@ -259,6 +259,8 @@ Private Const grid_col_payment_type As Integer = 11
 Private Const grid_col_amount_due As Integer = 12
 Private Const grid_col_notes As Integer = 13
 Private form_calc As FCalculator
+Private obs As Observer
+
 Static Private Form_Billing As FRecordVisit
 
 Static Public Sub Enable_BOKBIllingSaveButton(bFlag As Boolean)
@@ -775,9 +777,7 @@ Public Sub UnBilled_Appointments_Reload(Optional single_day As Date = Null)
       ' Endif
       
       gvwUnpaidVisits[x, 0].Text = Format(Unbilled_consultation!begin, "dd/mm/yyyy") 
-      
       gvwUnpaidVisits[x, 0].Alignment = Align.TopLeft
-      ' gvwUnpaidVisits[x, 1].Picture = pic
       gvwUnpaidVisits[x, 1].RichText = "<P><B>" & Unbilled_consultation!title & " " & Left(Unbilled_consultation!firstname, 1) & " " & Unbilled_consultation!surname & "</B>"
       If Not IsNull(Unbilled_consultation!comment_for_billing) Then
          gvwUnpaidVisits[x, 1].RichText &= "<BR>" & Unbilled_consultation!comment_for_billing & "</P>"
@@ -4771,6 +4771,19 @@ Public Sub TabStrip1_Click()
          modEditAreaHelpers.Resize_labels(VBox_ForOtherTabs, lblmeasure)
          lblColumnviewHeading.Visible = False
          columnview99_Refresh()
+         If IsNull(form_reports) Then 
+            With form_reports = New FHtmlViewer(Vbox_Reports)
+               .Parent_Form_Set(Me.Name)
+               .Section_Set("Reports")
+               .tbWebBrowserPrint.Visible = True   
+               .tbWebBrowserZoomIn.Visible = True  
+               .tbWebBrowserZoomOut.Visible = True 
+               .Set_Landscape_Printing(True)
+               .tbWebBrowser_Reload.Visible = True 
+            End With
+            obs = New Observer(form_reports.tbWebBrowser_Reload) As "Report_Reload"
+         End If   
+         
          Wait 
          Report_Show_HTML(Day_List_Create_HTML(DateChooser1.Value))
       Case cTab_ScheduleFees
@@ -4897,7 +4910,17 @@ Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
    Dim sPatients_Seen_Table As String
    Dim sMonies_Taken As String
    Dim sDay_Sheet_Mini_Help As String
+   Dim iCounter As Integer
+   Dim itotal As Integer
    
+   Inc Application.Busy
+   Wait
+   lblReportProgress.text = ""
+   With ProgressBar1
+      .Visible = False  
+      .value = 0
+      .Refresh
+   End With
    day_list_patients_billed_count = 0
    day_list_patients_billed_medicare_count = 0
    day_list_patients_billed_veterans_count = 0
@@ -4948,11 +4971,26 @@ Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
    sHtml = "<HTML><BODY><H3><B><p align='center'><U>Front Desk Day Activity Sheet - Billings, Invoices and Payments For " & Format(for_date, "dd mmmm yyyy") & "</H3><u></P>"
    sHtml &= "<H3><P align='center'><B>FOR PATIENTS SEEN ON " & Format(for_date, "dd mmmm yyyy") & " (%total_seen_today%)</B></P></H3>"
    shtml &= sMain_Top_Table
+   lblReportProgress.text = "Fetching unbilled appointments......"
    Appointments_Not_Billed = modBillingDBI.Days_Appointments_Not_Billed(DateChooser1.value, modDBConnect.currentUser!fk_branch) 
+   ProgressBar1.value = 0.1
    If Appointments_Not_Billed.count Then
       shtml &= Appointments_Not_Billed_HTML(Appointments_Not_Billed) 
    Endif
    patient_visits = modBillingDBI.Day_List_Get(DateChooser1.value, modDBConnect.currentUser!fk_branch) ', staff[combobox1.index]!fk_staff)
+   lblReportProgress.text = "Fetching patient visits for this day......."
+   If patient_visits.count Then
+      With ProgressBar1
+         .value = 0.2
+         .Visible = True   
+      End With
+      icounter = 2
+      itotal = 1
+      lblReportProgress.text = "Sorting into billing categories"
+   Else
+      lblReportProgress.text = "No visits recorded as yet"
+   End If   
+   
    For Each visit In patient_visits
       If Last_fk_invoice <> visit!fk_invoice Then
          Last_fk_invoice = visit!fk_invoice
@@ -5025,23 +5063,42 @@ Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
          End If
       End If   
    Next
+   If visits_medicare.Count > 0 Then Inc itotal
+   If visits_veterans.count > 0 Then Inc itotal
+   If visits_workcover.count > 0 Then Inc itotal
+   If visits_private_account.Count > 0 Then Inc itotal
+   If visits_private_today.Count > 0 Then Inc itotal   
+   If visits_medicare_not_today.Count > 0 Then Inc itotal
+   If visits_private_other.Count > 0 Then Inc itotal   
+   If visits_veterans_not_today.Count > 0 Then Inc itotal 
    If visits_medicare.count Then
       shtml &= visit_create_html_bulk_billing(visits_medicare, "Medicare") 
+      Inc icounter
+      ProgressBar_Increment(icounter, itotal)
    Endif
    
    If visits_veterans.count Then 
       shtml &= visit_create_html_bulk_billing(visits_veterans, "Veterans") 
+      Inc icounter
+      ProgressBar_Increment(icounter, itotal)
+      
    Endif
    If visits_workcover.count Then
       shtml &= visit_type_create_html(visits_workcover, "Workcover") 
+      Inc icounter
+      ProgressBar_Increment(icounter, itotal)
+      
    Endif
    If visits_private_account.count Then
       shtml &= visit_type_create_html(visits_private_account, "Private Account") 
+      Inc icounter
+      ProgressBar_Increment(icounter, itotal)
    Endif
    If visits_private_today.count Then
+      Inc icounter
+      ProgressBar_Increment(icounter, itotal)
       shtml &= visit_type_create_html(visits_private_today, "Private Paid") 
    Endif
-   
    '---------------------------------------------------------------------------------------
    'Now add a table which summarizes amounts for Cash, Cheques, EFPos or EFT (direct debit)
    '---------------------------------------------------------------------------------------
@@ -5131,7 +5188,6 @@ Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
          Income_summary_html &= "<TR VALIGN=TOP>" & Day_List_Heading_Stats_Row() 
          Income_summary_html = Replace(Income_summary_html, "%rowheader%", "Patients not invoiced")
          Income_summary_html = Replace(Income_summary_html, "%data%", Str(Appointments_Not_Billed.count))
-         
       Endif
       Income_summary_html = Replace(Income_summary_html, "%billedamount%", "")
       If day_list_patients_billed_medicare_count Then                                               ' patients billed to medicare
@@ -5188,13 +5244,6 @@ Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
          Income_summary_html = Replace(Income_summary_html, "%data%", Str(day_list_patients_old_invoices_count))
          Income_summary_html = Replace(Income_summary_html, "%billedamount%", modUtil.Money_Format(running_total_old_invoices))
       Endif
-      Print day_list_patients_billed_veterans_count, "veterans"
-      Print day_list_patients_billed_medicare_count, "medicare"
-      Print day_list_patients_billed_private_count, "took account"
-      Print day_list_patients_billed_workcover_count, "workcover"
-      Print day_list_patients_paid_count, "private, paid on the day"   
-      Print day_list_patients_billed_count, " = total patients billed"
-      Print day_list_patients_billed_medicare_count, " = total medicare patients billed"
       bulk_bill_percentage = ((day_list_patients_billed_medicare_count + day_list_patients_billed_veterans_count) / day_list_patients_billed_count) * 100
       Income_summary_html &= "<TR VALIGN=TOP>" & Day_List_Heading_Stats_Row()                       ' patients billed to repat
       Income_summary_html = Replace(Income_summary_html, "%rowheader%", "Approx Bulk Billing Percentage")
@@ -5205,6 +5254,11 @@ Public Sub Day_List_Create_HTML(Optional for_date As Date = Now()) As String
       sHTMl = Replace(sHTml, "%patients_seen_table%", Income_summary_html)
       sHtml = Replace(sHTML, "%mini_help_table%", day_list_warning())
    End If
+   If patient_visits.count Then
+      lblReportProgress.text = "Report generated sucessfully"
+      progressbar1.Visible = False  
+   End If   
+   Dec Application.Busy
    Return shtml
    
 End
@@ -6672,26 +6726,24 @@ Public Sub DateChooser1_Change()
    
    Vbox_Reports_GST_Box.visible = False
    columnview99.UnselectAll
+   Inc Application.Busy
    Report_Show_HTML(Day_List_Create_HTML(DateChooser1.Value))
+   Dec Application.Busy
    
 End
 
 Public Sub Report_Show_HTML(sHtml As String)
-   
-   Inc Application.Busy
-   Wait
-   If IsNull(form_reports) Then 
-      With form_reports = New FHtmlViewer(Vbox_Reports)
-         .Parent_Form_Set(Me.Name)
-         .Section_Set("Reports")
-         .tbWebBrowserPrint.Visible = True   
-         .tbWebBrowserZoomIn.Visible = True  
-         .tbWebBrowserZoomOut.Visible = True 
-         .Set_Landscape_Printing(True)
-      End With
-   End If   
+
    form_reports.WebView1.HTML = sHtml
-   Dec Application.Busy
+   
+End
+
+Public Sub Report_Reload_click()
+   
+   Stop Event 
+   Form_reports.WebView1.HTML = "<html><body></body></html>"
+   Wait
+   Report_Show_HTML(Day_List_Create_HTML(DateChooser1.Value))
    
 End
 
@@ -6826,5 +6878,20 @@ Public Sub VBox_columnview99_Leave()
    If TabStrip1.index = cTab_Banking Then
       columnview99.UnselectAll
    Endif
+   
+End
+
+Public Sub Button2_Click()
+   
+   Form_reports.WebView1.HTML = "<html></html>"
+   progressbar1.Value = 0
+   progressbar1.Refresh
+   
+End
+
+Public Sub ProgressBar_Increment(curval As Integer, totalval As Integer)
+   
+   ProgressBar1.value = curval / totalval
+   Wait 
    
 End

@@ -30,7 +30,6 @@ Private Toolbuttons As Collection                 'buttons which user selects to
 Private Warning_Icons As Collection               'icons used to warn user about patient e.g breast feeding, pregnant, anger issues, alcoholic
 Private bEditing As Boolean                      'if true we are editing an entire consult on a different date
 Private bExit As Boolean                         'general flag used to prevent recursion into routine
-Public bShowEditLastConsultButton As Boolean
 Public bProgressNotesEnforceCoding As Boolean     'If True then user forced to code progress notes do not make this private
 'Constants for readability
 Const cTabCarePlanning_HealthIssues As Integer = 0
@@ -143,16 +142,7 @@ Static Public Sub ProgressNotesEnforceCoding_UpdateFlag(bflag As Boolean)
    
 End
 
-Static Public Sub EditLastConsultButton_Display(bflag As Boolean)
-   'User has changed visibility of the button to allow editing last consult
-   
-   Return 
-   With form_clinical_toolbar
-      .bShowEditLastConsultButton = bFlag
-      .tbEditLastConsult.visible = bFlag
-   End With
-   
-End
+
 
 Static Public Sub Recalls_On_Toolbar_Update()
    
@@ -433,7 +423,6 @@ Public Sub Init_Gui()
    End With
    mnuDecisionSupport_Chads.Visible = True
    lblMeasure.text = "  Cumulative   "
-   ' tbEditLastConsult.Visible = bShowEditLastConsultButton
    Health_Funds_Menu_Create
    txtConsultDate.text = Format(Now, "dd/mm/yyyy")
    modLater.Add(Me, "Init_Gui_Later")
@@ -449,10 +438,6 @@ Public Sub Init_Gui_Later()
    cmbConsultationType.index = cmbConsultationType.Find("At consulting rooms")
    Refresh_Toolbar()                                         'Refreshes the toolbar buttons.
    
-   If modAdminDBI.Config_Get_Staff_Member("show-edit-last-consult-button", False, Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff) Then
-      bShowEditLastConsultButton = True
-      tbEditLastConsult.Visible = bShowEditLastConsultButton
-   Endif
    If modAdminDBI.Config_Get_Staff_Member("progress_notes_enforce_coding", False, Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff) Then
       bProgressNotesEnforceCoding = True 'defaults to false to keep Ian Sane
    Endif
@@ -1079,7 +1064,11 @@ Public Sub cmbSearch_GotFocus()
    If Not IsNull(currentconsult) Then                   'no consult, no save
       cmbSearch.Enabled = False                         'stop clicking again until finished database accessing
       If Not Consult_Time_Check_Valid() Then Return
-      form_clinical.Consult_Save                        'loop through all  open forms and call 'Save'
+      ' form_clinical.Consult_Save                        'loop through all  open forms and call 'Save'
+      If Not form_clinical.Consult_Save() Then           'loop through all  open forms and call 'Save', but abort if receive true false
+         cmbSearch.Enabled = True   
+         Return
+      End If   
       currentconsult.Refresh("progress_notes_today")    'Is there actually a reason to code?, maybe there are no notes
       If currentconsult!progress_notes_today.count Then 'If we have progress notes
          For Each PN In currentconsult!progress_notes_today
@@ -1328,7 +1317,7 @@ Public Sub MainToolbar_Click()
             End If
          Next
          Dec application.Busy
-      Case "New General Notes", "Demographics", "Edit Last Consult"
+      Case "New General Notes", "Demographics"
          form_clinical.Editor_ShowPage(Last.tag)
       Case "tex summary"
          form_clinical.Health_Summary_Display
@@ -1438,9 +1427,9 @@ Catch
 End
 
 Public Sub tbSections_Click()
-   '------------------------------------------------------------------------
+   '---------------------------------------------
    'Shows the relevant section e.g Family History
-   '------------------------------------------------------------------------
+   '---------------------------------------------
    
    Dim templ As CTemplate
    
@@ -1458,9 +1447,7 @@ Public Sub tbSections_Click()
       Templ = modProgressNotes.Health_Summary_Construct_LaTex(currentconsult)
       form_clinical.Editor_ShowPage("pdf file", "Health Summary", modPrinting.Latex_To_PDF(templ.GetData()))
       ToolBar_Buttons_Activate("Health Summary")
-   Else If Last.tag = "Edit Last Consult" Then
-      Consult_Edit_Last()
-   Else
+    Else
       Try form_clinical.Editor_ShowPage(Last.tag, Last.tag)
       Try ToolBar_Buttons_Activate(Last.tag)
    Endif
@@ -2130,8 +2117,6 @@ Public Sub Consult_Edit(consult_to_edit As Collection)
       .Background = Color.Yellow
       If IsNull(consult_to_edit!fk_consult) Then
          .text = "NEW CONSULTATION"
-      Else
-         .text = "EDIT LAST CONSULT"
       Endif
    End With
    HBox_ConsultDetails.Background = Color.Yellow
@@ -2344,7 +2329,8 @@ Public Sub DateBox1_Activate()
       form_clinical.FGeneralNotesEditor.teNotes.SetFocus
       cmbSearch.Enabled = True   
    Else
-      Consult_Edit(SC[Format(DateBox1.value, "dd/mm/yyyy")])
+      Message.Info("You cannot edit an existing consultation")
+     
    Endif
    
 End
@@ -2448,7 +2434,5 @@ Public Sub HSplit_Comms_Birthdate_Resize()
 End
 
 Public Sub lblBoneDensity_DblClick()
-
    
-
 End

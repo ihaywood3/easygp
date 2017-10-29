@@ -56,7 +56,6 @@ Private Const cTabQuickContacts As Integer = 8
 Private Const cMainDisplay_DataEntry As Integer = 1
 Private Const cMainDisplay_ProgressNotes As Integer = 2
 Private Const cMainDisplay_CarePlan As Integer = 3
-Public bShowEditLastConsultButton As Boolean
 Public bProgressNotesEnforceCoding As Boolean     'If True then user forced to code progress notes do not make this private
 Public active_medications As Collection
 Private obs As Observer                           'Observer used when FHelp is being shown, to detect the help close button
@@ -73,6 +72,7 @@ Public Form_ClinicalLists As FClinicalLists        'hold all the lists, eg medic
 Public FCurrentHTMLViewer As FHtmlViewer           'dont remove just testing
 Public FGeneralNotesEditor As FProgressNoteEditor  ' dont remove just testing
 Public Form_Problem_Lists As FPastHistoryProblemLists
+Public ReferralPage As FReferrals
 
 Static Private form_clinical As FClinical         'allows FClinical Access from anywhere  = Me -see Init()
 
@@ -107,9 +107,6 @@ End
 
 Public Sub Init_Later()
    
-   ' If modAdminDBI.Config_Get_Staff_Member("show-edit-last-consult-button", False, Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff) Then
-   '    bShowEditLastConsultButton = True
-   ' Endif
    If modAdminDBI.Config_Get_Staff_Member("progress_notes_enforce_coding", False, Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff) Then
       bProgressNotesEnforceCoding = True 'defaults to false to keep Ian Sane
    Endif
@@ -205,15 +202,6 @@ Static Public Sub ProgressNotesEnforceCoding_UpdateFlag(bflag As Boolean)
    
 End
 
-Static Public Sub EditLastConsultButton_Display(bflag As Boolean)
-   'User has changed visibility of the button to allow editing last consult
-   
-   With form_clinical
-    '  .bShowEditLastConsultButton = bFlag
-    '  .tbEditLastConsult.visible = bFlag
-   End With
-   
-End
 
 Static Public Function Enable_Edit_Button(flag As Boolean)
    
@@ -697,13 +685,14 @@ End
 
 
 
-Public Sub Consult_Save()
+Public Function Consult_Save() As Boolean
    '------------------------------------------------------------------------------------------
    'Saves any outstanding data for the consultation in the progress note editor
    'As the progress notes view can be 'saved' as a pdf via the same Save button on the toolbar
    'don't auto-save this, not needed except explicitly when user wants to export the notes
    'If no notes are in the progress note editor, codes will not be saved as there will be
    'no fk_progress note to link to.
+   'returns True if save successful
    '------------------------------------------------------------------------------------------
    
    Dim i As Object
@@ -713,14 +702,28 @@ Public Sub Consult_Save()
    Inc Application.Busy
    
    For Each i In EditorPages
-      If i.name <> "FProgressNotesViewer" Then
-         Try Object.Call(i, "Save")
-      End If
+      Select Case i.name
+         Case "FReferrals"
+            If ReferralPage.teLetter.text <> "" Then
+               Dec Application.Busy
+               If ReferralPage.Save(,, True, "Close the patient record") = False Then 'True = skipsave until letter saved
+                Return  'False flag will stop easygp closing the patient's record
+                End If   
+            Endif
+         Case Else
+            If i.name <> "FProgressNotesViewer" Then
+             Try Object.Call(i, "Save")
+            End If   
+      End Select
+      ' If i.name <> "FProgressNotesViewer" Then
+      '    Try Object.Call(i, "Save")
+      ' End If
    Next
    Application.Busy = 0
+   Return True
 Catch
    Application.busy = 0
-   Return
+   Return True
    
 End
 
@@ -870,7 +873,7 @@ Public Sub Editor_ShowPage(sPageName As String, Optional page_tag As String = ""
    Dim AllergyPage As FAllergy
    Dim RecallPage As FRecalls
    Dim PastHistoryPage As FPastHistory
-   Dim ReferralPage As FReferrals
+ 
    Dim MentalHealthPage As FMentalHealth
    Dim VaccinationPage As FVaccinations
    Dim workcoverNSWPage As FWorkcoverNSW
@@ -1341,23 +1344,7 @@ Public Sub Editor_ShowPage(sPageName As String, Optional page_tag As String = ""
                page.Title = sPageName
                retform = Form_Diabetes
                EditorPages.Add(Form_Diabetes, sPageName)
-            Case "Edit Last Consult"
-               '----------------------------------------------------------------------
-               'General notes page as the name implies is for notes not tied to a
-               'particular health issue or problem. For particular problems the user
-               'should be taught to open an editor tab for that problem.
-               '----------------------------------------------------------------------
-               page = New FLinkContainer
-               ProgressNotesPage = New FProgressNoteEditor(page.VBoxEditor)
-               WorkspaceEditor.Add(page)
-               page.tag = "Edit Last Consult"
-               page.Text = "Edit Last Consult"
-               ProgressNotesPage_cvwMedications = ProgressNotesPage.cvwMedicationsToday
-               ProgressNotesPage.Init(currentconsult, True)         'True = edit last progress notes
-               EditorPages.Add(ProgressNotesPage, "Edit Last Consult")
-               FGeneralNotesEditor = ProgressNotesPage               'used if want to insert text back into progress note
-               retform = ProgressNotesPage
-            Case "New General Notes"
+          Case "New General Notes"
                '----------------------------------------------------------------------
                'General notes page as the name implies is for notes not tied to a
                'particular health issue or problem. For particular problems the user
@@ -1890,5 +1877,15 @@ End
 Public Sub HBox1_MouseDown()
 
    
+
+End
+
+Public Sub WorkSpaceEditor_Close(Window As Window)
+
+   If Window.tag = "Referrals" Then
+      If ReferralPage.Save(,, True, "Close the referral section ") = False Then
+         Stop Event
+      Endif
+   Endif
 
 End

@@ -1,0 +1,174 @@
+' Gambas class file
+
+'
+' Copyright (C) 2008-2017 Dr. Richard Terry
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+' -----------------------------------------------------------------------
+' PURPOSE     - To allow user to search for a future appointments
+'               and To delete an appointment If necessary
+'               Is used from a toolbutton in the FMakeAppointments
+'------------------------------------------------------------------------
+
+Private Form_Find_Person As FFindPerson
+Private Const cPatient As Integer = 1
+Private Obs As Observer
+Private appointments As Collection
+Private Appointment_Icons As Collection
+Private current_appointment As Collection
+
+Public Sub _new()
+   ' Instantiate existing Find Person Form, hide or expose some gui elements
+   
+   With Form_Find_Person = New FFindPerson(VBox_EditArea)
+      .TxtWholename.ReadOnly = True
+      .txtStreet1.ReadOnly = True   
+      .txtStreet2.ReadOnly = True   
+      .txtPostcode.ReadOnly = True  
+      .txtTown.ReadOnly = True   
+      .txtContactNumber.ReadOnly = True   
+      .txtCountry.ReadOnly = True   
+      .txtState.ReadOnly = True  
+      .lblStreet2.Visible = False   
+      .txtStreet2.Visible = False   
+      .HBox_ResponsiblePersonsDetailsHeading.Visible = False   
+      .HBox_For_FFindAppointments.Visible = True   
+      .tbRemoveResponsiblePerson.Visible = False   
+      .teNotes.ReadOnly = True   
+      .Set_Search_Type(cPatient)
+      .Set_Parent_Form(Me.Name, Vbox_EditArea)
+   End With
+   lblSpacer1.width = Form_Find_Person.lblSearch.Width
+   lblSpacer2.width = lblSpacer1.Width
+   Obs = New Observer(Form_Find_Person.txtWholename) As "Patient_Selected"
+   With ColumnView1
+      .Columns.Count = 5 
+      .Columns[1].text = "Date"
+      .Columns[2].text = "Time"
+      .Columns[3].text = "Duration"
+      .Columns[4].text = "Status"
+   End With
+   Form_Find_Person.txtSearch.SetFocus
+   Appointment_Icons = FMakeAppointments.Get_Appointment_Icons()
+   
+End
+
+Public Sub Run() As Boolean
+   
+   Return Not Me.ShowModal()
+   
+End
+
+Public Sub Patient_Selected_Change()
+   'The embedded form FFindPatient txtWholename has changed
+   'the observer (see _new) handles this
+   
+   Reload   
+   
+End Sub
+
+Public Sub Reload()
+   'Load all future appointments including today into the columnview
+   
+   Dim x As Integer
+   Dim res As Result
+   Dim fk_patient As Variant = Val(Form_Find_Person.lbl_fk_patient.text)
+   Dim bits As String[]
+   Dim appt As String
+   Dim appointment As Collection
+   Dim pic As Picture
+   
+   If IsNull(fk_patient) Or If fk_patient < 1 Then 
+      ColumnView1.Clear
+      Return
+   End If   
+   appointments = modUtil.Copy_Collection_Keyed_Sequentially(modAppointmentsDBI.All_Future_Appointments(fk_patient, True)) 'true= including today
+   ColumnView1.Clear()
+   If appointments.Count = 0 Then
+      ColumnView1.Add(0, "No appointment found")
+   Else
+      For Each appointment In appointments 
+         Print appointment  
+         appt = Str$(appointment!begin)
+         If Not IsNull(appointment!fk_lu_appointment_icon) Then
+            ColumnView1.Add(x, "", Appointment_Icons[appointment!fk_lu_appointment_icon]!picture)
+         Else
+            ColumnView1.Add(x, "")
+         End If   
+         ColumnView1[x][1] = Left(appt, 10) 
+         ColumnView1[x][2] = Mid$(appt, 12, 5) ' 
+         ColumnView1[x][3] = Mid$(Str(appointment!duration), 4, 2) & "min"
+         Select Case appointment!fk_lu_appointment_status
+            Case Const.Appointment_Status_Booked 
+               ColumnView1[x][4] = "Booked"
+            Case Const.Appointment_Status_Arrived_And_waiting 
+               ColumnView1[x][4] = "In waiting room" 
+            Case Const.Appointment_Status_In_Consulting_room 
+               ColumnView1[x][4] = "In consulting room"
+            Case Const.Appointment_Status_Completed 
+               columnView1[x][4] = "Consultation completed"
+            Case Const.Appointment_Status_Emergency 
+               columnView1[x][4] = "Emergency"
+            Case Const.Appointment_Status_FitIn 
+               columnView1[x][4] = "Fitted in"
+            Case Const.Appointment_Status_Did_Not_Arrive 
+               columnView1[x][4] = "Did not arrive"
+         End Select
+         Inc x
+      Next
+   Endif  
+   ColumnView1.SetFocus
+   
+End
+
+
+Public Sub columnview1_Select()
+   ' the appointments collection is zero keyed
+   ' corresponds to the columnveiw key
+      
+   ColumnView1.MoveCurrent 
+   current_appointment = appointments[ColumnView1.Item.Key]
+   
+End
+
+Public Sub ColumnView1_Menu()
+   
+   If ColumnView1.count Then 
+      If current_appointment!fk_lu_appointment_status <> const.Appointment_Status_Completed Then
+         mnuAppointments.Popup
+      End If  
+   End If
+   
+End
+
+Public Sub mnuAppointments_Click()
+   
+   Select Case Last.tag 'only one at the moment
+      Case "delete"
+         Appointment_Delete 
+   End Select 
+   
+End
+
+Public Sub Appointment_Delete()
+   '-------------------------------------------------------------------------
+   'Deletes an appointment, as deleted appointment could cover multiple slots
+   'initialise the gridrows collection again before rebuilding
+   '-------------------------------------------------------------------------
+   
+   Message.Title = "Delete an appointment"
+   If Message.Warning("Are you sure you wish to delete this appointment?", "Yes", "No") = 2 Then Return
+   modDBConnect.exec_query("update clerical.bookings set deleted='t' where pk = " & current_appointment!pk) 
+   modDBConnect.CommitTrans()
+   Reload()
+   
+End

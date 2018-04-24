@@ -26,14 +26,21 @@ def cmd(q):
     cur.close()
     conn.commit()
 
-def safe_int_input(prompt):
+class Skip(Exception): pass
+
+def safe_int_input(prompt, maxi=10000000, default=0):
     while True:
         try:
             answer = raw_input(prompt)
+            if answer == 'skip':
+                raise Skip()
             if answer == "":
-                return 0
+                return default
+            answer = int(answer)
+            if answer > maxi:
+                print("beyond maximum allowed of {}".format(maxi))
             else:
-                return int(answer)
+                return answer
         except ValueError: 
             print "not an integer"
 
@@ -118,7 +125,7 @@ def get_xml_etree(fname=None):
     if f is None:
         print >>sys.stderr, "can't find file"
         sys.exit(0)
-    m = re.match('pbs-([0-9]+-[0-9]+-[0-9]+).*\.xml',f)
+    m = re.match('[a-z]+-([0-9]+-[0-9]+-[0-9]+).*\.xml',f)
     release_date = m.group(1)
     return parse(f)
 
@@ -325,146 +332,165 @@ def import_products(t):
     for g in xml_generics_brands(t):
         generics[g["xml:id"]] = g
     already_done = set()
+    skipped = False
     for drug in xml_pbs_items(t):
-        #if drug["title"] == 'choriogonadotropin alfa 250 microgram/0.5 mL injection, 1 dose': pdb.set_trace()
-        sct =  generics[drug["mpp"]]["sct"]
-        r = query("select * from drugs.link_product_sct where sct='%s'" % sct)
-        if len(r) == 0:
-            # there's no SCT match, look on the PBS product name
-            r = query("select * from drugs.link_product_sct where original_pbs_name=%s",(drug["title"],))
-            if len(r) > 0:
-                print "SCT seems to have changed on %s " % r[0]["original_pbs_name"]
-                cmd("insert into drugs.link_product_sct (fk_product,sct,original_pbs_name) values ('%s', '%s', $$%s$$)" %
-                    (r[0]["fk_product"],generics[drug["mpp"]]["sct"],drug["title"]))
-            else:
-                if not sct in already_done:
-                    already_done.add(sct)
-                    res = set()
-                    # no product match, could be new product
-                    # first look for match on PBS item codes
-                    print
-                    print "New drug product found: %s" % drug["title"]
-                    for drug2 in xml_pbs_items(t):
-                        if drug2["title"] == drug["title"]: # all items of the same drug
-                            for r in query("select pro.pk, pbs.pbscode from drugs.pbs pbs, drugs.product pro where pbs.pbscode=%s and pro.pk = pbs.fk_product", (drug2["code"],)):
-                                print "found match using PBS item code %s" % r['pbscode']
-                                res.add(r['pk'])
-                    if len(res) == 0: 
-                        # OK, no matches on PBS item, let's check by brand name (exact match only)
-                        for b in generics[drug["mpp"]]["brands"]:
-                            r = query("select p.pk as pk from drugs.brand b, drugs.product p where b.fk_product = p.pk and b.brand = %s", (b["brand"],))
-                            if len(r) > 0:
-                                print "found match using brandname %s" % b["brand"]
-                                for i in r:
-                                    res.add(i['pk'])
-                    flag = True
-                    if len(res) > 0:
-                        print "Some possible existing DB entries that may match this drug. If completely equivalent generic product exists (form, quantity, AND pack size) select the number and RETURN"
-                        print "if no match, just RETURN"
+        try:
+            #if drug["title"] == 'choriogonadotropin alfa 250 microgram/0.5 mL injection, 1 dose': pdb.set_trace()
+            sct =  generics[drug["mpp"]]["sct"]
+            r = query("select * from drugs.link_product_sct where sct='%s'" % sct)
+            if len(r) == 0:
+                # there's no SCT match, look on the PBS product name
+                r = query("select * from drugs.link_product_sct where original_pbs_name=%s",(drug["title"],))
+                if len(r) > 0:
+                    print "SCT seems to have changed on %s " % r[0]["original_pbs_name"]
+                    cmd("insert into drugs.link_product_sct (fk_product,sct,original_pbs_name) values ('%s', '%s', $$%s$$)" %
+                        (r[0]["fk_product"],generics[drug["mpp"]]["sct"],drug["title"]))
+                else:
+                    if not sct in already_done:
+                        already_done.add(sct)
+                        res = set()
+                        # no product match, could be new product
+                        # first look for match on PBS item codes
                         print
-                        print "List of existing"
-                        print "----------------"
-                        res = list(res)
-                        for i in range(0,len(res)):
-                            print "%d) %s" % (i+1, drug_name(res[i]))
-                        answer = safe_int_input('No:')
-                        if answer > 0:
-                            chosen = res[answer-1]
-                            cmd("insert into drugs.link_product_sct (fk_product,sct,original_pbs_name) values ('%s','%s','%s')" % (chosen,sct,drug['title']))
-                            flag = False
-                        else:
-                            print "you chose no match: likely proceeding to manual entry"
-                    if flag:
-                        pack_size = int(generics[drug["mpp"]]["pack_size"])
-                        r = attempt_parse(drug["title"], pack_size)
-                        if r:
-                            generic, strength, form, fk_form, amount, amount_unit = r
-                            print "I can autoparse!\ngeneric: %s\nform: %s\nstrength: %s\namount: %s\n" % (generic,form,strength,amount)
-                            units_per_pack = 1
-                            free_comment = "NULL"
-                        else:
+                        print "New drug product found: %s" % drug["title"]
+                        for drug2 in xml_pbs_items(t):
+                            if drug2["title"] == drug["title"]: # all items of the same drug
+                                for r in query("select pro.pk, pbs.pbscode from drugs.pbs pbs, drugs.product pro where pbs.pbscode=%s and pro.pk = pbs.fk_product", (drug2["code"],)):
+                                    print "found match using PBS item code %s" % r['pbscode']
+                                    res.add(r['pk'])
+                        if len(res) == 0: 
+                            # OK, no matches on PBS item, let's check by brand name (exact match only)
+                            for b in generics[drug["mpp"]]["brands"]:
+                                r = query("select p.pk as pk from drugs.brand b, drugs.product p where b.fk_product = p.pk and b.brand = %s", (b["brand"],))
+                                if len(r) > 0:
+                                    print "found match using brandname %s" % b["brand"]
+                                    for i in r:
+                                        res.add(i['pk'])
+                        flag = True
+                        if len(res) > 0:
+                            print "Some possible existing DB entries that may match this drug. If completely equivalent generic product exists (form, quantity, AND pack size) select the number and RETURN"
+                            print "if no match, just RETURN"
                             print
-                            print "Manual entry required"
-                            print_drug(drug,generics,sys.stdout)
-                            print
-                            generic = raw_input("Enter the generic product name:")
-                            form_get = True
-                            while form_get:
-                                form = raw_input("Enter the form from standard list (see docs):")
-                                r = query("select pk from drugs.form where form='%s'" % form)
-                                if len(r) != 1:
-                                    print "that's not a valid form"
-                                else:
-                                    fk_form = r[0]["pk"]
-                                    form_get=False
-                            amount="NULL"
-                            amount_unit="NULL"
-                            if form in ['paste','cream','oral powder','eye paste','topical spray','transdermal gel','topical gel']:
-                                amount_unit= 35 # grams
-                                amount = float(raw_input("Enter the total amount of %s (NOT active ingredient) (0 is not stated/NA): " % form))
-                            if form in ['eye ointment','ear drops','eye drops','eye spray','nasal ointment','mouthwash','nebule','topical ointment','oral gel','oral solution','oral spray','paint','shampoo','bath oil', 'fatty ointment', 'injection','solution for inhalation','oral liquid']:
-                                amount_unit = 26 # ml
-                                amount = float(raw_input("enter the total amount of liquid (NOT active ingredient) (0 if not stated/NA): " % form))
-                            if amount == 0.0:
-                                amount="NULL"
-                                amount_unit="NULL"
-                            strength_invalid = True
-                            while strength_invalid:
-                                strength = raw_input("input strength (see docs):")
-                                if len(strength.split('-')) == len(generic.split(';')):
-                                    strength_invalid = False
-                                else:
-                                    print "number of components must match generic"
-                            units_per_pack = raw_input("units per pack (default 1, PBS pack size is %d): " % pack_size)
-                            if units_per_pack == '':
-                                units_per_pack=1
+                            print "List of existing"
+                            print "----------------"
+                            res = list(res)
+                            for i in range(0,len(res)):
+                                print "%d) %s" % (i+1, drug_name(res[i]))
+                            answer = safe_int_input('No:', len(res))
+                            if answer > 0:
+                                chosen = res[answer-1]
+                                cmd("insert into drugs.link_product_sct (fk_product,sct,original_pbs_name) values ('%s','%s','%s')" % (chosen,sct,drug['title']))
+                                flag = False
                             else:
-                                try:
-                                    units_per_pack = int(units_per_pack)
-                                except:
-                                    units_per_pack = 1
-                            free_comment = raw_input('free comment (optional):')
-                            if free_comment == "":
+                                print "you chose no match: likely proceeding to manual entry"
+                        if flag:
+                            pack_size = int(generics[drug["mpp"]]["pack_size"])
+                            r = attempt_parse(drug["title"], pack_size)
+                            if r:
+                                generic, strength, form, fk_form, amount, amount_unit = r
+                                print "I can autoparse!\ngeneric: %s\nform: %s\nstrength: %s\namount: %s\n" % (generic,form,strength,amount)
+                                units_per_pack = 1
                                 free_comment = "NULL"
                             else:
-                                free_comment = "$$%s$$" % free_comment
-                        # now save to DB
-                        q = "select * from drugs.product where generic=%s and fk_form=%s and strength=%s and pack_size=%s"
-                        params = [generic,fk_form,strength,pack_size]
-                        if amount_unit== "NULL":
-                            q += " and amount is NULL"
-                        else:
-                            q += " and amount = %s"
-                            params.append(amount)
-                        if free_comment == "NULL":
-                            q += " and free_comment is null"
-                        else:
-                            q += " and free_comment = %s"
-                            params.append(free_comment)
-                        params = tuple(params)
-                        r = query(q,params)
-                        if len(r) > 0:
-                            r = r[0]
-                            print >>sys.stderr, "WARNING: %s %s %s looks pretty similar to existing drug PK %s " % (generic,form,strength,r["pk"])
-                            answer = raw_input("Different drug(y/N)?")
-                            if answer == "y":
-                                do_it = True
+                                print
+                                print "Manual entry required"
+                                print_drug(drug,generics,sys.stdout)
+                                print
+                                generic = raw_input("Enter the generic product name:")
+                                if generic == 'skip':
+                                    raise Skip()
+                                while True:
+                                    form = raw_input("Enter the form from standard list (see docs):")
+                                    if form == 'skip':
+                                        raise Skip()
+                                    r = query("select pk from drugs.form where form='%s'" % form)
+                                    if len(r) != 1:
+                                        print "that's not a valid form"
+                                    else:
+                                        fk_form = r[0]["pk"]
+                                        break
+                                while True:
+                                    raw = raw_input("Enter the total amount of %s (NOT active ingredient) (can leave blank if N/A): " % form)
+                                    try:
+                                        if raw == "":
+                                            amount="NULL"
+                                            amount_unit="NULL"
+                                            break
+                                        elif raw == 'skip':
+                                            raise Skip()
+                                        elif raw.endswith('g'):
+                                            amount = float(raw[:-1])
+                                            amount_unit = 35
+                                            break
+                                        elif raw.endswith('ml'):
+                                            amount = float(raw[:-2])
+                                            amount_unit = 26
+                                            break
+                                        else:
+                                            print "units must be g (grams) or ml (millilitres)"
+                                    except ValueError:
+                                        print "not a valid number"
+                                strength_invalid = True
+                                while strength_invalid:
+                                    strength = raw_input("input strength (see docs):")
+                                    if strength == 'skip': raise Skip()
+                                    if len(strength.split('-')) == len(generic.split(';')):
+                                        strength_invalid = False
+                                    else:
+                                        print "number of components must match generic"
+                                units_per_pack = safe_int_input("units per pack (default 1, PBS pack size is %d): " % pack_size, default=1)
+                                free_comment = raw_input('free comment (optional):')
+                                if free_comment == "":
+                                    free_comment = "NULL"
+                                elif free_comment == 'skip':
+                                    raise Skip()
+                                else:
+                                    free_comment = "$$%s$$" % free_comment
+                            # now save to DB
+                            q = "select * from drugs.product where generic=%s and fk_form=%s and strength=%s and pack_size=%s"
+                            params = [generic,fk_form,strength,pack_size]
+                            if amount_unit== "NULL":
+                                q += " and amount is NULL"
                             else:
-                                do_it = False
-                        else:
-                            do_it = True
-                        if do_it:
-                            uuid = query("select uuid_generate_v4() as uuid")[0]["uuid"]
-                            cmd("""
-                        insert into drugs.product (pk,generic,fk_form,free_comment,units_per_pack,pack_size,amount,amount_unit,atccode, strength)
-                        values
-                        ('%s', $$%s$$, %d, %s, %s, %s, %s, %s, '%s',$$%s$$)
-                        """ % (uuid,generic,fk_form,free_comment,units_per_pack,pack_size,amount,amount_unit,drug["atc"],strength))
-                            cmd("insert into drugs.link_product_sct (fk_product, sct, original_pbs_name) values ('%s', '%s', $$%s$$)" %
-                                (uuid, sct, drug['title']))
-                        else:
-                            cmd("insert into drugs.link_product_sct (fk_product, sct, original_pbs_name) values ('%s', '%s', $$%s$$)" %
-                                (r["pk"], sct, drug['title']))
+                                q += " and amount = %s"
+                                params.append(amount)
+                            if free_comment == "NULL":
+                                q += " and free_comment is null"
+                            else:
+                                q += " and free_comment = %s"
+                                params.append(free_comment)
+                            params = tuple(params)
+                            r = query(q,params)
+                            if len(r) > 0:
+                                r = r[0]
+                                print >>sys.stderr, "WARNING: %s %s %s looks pretty similar to existing drug PK %s " % (generic,form,strength,r["pk"])
+                                answer = raw_input("Truly ifferent drug(y/N)?")
+                                if answer == "y":
+                                    do_it = True
+                                elif answer == 'skip':
+                                    raise Skip()
+                                else:
+                                    do_it = False
+                            else:
+                                do_it = True
+                            if do_it:
+                                uuid = query("select uuid_generate_v4() as uuid")[0]["uuid"]
+                                cmd("""
+                            insert into drugs.product (pk,generic,fk_form,free_comment,units_per_pack,pack_size,amount,amount_unit,atccode, strength)
+                            values
+                            ('%s', $$%s$$, %d, %s, %s, %s, %s, %s, '%s',$$%s$$)
+                            """ % (uuid,generic,fk_form,free_comment,units_per_pack,pack_size,amount,amount_unit,drug["atc"],strength))
+                                cmd("insert into drugs.link_product_sct (fk_product, sct, original_pbs_name) values ('%s', '%s', $$%s$$)" %
+                                    (uuid, sct, drug['title']))
+                            else:
+                                cmd("insert into drugs.link_product_sct (fk_product, sct, original_pbs_name) values ('%s', '%s', $$%s$$)" %
+                                    (r["pk"], sct, drug['title']))
+        except Skip:
+            print "drug skipped, but you need to come back to it later"
+            skipped = True
+    if skipped:
+        print "drugs skipped, you need to re-run before you can generate SQL"
+        sys.exit(1)
                             
 # STEP TWO: update/create new brands where required
 def verify_brands(t):
@@ -503,11 +529,18 @@ def verify_brands(t):
         if len(r2) == 1:
             print "%r (%s) price %s isn't in the PBS anymore" % (i['brand'],drug_name(i['fk_product']),i['price'])
             print "But wait, the same company now makes %r price %s" % (r2[0]['brand'],r2[0]['price'])
-            decision = raw_input("are they the same drug? (y/n):")
-            if decision == 'y':
-                print "updating %r to %r" % (i['brand'],r2[0]['brand'])
-                cmd("delete from drugs.brand where pk='%s'" % r2[0]['pk'])
-                cmd("update drugs.brand set brand=$$%s$$,price='%s' where pk='%s'" % (r2[0]['brand'],r2[0]['price'],i['pk']))
+            while True:
+                decision = raw_input("are they the same drug? (y/n):")
+                if decision == 'y':
+                    print "updating %r to %r" % (i['brand'],r2[0]['brand'])
+                    cmd("delete from drugs.brand where pk='%s'" % r2[0]['pk'])
+                    cmd("update drugs.brand set brand=$$%s$$,price='%s' where pk='%s'" % (r2[0]['brand'],r2[0]['price'],i['pk']))
+                    break
+                elif decision == 'n':
+                    print "ok, leaving it in as a new brand"
+                    break
+                else:
+                    print "sorry you must choose 'y' or 'n'"
             print
         
 
@@ -651,7 +684,7 @@ def main():
     print "derived release date ",release_date
     fname = 'drugs-'+release_date+'.sql'
     with open(fname,'w') as ofile:
-        import_products(t) # produce list of new products for editing
+        import_products(t) # produce list of new products and talk to user about them
         print >>ofile,"""-- EasyGP drugs update %s
     \\set ON_ERROR_STOP 1
     \\o /dev/null
@@ -665,7 +698,9 @@ def main():
         print >>ofile, "truncate drugs.pbs, drugs.restriction;"
         import_pbs(t,ofile) # pbs and restrictions, produce dump-and-reload SQL 
         import_restricts(t,ofile)
-        print >>ofile, "update drugs.version set release_date='%s';" % release_date
+        new_date = "update drugs.version set release_date='%s'" % release_date
+        print >>ofile,new_date+';'
+        cmd(new_date)
     os.system("lzma -f %s" % fname)
 
 if __name__ == '__main__':

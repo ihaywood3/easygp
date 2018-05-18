@@ -4,7 +4,7 @@
 import os, re, psycopg2, pdb, sys, glob, codecs, pdb, time, urllib2, sys, pudb
 from xml.etree.cElementTree import *
 
-conn = psycopg2.connect(database='easygp',user=os.environ["USER"])
+conn = psycopg2.connect(database='rtdrugs',user=os.environ["USER"])
 now_t = time.strftime("%Y-%m-%d %H:%M:%S",time.localtime(time.time()))
 
 def query(q,params=()):
@@ -114,17 +114,12 @@ def last_file(g):
     if len(t) == 0: return None
     return t[-1]
 
-def get_xml_etree(fname=None):
+def get_xml_etree(fname):
     global release_date
     f = fname
-    if not f:
-        zipfile = last_file(os.path.join(os.path.expanduser("~/Downloads"),"*xml*.zip"))
-        if zipfile:
-            os.system("unzip -Laqo '%s'" % zipfile)
-        f = last_file("*.xml")
-    if f is None:
+    if not os.path.exists(f):
         print >>sys.stderr, "can't find file"
-        sys.exit(0)
+        sys.exit(1)
     m = re.match('[a-z]+-([0-9]+-[0-9]+-[0-9]+).*\.xml',f)
     release_date = m.group(1)
     return parse(f)
@@ -324,7 +319,6 @@ def drug_name(fk_product):
     nam+=' product.pk=%s' % r[0]['pk']
     return nam
 
-            
 # STEP ONE: go through all drugs by SCT and chat to the user about the ones we can't find
 def import_products(t):
     global release_date
@@ -622,7 +616,7 @@ def scan_all_scts():
 def print_help():
     print """Import PBS data
 import_pbs.py file
-cmd is PBS zipfile
+cmd is PBS XML file (version 2)
   """
 
 def write_key(d,key,s):
@@ -664,7 +658,6 @@ def find_lost_pdfs():
             print d[k]
 
 def main():
-    f = None
     if len(sys.argv) > 1:
         if sys.argv[1] == 'scts':
             scan_all_scts()
@@ -680,7 +673,11 @@ def main():
             return
         else:
             f = sys.argv[1]
+    else:
+        print_help()
+        return
     t = get_xml_etree(f)
+    print "using ", os.path.abspath(f)
     print "derived release date ",release_date
     fname = 'drugs-'+release_date+'.sql'
     with open(fname,'w') as ofile:

@@ -120,7 +120,7 @@ def get_xml_etree(fname):
     if not os.path.exists(f):
         print >>sys.stderr, "can't find file"
         sys.exit(1)
-    m = re.match('[a-z]+-([0-9]+-[0-9]+-[0-9]+).*\.xml',f)
+    m = re.match('[a-z]*-?([0-9]+-[0-9]+-[0-9]+).*\.xml',f)
     release_date = m.group(1)
     return parse(f)
 

@@ -1,10 +1,12 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
+# usage e.g python import_pbs.py down-2018-07-01-r2.xml 
+# if you change the name of your database insert it as per below where it says database='easygp'
 
 import os, re, psycopg2, pdb, sys, glob, codecs, pdb, time, urllib2, sys, pudb
 from xml.etree.cElementTree import *
 
-conn = psycopg2.connect(database='rtdrugs',user=os.environ["USER"])
+conn = psycopg2.connect(database='easygp',user=os.environ["USER"])
 now_t = time.strftime("%Y-%m-%d %H:%M:%S",time.localtime(time.time()))
 
 def query(q,params=()):

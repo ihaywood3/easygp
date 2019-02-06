@@ -1,12 +1,12 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 # usage e.g python import_pbs.py down-2018-07-01-r2.xml 
-# if you change the name of your database insert it as per below where it says database='easygp'
+# if you change the name of your database insert it as per below where it says psycopg2.connect(database=''
 
 import os, re, psycopg2, pdb, sys, glob, codecs, pdb, time, urllib2, sys, pudb
 from xml.etree.cElementTree import *
 
-conn = psycopg2.connect(database='easygp',user=os.environ["USER"])
+conn = psycopg2.connect(database='21jan19',user=os.environ["USER"])
 now_t = time.strftime("%Y-%m-%d %H:%M:%S",time.localtime(time.time()))
 
 def query(q,params=()):
@@ -184,17 +184,17 @@ def xml_restricts(t):
         txt = re.sub(r' +',' ',txt)
         external_indications[xml_id] = txt
     for r in t.iterfind(x("rwt:restrictions-list/rwt:restriction")):
-        d = {}
-        c = r.find(x("pbs:code"))
-        if not c.get("scheme")=="http://scheme.pbs.gov.au/RWT/Restriction/Unrestricted":
-            d["code"] = c.text
-            d["xml:id"] = r.get(x("xml:id"))
-            d["restriction"] = "\n".join(('<p>'+i.text.encode('ascii','xmlcharrefreplace')+'</p>' for i in r.iterfind(x("rwt:indication/dbk:note/dbk:para"))))
-            if len(d["restriction"]) < 5:
-                a = r.find(x("rwt:indication-reference"))
-                if not a is None:
-                    d["restriction"] = external_indications[a.get(x("xlink:href"))[1:]]
-            yield d
+	d = {}
+	c = r.find(x("pbs:code"))
+	if not c.get("scheme")=="http://scheme.pbs.gov.au/RWT/Restriction/Unrestricted":
+	    d["code"] = c.text
+	    d["xml:id"] = r.get(x("xml:id"))
+	    d["restriction"] = "\n".join(('<p>'+i.text.encode('ascii','xmlcharrefreplace')+'</p>' for i in r.iterfind(x("rwt:indication/dbk:note/dbk:para"))))
+	    if len(d["restriction"]) < 5:
+		a = r.find(x("rwt:indication-reference"))
+		if not a is None:
+		    d["restriction"] = external_indications[a.get(x("xlink:href"))[1:]]
+		yield d
 
 
 def xml_atc(t):
@@ -238,6 +238,7 @@ def xml_manufacturers(t):
         d["xml:id"] = m.get(x("xml:id"))
         d["code"] = m.find(x("pbs:code")).text
         d["company"] = m.find(x("dbk:title")).text
+        print m.find(x("dbk:title")).text
         d["address"] = " ".join([i.text for i in m.findall(x("pbs:address/dbk:street"))])
         d["address"] = "%s %s %s %s" % (d["address"],m.find(x("pbs:address/dbk:city")).text,m.find(x("pbs:address/dbk:state")).text,m.find(x("pbs:address/dbk:postcode")).text)
         d["telephone"] = m.find(x("dbk:phone")).text
